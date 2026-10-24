@@ -183,7 +183,8 @@ export async function startThinkingFixture({ live = false, taskProtocol = false 
     WRITER_AGENT_PI_FIXTURE: live ? "" : "1",
     WRITER_AGENT_PI_MAX_DURATION_MS: live ? "120000" : "10000",
     WRITER_AGENT_PI_MAX_TURNS: "4",
-    WRITER_AGENT_PI_MAX_SESSION_TOKENS: live?"64000":"200000",
+    // Fixture-only: V3 creative tools add ~2 KiB to each conservative reservation.
+    WRITER_AGENT_PI_MAX_SESSION_TOKENS: live?"64000":"260000",
     WRITER_AGENT_PI_MAX_OUTPUT_TOKENS: "1024",
     WRITER_AGENT_PI_VERSION: "fixture",
   };

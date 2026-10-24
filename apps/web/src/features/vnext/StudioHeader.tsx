@@ -52,8 +52,8 @@ export default function StudioHeader({
             </span>
           )}
         </div>
-        {/* Focus only applies to the manuscript; other spaces keep their navigation. */}
-        {!(layout.focus && view === 'read') && (
+        {/* Focus hides navigation only while composing; reading and other spaces keep it. */}
+        {!(layout.focus && studio.compose) && (
           <div className="chrome mx-auto md:absolute md:left-1/2 md:mx-0 md:-translate-x-1/2">
             <Seg
               label="主导航"
