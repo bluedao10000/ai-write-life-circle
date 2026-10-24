@@ -1,0 +1,138 @@
+name: Full Regression (Manual)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    name: Typecheck, Lint & Test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: apps/api-go/go.mod
+          cache-dependency-path: apps/api-go/go.sum
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build contracts
+        run: pnpm --filter @writer-agent/contracts build
+
+      - name: OpenAPI reproducibility
+        run: pnpm openapi:check
+
+      - name: OpenAPI validation
+        run: pnpm openapi:lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Isolated dual-service installer and rollback
+        run: sudo bash scripts/test-agent-installer.sh
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Isolated Thinking Agent Eval (no provider credentials)
+        run: pnpm eval:thinking
+
+      - name: Real Caddy EPUB upload boundary
+        run: bash scripts/test-epub-proxy.sh
+
+      - name: Go static analysis
+        run: go vet -C apps/api-go ./...
+
+      - name: Auth schema and Cloudflare D1 runtime
+        run: |
+          pnpm --filter @writer-agent/web auth:schema --check
+          pnpm --filter @writer-agent/web test:auth:runtime
+
+      - name: Build (smoke check)
+        run: pnpm build
+
+      - name: Harness projection and ID checks
+        run: |
+          pnpm harness:rebuild
+          node scripts/check-knowledge-ids.mjs --fail
+
+      - name: Built API smoke and production identity guard
+        run: node scripts/smoke-built-api.mjs
+
+      - name: Production bearer identity and persistence
+        run: node scripts/smoke-production-api.mjs
+
+      - name: Default Go and Web launcher
+        run: node scripts/smoke-local-stack.mjs
+
+      - name: Install Chromium
+        run: pnpm --filter @writer-agent/web exec playwright install --with-deps chromium
+
+      - name: Built public SSR Lighthouse baseline
+        run: pnpm --filter @writer-agent/web test:seo:performance
+
+      - name: Isolated signed-session release funnel
+        run: pnpm --filter @writer-agent/web test:release:funnel
+
+      - name: Visual and API end-to-end tests
+        run: pnpm test:e2e
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: writer-agent-vnext-verification
+          path: |
+            apps/web/test-results-performance/
+            apps/web/test-results/
+            apps/web/test-results-api/
+            apps/web/test-results-review/
+            apps/web/test-results-public/
+            apps/web/test-results-management/
+            apps/web/test-results-thinking/
+            .local/evals/thinking-agent/mock-report.json
+          retention-days: 14
+
+  go-container:
+    runs-on: ubuntu-latest
+    name: Standalone Go container
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build runtime without Node.js
+        run: docker build -f scripts/deploy/Dockerfile.api -t writer-agent-api-ci .
+      - name: Build frontend without a Go toolchain
+        run: docker build -f scripts/deploy/Dockerfile.web -t writer-agent-web-ci .
+      - name: Verify production identity guard
+        run: |
+          if docker run --rm writer-agent-api-ci; then
+            echo "Production local-author unexpectedly started"
+            exit 1
+          fi
+      - name: Isolated development health probe
+        run: |
+          docker run -d --name writer-api-ci --network none -e WRITER_AGENT_ENV=development writer-agent-api-ci
+          trap 'docker logs writer-api-ci; docker rm -f writer-api-ci' EXIT
+          for attempt in $(seq 1 30); do
+            if docker exec writer-api-ci /writer-agent-api --healthcheck; then
+              exit 0
+            fi
+            sleep 1
+          done
+          exit 1

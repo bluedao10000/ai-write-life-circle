@@ -1,0 +1,17 @@
+{
+    admin off
+    http_port 8080
+}
+
+{$WRITER_AGENT_API_DOMAIN} {
+    header -Server
+    request_body {
+        max_size 70MiB
+    }
+    reverse_proxy 127.0.0.1:8787 {
+        transport http {
+            read_timeout 120s
+            write_timeout 120s
+        }
+    }
+}

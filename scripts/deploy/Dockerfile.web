@@ -1,0 +1,39 @@
+# 多阶段构建：构建阶段
+FROM node:22-alpine AS builder
+
+WORKDIR /app
+
+# 安装 pnpm
+RUN npm install -g pnpm@10.15.1
+
+# 复制 lockfile 和 workspace 配置
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json tsconfig.base.json ./
+
+# 复制所有应用和包
+COPY apps ./apps
+COPY packages ./packages
+
+# 安装依赖并构建
+RUN pnpm install --frozen-lockfile && \
+    pnpm --filter @writer-agent/web build
+
+# 生产阶段：轻量级运行环境
+FROM node:22-alpine
+
+WORKDIR /app
+
+# 安装简单的 HTTP 服务器
+RUN npm install -g serve
+
+# 从构建阶段复制构建产物
+COPY --from=builder /app/apps/web/dist ./dist
+
+# 健康检查
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD wget --quiet --tries=1 --spider http://localhost:3000/ || exit 1
+
+# 暴露端口
+EXPOSE 3000
+
+# 启动服务器
+CMD ["serve", "-s", "dist", "-l", "3000"]

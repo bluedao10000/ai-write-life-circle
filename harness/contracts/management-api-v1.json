@@ -1,0 +1,1148 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Writer Agent Author Workspace Management",
+    "version": "1.0.0",
+    "description": "Go-only managed structures. Ordered arrays, baseVersion CAS, atomic ownership/audit/idempotency. Existing Markdown revisions, Notes, Review and Publication routes remain unchanged.",
+    "license": {
+      "name": "Private",
+      "url": "https://github.com/story2u/ai-write-life-circle"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:8787/v1",
+      "description": "Isolated local development"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Author workspace",
+      "description": "Online book, volume and chapter organization"
+    }
+  ],
+  "paths": {
+    "/studio/books": {
+      "get": {
+        "operationId": "listManagedBooks",
+        "summary": "listManagedBooks",
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "tags": [
+          "Author workspace"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Author-owned book structure; no prose or owner credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagedBooks"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication, ownership, structure CAS, validation or storage failure; no partial structure commit"
+          },
+          "403": {
+            "description": "Authentication, ownership, structure CAS, validation or storage failure; no partial structure commit"
+          },
+          "404": {
+            "description": "Authentication, ownership, structure CAS, validation or storage failure; no partial structure commit"
+          },
+          "405": {
+            "description": "Authentication, ownership, structure CAS, validation or storage failure; no partial structure commit"
+          },
+          "409": {
+            "description": "Authentication, ownership, structure CAS, validation or storage failure; no partial structure commit"
+          },
+          "413": {
+            "description": "Authentication, ownership, structure CAS, validation or storage failure; no partial structure commit"
+          },
+          "422": {
+            "description": "Authentication, ownership, structure CAS, validation or storage failure; no partial structure commit"
+          },
+          "500": {
+            "description": "Authentication, ownership, structure CAS, validation or storage failure; no partial structure commit"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createManagedBook",
+        "summary": "createManagedBook",
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "tags": [
+          "Author workspace"
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StructureInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Author-owned book structure; no prose or owner credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagedBook"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication, ownership, structure CAS, validation or storage failure; no partial structure commit"
+          },
+          "403": {
+            "description": "Authentication, ownership, structure CAS, validation or storage failure; no partial structure commit"
+          },
+          "404": {
+            "description": "Authentication, ownership, structure CAS, validation or storage failure; no partial structure commit"
+          },
+          "405": {
+            "description": "Authentication, ownership, structure CAS, validation or storage failure; no partial structure commit"
+          },
+          "409": {
+            "description": "Authentication, ownership, structure CAS, validation or storage failure; no partial structure commit"
+          },
+          "413": {
+            "description": "Authentication, ownership, structure CAS, validation or storage failure; no partial structure commit"
+          },
+          "422": {
+            "description": "Authentication, ownership, structure CAS, validation or storage failure; no partial structure commit"
+          },
+          "500": {
+            "description": "Authentication, ownership, structure CAS, validation or storage failure; no partial structure commit"
+          }
+        }
+      }
+    },
+    "/studio/books/{bookId}": {
+      "get": {
+        "operationId": "getManagedBook",
+        "summary": "getManagedBook",
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "tags": [
+          "Author workspace"
+        ],
+        "parameters": [
+          {
+            "name": "bookId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Author-owned book structure; no prose or owner credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagedBook"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication, ownership, structure CAS, validation or storage failure; no partial structure commit"
+          },
+          "403": {
+            "description": "Authentication, ownership, structure CAS, validation or storage failure; no partial structure commit"
+          },
+          "404": {
+            "description": "Authentication, ownership, structure CAS, validation or storage failure; no partial structure commit"
+          },
+          "405": {
+            "description": "Authentication, ownership, structure CAS, validation or storage failure; no partial structure commit"
+          },
+          "409": {
+            "description": "Authentication, ownership, structure CAS, validation or storage failure; no partial structure commit"
+          },
+          "413": {
+            "description": "Authentication, ownership, structure CAS, validation or storage failure; no partial structure commit"
+          },
+          "422": {
+            "description": "Authentication, ownership, structure CAS, validation or storage failure; no partial structure commit"
+          },
+          "500": {
+            "description": "Authentication, ownership, structure CAS, validation or storage failure; no partial structure commit"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteManagedBook",
+        "summary": "deleteManagedBook",
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "tags": [
+          "Author workspace"
+        ],
+        "parameters": [
+          {
+            "name": "bookId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteBookInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Book removed and its private state purged"
+          },
+          "401": {
+            "description": "Authentication, ownership, structure CAS, validation or storage failure; no partial structure commit"
+          },
+          "403": {
+            "description": "Authentication, ownership, structure CAS, validation or storage failure; no partial structure commit"
+          },
+          "404": {
+            "description": "Authentication, ownership, structure CAS, validation or storage failure; no partial structure commit"
+          },
+          "405": {
+            "description": "Authentication, ownership, structure CAS, validation or storage failure; no partial structure commit"
+          },
+          "409": {
+            "description": "Book changed, or a listed publication must be unlisted before deletion"
+          },
+          "413": {
+            "description": "Authentication, ownership, structure CAS, validation or storage failure; no partial structure commit"
+          },
+          "422": {
+            "description": "Authentication, ownership, structure CAS, validation or storage failure; no partial structure commit"
+          },
+          "500": {
+            "description": "Authentication, ownership, structure CAS, validation or storage failure; no partial structure commit"
+          }
+        }
+      }
+    },
+    "/studio/books/{bookId}/structure": {
+      "put": {
+        "operationId": "updateManagedStructure",
+        "summary": "updateManagedStructure",
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "tags": [
+          "Author workspace"
+        ],
+        "parameters": [
+          {
+            "name": "bookId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StructureInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Author-owned book structure; no prose or owner credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagedBook"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication, ownership, structure CAS, validation or storage failure; no partial structure commit"
+          },
+          "403": {
+            "description": "Authentication, ownership, structure CAS, validation or storage failure; no partial structure commit"
+          },
+          "404": {
+            "description": "Authentication, ownership, structure CAS, validation or storage failure; no partial structure commit"
+          },
+          "405": {
+            "description": "Authentication, ownership, structure CAS, validation or storage failure; no partial structure commit"
+          },
+          "409": {
+            "description": "Authentication, ownership, structure CAS, validation or storage failure; no partial structure commit"
+          },
+          "413": {
+            "description": "Authentication, ownership, structure CAS, validation or storage failure; no partial structure commit"
+          },
+          "422": {
+            "description": "Authentication, ownership, structure CAS, validation or storage failure; no partial structure commit"
+          },
+          "500": {
+            "description": "Authentication, ownership, structure CAS, validation or storage failure; no partial structure commit"
+          }
+        }
+      }
+    },
+    "/studio/imports": {
+      "post": {
+        "operationId": "previewEPUBImport",
+        "summary": "Parse and privately stage a text-first EPUB without invoking a model",
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "tags": [
+          "Author workspace"
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "file"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Idempotent preview replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportPreview"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Privately staged EPUB preview; not visible in the shelf",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportPreview"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Author role or ownership required"
+          },
+          "413": {
+            "description": "EPUB or multipart body exceeds the safety limit"
+          },
+          "415": {
+            "description": "multipart/form-data is required"
+          },
+          "422": {
+            "description": "Invalid, encrypted, fixed-layout or unsupported EPUB"
+          }
+        }
+      }
+    },
+    "/studio/imports/{importId}": {
+      "parameters": [
+        {
+          "name": "importId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "pattern": "^imp-[0-9a-f]{24}$"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getEPUBImport",
+        "summary": "Read an owner-scoped EPUB preview with bounded excerpts",
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "tags": [
+          "Author workspace"
+        ],
+        "responses": {
+          "200": {
+            "description": "Owner-scoped import preview",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportPreview"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Author role required"
+          },
+          "404": {
+            "description": "Import not found for this author"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "discardEPUBImport",
+        "summary": "Discard an uncommitted private EPUB staging area",
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "tags": [
+          "Author workspace"
+        ],
+        "responses": {
+          "204": {
+            "description": "Staging area discarded"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Author role required"
+          },
+          "404": {
+            "description": "Import not found"
+          },
+          "409": {
+            "description": "Import already committed"
+          }
+        }
+      },
+      "post": {
+        "operationId": "commitEPUBImport",
+        "summary": "Atomically create a complete author-owned book and initial revisions",
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "tags": [
+          "Author workspace"
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportCommitInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Idempotent import commit replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagedBook"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Imported book is now visible with every initial revision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagedBook"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Author role required"
+          },
+          "404": {
+            "description": "Import not found"
+          },
+          "409": {
+            "description": "Import changed, was committed, or fingerprint is stale"
+          },
+          "422": {
+            "description": "Invalid confirmed structure or idempotency key"
+          }
+        }
+      }
+    },
+    "/studio/imports/{importId}/status": {
+      "parameters": [
+        {
+          "name": "importId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "pattern": "^imp-[0-9a-f]{24}$"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getEPUBImportStatus",
+        "summary": "Read import and deferred knowledge status",
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "tags": [
+          "Author workspace"
+        ],
+        "responses": {
+          "200": {
+            "description": "Import status; knowledge remains awaiting explicit consent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportPreview"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "404": {
+            "description": "Import not found"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "authorBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Existing Go author identity; browser uses signed Better Auth session through Worker"
+      }
+    },
+    "schemas": {
+      "ManagedBook": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "bookId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "version": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "volumes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "volumeId": {
+                  "type": "string",
+                  "pattern": "^VOL-[A-Za-z0-9-]+$"
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "archived": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "volumeId",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "chapters": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "chapterId": {
+                  "type": "string",
+                  "pattern": "^CH-\\d{1,6}$"
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "volumeId": {
+                  "type": "string"
+                },
+                "archived": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "chapterId",
+                "title",
+                "archived"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "readOnly": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "bookId",
+          "title",
+          "version",
+          "volumes",
+          "chapters",
+          "readOnly"
+        ],
+        "additionalProperties": false
+      },
+      "ManagedBooks": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "bookId": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "version": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "volumes": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "volumeId": {
+                        "type": "string",
+                        "pattern": "^VOL-[A-Za-z0-9-]+$"
+                      },
+                      "title": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "archived": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "volumeId",
+                      "title"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "chapters": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "chapterId": {
+                        "type": "string",
+                        "pattern": "^CH-\\d{1,6}$"
+                      },
+                      "title": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "volumeId": {
+                        "type": "string"
+                      },
+                      "archived": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "chapterId",
+                      "title",
+                      "archived"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "readOnly": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "bookId",
+                "title",
+                "version",
+                "volumes",
+                "chapters",
+                "readOnly"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false
+      },
+      "StructureInput": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "baseVersion": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "operation": {
+            "type": "string",
+            "enum": [
+              "create",
+              "rename",
+              "chapter",
+              "volume",
+              "structure"
+            ]
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "volumeId": {
+            "type": "string"
+          },
+          "volumes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "volumeId": {
+                  "type": "string",
+                  "pattern": "^VOL-[A-Za-z0-9-]+$"
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "archived": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "volumeId",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "chapters": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "chapterId": {
+                  "type": "string",
+                  "pattern": "^CH-\\d{1,6}$"
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "volumeId": {
+                  "type": "string"
+                },
+                "archived": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "chapterId",
+                "title",
+                "archived"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "baseVersion",
+          "operation"
+        ],
+        "additionalProperties": false
+      },
+      "DeleteBookInput": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "baseVersion": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "baseVersion"
+        ],
+        "additionalProperties": false
+      },
+      "ImportPreview": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "importId": {
+            "type": "string",
+            "pattern": "^imp-[0-9a-f]{24}$"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "previewed",
+              "committed"
+            ]
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "author": {
+            "type": "string"
+          },
+          "language": {
+            "type": "string"
+          },
+          "volumes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "volumeId": {
+                  "type": "string",
+                  "pattern": "^VOL-[A-Za-z0-9-]+$"
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                }
+              },
+              "required": [
+                "volumeId",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "chapters": {
+            "minItems": 1,
+            "maxItems": 2000,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "chapterId": {
+                  "type": "string",
+                  "pattern": "^CH-\\d{1,6}$"
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "volumeId": {
+                  "type": "string",
+                  "pattern": "^VOL-[A-Za-z0-9-]+$"
+                },
+                "wordCount": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "sourcePart": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "excerpt": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "chapterId",
+                "title",
+                "wordCount",
+                "sourcePart",
+                "excerpt"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "warnings": {
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "fingerprint": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "bookId": {
+            "type": "string"
+          },
+          "knowledge": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "const": "awaiting_author_consent"
+              }
+            },
+            "required": [
+              "status"
+            ],
+            "additionalProperties": false
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "committedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "importId",
+          "status",
+          "title",
+          "volumes",
+          "chapters",
+          "warnings",
+          "fingerprint",
+          "knowledge",
+          "createdAt"
+        ],
+        "additionalProperties": false
+      },
+      "ImportCommitInput": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "fingerprint": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "volumes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "volumeId": {
+                  "type": "string",
+                  "pattern": "^VOL-[A-Za-z0-9-]+$"
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                }
+              },
+              "required": [
+                "volumeId",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "chapters": {
+            "minItems": 1,
+            "maxItems": 2000,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "chapterId": {
+                  "type": "string",
+                  "pattern": "^CH-\\d{1,6}$"
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "volumeId": {
+                  "type": "string",
+                  "pattern": "^VOL-[A-Za-z0-9-]+$"
+                }
+              },
+              "required": [
+                "chapterId",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "fingerprint",
+          "title",
+          "volumes",
+          "chapters"
+        ],
+        "additionalProperties": false
+      }
+    }
+  }
+}

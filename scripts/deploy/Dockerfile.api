@@ -1,0 +1,30 @@
+FROM golang:1.27.3-alpine AS builder
+WORKDIR /src
+# Trust anchors must not be frozen at image-build time: refresh the CA bundle so the
+# runtime copy below carries the current store (emSign intermediates were distrusted).
+RUN apk add --no-cache --upgrade ca-certificates
+COPY apps/api-go/go.mod apps/api-go/go.sum ./
+RUN go mod download
+COPY apps/api-go/ ./
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /writer-agent-api ./cmd/server && \
+    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /writer-agent-worker ./cmd/agent-worker && \
+    mkdir -p /runtime/data/harness /runtime/data/state /runtime/tmp
+
+# Standalone Go binary. No Node.js, shell, package manager or dynamic libc.
+# Retain the legacy container UID for compatibility with existing root-owned volumes.
+FROM scratch
+COPY --from=builder /runtime/ /
+COPY --from=builder /writer-agent-api /writer-agent-api
+COPY --from=builder /writer-agent-worker /writer-agent-worker
+# net/http needs trust roots for configured HTTPS model providers.
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+ENV HOME=/tmp \
+    WRITER_AGENT_ENV=production \
+    WRITER_AGENT_API_PORT=8787 \
+    WRITER_AGENT_HARNESS_ROOT=/data/harness \
+    WRITER_AGENT_STATE_DIR=/data/state
+EXPOSE 8787
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+    CMD ["/writer-agent-api", "--healthcheck"]
+# Production deliberately fails closed until a real identity adapter is supplied.
+ENTRYPOINT ["/writer-agent-api"]

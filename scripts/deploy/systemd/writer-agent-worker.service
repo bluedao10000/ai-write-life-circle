@@ -1,0 +1,35 @@
+[Unit]
+Description=Writer Agent production Agent Worker
+After=network.target writer-agent-api.service
+
+[Service]
+Type=simple
+User=writer-agent
+Group=writer-agent
+EnvironmentFile=/etc/writer-agent/worker.env
+ExecStartPre=/opt/writer-agent/current/writer-agent-worker --check-config
+CPUQuota=150%
+MemoryMax=512M
+TasksMax=64
+ExecStart=/opt/writer-agent/current/writer-agent-worker
+WorkingDirectory=/srv/writer-agent/harness
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=15
+UMask=0077
+StateDirectory=writer-agent
+StateDirectoryMode=0700
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,1003 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Private Agent Task Protocol",
+    "version": "agent-tasks-v1",
+    "license": {
+      "name": "Private application protocol"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:8792"
+    }
+  ],
+  "paths": {
+    "/internal/v1/agent/tasks/claim": {
+      "post": {
+        "operationId": "claimAgentTask",
+        "summary": "claimAgentTask",
+        "security": [
+          {
+            "workerService": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/agentTaskClaim"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Acknowledged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/agentTaskClaimResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid private Worker credential"
+          },
+          "409": {
+            "description": "Configuration, grant, or lease fenced"
+          }
+        }
+      }
+    },
+    "/internal/v1/agent/tasks/{taskId}/started": {
+      "parameters": [
+        {
+          "name": "taskId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "startedAgentTask",
+        "summary": "startedAgentTask",
+        "security": [
+          {
+            "workerService": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/agentTaskEnvelope"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Acknowledged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/agentTaskAcknowledgement"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid private Worker credential"
+          },
+          "409": {
+            "description": "Configuration, grant, or lease fenced"
+          }
+        }
+      }
+    },
+    "/internal/v1/agent/tasks/{taskId}/heartbeat": {
+      "parameters": [
+        {
+          "name": "taskId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "heartbeatAgentTask",
+        "summary": "heartbeatAgentTask",
+        "security": [
+          {
+            "workerService": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/agentTaskEnvelope"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Acknowledged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/agentTaskAcknowledgement"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid private Worker credential"
+          },
+          "409": {
+            "description": "Configuration, grant, or lease fenced"
+          }
+        }
+      }
+    },
+    "/internal/v1/agent/tasks/{taskId}/complete": {
+      "parameters": [
+        {
+          "name": "taskId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "completeAgentTask",
+        "summary": "completeAgentTask",
+        "security": [
+          {
+            "workerService": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/agentTaskEnvelope"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Acknowledged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/agentTaskAcknowledgement"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid private Worker credential"
+          },
+          "409": {
+            "description": "Configuration, grant, or lease fenced"
+          }
+        }
+      }
+    },
+    "/internal/v1/agent/tasks/{taskId}/fail": {
+      "parameters": [
+        {
+          "name": "taskId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "failAgentTask",
+        "summary": "failAgentTask",
+        "security": [
+          {
+            "workerService": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/agentTaskEnvelope"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Acknowledged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/agentTaskAcknowledgement"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid private Worker credential"
+          },
+          "409": {
+            "description": "Configuration, grant, or lease fenced"
+          }
+        }
+      }
+    },
+    "/internal/v1/agent/tasks/capabilities": {
+      "get": {
+        "operationId": "agentTaskCapabilities",
+        "summary": "Public model metadata on the authenticated private listener",
+        "security": [
+          {
+            "workerService": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Protocol and exact public execution fingerprint"
+          },
+          "401": {
+            "description": "Invalid Worker credential"
+          }
+        }
+      }
+    },
+    "/internal/v1/agent/tasks/worker-heartbeat": {
+      "post": {
+        "operationId": "agentWorkerHeartbeat",
+        "summary": "agentWorkerHeartbeat",
+        "security": [
+          {
+            "workerService": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/agentWorkerHeartbeat"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Acknowledged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/agentTaskAcknowledgement"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid private Worker credential"
+          },
+          "409": {
+            "description": "Configuration, grant, or lease fenced"
+          }
+        }
+      }
+    },
+    "/internal/v1/agent/tasks/status": {
+      "get": {
+        "operationId": "agentWorkerStatus",
+        "summary": "Authoritative private Worker readiness and domain counters",
+        "security": [
+          {
+            "workerService": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Worker readiness, exact configuration and Go task counters"
+          },
+          "401": {
+            "description": "Invalid service credential"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "workerService": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    },
+    "schemas": {
+      "agentModelRequest": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "system": {
+            "type": "string",
+            "maxLength": 40000
+          },
+          "input": {
+            "type": "string",
+            "maxLength": 262144
+          },
+          "schemaName": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "schema": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          }
+        },
+        "required": [
+          "system",
+          "input",
+          "schemaName",
+          "schema"
+        ],
+        "additionalProperties": false
+      },
+      "agentModelResponse": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 524288
+          },
+          "usage": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "inputTokens": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000000
+                  },
+                  "outputTokens": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 131072
+                  }
+                },
+                "required": [
+                  "inputTokens",
+                  "outputTokens"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "text",
+          "usage"
+        ],
+        "additionalProperties": false
+      },
+      "agentTaskAcknowledgement": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "acknowledged": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "required": [
+          "acknowledged"
+        ],
+        "additionalProperties": false
+      },
+      "agentTaskClaimResult": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "task": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "taskId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "review.execute",
+                      "knowledge.extract"
+                    ]
+                  },
+                  "bookId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "authorId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "leaseToken": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "executorEpoch": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "attempt": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 3
+                  },
+                  "deadline": {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                  },
+                  "strategyVersion": {
+                    "type": "string"
+                  },
+                  "revisionId": {
+                    "type": "string"
+                  },
+                  "contentHash": {
+                    "type": "string"
+                  },
+                  "inputHash": {
+                    "type": "string",
+                    "pattern": "^sha256:[a-f0-9]{64}$"
+                  },
+                  "model": {
+                    "type": "object",
+                    "properties": {
+                      "provider": {
+                        "type": "string"
+                      },
+                      "model": {
+                        "type": "string"
+                      },
+                      "endpoint": {
+                        "type": "string",
+                        "format": "uri"
+                      },
+                      "execution": {
+                        "type": "string",
+                        "enum": [
+                          "local",
+                          "external"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "provider",
+                      "model",
+                      "endpoint",
+                      "execution"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "configFingerprint": {
+                    "type": "string",
+                    "maxLength": 5000
+                  },
+                  "outputSchemaVersion": {
+                    "type": "string",
+                    "enum": [
+                      "review-candidates-v1",
+                      "knowledge-candidates-v1"
+                    ]
+                  },
+                  "reservedTokens": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "budgetDay": {
+                    "type": "string"
+                  },
+                  "consent": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  },
+                  "request": {
+                    "type": "object",
+                    "properties": {
+                      "system": {
+                        "type": "string",
+                        "maxLength": 40000
+                      },
+                      "input": {
+                        "type": "string",
+                        "maxLength": 262144
+                      },
+                      "schemaName": {
+                        "type": "string",
+                        "maxLength": 80
+                      },
+                      "schema": {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "additionalProperties": {}
+                      }
+                    },
+                    "required": [
+                      "system",
+                      "input",
+                      "schemaName",
+                      "schema"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "taskId",
+                  "kind",
+                  "bookId",
+                  "authorId",
+                  "leaseToken",
+                  "executorEpoch",
+                  "attempt",
+                  "deadline",
+                  "strategyVersion",
+                  "revisionId",
+                  "contentHash",
+                  "inputHash",
+                  "model",
+                  "configFingerprint",
+                  "outputSchemaVersion",
+                  "reservedTokens",
+                  "budgetDay",
+                  "consent",
+                  "request"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "task"
+        ],
+        "additionalProperties": false
+      },
+      "agentTaskClaim": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "instance": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "configFingerprint": {
+            "type": "string",
+            "maxLength": 5000
+          },
+          "kinds": {
+            "minItems": 1,
+            "maxItems": 2,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "review",
+                "knowledge"
+              ]
+            }
+          },
+          "contracts": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "string",
+              "pattern": "^sha256:[a-f0-9]{64}$"
+            }
+          }
+        },
+        "required": [
+          "instance",
+          "configFingerprint",
+          "contracts"
+        ],
+        "additionalProperties": false
+      },
+      "agentTaskEnvelope": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "leaseToken": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "executorEpoch": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "attempt": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 3
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "review.execute",
+              "knowledge.extract"
+            ]
+          },
+          "inputHash": {
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$"
+          },
+          "instance": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "response": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": "string",
+                "maxLength": 524288
+              },
+              "usage": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "inputTokens": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 1000000
+                      },
+                      "outputTokens": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 131072
+                      }
+                    },
+                    "required": [
+                      "inputTokens",
+                      "outputTokens"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "text",
+              "usage"
+            ],
+            "additionalProperties": false
+          },
+          "failureCode": {
+            "type": "string",
+            "pattern": "^[A-Z_]{1,80}$"
+          }
+        },
+        "required": [
+          "leaseToken",
+          "executorEpoch",
+          "attempt",
+          "kind",
+          "inputHash",
+          "instance",
+          "response"
+        ],
+        "additionalProperties": false
+      },
+      "agentTaskModel": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "endpoint": {
+            "type": "string",
+            "format": "uri"
+          },
+          "execution": {
+            "type": "string",
+            "enum": [
+              "local",
+              "external"
+            ]
+          }
+        },
+        "required": [
+          "provider",
+          "model",
+          "endpoint",
+          "execution"
+        ],
+        "additionalProperties": false
+      },
+      "agentTask": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "review.execute",
+              "knowledge.extract"
+            ]
+          },
+          "bookId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "authorId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "leaseToken": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "executorEpoch": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "attempt": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 3
+          },
+          "deadline": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "strategyVersion": {
+            "type": "string"
+          },
+          "revisionId": {
+            "type": "string"
+          },
+          "contentHash": {
+            "type": "string"
+          },
+          "inputHash": {
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$"
+          },
+          "model": {
+            "type": "object",
+            "properties": {
+              "provider": {
+                "type": "string"
+              },
+              "model": {
+                "type": "string"
+              },
+              "endpoint": {
+                "type": "string",
+                "format": "uri"
+              },
+              "execution": {
+                "type": "string",
+                "enum": [
+                  "local",
+                  "external"
+                ]
+              }
+            },
+            "required": [
+              "provider",
+              "model",
+              "endpoint",
+              "execution"
+            ],
+            "additionalProperties": false
+          },
+          "configFingerprint": {
+            "type": "string",
+            "maxLength": 5000
+          },
+          "outputSchemaVersion": {
+            "type": "string",
+            "enum": [
+              "review-candidates-v1",
+              "knowledge-candidates-v1"
+            ]
+          },
+          "reservedTokens": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "budgetDay": {
+            "type": "string"
+          },
+          "consent": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "request": {
+            "type": "object",
+            "properties": {
+              "system": {
+                "type": "string",
+                "maxLength": 40000
+              },
+              "input": {
+                "type": "string",
+                "maxLength": 262144
+              },
+              "schemaName": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "schema": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              }
+            },
+            "required": [
+              "system",
+              "input",
+              "schemaName",
+              "schema"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "taskId",
+          "kind",
+          "bookId",
+          "authorId",
+          "leaseToken",
+          "executorEpoch",
+          "attempt",
+          "deadline",
+          "strategyVersion",
+          "revisionId",
+          "contentHash",
+          "inputHash",
+          "model",
+          "configFingerprint",
+          "outputSchemaVersion",
+          "reservedTokens",
+          "budgetDay",
+          "consent",
+          "request"
+        ],
+        "additionalProperties": false
+      },
+      "agentWorkerHeartbeat": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "instance": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "version": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "configFingerprint": {
+            "type": "string",
+            "maxLength": 5000
+          },
+          "kinds": {
+            "minItems": 1,
+            "maxItems": 2,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "review",
+                "knowledge"
+              ]
+            }
+          },
+          "activeTasks": {
+            "maxItems": 8,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          "ready": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "instance",
+          "version",
+          "configFingerprint",
+          "kinds",
+          "activeTasks",
+          "ready"
+        ],
+        "additionalProperties": false
+      }
+    }
+  }
+}

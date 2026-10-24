@@ -1,0 +1,14 @@
+import {readFile,writeFile} from "node:fs/promises";
+import {z} from "zod";
+import * as c from "../packages/contracts/src/agent-tasks.js";
+const schemas=Object.fromEntries(Object.entries(c).filter(([k])=>k.endsWith("Schema")).map(([k,v])=>[k.slice(0,-6),z.toJSONSchema(v as z.ZodType,{target:"draft-2020-12"})]));
+const ref=(name:string)=>({$ref:"#/components/schemas/"+name});
+const operation=(id:string,input:string,output:string)=>({operationId:id,summary:id,security:[{workerService:[]}],requestBody:{required:true,content:{"application/json":{schema:ref(input)}}},responses:{"200":{description:"Acknowledged",content:{"application/json":{schema:ref(output)}}},"401":{description:"Invalid private Worker credential"},"409":{description:"Configuration, grant, or lease fenced"}}});
+const paths:Record<string,unknown>={"/internal/v1/agent/tasks/claim":{post:operation("claimAgentTask","agentTaskClaim","agentTaskClaimResult")}};
+for(const action of ["started","heartbeat","complete","fail"])paths[`/internal/v1/agent/tasks/{taskId}/${action}`]={parameters:[{name:"taskId",in:"path",required:true,schema:{type:"string",format:"uuid"}}],post:operation(action+"AgentTask","agentTaskEnvelope","agentTaskAcknowledgement")};
+paths["/internal/v1/agent/tasks/capabilities"]={get:{operationId:"agentTaskCapabilities",summary:"Public model metadata on the authenticated private listener",security:[{workerService:[]}],responses:{"200":{description:"Protocol and exact public execution fingerprint"},"401":{description:"Invalid Worker credential"}}}};
+paths["/internal/v1/agent/tasks/worker-heartbeat"]={post:operation("agentWorkerHeartbeat","agentWorkerHeartbeat","agentTaskAcknowledgement")};
+paths["/internal/v1/agent/tasks/status"]={get:{operationId:"agentWorkerStatus",summary:"Authoritative private Worker readiness and domain counters",security:[{workerService:[]}],responses:{"200":{description:"Worker readiness, exact configuration and Go task counters"},"401":{description:"Invalid service credential"}}}};
+const output=JSON.stringify({openapi:"3.1.0",info:{title:"Private Agent Task Protocol",version:c.agentTaskProtocol,license:{name:"Private application protocol"}},servers:[{url:"http://127.0.0.1:8792"}],paths,components:{securitySchemes:{workerService:{type:"http",scheme:"bearer"}},schemas}},null,2)+"\n";
+const path="harness/contracts/agent-tasks-v1.json";
+if(process.argv.includes("--check")){if(await readFile(path,"utf8")!==output)throw Error("Agent task contract drift")}else await writeFile(path,output);

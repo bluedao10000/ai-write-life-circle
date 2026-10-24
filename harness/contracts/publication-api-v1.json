@@ -1,0 +1,4377 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "story2u Publication and Public API",
+    "version": "1.0.0",
+    "description": "Go engineering contract. Private previews freeze saved revisions; commits revalidate under locks. Public reads use explicit snapshot DTOs only. OAuth BFF integration depends on PR #11; no alternate identity."
+  },
+  "servers": [
+    {
+      "url": "https://api.story2u.xyz/v1"
+    }
+  ],
+  "paths": {
+    "/studio/books/{bookId}/publication": {
+      "get": {
+        "operationId": "getPublication",
+        "summary": "getPublication",
+        "tags": [
+          "Author publication"
+        ],
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "bookId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Snapshot-only public data or owner-scoped publication result",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationManagement"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/studio/books/{bookId}/publication/preview": {
+      "post": {
+        "operationId": "previewPublication",
+        "summary": "previewPublication",
+        "tags": [
+          "Author publication"
+        ],
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "bookId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublicationPreviewInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Snapshot-only public data or owner-scoped publication result",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationPreview"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/studio/books/{bookId}/publication/versions": {
+      "get": {
+        "operationId": "listPublicationVersions",
+        "summary": "listPublicationVersions",
+        "tags": [
+          "Author publication"
+        ],
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "bookId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Snapshot-only public data or owner-scoped publication result",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationHistory"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "commitPublication",
+        "summary": "commitPublication",
+        "tags": [
+          "Author publication"
+        ],
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "bookId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublicationCommitInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Snapshot-only public data or owner-scoped publication result",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationVersion"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/studio/books/{bookId}/publication/unlist": {
+      "post": {
+        "operationId": "unlistPublication",
+        "summary": "unlistPublication",
+        "tags": [
+          "Author publication"
+        ],
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "bookId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublicationTransitionInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Snapshot-only public data or owner-scoped publication result",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationVersion"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/studio/books/{bookId}/publication/relist": {
+      "post": {
+        "operationId": "relistPublication",
+        "summary": "relistPublication",
+        "tags": [
+          "Author publication"
+        ],
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "bookId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublicationTransitionInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Snapshot-only public data or owner-scoped publication result",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationVersion"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/public/home": {
+      "get": {
+        "operationId": "getPublicHome",
+        "summary": "getPublicHome",
+        "tags": [
+          "Public catalog"
+        ],
+        "security": [],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Snapshot-only public data or owner-scoped publication result",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicHome"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/public/books": {
+      "get": {
+        "operationId": "listPublicBooks",
+        "summary": "listPublicBooks",
+        "tags": [
+          "Public catalog"
+        ],
+        "security": [],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 500
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 320
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "ongoing",
+                "completed",
+                "paused"
+              ]
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "recent",
+                "title"
+              ]
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]+$"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 24
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Snapshot-only public data or owner-scoped publication result",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicCatalog"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/public/books/{slug}": {
+      "get": {
+        "operationId": "getPublicBook",
+        "summary": "getPublicBook",
+        "tags": [
+          "Public catalog"
+        ],
+        "security": [],
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Snapshot-only public data or owner-scoped publication result",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicBook"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/public/books/{slug}/chapters/{chapterSlug}": {
+      "get": {
+        "operationId": "getPublicChapter",
+        "summary": "getPublicChapter",
+        "tags": [
+          "Public catalog"
+        ],
+        "security": [],
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "chapterSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Snapshot-only public data or owner-scoped publication result",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicChapter"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/public/authors/{slug}": {
+      "get": {
+        "operationId": "getPublicAuthor",
+        "summary": "getPublicAuthor",
+        "tags": [
+          "Public catalog"
+        ],
+        "security": [],
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Snapshot-only public data or owner-scoped publication result",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicAuthor"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/public/categories": {
+      "get": {
+        "operationId": "listPublicCategories",
+        "summary": "listPublicCategories",
+        "tags": [
+          "Public catalog"
+        ],
+        "security": [],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Snapshot-only public data or owner-scoped publication result",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicCategories"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Publication request rejected; no partial publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "authorBearer": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    },
+    "schemas": {
+      "PublicationMetadata": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "slug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 160
+          },
+          "penName": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "authorBio": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "tagline": {
+            "type": "string",
+            "maxLength": 250
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 10000
+          },
+          "category": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "categories": {
+            "maxItems": 10,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 80
+            }
+          },
+          "serialStatus": {
+            "type": "string",
+            "enum": [
+              "ongoing",
+              "completed",
+              "paused"
+            ]
+          },
+          "cover": {
+            "type": "object",
+            "properties": {
+              "bg": {
+                "type": "string",
+                "pattern": "^#[a-fA-F0-9]{6}$"
+              },
+              "fg": {
+                "type": "string",
+                "pattern": "^#[a-fA-F0-9]{6}$"
+              },
+              "mark": {
+                "type": "string",
+                "enum": [
+                  "rule",
+                  "circle",
+                  "wave",
+                  "grid",
+                  "none"
+                ]
+              }
+            },
+            "required": [
+              "bg",
+              "fg",
+              "mark"
+            ],
+            "additionalProperties": false
+          },
+          "coverUrl": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": ""
+              },
+              {
+                "type": "string",
+                "maxLength": 2048,
+                "format": "uri"
+              }
+            ]
+          }
+        },
+        "required": [
+          "slug",
+          "title",
+          "penName",
+          "authorBio",
+          "tagline",
+          "description",
+          "category",
+          "serialStatus",
+          "coverUrl"
+        ],
+        "additionalProperties": false
+      },
+      "PublicationSelection": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "chapterId": {
+            "type": "string",
+            "pattern": "^CH-\\d{1,6}$"
+          },
+          "revisionId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "contentHash": {
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$"
+          },
+          "volumeId": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "chapterOrder": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "chapterId",
+          "revisionId",
+          "contentHash",
+          "volumeId",
+          "chapterOrder"
+        ],
+        "additionalProperties": false
+      },
+      "PublicationPreviewInput": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "baseVersionId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "metadata": {
+            "type": "object",
+            "properties": {
+              "slug": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80,
+                "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+              },
+              "title": {
+                "type": "string",
+                "maxLength": 160
+              },
+              "penName": {
+                "type": "string",
+                "maxLength": 100
+              },
+              "authorBio": {
+                "type": "string",
+                "maxLength": 2000
+              },
+              "tagline": {
+                "type": "string",
+                "maxLength": 250
+              },
+              "description": {
+                "type": "string",
+                "maxLength": 10000
+              },
+              "category": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "categories": {
+                "maxItems": 10,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 80
+                }
+              },
+              "serialStatus": {
+                "type": "string",
+                "enum": [
+                  "ongoing",
+                  "completed",
+                  "paused"
+                ]
+              },
+              "cover": {
+                "type": "object",
+                "properties": {
+                  "bg": {
+                    "type": "string",
+                    "pattern": "^#[a-fA-F0-9]{6}$"
+                  },
+                  "fg": {
+                    "type": "string",
+                    "pattern": "^#[a-fA-F0-9]{6}$"
+                  },
+                  "mark": {
+                    "type": "string",
+                    "enum": [
+                      "rule",
+                      "circle",
+                      "wave",
+                      "grid",
+                      "none"
+                    ]
+                  }
+                },
+                "required": [
+                  "bg",
+                  "fg",
+                  "mark"
+                ],
+                "additionalProperties": false
+              },
+              "coverUrl": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "const": ""
+                  },
+                  {
+                    "type": "string",
+                    "maxLength": 2048,
+                    "format": "uri"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "slug",
+              "title",
+              "penName",
+              "authorBio",
+              "tagline",
+              "description",
+              "category",
+              "serialStatus",
+              "coverUrl"
+            ],
+            "additionalProperties": false
+          },
+          "chapters": {
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "chapterId": {
+                  "type": "string",
+                  "pattern": "^CH-\\d{1,6}$"
+                },
+                "revisionId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "contentHash": {
+                  "type": "string",
+                  "pattern": "^sha256:[a-f0-9]{64}$"
+                },
+                "volumeId": {
+                  "type": "string",
+                  "maxLength": 256
+                },
+                "chapterOrder": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "chapterId",
+                "revisionId",
+                "contentHash",
+                "volumeId",
+                "chapterOrder"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "baseVersionId",
+          "metadata",
+          "chapters"
+        ],
+        "additionalProperties": false
+      },
+      "PublicationCommitInput": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "note": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "baseVersionId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "previewId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "baseVersionId",
+          "previewId"
+        ],
+        "additionalProperties": false
+      },
+      "PublicationTransitionInput": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "baseVersionId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "baseVersionId"
+        ],
+        "additionalProperties": false
+      },
+      "PublicationPreview": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "previousChapters": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "chapterId": {
+                  "type": "string",
+                  "pattern": "^CH-\\d{1,6}$"
+                },
+                "revisionId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "contentHash": {
+                  "type": "string",
+                  "pattern": "^sha256:[a-f0-9]{64}$"
+                },
+                "volumeId": {
+                  "type": "string",
+                  "maxLength": 256
+                },
+                "chapterOrder": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "slug": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "volumeTitle": {
+                  "type": "string"
+                },
+                "volumeOrder": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "markdown": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "chapterId",
+                "revisionId",
+                "contentHash",
+                "volumeId",
+                "chapterOrder",
+                "slug",
+                "title",
+                "volumeOrder",
+                "markdown"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "previewId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "bookId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "baseVersionId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "metadata": {
+            "type": "object",
+            "properties": {
+              "slug": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80,
+                "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+              },
+              "title": {
+                "type": "string",
+                "maxLength": 160
+              },
+              "penName": {
+                "type": "string",
+                "maxLength": 100
+              },
+              "authorBio": {
+                "type": "string",
+                "maxLength": 2000
+              },
+              "tagline": {
+                "type": "string",
+                "maxLength": 250
+              },
+              "description": {
+                "type": "string",
+                "maxLength": 10000
+              },
+              "category": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "categories": {
+                "maxItems": 10,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 80
+                }
+              },
+              "serialStatus": {
+                "type": "string",
+                "enum": [
+                  "ongoing",
+                  "completed",
+                  "paused"
+                ]
+              },
+              "cover": {
+                "type": "object",
+                "properties": {
+                  "bg": {
+                    "type": "string",
+                    "pattern": "^#[a-fA-F0-9]{6}$"
+                  },
+                  "fg": {
+                    "type": "string",
+                    "pattern": "^#[a-fA-F0-9]{6}$"
+                  },
+                  "mark": {
+                    "type": "string",
+                    "enum": [
+                      "rule",
+                      "circle",
+                      "wave",
+                      "grid",
+                      "none"
+                    ]
+                  }
+                },
+                "required": [
+                  "bg",
+                  "fg",
+                  "mark"
+                ],
+                "additionalProperties": false
+              },
+              "coverUrl": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "const": ""
+                  },
+                  {
+                    "type": "string",
+                    "maxLength": 2048,
+                    "format": "uri"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "slug",
+              "title",
+              "penName",
+              "authorBio",
+              "tagline",
+              "description",
+              "category",
+              "serialStatus",
+              "coverUrl"
+            ],
+            "additionalProperties": false
+          },
+          "chapters": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "chapterId": {
+                  "type": "string",
+                  "pattern": "^CH-\\d{1,6}$"
+                },
+                "revisionId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "contentHash": {
+                  "type": "string",
+                  "pattern": "^sha256:[a-f0-9]{64}$"
+                },
+                "volumeId": {
+                  "type": "string",
+                  "maxLength": 256
+                },
+                "chapterOrder": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "slug": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "volumeTitle": {
+                  "type": "string"
+                },
+                "volumeOrder": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "markdown": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "chapterId",
+                "revisionId",
+                "contentHash",
+                "volumeId",
+                "chapterOrder",
+                "slug",
+                "title",
+                "volumeOrder",
+                "markdown"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "createdBy": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "previousChapters",
+          "previewId",
+          "bookId",
+          "baseVersionId",
+          "metadata",
+          "chapters",
+          "expiresAt",
+          "createdBy"
+        ],
+        "additionalProperties": false
+      },
+      "PublicationVersion": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "note": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "publicUrl": {
+            "type": "string",
+            "pattern": "^\\/books\\/[a-z0-9-]+$"
+          },
+          "versionId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "publicationId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "versionNumber": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "listed",
+              "unlisted"
+            ]
+          },
+          "metadata": {
+            "type": "object",
+            "properties": {
+              "slug": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80,
+                "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+              },
+              "title": {
+                "type": "string",
+                "maxLength": 160
+              },
+              "penName": {
+                "type": "string",
+                "maxLength": 100
+              },
+              "authorBio": {
+                "type": "string",
+                "maxLength": 2000
+              },
+              "tagline": {
+                "type": "string",
+                "maxLength": 250
+              },
+              "description": {
+                "type": "string",
+                "maxLength": 10000
+              },
+              "category": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "categories": {
+                "maxItems": 10,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 80
+                }
+              },
+              "serialStatus": {
+                "type": "string",
+                "enum": [
+                  "ongoing",
+                  "completed",
+                  "paused"
+                ]
+              },
+              "cover": {
+                "type": "object",
+                "properties": {
+                  "bg": {
+                    "type": "string",
+                    "pattern": "^#[a-fA-F0-9]{6}$"
+                  },
+                  "fg": {
+                    "type": "string",
+                    "pattern": "^#[a-fA-F0-9]{6}$"
+                  },
+                  "mark": {
+                    "type": "string",
+                    "enum": [
+                      "rule",
+                      "circle",
+                      "wave",
+                      "grid",
+                      "none"
+                    ]
+                  }
+                },
+                "required": [
+                  "bg",
+                  "fg",
+                  "mark"
+                ],
+                "additionalProperties": false
+              },
+              "coverUrl": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "const": ""
+                  },
+                  {
+                    "type": "string",
+                    "maxLength": 2048,
+                    "format": "uri"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "slug",
+              "title",
+              "penName",
+              "authorBio",
+              "tagline",
+              "description",
+              "category",
+              "serialStatus",
+              "coverUrl"
+            ],
+            "additionalProperties": false
+          },
+          "chapters": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "chapterId": {
+                  "type": "string",
+                  "pattern": "^CH-\\d{1,6}$"
+                },
+                "revisionId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "contentHash": {
+                  "type": "string",
+                  "pattern": "^sha256:[a-f0-9]{64}$"
+                },
+                "volumeId": {
+                  "type": "string",
+                  "maxLength": 256
+                },
+                "chapterOrder": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "slug": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "volumeTitle": {
+                  "type": "string"
+                },
+                "volumeOrder": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "markdown": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "chapterId",
+                "revisionId",
+                "contentHash",
+                "volumeId",
+                "chapterOrder",
+                "slug",
+                "title",
+                "volumeOrder",
+                "markdown"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "createdBy": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "auditReference": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "publicUrl",
+          "versionId",
+          "publicationId",
+          "versionNumber",
+          "state",
+          "metadata",
+          "chapters",
+          "createdAt",
+          "createdBy",
+          "auditReference"
+        ],
+        "additionalProperties": false
+      },
+      "PublicationManagement": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "publication": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "publicationId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  "studioBookId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  "ownerUserId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  "authorSlug": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80,
+                    "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+                  },
+                  "currentVersionId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  "versions": {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "note": {
+                          "type": "string",
+                          "maxLength": 2000
+                        },
+                        "publicUrl": {
+                          "type": "string",
+                          "pattern": "^\\/books\\/[a-z0-9-]+$"
+                        },
+                        "versionId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 256
+                        },
+                        "publicationId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 256
+                        },
+                        "versionNumber": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "state": {
+                          "type": "string",
+                          "enum": [
+                            "listed",
+                            "unlisted"
+                          ]
+                        },
+                        "metadata": {
+                          "type": "object",
+                          "properties": {
+                            "slug": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 80,
+                              "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+                            },
+                            "title": {
+                              "type": "string",
+                              "maxLength": 160
+                            },
+                            "penName": {
+                              "type": "string",
+                              "maxLength": 100
+                            },
+                            "authorBio": {
+                              "type": "string",
+                              "maxLength": 2000
+                            },
+                            "tagline": {
+                              "type": "string",
+                              "maxLength": 250
+                            },
+                            "description": {
+                              "type": "string",
+                              "maxLength": 10000
+                            },
+                            "category": {
+                              "type": "string",
+                              "maxLength": 80
+                            },
+                            "categories": {
+                              "maxItems": 10,
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 80
+                              }
+                            },
+                            "serialStatus": {
+                              "type": "string",
+                              "enum": [
+                                "ongoing",
+                                "completed",
+                                "paused"
+                              ]
+                            },
+                            "cover": {
+                              "type": "object",
+                              "properties": {
+                                "bg": {
+                                  "type": "string",
+                                  "pattern": "^#[a-fA-F0-9]{6}$"
+                                },
+                                "fg": {
+                                  "type": "string",
+                                  "pattern": "^#[a-fA-F0-9]{6}$"
+                                },
+                                "mark": {
+                                  "type": "string",
+                                  "enum": [
+                                    "rule",
+                                    "circle",
+                                    "wave",
+                                    "grid",
+                                    "none"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "bg",
+                                "fg",
+                                "mark"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "coverUrl": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "const": ""
+                                },
+                                {
+                                  "type": "string",
+                                  "maxLength": 2048,
+                                  "format": "uri"
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "slug",
+                            "title",
+                            "penName",
+                            "authorBio",
+                            "tagline",
+                            "description",
+                            "category",
+                            "serialStatus",
+                            "coverUrl"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "chapters": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "chapterId": {
+                                "type": "string",
+                                "pattern": "^CH-\\d{1,6}$"
+                              },
+                              "revisionId": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 256
+                              },
+                              "contentHash": {
+                                "type": "string",
+                                "pattern": "^sha256:[a-f0-9]{64}$"
+                              },
+                              "volumeId": {
+                                "type": "string",
+                                "maxLength": 256
+                              },
+                              "chapterOrder": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              "slug": {
+                                "type": "string"
+                              },
+                              "title": {
+                                "type": "string"
+                              },
+                              "volumeTitle": {
+                                "type": "string"
+                              },
+                              "volumeOrder": {
+                                "type": "integer",
+                                "exclusiveMinimum": 0,
+                                "maximum": 9007199254740991
+                              }
+                            },
+                            "required": [
+                              "chapterId",
+                              "revisionId",
+                              "contentHash",
+                              "volumeId",
+                              "chapterOrder",
+                              "slug",
+                              "title",
+                              "volumeOrder"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                        },
+                        "createdBy": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 256
+                        },
+                        "auditReference": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 256
+                        }
+                      },
+                      "required": [
+                        "publicUrl",
+                        "versionId",
+                        "publicationId",
+                        "versionNumber",
+                        "state",
+                        "metadata",
+                        "chapters",
+                        "createdAt",
+                        "createdBy",
+                        "auditReference"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "chapterSlugs": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 80,
+                      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+                    }
+                  }
+                },
+                "required": [
+                  "publicationId",
+                  "studioBookId",
+                  "ownerUserId",
+                  "authorSlug",
+                  "currentVersionId",
+                  "versions",
+                  "chapterSlugs"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "changedChapterIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            }
+          },
+          "drafts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "chapterId": {
+                  "type": "string",
+                  "pattern": "^CH-\\d{1,6}$"
+                },
+                "revisionId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "contentHash": {
+                  "type": "string",
+                  "pattern": "^sha256:[a-f0-9]{64}$"
+                },
+                "volumeId": {
+                  "type": "string",
+                  "maxLength": 256
+                },
+                "chapterOrder": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "title": {
+                  "type": "string"
+                },
+                "volumeTitle": {
+                  "type": "string"
+                },
+                "words": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "isEmpty": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "chapterId",
+                "revisionId",
+                "contentHash",
+                "volumeId",
+                "chapterOrder",
+                "title",
+                "words",
+                "isEmpty"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "publication",
+          "changedChapterIds",
+          "drafts"
+        ],
+        "additionalProperties": false
+      },
+      "PublicationHistory": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "note": {
+                  "type": "string",
+                  "maxLength": 2000
+                },
+                "publicUrl": {
+                  "type": "string",
+                  "pattern": "^\\/books\\/[a-z0-9-]+$"
+                },
+                "versionId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "publicationId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "versionNumber": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "state": {
+                  "type": "string",
+                  "enum": [
+                    "listed",
+                    "unlisted"
+                  ]
+                },
+                "metadata": {
+                  "type": "object",
+                  "properties": {
+                    "slug": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 80,
+                      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+                    },
+                    "title": {
+                      "type": "string",
+                      "maxLength": 160
+                    },
+                    "penName": {
+                      "type": "string",
+                      "maxLength": 100
+                    },
+                    "authorBio": {
+                      "type": "string",
+                      "maxLength": 2000
+                    },
+                    "tagline": {
+                      "type": "string",
+                      "maxLength": 250
+                    },
+                    "description": {
+                      "type": "string",
+                      "maxLength": 10000
+                    },
+                    "category": {
+                      "type": "string",
+                      "maxLength": 80
+                    },
+                    "categories": {
+                      "maxItems": 10,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "maxLength": 80
+                      }
+                    },
+                    "serialStatus": {
+                      "type": "string",
+                      "enum": [
+                        "ongoing",
+                        "completed",
+                        "paused"
+                      ]
+                    },
+                    "cover": {
+                      "type": "object",
+                      "properties": {
+                        "bg": {
+                          "type": "string",
+                          "pattern": "^#[a-fA-F0-9]{6}$"
+                        },
+                        "fg": {
+                          "type": "string",
+                          "pattern": "^#[a-fA-F0-9]{6}$"
+                        },
+                        "mark": {
+                          "type": "string",
+                          "enum": [
+                            "rule",
+                            "circle",
+                            "wave",
+                            "grid",
+                            "none"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "bg",
+                        "fg",
+                        "mark"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "coverUrl": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "const": ""
+                        },
+                        {
+                          "type": "string",
+                          "maxLength": 2048,
+                          "format": "uri"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "slug",
+                    "title",
+                    "penName",
+                    "authorBio",
+                    "tagline",
+                    "description",
+                    "category",
+                    "serialStatus",
+                    "coverUrl"
+                  ],
+                  "additionalProperties": false
+                },
+                "chapters": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "chapterId": {
+                        "type": "string",
+                        "pattern": "^CH-\\d{1,6}$"
+                      },
+                      "revisionId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 256
+                      },
+                      "contentHash": {
+                        "type": "string",
+                        "pattern": "^sha256:[a-f0-9]{64}$"
+                      },
+                      "volumeId": {
+                        "type": "string",
+                        "maxLength": 256
+                      },
+                      "chapterOrder": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "slug": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      },
+                      "volumeTitle": {
+                        "type": "string"
+                      },
+                      "volumeOrder": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "markdown": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "chapterId",
+                      "revisionId",
+                      "contentHash",
+                      "volumeId",
+                      "chapterOrder",
+                      "slug",
+                      "title",
+                      "volumeOrder",
+                      "markdown"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "createdAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                },
+                "createdBy": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "auditReference": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                }
+              },
+              "required": [
+                "publicUrl",
+                "versionId",
+                "publicationId",
+                "versionNumber",
+                "state",
+                "metadata",
+                "chapters",
+                "createdAt",
+                "createdBy",
+                "auditReference"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false
+      },
+      "PublicBook": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "contentUpdatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "publicationUpdatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "slug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          },
+          "title": {
+            "type": "string"
+          },
+          "penName": {
+            "type": "string"
+          },
+          "authorSlug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          },
+          "tagline": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "cover": {
+            "type": "object",
+            "properties": {
+              "bg": {
+                "type": "string",
+                "pattern": "^#[a-fA-F0-9]{6}$"
+              },
+              "fg": {
+                "type": "string",
+                "pattern": "^#[a-fA-F0-9]{6}$"
+              },
+              "mark": {
+                "type": "string",
+                "enum": [
+                  "rule",
+                  "circle",
+                  "wave",
+                  "grid",
+                  "none"
+                ]
+              }
+            },
+            "required": [
+              "bg",
+              "fg",
+              "mark"
+            ],
+            "additionalProperties": false
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "category": {
+            "type": "string"
+          },
+          "serialStatus": {
+            "type": "string",
+            "enum": [
+              "ongoing",
+              "completed",
+              "paused"
+            ]
+          },
+          "coverUrl": {
+            "type": "string"
+          },
+          "firstPublishedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "chapterCount": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "chapters": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "publishedAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                },
+                "updatedAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                },
+                "slug": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80,
+                  "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "volumeTitle": {
+                  "type": "string"
+                },
+                "volumeOrder": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "chapterOrder": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "publishedAt",
+                "updatedAt",
+                "slug",
+                "title",
+                "volumeOrder",
+                "chapterOrder"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "slug",
+          "title",
+          "penName",
+          "authorSlug",
+          "tagline",
+          "description",
+          "category",
+          "serialStatus",
+          "coverUrl",
+          "firstPublishedAt",
+          "updatedAt",
+          "chapterCount",
+          "chapters"
+        ],
+        "additionalProperties": false
+      },
+      "PublicChapter": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "publishedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "slug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          },
+          "title": {
+            "type": "string"
+          },
+          "volumeTitle": {
+            "type": "string"
+          },
+          "volumeOrder": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "chapterOrder": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "bookSlug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          },
+          "markdown": {
+            "type": "string"
+          },
+          "previous": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80,
+                "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "next": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80,
+                "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "publishedAt",
+          "updatedAt",
+          "slug",
+          "title",
+          "volumeOrder",
+          "chapterOrder",
+          "bookSlug",
+          "markdown",
+          "previous",
+          "next"
+        ],
+        "additionalProperties": false
+      },
+      "PublicHome": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "contentUpdatedAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                },
+                "publicationUpdatedAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                },
+                "slug": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80,
+                  "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "penName": {
+                  "type": "string"
+                },
+                "authorSlug": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80,
+                  "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+                },
+                "tagline": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "cover": {
+                  "type": "object",
+                  "properties": {
+                    "bg": {
+                      "type": "string",
+                      "pattern": "^#[a-fA-F0-9]{6}$"
+                    },
+                    "fg": {
+                      "type": "string",
+                      "pattern": "^#[a-fA-F0-9]{6}$"
+                    },
+                    "mark": {
+                      "type": "string",
+                      "enum": [
+                        "rule",
+                        "circle",
+                        "wave",
+                        "grid",
+                        "none"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "bg",
+                    "fg",
+                    "mark"
+                  ],
+                  "additionalProperties": false
+                },
+                "categories": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "category": {
+                  "type": "string"
+                },
+                "serialStatus": {
+                  "type": "string",
+                  "enum": [
+                    "ongoing",
+                    "completed",
+                    "paused"
+                  ]
+                },
+                "coverUrl": {
+                  "type": "string"
+                },
+                "firstPublishedAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                },
+                "updatedAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                },
+                "chapterCount": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "chapters": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "publishedAt": {
+                        "type": "string",
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                      },
+                      "updatedAt": {
+                        "type": "string",
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                      },
+                      "slug": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 80,
+                        "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+                      },
+                      "title": {
+                        "type": "string"
+                      },
+                      "volumeTitle": {
+                        "type": "string"
+                      },
+                      "volumeOrder": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "chapterOrder": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "required": [
+                      "publishedAt",
+                      "updatedAt",
+                      "slug",
+                      "title",
+                      "volumeOrder",
+                      "chapterOrder"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "slug",
+                "title",
+                "penName",
+                "authorSlug",
+                "tagline",
+                "description",
+                "category",
+                "serialStatus",
+                "coverUrl",
+                "firstPublishedAt",
+                "updatedAt",
+                "chapterCount",
+                "chapters"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "featured": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "contentUpdatedAt": {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                  },
+                  "publicationUpdatedAt": {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                  },
+                  "slug": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80,
+                    "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "penName": {
+                    "type": "string"
+                  },
+                  "authorSlug": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80,
+                    "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+                  },
+                  "tagline": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "cover": {
+                    "type": "object",
+                    "properties": {
+                      "bg": {
+                        "type": "string",
+                        "pattern": "^#[a-fA-F0-9]{6}$"
+                      },
+                      "fg": {
+                        "type": "string",
+                        "pattern": "^#[a-fA-F0-9]{6}$"
+                      },
+                      "mark": {
+                        "type": "string",
+                        "enum": [
+                          "rule",
+                          "circle",
+                          "wave",
+                          "grid",
+                          "none"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "bg",
+                      "fg",
+                      "mark"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "categories": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "category": {
+                    "type": "string"
+                  },
+                  "serialStatus": {
+                    "type": "string",
+                    "enum": [
+                      "ongoing",
+                      "completed",
+                      "paused"
+                    ]
+                  },
+                  "coverUrl": {
+                    "type": "string"
+                  },
+                  "firstPublishedAt": {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                  },
+                  "updatedAt": {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                  },
+                  "chapterCount": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "chapters": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "publishedAt": {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                        },
+                        "updatedAt": {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                        },
+                        "slug": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 80,
+                          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "volumeTitle": {
+                          "type": "string"
+                        },
+                        "volumeOrder": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "chapterOrder": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": [
+                        "publishedAt",
+                        "updatedAt",
+                        "slug",
+                        "title",
+                        "volumeOrder",
+                        "chapterOrder"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "slug",
+                  "title",
+                  "penName",
+                  "authorSlug",
+                  "tagline",
+                  "description",
+                  "category",
+                  "serialStatus",
+                  "coverUrl",
+                  "firstPublishedAt",
+                  "updatedAt",
+                  "chapterCount",
+                  "chapters"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "opening": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "featured",
+          "opening",
+          "categories"
+        ],
+        "additionalProperties": false
+      },
+      "PublicCatalog": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "contentUpdatedAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                },
+                "publicationUpdatedAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                },
+                "slug": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80,
+                  "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "penName": {
+                  "type": "string"
+                },
+                "authorSlug": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80,
+                  "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+                },
+                "tagline": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "cover": {
+                  "type": "object",
+                  "properties": {
+                    "bg": {
+                      "type": "string",
+                      "pattern": "^#[a-fA-F0-9]{6}$"
+                    },
+                    "fg": {
+                      "type": "string",
+                      "pattern": "^#[a-fA-F0-9]{6}$"
+                    },
+                    "mark": {
+                      "type": "string",
+                      "enum": [
+                        "rule",
+                        "circle",
+                        "wave",
+                        "grid",
+                        "none"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "bg",
+                    "fg",
+                    "mark"
+                  ],
+                  "additionalProperties": false
+                },
+                "categories": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "category": {
+                  "type": "string"
+                },
+                "serialStatus": {
+                  "type": "string",
+                  "enum": [
+                    "ongoing",
+                    "completed",
+                    "paused"
+                  ]
+                },
+                "coverUrl": {
+                  "type": "string"
+                },
+                "firstPublishedAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                },
+                "updatedAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                },
+                "chapterCount": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "chapters": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "publishedAt": {
+                        "type": "string",
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                      },
+                      "updatedAt": {
+                        "type": "string",
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                      },
+                      "slug": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 80,
+                        "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+                      },
+                      "title": {
+                        "type": "string"
+                      },
+                      "volumeTitle": {
+                        "type": "string"
+                      },
+                      "volumeOrder": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "chapterOrder": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "required": [
+                      "publishedAt",
+                      "updatedAt",
+                      "slug",
+                      "title",
+                      "volumeOrder",
+                      "chapterOrder"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "slug",
+                "title",
+                "penName",
+                "authorSlug",
+                "tagline",
+                "description",
+                "category",
+                "serialStatus",
+                "coverUrl",
+                "firstPublishedAt",
+                "updatedAt",
+                "chapterCount",
+                "chapters"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "nextCursor"
+        ],
+        "additionalProperties": false
+      },
+      "PublicAuthor": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "slug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          },
+          "penName": {
+            "type": "string"
+          },
+          "bio": {
+            "type": "string"
+          },
+          "books": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "contentUpdatedAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                },
+                "publicationUpdatedAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                },
+                "slug": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80,
+                  "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "penName": {
+                  "type": "string"
+                },
+                "authorSlug": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80,
+                  "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+                },
+                "tagline": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "cover": {
+                  "type": "object",
+                  "properties": {
+                    "bg": {
+                      "type": "string",
+                      "pattern": "^#[a-fA-F0-9]{6}$"
+                    },
+                    "fg": {
+                      "type": "string",
+                      "pattern": "^#[a-fA-F0-9]{6}$"
+                    },
+                    "mark": {
+                      "type": "string",
+                      "enum": [
+                        "rule",
+                        "circle",
+                        "wave",
+                        "grid",
+                        "none"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "bg",
+                    "fg",
+                    "mark"
+                  ],
+                  "additionalProperties": false
+                },
+                "categories": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "category": {
+                  "type": "string"
+                },
+                "serialStatus": {
+                  "type": "string",
+                  "enum": [
+                    "ongoing",
+                    "completed",
+                    "paused"
+                  ]
+                },
+                "coverUrl": {
+                  "type": "string"
+                },
+                "firstPublishedAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                },
+                "updatedAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                },
+                "chapterCount": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "chapters": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "publishedAt": {
+                        "type": "string",
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                      },
+                      "updatedAt": {
+                        "type": "string",
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                      },
+                      "slug": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 80,
+                        "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+                      },
+                      "title": {
+                        "type": "string"
+                      },
+                      "volumeTitle": {
+                        "type": "string"
+                      },
+                      "volumeOrder": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "chapterOrder": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "required": [
+                      "publishedAt",
+                      "updatedAt",
+                      "slug",
+                      "title",
+                      "volumeOrder",
+                      "chapterOrder"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "slug",
+                "title",
+                "penName",
+                "authorSlug",
+                "tagline",
+                "description",
+                "category",
+                "serialStatus",
+                "coverUrl",
+                "firstPublishedAt",
+                "updatedAt",
+                "chapterCount",
+                "chapters"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "slug",
+          "penName",
+          "bio",
+          "books"
+        ],
+        "additionalProperties": false
+      },
+      "PublicCategories": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false
+      },
+      "PublicationProblem": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "detail": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "requestId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "status",
+          "detail",
+          "code"
+        ],
+        "additionalProperties": false
+      }
+    }
+  }
+}

@@ -1,0 +1,25 @@
+services:
+  api:
+    image: ${API_IMAGE:-ghcr.io/story2u/ai-write-life-circle-api:latest}
+    container_name: greenfield-api
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8787:8787"
+    environment:
+      WRITER_AGENT_ENV: production
+      WRITER_AGENT_API_PORT: "8787"
+      WRITER_AGENT_HARNESS_ROOT: /data/harness
+      WRITER_AGENT_STATE_DIR: /data/state
+      WRITER_AGENT_PROJECT_ID: ${WRITER_AGENT_PROJECT_ID:-local}
+    volumes:
+      - api_state:/data/state
+      - ${WRITER_AGENT_HARNESS_SOURCE:-../..}:/data/harness:ro
+    networks:
+      - greenfield-net
+
+networks:
+  greenfield-net:
+    external: true
+
+volumes:
+  api_state:

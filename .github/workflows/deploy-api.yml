@@ -1,0 +1,102 @@
+name: Deploy API → EC2
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/api-go/**'
+      - 'packages/**'
+      - 'scripts/deploy/Dockerfile.api'
+      - 'scripts/deploy/docker-compose.prod.yml'
+      - '.github/workflows/deploy-api.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}-api
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    name: Build & Push API Image
+
+    outputs:
+      image_tag: ${{ steps.meta.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=main-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push API image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: scripts/deploy/Dockerfile.api
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    runs-on: ubuntu-latest
+    name: Deploy to EC2
+    # Production identity is not implemented. Never deploy local-author to a shared host.
+    if: ${{ false }}
+    needs: build-and-push
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: 16.170.155.138
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
+            cd ~/greenfield-adventures
+
+            # 拉取最新代码（含 harness、docker-compose.prod.yml）
+            git fetch origin
+            git reset --hard origin/main
+
+            # 登录 GHCR（公开镜像可省略，私有镜像需要）
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            # 拉取最新 API 镜像
+            docker pull ghcr.io/${{ github.repository }}-api:latest
+
+            # 确保共享网络存在
+            docker network create greenfield-net 2>/dev/null || true
+
+            # 重启 API 容器
+            docker compose -f scripts/deploy/docker-compose.prod.yml down api 2>/dev/null || true
+            API_IMAGE=ghcr.io/${{ github.repository }}-api:latest \
+              docker compose -f scripts/deploy/docker-compose.prod.yml up -d api
+
+            echo "✅ API 部署完成"
+            docker ps | grep greenfield-api || true

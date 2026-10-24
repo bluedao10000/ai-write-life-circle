@@ -1,0 +1,109 @@
+# Go API 与 Agent Worker 生产部署指南
+
+当前支持单机 EC2、单作者 Bearer 身份。
+
+API 和 Agent Worker 由 systemd 分进程管理。API 只监听 127.0.0.1:8787，不持有 LLM 密钥；Worker 持有模型配置并执行 Review 与 Knowledge 任务。Caddy 提供 HTTPS 和证书自动续期。保留现有 Web/Nginx，按 API 域名单独路由，不重置旧服务器仓库。
+
+Pi 迁移目标为 API + Pi Thinking + Pi Worker 三个服务，手动安装、归属切换、兼容 Go 回滚见 [Pi 后台执行器流程](workflows/pi-worker.md)。以下双 Go 进程安装器只适用于两类 owner 均为 Go 的兼容发布；Pi/disabled/draining 时拒绝执行，不能用它绕过切换。生产尚未自动迁移。Node 只安装独立运行时与已构建发布包，服务器不运行前端构建或 pnpm install。
+
+## 发布前验证
+
+```sh
+go test -C apps/api-go -race ./...
+go vet -C apps/api-go ./...
+pnpm build:api:go
+node scripts/smoke-production-api.mjs
+node scripts/smoke-built-api.mjs
+pnpm test:api:go
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -C apps/api-go -trimpath -ldflags="-s -w" -o dist/writer-agent-api-linux-amd64 ./cmd/server
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -C apps/api-go -trimpath -ldflags="-s -w" -o dist/writer-agent-worker-linux-amd64 ./cmd/agent-worker
+```
+
+CI 包含身份和持久化检查，以及现有浏览器 E2E。部署使用已提交并通过检查的源码版本。二进制 release ID 对应其 Git commit。ARM 实例应调整 GOARCH。不要在服务器安装 Node 或 Go 工具链。
+
+## 安装 API
+
+通过 SSH 上传两个 Linux 二进制、`scripts/deploy/install-api-systemd.sh`、`scripts/deploy/systemd/writer-agent-api.service` 和 `scripts/deploy/systemd/writer-agent-worker.service`。在目标服务器执行：
+
+```sh
+sudo bash install-api-systemd.sh ./writer-agent-api COMMIT_SHA bruce ./writer-agent-api.service ./writer-agent-worker ./writer-agent-worker.service /path/to/protected-worker.env
+```
+
+首次安装必须提前提供权限 0600 的 Worker env，至少设置 `WRITER_AGENT_LLM_API_KEY`（DeepSeek 默认配置）或明确的兼容模型配置。安装器在 service user 下执行 Worker `--check-config`，失败不停止服务；API 所需的公开模型配置由同一份配置生成，不复制密钥。
+
+安装器先停止 Worker、再停止 API，备份完整状态、配置与旧 unit，然后更新 release 软链接，显式重启 API、验证 healthz，再重启 Worker 并等待新心跳。重复部署保留已有令牌、作者配置和数据。已有 release 目录禁止换入不同二进制。失败时尝试恢复旧二进制或 unit。
+
+| 路径 | 内容 |
+| --- | --- |
+| /opt/writer-agent/releases/COMMIT_SHA | 版本化 API 与 Worker 二进制 |
+| /opt/writer-agent/current | 当前版本软链接 |
+| /etc/writer-agent/api.env | root-only 生产配置 |
+| /etc/writer-agent/worker.env | root-only Worker 配置；真实 LLM 密钥只放在这里 |
+| /etc/writer-agent/auth-token | 随机 Bearer 令牌；root:writer-agent 0640 |
+| /var/lib/writer-agent | 应用 JSON 与审计状态；writer-agent 0700 |
+| /srv/writer-agent/harness | 只读资料根目录；首次部署为空 |
+| /var/backups/writer-agent | root-only 一致性备份与回滚记录 |
+
+systemd 以专用无登录用户运行，ProtectSystem=strict、ProtectHome、NoNewPrivileges。只有独立状态目录可写。业务 actor 固定为 api.env 中配置的作者，不接受请求角色声明。
+
+升级或回滚必须同时替换 API 与 Worker 二进制，避免内置旧 Agent 与新 Worker 并发执行同一队列。Worker 不提供公网监听；用 `writer-agent-worker --healthcheck`（加载 worker.env 后）或作者鉴权 `GET /v1/agent-runtime` 核验心跳和配置兼容性；仅 is-active 不足以验收。每个 release 保存 `SHA256SUMS` 和 `manifest`。
+
+## HTTPS 与既有 Nginx
+
+DNS A 记录指向 EC2 公网地址。公网必须可访问 TCP 80/443。Cloudflare 初次配置建议「仅 DNS」。如使用代理，SSL/TLS 模式必须为 Full (strict)，不能使用 Flexible。API 后端 8787 不向公网开放。
+
+拉取官方 Caddy 并记录测试后的 digest。上传 `install-api-https.sh`、`docker-compose.api-edge.yml`、`Caddyfile.api`、`nginx-api-http.conf.template`，执行：
+
+```sh
+sudo bash install-api-https.sh api.example.com /home/ubuntu/nginx/nginx.conf ./docker-compose.api-edge.yml ./Caddyfile.api ./nginx-api-http.conf.template caddy@sha256:TESTED_DIGEST
+```
+
+此安装器适配当前 `greenfield-nginx` + `greenfield-net`：保留原 Web server block，新增 API 域名 HTTP→HTTPS 重定向，ACME HTTP-01 请求转发至 Caddy 8080。修改前备份。Caddy 使用 host network 监听 443，连接本机 API。证书与自动续期配置持久化在 /var/lib/writer-agent-caddy。API 不加入原 Web 网络，也不信任代理传入的 actor。
+
+## 验收与访问
+
+- 公网 `GET https://API_DOMAIN/healthz` 返回 200。
+- 未带令牌或错误令牌的业务请求返回 401。带有效令牌的 Workspace、Notes、Chapters 返回 200。
+- HTTP 只重定向 HTTPS，不转发业务写入。生产 internal projection 返回 404。
+- 从公网验证证书链、主机名和有效期。重启 API 后验证可用性。测试数据使用隔离状态目录。
+
+本地 curl 配置文件权限设为 0600，并包含 `header = "Authorization: Bearer <token>"`。不要在任何地方泄露令牌。Web 的 Google 登录与同源 Worker 代理见 [google-login.md](google-login.md)。
+
+## 运维、轮换与回滚
+
+```sh
+sudo systemctl status writer-agent-api
+sudo journalctl -u writer-agent-api
+sudo systemctl status writer-agent-worker
+sudo journalctl -u writer-agent-worker
+sudo docker logs writer-agent-api-edge   # 不记录 Authorization
+```
+
+更新受保护令牌文件后重启即完成轮换。保留稳定作者 ID。
+
+回滚代码时先停 Worker，再停止 API，备份当前完整状态，再将 current 指回上一 release 并启动 API；仅当上一 release 也是独立 Worker 模式时再启动旧 Worker。不要用旧状态覆盖新写入。首次上线没有旧 API 数据，不等于日后无需备份。证书私钥、身份文件和备份都不得进入 Git。
+
+旧 Web/PostgreSQL 的 BUILD_AND_DEPLOY、deploy-simple 等脚本已废弃。GitHub Actions 的 EC2 自动部署仍禁用。本次提供可审计的手动发布路径。
+
+## 当前生产拓扑与版本核对
+
+Google 登录、公开站点、在线作品管理和 SEO 基础均已合并并部署。
+
+- `https://www.story2u.xyz`：Cloudflare Worker SSR、Better Auth/D1 与同源 API 代理；根域名和 HTTP 规范跳转到此入口。
+- `https://api.story2u.xyz`：Caddy HTTPS → loopback Go/systemd。后端 Bearer 不进入浏览器。
+- 独立 Agent Worker：同一 release 目录的 systemd 进程，持有 Worker env 中的模型凭证，不对外监听。
+- Google 授权账号共享配置中的 Go 作者身份，保持既有所有权；不等同于独立多租户。
+
+Web 工作流成功不能证明 Go 已升级。通过 SSH 只读核对 `systemctl is-active writer-agent-api`、`readlink /opt/writer-agent/current`、`sha256sum /opt/writer-agent/current/writer-agent-api`，再分别检查公网 API 健康、匿名私有请求401和可信服务端认证读取；不打印认证配置或令牌。具体核对时间及版本属于单次发布记录，不固定写成永远最新的版本号。
+
+部署顺序按跨版本契约决定：新增后端路由/权限时，先完整备份并验证隔离恢复，再更新 Go，确认接口可用后部署 Worker。新增可选响应字段且旧 Worker 严格拒绝未知字段时，应先部署能兼容读取新旧响应的 Worker/Web，再更新 Go，避免切换窗口503；前端所需接口必须已由现有后端提供。Web 工作流会预检 Public API 与受认证的作品列表。Google 回调 `https://www.story2u.xyz/api/auth/google/callback` 保持不变。
+
+EPUB 导入发布时，Caddy 的 API 入口必须允许至少 66 MB 的 multipart 请求，并给后端代理 120 秒读写窗口；Go 只为导入上传和提交请求延长请求期限，其他 API 仍使用 30 秒基线，并继续强制 64 MiB EPUB、2000 章和逐章 2 MiB 上限。部署 API 后先用合成文本型 EPUB 验证上传预览、确认提交和刷新恢复，再升级 Worker。不要把真实作者作品作为部署 smoke 数据，也不要通过放宽认证或公开 8787 端口排查上传失败。
+
+公开 HTML、API、OG、sitemap 均 no-store。静态 Docker serve 镜像只验证浏览器资源构建。正式公开站使用组合后的 Cloudflare Worker。详见 [公开站点渲染 ADR](architecture/public-site-rendering.md)。
+
+## 在线作品数据
+
+`/var/lib/writer-agent/works/catalog-v1.json` 保存所有权、结构、审计与幂等记录。现有 chapter-drafts、Notes、Review、Publication 目录保存按项目隔离的数据。
+
+备份整个 `/var/lib/writer-agent`，不是只备份 works。外部 Harness 保持只读。后端路由和响应契约的部署顺序遵循上一节的跨版本兼容条件。不自动运行旧数据迁移。回滚二进制时保留升级后的全部结构和草稿；旧代码无法列出这些作品。绝不用较早备份覆盖较新的作者正文。完整分阶段与回滚步骤见 [作品管理 ADR](architecture/author-workspace-management.md)。

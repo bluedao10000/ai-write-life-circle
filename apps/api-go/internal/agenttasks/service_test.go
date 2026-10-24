@@ -1,0 +1,249 @@
+package agenttasks
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/application"
+	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/executorpolicy"
+	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/knowledge"
+	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/llm"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+)
+
+func fixture(t *testing.T) (*Service, *knowledge.Service) {
+	t.Helper()
+	ctx := context.Background()
+	base := &application.Service{Root: t.TempDir(), State: t.TempDir(), Project: "legacy"}
+	actor := application.Actor{ID: "author", Role: "author"}
+	m := application.NewManagement(base, actor.ID)
+	book, e := m.Mutate(ctx, actor, "", "create", application.StructureInput{Operation: "create", Title: "合成协议测试"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	app, e := m.Resolve(actor, book.ID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	c, e := app.Source(book.Chapters[0].ID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	head, e := app.Head(ctx, c)
+	if e != nil {
+		t.Fatal(e)
+	}
+	key := "save"
+	_, e = app.Save(ctx, actor, c.ID, "fixture", map[string]any{"baseRevisionId": head.ID, "markdown": "林舟与父亲争执。"}, &key)
+	if e != nil {
+		t.Fatal(e)
+	}
+	cfg := llm.Config{Provider: "openai-compatible", BaseURL: "http://127.0.0.1:9999", Model: "fixture", ResponseFormat: "json_object", TokenParameter: "max_tokens", Timeout: time.Second * 5, MaxContextBytes: 12000, MaxOutputTokens: 2048, MaxResponseBytes: 256 * 1024}
+	k := knowledge.New(app, cfg, nil)
+	k.QueueOnly = true
+	info := cfg.Info()
+	_, e = k.Mutate(ctx, actor, "enable", "consent", knowledge.Mutation{Consent: true, Model: &info, DailyTokenBudget: 200000, DailyJobBudget: 20})
+	if e != nil {
+		t.Fatal(e)
+	}
+	return &Service{Management: m, Actor: actor, State: base.State, Config: cfg, Token: strings.Repeat("a", 64)}, k
+}
+func switchOwner(t *testing.T, s *Service, owner string) {
+	t.Helper()
+	c := executorpolicy.Controller{State: s.State}
+	if e := c.Drain(context.Background(), "knowledge"); e != nil {
+		t.Fatal(e)
+	}
+	if e := c.Switch(context.Background(), "knowledge", owner); e != nil {
+		t.Fatal(e)
+	}
+}
+func envelope(task *Task) Envelope {
+	return Envelope{Lease: task.Lease, Epoch: task.Epoch, Attempt: task.Attempt, Kind: task.Kind, InputHash: task.InputHash, Instance: "fixture"}
+}
+func TestClaimStartedCompletionReceiptsAndRollback(t *testing.T) {
+	s, k := fixture(t)
+	ctx := context.Background()
+	if task, e := s.Claim(ctx, "fixture", s.Config.Fingerprint()); e != nil || task != nil {
+		t.Fatal("default Go ownership changed", task, e)
+	}
+	if _, e := s.Claim(ctx, "fixture", "wrong model"); e == nil {
+		t.Fatal("configuration mismatch transmitted snapshot")
+	}
+	switchOwner(t, s, "pi")
+	time.Sleep(2100 * time.Millisecond)
+	task, e := s.Claim(ctx, "fixture", s.Config.Fingerprint())
+	if e != nil || task == nil {
+		t.Fatal(task, e)
+	}
+	if !strings.Contains(task.Request.Input, "林舟") || task.Reserved < 1 || task.Revision == "" {
+		t.Fatal("incomplete bounded snapshot")
+	}
+	duplicate, e := s.Claim(ctx, "another", s.Config.Fingerprint())
+	if e != nil || duplicate != nil {
+		t.Fatal("duplicate valid lease", e)
+	}
+	in := envelope(task)
+	in.Response = llm.Response{Text: `{"entities":[],"assertions":[]}`, Usage: &llm.Usage{InputTokens: 10, OutputTokens: 10}}
+	if e = s.Action(ctx, task.ID, "complete", in); e == nil {
+		t.Fatal("completion before started")
+	}
+	if e = s.Action(ctx, task.ID, "started", in); e != nil {
+		t.Fatal(e)
+	}
+	if e = s.Action(ctx, task.ID, "started", in); e != nil {
+		t.Fatal("started must be idempotent", e)
+	}
+	bad := in
+	bad.Attempt++
+	if e = s.Action(ctx, task.ID, "complete", bad); e == nil {
+		t.Fatal("forged attempt accepted")
+	}
+	if e = s.Action(ctx, task.ID, "complete", in); e != nil {
+		t.Fatal(e)
+	}
+	before, e := k.Query(ctx, knowledge.Query{Limit: 20})
+	if e != nil {
+		t.Fatal(e)
+	}
+	// Simulate domain commit + lost task-registry acknowledgement, then API restart.
+	if e = s.transaction(ctx, func(st *Registry) error {
+		r := st.Tasks[task.ID]
+		r.Finished = true
+		r.ResultHash = "expired"
+		r.Task.Deadline = time.Now().Add(-time.Minute).UTC().Format(time.RFC3339Nano)
+		st.Tasks[task.ID] = r
+		return nil
+	}); e != nil {
+		t.Fatal(e)
+	}
+	restarted := *s
+	if e = restarted.Action(ctx, task.ID, "complete", in); e != nil {
+		t.Fatal("domain receipt replay", e)
+	}
+	after, _ := k.Query(ctx, knowledge.Query{Limit: 20})
+	if after.BudgetTokens != before.BudgetTokens || after.BudgetAttempts != before.BudgetAttempts {
+		t.Fatal("usage settled twice")
+	}
+	switchOwner(t, s, "go")
+	if e = s.Action(ctx, task.ID, "complete", in); e != nil {
+		t.Fatal("committed receipt was lost after rollback", e)
+	}
+}
+func TestPrivateTaskCredentialAndNoAnonymousSnapshot(t *testing.T) {
+	s, _ := fixture(t)
+	for _, token := range []string{"", strings.Repeat("b", 64)} {
+		r := httptest.NewRequest("POST", "/internal/v1/agent/tasks/claim", strings.NewReader(`{"instance":"fixture","configFingerprint":"wrong"}`))
+		r.Header.Set("Authorization", "Bearer "+token)
+		w := httptest.NewRecorder()
+		s.Handler().ServeHTTP(w, r)
+		if w.Code != 401 || strings.Contains(w.Body.String(), "林舟") {
+			t.Fatal(w.Code, w.Body.String())
+		}
+	}
+	r := httptest.NewRequest("GET", "/internal/v1/agent/tasks/capabilities", nil)
+	r.Header.Set("Authorization", "Bearer "+s.Token)
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, r)
+	var info map[string]any
+	_ = json.Unmarshal(w.Body.Bytes(), &info)
+	if w.Code != 200 || info["protocol"] != Protocol {
+		t.Fatal(w.Code, w.Body.String())
+	}
+}
+
+func TestClaimSnapshotRevokedBeforeStartAndDeletedBookScrubbed(t *testing.T) {
+	s, k := fixture(t)
+	ctx := context.Background()
+	switchOwner(t, s, "pi")
+	time.Sleep(2100 * time.Millisecond)
+	task, e := s.Claim(ctx, "fixture", s.Config.Fingerprint())
+	if e != nil || task == nil {
+		t.Fatal(e)
+	}
+	page, e := k.Query(ctx, knowledge.Query{Limit: 20})
+	if e != nil {
+		t.Fatal(e)
+	}
+	_, e = k.Mutate(ctx, s.Actor, "pause", "pause", knowledge.Mutation{BaseVersion: page.Version})
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = s.Action(ctx, task.ID, "started", envelope(task)); e == nil {
+		t.Fatal("paused task started")
+	}
+	if e = s.CleanupBook(ctx, task.Book); e != nil {
+		t.Fatal(e)
+	}
+	st, e := s.load()
+	if e != nil || len(st.Tasks) != 0 {
+		t.Fatal("book task snapshot retained", e)
+	}
+}
+func TestInputTamperingCannotCommit(t *testing.T) {
+	s, _ := fixture(t)
+	ctx := context.Background()
+	switchOwner(t, s, "pi")
+	time.Sleep(2100 * time.Millisecond)
+	task, e := s.Claim(ctx, "fixture", s.Config.Fingerprint())
+	if e != nil || task == nil {
+		t.Fatal(e)
+	}
+	in := envelope(task)
+	in.InputHash = "sha256:" + strings.Repeat("0", 64)
+	if e = s.Action(ctx, task.ID, "started", in); e == nil {
+		t.Fatal("changed snapshot accepted")
+	}
+	in = envelope(task)
+	in.Response = llm.Response{Text: `{"entities":[{"key":"x","type":"character","name":"伪造","aliases":[],"identity":"","existingEntityId":null}],"assertions":[{"entityKey":"x","predicate":"身份","text":"伪造","targetKey":null,"epistemic":"observation","sourceKind":"narration","speaker":null,"time":null,"quote":"正文中不存在"}]}`}
+	if e = s.Action(ctx, task.ID, "started", in); e != nil {
+		t.Fatal(e)
+	}
+	if e = s.Action(ctx, task.ID, "complete", in); e != nil {
+		t.Fatal(e)
+	}
+	app, _ := s.Management.Resolve(s.Actor, task.Book)
+	page, e := s.knowledge(app).Query(ctx, knowledge.Query{Limit: 20})
+	if e != nil || len(page.Assertions) != 0 {
+		t.Fatal("invalid evidence reached Knowledge", e)
+	}
+}
+
+func TestKnowledgeLargeCandidatePreservesLegacyAllowance(t *testing.T) {
+	s, k := fixture(t)
+	ctx := context.Background()
+	switchOwner(t, s, "pi")
+	time.Sleep(2100 * time.Millisecond)
+	task, e := s.Claim(ctx, "fixture", s.Config.Fingerprint())
+	if e != nil || task == nil {
+		t.Fatal(task, e)
+	}
+	in := envelope(task)
+	if e = s.Action(ctx, task.ID, "started", in); e != nil {
+		t.Fatal(e)
+	}
+	out := knowledge.Output{Entities: []knowledge.CandidateEntity{{Key: "e", Type: "character", Name: "林舟", Aliases: []string{}, Identity: ""}}, Assertions: []knowledge.CandidateAssertion{}}
+	for i := 0; i < 110; i++ {
+		out.Assertions = append(out.Assertions, knowledge.CandidateAssertion{EntityKey: "e", Predicate: fmt.Sprintf("observation-%d", i), Text: strings.Repeat("x", 900), Epistemic: "observation", Kind: "narration", Quote: "林舟"})
+	}
+	text, _ := json.Marshal(out)
+	if len(text) <= 96*1024 || len(text) > knowledge.CandidateBytes {
+		t.Fatal("invalid fixture length", len(text))
+	}
+	in.Response = llm.Response{Text: string(text)}
+	payload, _ := json.Marshal(in)
+	r := httptest.NewRequest("POST", "/internal/v1/agent/tasks/"+task.ID+"/complete", strings.NewReader(string(payload)))
+	r.Header.Set("Authorization", "Bearer "+s.Token)
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, r)
+	if w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	view, e := k.Query(ctx, knowledge.Query{Limit: 100})
+	if e != nil || view.AssertionTotal != 110 {
+		t.Fatal(view.AssertionTotal, e)
+	}
+}

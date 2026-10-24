@@ -1,0 +1,249 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Serif+SC:wght@400;500;600&family=Noto+Sans+SC:wght@400;500&display=swap');
+@import 'tailwindcss';
+
+/*
+ * Writer Studio V2 tokens.
+ * Names from V0.3 are kept (bg / surface / line / ink / accent / ai …) so engineering mappings stay valid.
+ * V2 palette: warm paper canvas, cool graphite ink, muted slate-blue brand.
+ * Semantic rule: --danger is reserved for data-safety states (save failure, 409, discard). Story conflicts use --conflict.
+ */
+:root {
+  --bg: #f8f7f4;          /* canvas behind everything */
+  --paper: #fdfcfa;       /* the writing page / public site page */
+  --surface: #ffffff;     /* content panels, drawers, popovers */
+  --surface-2: #f1f0ec;   /* quiet fill: hover, selected, quotes */
+  --line: #e5e3de;
+  --line-soft: #eeece8;
+  --ink: #22252a;
+  --ink-2: #474b52;
+  --ink-3: #697078;       /* secondary text; meets 4.5:1 on --paper */
+  --ink-4: #b9bcc0;       /* decorative only (dots, rules) — never text */
+  --accent: #596b91;      /* brand / interaction */
+  --accent-soft: #eceff5;
+  --ai: #5a5fa6;          /* AI thinking & AI inference — soft indigo */
+  --ai-soft: #eeeef8;
+  --conflict: #b05a4e;    /* story continuity conflict — soft red */
+  --conflict-soft: #f7ebe8;
+  --warn: #946615;        /* pending author decision — amber */
+  --warn-soft: #f7efdc;
+  --danger: #a3362b;      /* data safety & destructive actions only */
+  --danger-soft: #f8e5e2;
+  --ok: #4a7a5c;          /* knowledge healthy — low-saturation green */
+  --ok-soft: #e8f0ea;
+  --scrim: rgba(28, 30, 34, 0.24);
+  --shadow: 0 1px 2px rgba(25, 28, 33, 0.04), 0 10px 32px rgba(25, 28, 33, 0.08);
+  --shadow-sm: 0 1px 2px rgba(25, 28, 33, 0.05);
+}
+/* Dark is tuned for long night sessions: low glare, no pure black, no pure white. */
+.dark {
+  --bg: #141517;
+  --paper: #18191c;
+  --surface: #1c1d20;
+  --surface-2: #25272b;
+  --line: #303237;
+  --line-soft: #27292d;
+  --ink: #e4e1da;
+  --ink-2: #b9b7b1;
+  --ink-3: #8f939a;
+  --ink-4: #4d5056;
+  --accent: #9eadd0;
+  --accent-soft: #252b38;
+  --ai: #a9acec;
+  --ai-soft: #25263a;
+  --conflict: #e0998e;
+  --conflict-soft: #362320;
+  --warn: #d8b062;
+  --warn-soft: #302817;
+  --danger: #ef8d80;
+  --danger-soft: #3b1f1b;
+  --ok: #8cc29f;
+  --ok-soft: #1d2a22;
+  --scrim: rgba(0, 0, 0, 0.5);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 12px 32px rgba(0, 0, 0, 0.4);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+@theme inline {
+  --color-paper: var(--bg);
+  --color-page: var(--paper);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-line-soft: var(--line-soft);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-ink-4: var(--ink-4);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-ai: var(--ai);
+  --color-ai-soft: var(--ai-soft);
+  --color-conflict: var(--conflict);
+  --color-conflict-soft: var(--conflict-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-scrim: var(--scrim);
+  --shadow-soft: var(--shadow);
+  --shadow-raise: var(--shadow-sm);
+
+  /* Type scale. UI stays small and calm; prose is the protagonist. */
+  --text-micro: 11px;
+  --text-micro--line-height: 16px;
+  --text-ui-sm: 12px;
+  --text-ui-sm--line-height: 18px;
+  --text-ui: 13px;
+  --text-ui--line-height: 20px;
+  --text-ui-lg: 15px;
+  --text-ui-lg--line-height: 24px;
+  --text-h3: 17px;
+  --text-h3--line-height: 26px;
+  --text-h2: 20px;
+  --text-h2--line-height: 30px;
+  --text-read: 16px;
+  --text-read--line-height: 30px;
+  --text-title: 26px;
+  --text-title--line-height: 38px;
+  --text-display: 32px;
+  --text-display--line-height: 44px;
+
+  --font-ui: 'Inter', 'PingFang SC', 'Noto Sans SC', 'Microsoft YaHei', system-ui, sans-serif;
+  --font-prose: 'Noto Serif SC', 'Songti SC', 'STSong', 'SimSun', serif;
+
+  /* Widths */
+  --container-page: 44rem;   /* minus 6rem padding ≈ 33 CJK chars at 18px */
+  --container-drawer: 22.5rem;
+  --container-nav: 17.5rem;
+  --container-toc: 15.5rem;    /* 248px chapter tree */
+  --container-aside: 23.75rem; /* 380px AI panel */
+  --container-prose: 42.5rem;  /* 680px manuscript measure */
+  --container-sessions: 16.5rem;
+}
+
+html, body, #root { height: 100%; }
+body {
+  font-family: var(--font-ui);
+  background: var(--bg);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  transition: background 0.3s;
+}
+.font-prose { font-family: var(--font-prose); }
+
+/* Manuscript: 18px / 1.95, first-line indent, no boxes. */
+.manuscript { caret-color: var(--accent); min-height: 40vh; color: var(--ink); }
+.manuscript p {
+  font-size: 18px;
+  line-height: 1.95;
+  letter-spacing: 0.02em;
+  text-indent: 2em;
+  margin: 0 0 0.9em;
+  position: relative;
+  border-radius: 4px;
+  transition: background 0.3s;
+}
+.manuscript[contenteditable='false'] { caret-color: transparent; }
+
+/* Margin mark: a 6px dot outside the right edge of the paragraph. Never a number. */
+.margin-dot {
+  position: absolute;
+  right: -2.25rem;
+  top: 0.8em;
+  width: 22px;
+  height: 22px;
+  margin-top: -11px;
+  text-indent: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-radius: 99px;
+}
+.margin-dot::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 99px;
+  background: var(--c);
+  opacity: 0.75;
+  transition: transform 0.15s, opacity 0.15s;
+}
+.margin-dot:hover::after, .margin-dot.is-active::after { transform: scale(1.5); opacity: 1; }
+.margin-dot:hover { background: var(--surface-2); }
+.tone-conflict { --c: var(--conflict); --b: var(--conflict-soft); }
+.tone-ai { --c: var(--ai); --b: var(--ai-soft); }
+.tone-quiet { --c: var(--ink-4); --b: var(--surface-2); }
+.ann-active { background: var(--b); box-shadow: 0 0 0 6px var(--b); }
+.ann-quote { text-decoration: underline; text-decoration-color: var(--c); text-underline-offset: 6px; text-decoration-thickness: 1px; }
+@media (max-width: 767px) { .margin-dot { right: -1.5rem; } }
+
+@keyframes flash { 0%, 50% { background: var(--warn-soft); box-shadow: 0 0 0 6px var(--warn-soft); } 100% { background: transparent; box-shadow: 0 0 0 6px transparent; } }
+.ann-flash { animation: flash 2.2s ease-out; }
+
+@keyframes slide-r { from { transform: translateX(12px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes slide-l { from { transform: translateX(-12px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes fade-up { from { transform: translateY(6px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+.slide-r { animation: slide-r 0.2s ease-out; }
+.slide-l { animation: slide-l 0.2s ease-out; }
+.fade-up { animation: fade-up 0.22s ease-out; }
+.fade { animation: fade 0.3s ease-out; }
+@keyframes pulse-dot { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
+.dot { animation: pulse-dot 1.2s infinite; }
+@keyframes shimmer { 0% { background-position: -200px 0; } 100% { background-position: 200px 0; } }
+.skeleton { background: linear-gradient(90deg, var(--surface-2) 0, var(--line-soft) 50%, var(--surface-2) 100%); background-size: 400px 100%; animation: shimmer 1.3s infinite linear; border-radius: 4px; }
+
+.btn { transition: background 0.12s, color 0.12s, opacity 0.12s; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.scroll { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+
+/* Chrome recedes while typing; returns on pointer movement. */
+.chrome { transition: opacity 0.4s; }
+.is-typing .chrome { opacity: 0.08; }
+.is-typing .chrome:hover, .is-typing .chrome:focus-within { opacity: 1; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+.ghost:hover { background: var(--surface-2); }
+
+@theme { --container-site: 76rem; --container-read: 40rem; --text-hero: 56px; --text-hero--line-height: 68px; }
+/* ---------- story2u reader ---------- */
+.reader { --r-bg: var(--paper); --r-ink: var(--ink); --r-ink-2: var(--ink-3); background: var(--r-bg); color: var(--r-ink); transition: background 0.3s, color 0.3s; }
+.reader-soft { --r-bg: #f3ead8; --r-ink: #3b3226; --r-ink-2: #7a6c58; }
+.reader-dark { --r-bg: #151513; --r-ink: #cdc6b8; --r-ink-2: #8a8478; }
+.reader .r-ink-2 { color: var(--r-ink-2); }
+.reader .r-bg { background: var(--r-bg); color: var(--r-ink); }
+.reader .r-card { background: color-mix(in srgb, var(--r-ink) 5%, transparent); }
+.reader .r-card:hover { background: color-mix(in srgb, var(--r-ink) 9%, transparent); }
+.reader-text p { text-indent: 2em; margin: 0 0 var(--r-gap, 1em); letter-spacing: 0.02em; }
+.reader-progress { background: var(--r-ink-2); }
+
+/* ---------- Writer Studio V2 ---------- */
+.font-mono-num { font-variant-numeric: tabular-nums; font-feature-settings: 'tnum'; }
+.tip { position: relative; }
+.tip[data-tip]:hover::after, .tip[data-tip]:focus-visible::after {
+  content: attr(data-tip); position: absolute; left: 50%; top: calc(100% + 6px); transform: translateX(-50%);
+  white-space: nowrap; background: var(--ink); color: var(--paper); font-size: 11px; line-height: 16px;
+  padding: 4px 8px; border-radius: 6px; z-index: 60; pointer-events: none; animation: fade 0.15s ease-out;
+}
+@keyframes indeterminate { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }
+.bar-indeterminate { animation: indeterminate 1.4s ease-in-out infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.spin { animation: spin 0.9s linear infinite; }
+.studio-prose p { font-family: var(--font-prose); font-size: 16px; line-height: 1.95; letter-spacing: 0.02em; text-indent: 2em; margin: 0 0 0.8em; }
+.meter { appearance: none; display: block; width: 100%; height: 4px; border: 0; border-radius: 999px; overflow: hidden; background: var(--surface-2); color: var(--accent); }
+.meter::-webkit-progress-bar { background: var(--surface-2); border-radius: 999px; }
+.meter::-webkit-progress-value { background: var(--accent); border-radius: 999px; transition: width 0.4s ease; }
+.meter::-moz-progress-bar { background: var(--accent); border-radius: 999px; }
+
+.site-markdown :is(h1,h2,h3,h4) {font-family:var(--font-prose);font-size:1.3em;margin:1.5em 0 .7em;text-indent:0}
+.site-markdown :is(ul,ol){padding-left:2em;margin:1em 0;list-style:revert}.site-markdown pre{overflow:auto;white-space:pre-wrap}.site-markdown blockquote{border-left:2px solid var(--line);padding-left:1em}.site-markdown img{max-width:100%;height:auto}
+/* The account bar shares the viewport with the editor rather than covering it. */
+.authenticated-workspace > .flex-1 > div { height: 100%; }
+.authenticated-workspace > .flex-1 > div > .h-dvh { height: 100%; }

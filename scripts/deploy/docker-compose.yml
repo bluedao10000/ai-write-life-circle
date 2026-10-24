@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: greenfield-postgres
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - greenfield-net
+
+  web:
+    # 使用 GitHub Container Registry 镜像
+    # 在 GitHub Actions 中构建并推送
+    # 格式: ghcr.io/username/repository:tag
+    # 或本地构建: docker build -f scripts/deploy/Dockerfile.web -t greenfield-web:latest .
+    image: ${GHCR_IMAGE:-ghcr.io/story2u/ai-write-life-circle:latest}
+    container_name: greenfield-web
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    environment:
+      - NODE_ENV=production
+      - VITE_WRITER_AGENT_MODE=${WRITER_AGENT_MODE:-demo}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - greenfield-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  greenfield-net:
+    driver: bridge

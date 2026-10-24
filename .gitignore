@@ -1,0 +1,48 @@
+# 本地配置与密钥
+.env
+.env.*
+!.env.example
+.DS_Store
+node_modules/
+__pycache__/
+*.pyc
+.local/
+dist/
+coverage/
+.vite/
+*.tsbuildinfo
+.dev.vars
+.wrangler/
+apps/web/wrangler.auth.generated.toml
+apps/web/playwright-report/
+apps/web/test-results/
+# >>> Comet managed project state >>>
+!/.comet/
+/.comet/*
+!/.comet/config.yaml
+# <<< Comet managed project state <<<
+
+apps/web/test-results-api/
+
+apps/api-go/server
+apps/api-go/server.exe
+
+apps/web/test-results-review/
+
+apps/web/dist-server/
+apps/web/test-results-public/
+
+apps/web/test-results-reference/
+apps/web/test-results-auth/
+
+apps/web/test-results-performance/
+apps/web/test-results-management/
+
+apps/web/test-results-knowledge/
+
+.writer-agent-pi/
+apps/agent/.writer-agent-pi/
+apps/web/test-results-thinking/
+
+# 本地 agent 工作数据（记忆与产出，含个人信息，不入库）
+.workbuddy-ai/

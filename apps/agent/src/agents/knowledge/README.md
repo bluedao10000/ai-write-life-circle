@@ -1,0 +1,1 @@
+Knowledge remains exclusively in the existing Go Worker. Thinking conversation and compaction do not write facts. Future migration requires a per-domain executor switch, authoritative Go leases/evidence validation and a tested rollback.

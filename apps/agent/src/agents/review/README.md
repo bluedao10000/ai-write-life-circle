@@ -1,0 +1,1 @@
+Review remains exclusively in the existing Go Worker. A future Pi executor must obtain a Go lease, return candidates for Go evidence validation, and commit with fencing. Never run both executors for this task type.

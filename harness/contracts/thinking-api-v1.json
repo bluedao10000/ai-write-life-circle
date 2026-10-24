@@ -1,0 +1,2174 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Writer Agent Thinking v1",
+    "version": "1.0.0",
+    "description": "Public author API uses cursor polling across Cloudflare. Private sidecar SSE and Go capability tools bind separate loopback listeners; never proxy /internal. Thinking consent is independent of Knowledge."
+  },
+  "servers": [
+    {
+      "url": "/v1"
+    }
+  ],
+  "paths": {
+    "/studio/books/{bookId}/thinking/capabilities": {
+      "parameters": [
+        {
+          "name": "bookId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getThinkingCapabilities",
+        "summary": "getThinkingCapabilities",
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "tags": [
+          "Private thinking"
+        ],
+        "responses": {
+          "200": {
+            "description": "Author-scoped response; no model credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/thinkingModel"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Author session required"
+          },
+          "403": {
+            "description": "Grant revoked or wrong scope"
+          },
+          "404": {
+            "description": "Unknown or unowned resource"
+          },
+          "409": {
+            "description": "Busy or model consent changed"
+          },
+          "422": {
+            "description": "Invalid input, selection or budget"
+          },
+          "429": {
+            "description": "Budget or capacity exhausted"
+          },
+          "503": {
+            "description": "Thinking unavailable; writing remains independent"
+          }
+        }
+      }
+    },
+    "/studio/books/{bookId}/thinking/sessions": {
+      "parameters": [
+        {
+          "name": "bookId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "listThinkingSessions",
+        "summary": "listThinkingSessions",
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "tags": [
+          "Private thinking"
+        ],
+        "responses": {
+          "200": {
+            "description": "Go-owned session metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/thinkingSummary"
+                      }
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createThinkingSession",
+        "summary": "createThinkingSession",
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "tags": [
+          "Private thinking"
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/thinkingCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Author-scoped response; no model credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/thinkingSession"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Author session required"
+          },
+          "403": {
+            "description": "Grant revoked or wrong scope"
+          },
+          "404": {
+            "description": "Unknown or unowned resource"
+          },
+          "409": {
+            "description": "Busy or model consent changed"
+          },
+          "422": {
+            "description": "Invalid input, selection or budget"
+          },
+          "429": {
+            "description": "Budget or capacity exhausted"
+          },
+          "503": {
+            "description": "Thinking unavailable; writing remains independent"
+          }
+        }
+      }
+    },
+    "/studio/books/{bookId}/thinking/sessions/{sessionId}": {
+      "parameters": [
+        {
+          "name": "bookId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "sessionId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getThinkingSession",
+        "summary": "getThinkingSession",
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "tags": [
+          "Private thinking"
+        ],
+        "responses": {
+          "200": {
+            "description": "Author-scoped response; no model credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/thinkingSession"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Author session required"
+          },
+          "403": {
+            "description": "Grant revoked or wrong scope"
+          },
+          "404": {
+            "description": "Unknown or unowned resource"
+          },
+          "409": {
+            "description": "Busy or model consent changed"
+          },
+          "422": {
+            "description": "Invalid input, selection or budget"
+          },
+          "429": {
+            "description": "Budget or capacity exhausted"
+          },
+          "503": {
+            "description": "Thinking unavailable; writing remains independent"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteThinkingSession",
+        "summary": "deleteThinkingSession",
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "tags": [
+          "Private thinking"
+        ],
+        "responses": {
+          "204": {
+            "description": "Author-scoped response; no model credential"
+          },
+          "401": {
+            "description": "Author session required"
+          },
+          "403": {
+            "description": "Grant revoked or wrong scope"
+          },
+          "404": {
+            "description": "Unknown or unowned resource"
+          },
+          "409": {
+            "description": "Busy or model consent changed"
+          },
+          "422": {
+            "description": "Invalid input, selection or budget"
+          },
+          "429": {
+            "description": "Budget or capacity exhausted"
+          },
+          "503": {
+            "description": "Thinking unavailable; writing remains independent"
+          }
+        }
+      }
+    },
+    "/studio/books/{bookId}/thinking/sessions/{sessionId}/messages": {
+      "parameters": [
+        {
+          "name": "bookId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "sessionId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "acceptThinkingMessage",
+        "summary": "acceptThinkingMessage",
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "tags": [
+          "Private thinking"
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/thinkingMessageInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Author-scoped response; no model credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/thinkingReceipt"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Author session required"
+          },
+          "403": {
+            "description": "Grant revoked or wrong scope"
+          },
+          "404": {
+            "description": "Unknown or unowned resource"
+          },
+          "409": {
+            "description": "Busy or model consent changed"
+          },
+          "422": {
+            "description": "Invalid input, selection or budget"
+          },
+          "429": {
+            "description": "Budget or capacity exhausted"
+          },
+          "503": {
+            "description": "Thinking unavailable; writing remains independent"
+          }
+        }
+      }
+    },
+    "/studio/books/{bookId}/thinking/sessions/{sessionId}/events": {
+      "parameters": [
+        {
+          "name": "bookId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "sessionId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "after",
+          "in": "query",
+          "schema": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      ],
+      "get": {
+        "operationId": "pollThinkingEvents",
+        "summary": "pollThinkingEvents",
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "tags": [
+          "Private thinking"
+        ],
+        "responses": {
+          "200": {
+            "description": "Author-scoped response; no model credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/thinkingEvents"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Author session required"
+          },
+          "403": {
+            "description": "Grant revoked or wrong scope"
+          },
+          "404": {
+            "description": "Unknown or unowned resource"
+          },
+          "409": {
+            "description": "Busy or model consent changed"
+          },
+          "422": {
+            "description": "Invalid input, selection or budget"
+          },
+          "429": {
+            "description": "Budget or capacity exhausted"
+          },
+          "503": {
+            "description": "Thinking unavailable; writing remains independent"
+          }
+        }
+      }
+    },
+    "/studio/books/{bookId}/thinking/sessions/{sessionId}/cancel": {
+      "parameters": [
+        {
+          "name": "bookId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "sessionId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "cancelThinkingRequest",
+        "summary": "cancelThinkingRequest",
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "tags": [
+          "Private thinking"
+        ],
+        "responses": {
+          "200": {
+            "description": "Author-scoped response; no model credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/thinkingSession"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Author session required"
+          },
+          "403": {
+            "description": "Grant revoked or wrong scope"
+          },
+          "404": {
+            "description": "Unknown or unowned resource"
+          },
+          "409": {
+            "description": "Busy or model consent changed"
+          },
+          "422": {
+            "description": "Invalid input, selection or budget"
+          },
+          "429": {
+            "description": "Budget or capacity exhausted"
+          },
+          "503": {
+            "description": "Thinking unavailable; writing remains independent"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "authorBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Go bearer behind authenticated Better Auth Worker"
+      }
+    },
+    "schemas": {
+      "thinkingCreate": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "consent": {
+            "type": "boolean",
+            "const": true
+          },
+          "model": {
+            "type": "object",
+            "properties": {
+              "provider": {
+                "type": "string",
+                "minLength": 1
+              },
+              "model": {
+                "type": "string",
+                "minLength": 1
+              },
+              "endpoint": {
+                "type": "string",
+                "format": "uri"
+              },
+              "protocol": {
+                "type": "string",
+                "const": "thinking-v1"
+              },
+              "limits": {
+                "type": "object",
+                "properties": {
+                  "maxTurnsPerRequest": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "maxToolCalls": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "maxInputTokens": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "maxOutputTokens": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "maxSessionTokens": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "maxConcurrentSessions": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "maxDurationMs": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "maxToolResultBytes": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "maxTurnsPerRequest",
+                  "maxToolCalls",
+                  "maxInputTokens",
+                  "maxOutputTokens",
+                  "maxSessionTokens",
+                  "maxConcurrentSessions",
+                  "maxDurationMs",
+                  "maxToolResultBytes"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "provider",
+              "model",
+              "endpoint",
+              "protocol",
+              "limits"
+            ],
+            "additionalProperties": false
+          },
+          "scopes": {
+            "minItems": 1,
+            "maxItems": 3,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "chapters",
+                "knowledge",
+                "notes"
+              ]
+            }
+          }
+        },
+        "required": [
+          "consent",
+          "model",
+          "scopes"
+        ],
+        "additionalProperties": false
+      },
+      "thinkingEvent": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "session_started",
+              "message_started",
+              "text_delta",
+              "tool_started",
+              "tool_completed",
+              "message_completed",
+              "usage",
+              "error",
+              "session_completed",
+              "sources",
+              "compaction"
+            ]
+          },
+          "messageId": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "sourceId": {
+                  "type": "string"
+                },
+                "chapterId": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "revisionId": {
+                  "type": "string"
+                },
+                "contentHash": {
+                  "type": "string"
+                },
+                "quote": {
+                  "type": "string",
+                  "maxLength": 16000
+                },
+                "startUTF16": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "endUTF16": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "validity": {
+                  "type": "string",
+                  "enum": [
+                    "current",
+                    "stale",
+                    "unavailable"
+                  ]
+                },
+                "epistemic": {
+                  "type": "string",
+                  "enum": [
+                    "observation",
+                    "claim",
+                    "inference"
+                  ]
+                }
+              },
+              "required": [
+                "sourceId",
+                "chapterId",
+                "title",
+                "revisionId",
+                "contentHash",
+                "quote",
+                "startUTF16",
+                "endUTF16",
+                "validity"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "usage": {
+            "type": "object",
+            "properties": {
+              "input": {
+                "type": "number",
+                "minimum": 0
+              },
+              "output": {
+                "type": "number",
+                "minimum": 0
+              },
+              "charged": {
+                "type": "number",
+                "minimum": 0
+              },
+              "incomplete": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "input",
+              "output",
+              "charged",
+              "incomplete"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "id",
+          "type"
+        ],
+        "additionalProperties": false
+      },
+      "thinkingEvents": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "session_started",
+                    "message_started",
+                    "text_delta",
+                    "tool_started",
+                    "tool_completed",
+                    "message_completed",
+                    "usage",
+                    "error",
+                    "session_completed",
+                    "sources",
+                    "compaction"
+                  ]
+                },
+                "messageId": {
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                },
+                "tool": {
+                  "type": "string"
+                },
+                "code": {
+                  "type": "string"
+                },
+                "sources": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "sourceId": {
+                        "type": "string"
+                      },
+                      "chapterId": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      },
+                      "revisionId": {
+                        "type": "string"
+                      },
+                      "contentHash": {
+                        "type": "string"
+                      },
+                      "quote": {
+                        "type": "string",
+                        "maxLength": 16000
+                      },
+                      "startUTF16": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "endUTF16": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "validity": {
+                        "type": "string",
+                        "enum": [
+                          "current",
+                          "stale",
+                          "unavailable"
+                        ]
+                      },
+                      "epistemic": {
+                        "type": "string",
+                        "enum": [
+                          "observation",
+                          "claim",
+                          "inference"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "sourceId",
+                      "chapterId",
+                      "title",
+                      "revisionId",
+                      "contentHash",
+                      "quote",
+                      "startUTF16",
+                      "endUTF16",
+                      "validity"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "usage": {
+                  "type": "object",
+                  "properties": {
+                    "input": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "output": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "charged": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "incomplete": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "input",
+                    "output",
+                    "charged",
+                    "incomplete"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "id",
+                "type"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "cursor": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "idle",
+              "running",
+              "deleted"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "cursor",
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "thinkingGrant": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "sessionId": {
+            "type": "string",
+            "pattern": "^th-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "authorId": {
+            "type": "string"
+          },
+          "bookId": {
+            "type": "string"
+          },
+          "model": {
+            "type": "object",
+            "properties": {
+              "provider": {
+                "type": "string",
+                "minLength": 1
+              },
+              "model": {
+                "type": "string",
+                "minLength": 1
+              },
+              "endpoint": {
+                "type": "string",
+                "format": "uri"
+              },
+              "protocol": {
+                "type": "string",
+                "const": "thinking-v1"
+              },
+              "limits": {
+                "type": "object",
+                "properties": {
+                  "maxTurnsPerRequest": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "maxToolCalls": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "maxInputTokens": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "maxOutputTokens": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "maxSessionTokens": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "maxConcurrentSessions": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "maxDurationMs": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "maxToolResultBytes": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "maxTurnsPerRequest",
+                  "maxToolCalls",
+                  "maxInputTokens",
+                  "maxOutputTokens",
+                  "maxSessionTokens",
+                  "maxConcurrentSessions",
+                  "maxDurationMs",
+                  "maxToolResultBytes"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "provider",
+              "model",
+              "endpoint",
+              "protocol",
+              "limits"
+            ],
+            "additionalProperties": false
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "chapters",
+                "knowledge",
+                "notes"
+              ]
+            }
+          }
+        },
+        "required": [
+          "sessionId",
+          "authorId",
+          "bookId",
+          "model",
+          "scopes"
+        ],
+        "additionalProperties": false
+      },
+      "thinkingLimits": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "maxTurnsPerRequest": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "maxToolCalls": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "maxInputTokens": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "maxOutputTokens": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "maxSessionTokens": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "maxConcurrentSessions": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "maxDurationMs": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "maxToolResultBytes": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "maxTurnsPerRequest",
+          "maxToolCalls",
+          "maxInputTokens",
+          "maxOutputTokens",
+          "maxSessionTokens",
+          "maxConcurrentSessions",
+          "maxDurationMs",
+          "maxToolResultBytes"
+        ],
+        "additionalProperties": false
+      },
+      "thinkingMessageInput": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 12000
+          },
+          "selection": {
+            "type": "object",
+            "properties": {
+              "chapterId": {
+                "type": "string"
+              },
+              "revisionId": {
+                "type": "string"
+              },
+              "contentHash": {
+                "type": "string"
+              },
+              "quote": {
+                "type": "string",
+                "maxLength": 4000
+              }
+            },
+            "required": [
+              "chapterId",
+              "revisionId",
+              "contentHash",
+              "quote"
+            ],
+            "additionalProperties": false
+          },
+          "compact": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "additionalProperties": false
+      },
+      "thinkingMessage": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "assistant"
+            ]
+          },
+          "text": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "running",
+              "completed",
+              "failed",
+              "cancelled",
+              "interrupted"
+            ]
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "sourceId": {
+                  "type": "string"
+                },
+                "chapterId": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "revisionId": {
+                  "type": "string"
+                },
+                "contentHash": {
+                  "type": "string"
+                },
+                "quote": {
+                  "type": "string",
+                  "maxLength": 16000
+                },
+                "startUTF16": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "endUTF16": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "validity": {
+                  "type": "string",
+                  "enum": [
+                    "current",
+                    "stale",
+                    "unavailable"
+                  ]
+                },
+                "epistemic": {
+                  "type": "string",
+                  "enum": [
+                    "observation",
+                    "claim",
+                    "inference"
+                  ]
+                }
+              },
+              "required": [
+                "sourceId",
+                "chapterId",
+                "title",
+                "revisionId",
+                "contentHash",
+                "quote",
+                "startUTF16",
+                "endUTF16",
+                "validity"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "errorCode": {
+            "type": "string"
+          },
+          "usage": {
+            "type": "object",
+            "properties": {
+              "input": {
+                "type": "number",
+                "minimum": 0
+              },
+              "output": {
+                "type": "number",
+                "minimum": 0
+              },
+              "charged": {
+                "type": "number",
+                "minimum": 0
+              },
+              "incomplete": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "input",
+              "output",
+              "charged",
+              "incomplete"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "id",
+          "role",
+          "text",
+          "status",
+          "sources",
+          "createdAt"
+        ],
+        "additionalProperties": false
+      },
+      "thinkingModel": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string",
+            "minLength": 1
+          },
+          "model": {
+            "type": "string",
+            "minLength": 1
+          },
+          "endpoint": {
+            "type": "string",
+            "format": "uri"
+          },
+          "protocol": {
+            "type": "string",
+            "const": "thinking-v1"
+          },
+          "limits": {
+            "type": "object",
+            "properties": {
+              "maxTurnsPerRequest": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "maxToolCalls": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "maxInputTokens": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "maxOutputTokens": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "maxSessionTokens": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "maxConcurrentSessions": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "maxDurationMs": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "maxToolResultBytes": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "maxTurnsPerRequest",
+              "maxToolCalls",
+              "maxInputTokens",
+              "maxOutputTokens",
+              "maxSessionTokens",
+              "maxConcurrentSessions",
+              "maxDurationMs",
+              "maxToolResultBytes"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "provider",
+          "model",
+          "endpoint",
+          "protocol",
+          "limits"
+        ],
+        "additionalProperties": false
+      },
+      "thinkingPrivateCreate": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "sessionId": {
+            "type": "string",
+            "pattern": "^th-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "authorId": {
+            "type": "string"
+          },
+          "bookId": {
+            "type": "string"
+          },
+          "model": {
+            "type": "object",
+            "properties": {
+              "provider": {
+                "type": "string",
+                "minLength": 1
+              },
+              "model": {
+                "type": "string",
+                "minLength": 1
+              },
+              "endpoint": {
+                "type": "string",
+                "format": "uri"
+              },
+              "protocol": {
+                "type": "string",
+                "const": "thinking-v1"
+              },
+              "limits": {
+                "type": "object",
+                "properties": {
+                  "maxTurnsPerRequest": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "maxToolCalls": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "maxInputTokens": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "maxOutputTokens": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "maxSessionTokens": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "maxConcurrentSessions": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "maxDurationMs": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "maxToolResultBytes": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "maxTurnsPerRequest",
+                  "maxToolCalls",
+                  "maxInputTokens",
+                  "maxOutputTokens",
+                  "maxSessionTokens",
+                  "maxConcurrentSessions",
+                  "maxDurationMs",
+                  "maxToolResultBytes"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "provider",
+              "model",
+              "endpoint",
+              "protocol",
+              "limits"
+            ],
+            "additionalProperties": false
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "chapters",
+                "knowledge",
+                "notes"
+              ]
+            }
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "capability": {
+            "type": "string",
+            "maxLength": 4096
+          }
+        },
+        "required": [
+          "sessionId",
+          "authorId",
+          "bookId",
+          "model",
+          "scopes",
+          "createdAt",
+          "capability"
+        ],
+        "additionalProperties": false
+      },
+      "thinkingPrivateMessage": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "input": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 12000
+              },
+              "selection": {
+                "type": "object",
+                "properties": {
+                  "chapterId": {
+                    "type": "string"
+                  },
+                  "revisionId": {
+                    "type": "string"
+                  },
+                  "contentHash": {
+                    "type": "string"
+                  },
+                  "quote": {
+                    "type": "string",
+                    "maxLength": 4000
+                  }
+                },
+                "required": [
+                  "chapterId",
+                  "revisionId",
+                  "contentHash",
+                  "quote"
+                ],
+                "additionalProperties": false
+              },
+              "compact": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "text"
+            ],
+            "additionalProperties": false
+          },
+          "key": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.:-]{1,128}$"
+          },
+          "capability": {
+            "type": "string",
+            "maxLength": 4096
+          }
+        },
+        "required": [
+          "input",
+          "key",
+          "capability"
+        ],
+        "additionalProperties": false
+      },
+      "thinkingScope": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "string",
+        "enum": [
+          "chapters",
+          "knowledge",
+          "notes"
+        ]
+      },
+      "thinkingSession": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "sessionId": {
+            "type": "string"
+          },
+          "bookId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "model": {
+            "type": "object",
+            "properties": {
+              "provider": {
+                "type": "string",
+                "minLength": 1
+              },
+              "model": {
+                "type": "string",
+                "minLength": 1
+              },
+              "endpoint": {
+                "type": "string",
+                "format": "uri"
+              },
+              "protocol": {
+                "type": "string",
+                "const": "thinking-v1"
+              },
+              "limits": {
+                "type": "object",
+                "properties": {
+                  "maxTurnsPerRequest": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "maxToolCalls": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "maxInputTokens": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "maxOutputTokens": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "maxSessionTokens": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "maxConcurrentSessions": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "maxDurationMs": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "maxToolResultBytes": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "maxTurnsPerRequest",
+                  "maxToolCalls",
+                  "maxInputTokens",
+                  "maxOutputTokens",
+                  "maxSessionTokens",
+                  "maxConcurrentSessions",
+                  "maxDurationMs",
+                  "maxToolResultBytes"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "provider",
+              "model",
+              "endpoint",
+              "protocol",
+              "limits"
+            ],
+            "additionalProperties": false
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "chapters",
+                "knowledge",
+                "notes"
+              ]
+            }
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "idle",
+              "running",
+              "deleted"
+            ]
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string",
+                  "enum": [
+                    "user",
+                    "assistant"
+                  ]
+                },
+                "text": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "accepted",
+                    "running",
+                    "completed",
+                    "failed",
+                    "cancelled",
+                    "interrupted"
+                  ]
+                },
+                "sources": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "sourceId": {
+                        "type": "string"
+                      },
+                      "chapterId": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      },
+                      "revisionId": {
+                        "type": "string"
+                      },
+                      "contentHash": {
+                        "type": "string"
+                      },
+                      "quote": {
+                        "type": "string",
+                        "maxLength": 16000
+                      },
+                      "startUTF16": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "endUTF16": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "validity": {
+                        "type": "string",
+                        "enum": [
+                          "current",
+                          "stale",
+                          "unavailable"
+                        ]
+                      },
+                      "epistemic": {
+                        "type": "string",
+                        "enum": [
+                          "observation",
+                          "claim",
+                          "inference"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "sourceId",
+                      "chapterId",
+                      "title",
+                      "revisionId",
+                      "contentHash",
+                      "quote",
+                      "startUTF16",
+                      "endUTF16",
+                      "validity"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "errorCode": {
+                  "type": "string"
+                },
+                "usage": {
+                  "type": "object",
+                  "properties": {
+                    "input": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "output": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "charged": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "incomplete": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "input",
+                    "output",
+                    "charged",
+                    "incomplete"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "id",
+                "role",
+                "text",
+                "status",
+                "sources",
+                "createdAt"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "cursor": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "usage": {
+            "type": "object",
+            "properties": {
+              "input": {
+                "type": "number",
+                "minimum": 0
+              },
+              "output": {
+                "type": "number",
+                "minimum": 0
+              },
+              "charged": {
+                "type": "number",
+                "minimum": 0
+              },
+              "incomplete": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "input",
+              "output",
+              "charged",
+              "incomplete"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "sessionId",
+          "bookId",
+          "title",
+          "createdAt",
+          "model",
+          "scopes",
+          "status",
+          "messages",
+          "cursor",
+          "usage"
+        ],
+        "additionalProperties": false
+      },
+      "thinkingSource": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "sourceId": {
+            "type": "string"
+          },
+          "chapterId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "revisionId": {
+            "type": "string"
+          },
+          "contentHash": {
+            "type": "string"
+          },
+          "quote": {
+            "type": "string",
+            "maxLength": 16000
+          },
+          "startUTF16": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "endUTF16": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "validity": {
+            "type": "string",
+            "enum": [
+              "current",
+              "stale",
+              "unavailable"
+            ]
+          },
+          "epistemic": {
+            "type": "string",
+            "enum": [
+              "observation",
+              "claim",
+              "inference"
+            ]
+          }
+        },
+        "required": [
+          "sourceId",
+          "chapterId",
+          "title",
+          "revisionId",
+          "contentHash",
+          "quote",
+          "startUTF16",
+          "endUTF16",
+          "validity"
+        ],
+        "additionalProperties": false
+      },
+      "thinkingSummary": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "sessionId": {
+            "type": "string"
+          },
+          "bookId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "model": {
+            "type": "object",
+            "properties": {
+              "provider": {
+                "type": "string",
+                "minLength": 1
+              },
+              "model": {
+                "type": "string",
+                "minLength": 1
+              },
+              "endpoint": {
+                "type": "string",
+                "format": "uri"
+              },
+              "protocol": {
+                "type": "string",
+                "const": "thinking-v1"
+              },
+              "limits": {
+                "type": "object",
+                "properties": {
+                  "maxTurnsPerRequest": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "maxToolCalls": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "maxInputTokens": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "maxOutputTokens": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "maxSessionTokens": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "maxConcurrentSessions": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "maxDurationMs": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "maxToolResultBytes": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "maxTurnsPerRequest",
+                  "maxToolCalls",
+                  "maxInputTokens",
+                  "maxOutputTokens",
+                  "maxSessionTokens",
+                  "maxConcurrentSessions",
+                  "maxDurationMs",
+                  "maxToolResultBytes"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "provider",
+              "model",
+              "endpoint",
+              "protocol",
+              "limits"
+            ],
+            "additionalProperties": false
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "chapters",
+                "knowledge",
+                "notes"
+              ]
+            }
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "idle",
+              "running",
+              "deleted"
+            ]
+          }
+        },
+        "required": [
+          "sessionId",
+          "bookId",
+          "title",
+          "createdAt",
+          "model",
+          "scopes",
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "thinkingToolRequest": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "sessionId": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string",
+            "enum": [
+              "search_knowledge",
+              "read_chapter",
+              "get_entity",
+              "find_related_chapters",
+              "get_author_notes",
+              "get_timeline",
+              "get_plot_threads"
+            ]
+          },
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string",
+                "maxLength": 256
+              },
+              "quote": {
+                "type": "string",
+                "maxLength": 4000
+              },
+              "chapterId": {
+                "type": "string"
+              },
+              "revisionId": {
+                "type": "string"
+              },
+              "entityId": {
+                "type": "string"
+              },
+              "startUTF16": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "sessionId",
+          "tool",
+          "arguments"
+        ],
+        "additionalProperties": false
+      },
+      "thinkingUsage": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "input": {
+            "type": "number",
+            "minimum": 0
+          },
+          "output": {
+            "type": "number",
+            "minimum": 0
+          },
+          "charged": {
+            "type": "number",
+            "minimum": 0
+          },
+          "incomplete": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "input",
+          "output",
+          "charged",
+          "incomplete"
+        ],
+        "additionalProperties": false
+      },
+      "thinkingReceipt": {
+        "type": "object",
+        "required": [
+          "messageId"
+        ],
+        "properties": {
+          "messageId": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

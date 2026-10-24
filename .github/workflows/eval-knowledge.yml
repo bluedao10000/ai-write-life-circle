@@ -1,0 +1,43 @@
+name: Synthetic Knowledge Model Eval
+run-name: Synthetic Knowledge Eval (bounded, no author manuscripts)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: story2u-synthetic-knowledge-eval
+  cancel-in-progress: false
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: actions/setup-go@v6
+        with:
+          go-version: 1.27.2
+          cache-dependency-path: apps/api-go/go.sum
+      - run: pnpm install --frozen-lockfile
+      - name: Verify extraction contracts before using a model Secret
+        run: go test -C apps/api-go ./internal/knowledge ./internal/review ./internal/llm
+      - name: Eval only synthetic isolated books (40 calls, 1 MiB request bytes, 8192 output tokens per call)
+        run: pnpm eval:knowledge:live
+        env:
+          WRITER_AGENT_LLM_API_KEY: ${{ secrets.WRITER_AGENT_LLM_API_KEY }}
+          WRITER_AGENT_LLM_BASE_URL: ${{ vars.WRITER_AGENT_LLM_BASE_URL }}
+          WRITER_AGENT_LLM_MODEL: ${{ vars.WRITER_AGENT_LLM_MODEL }}
+          WRITER_AGENT_KNOWLEDGE_EVAL_OUTPUT: ${{ runner.temp }}/knowledge-eval.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: knowledge-synthetic-live-eval
+          path: ${{ runner.temp }}/knowledge-eval.json
+          if-no-files-found: warn
+          retention-days: 7

@@ -1,0 +1,13 @@
+# BEGIN Writer Agent API
+server {
+    listen 80;
+    server_name @DOMAIN@;
+    location ^~ /.well-known/acme-challenge/ {
+        proxy_pass http://@HOST_GATEWAY@:8080;
+        proxy_set_header Host $host;
+    }
+    location / {
+        return 308 https://@DOMAIN@$request_uri;
+    }
+}
+# END Writer Agent API

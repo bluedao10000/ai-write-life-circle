@@ -1,0 +1,2675 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Writer Agent Private AI Knowledge",
+    "version": "1.0.0",
+    "description": "One-time per-book model consent, private derived observations, durable bounded extraction; no public DTO or author canon writes.",
+    "license": {
+      "name": "Private",
+      "url": "https://github.com/story2u/ai-write-life-circle"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:8787/v1"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Private AI knowledge",
+      "description": "Automatic private memory, not manual knowledge CRUD"
+    }
+  ],
+  "paths": {
+    "/studio/books/{bookId}/knowledge/summary": {
+      "get": {
+        "operationId": "summaryMemory",
+        "summary": "summaryMemory",
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "tags": [
+          "Private AI knowledge"
+        ],
+        "parameters": [
+          {
+            "name": "bookId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 30
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Private no-store knowledge response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "403": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "404": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "405": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "409": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "413": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "422": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "429": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "500": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "503": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          }
+        }
+      }
+    },
+    "/studio/books/{bookId}/knowledge": {
+      "get": {
+        "operationId": "queryMemory",
+        "summary": "queryMemory",
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "tags": [
+          "Private AI knowledge"
+        ],
+        "parameters": [
+          {
+            "name": "bookId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "name",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "chapterId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 30
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Private no-store knowledge response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "403": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "404": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "405": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "409": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "413": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "422": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "429": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "500": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "503": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          }
+        }
+      }
+    },
+    "/studio/books/{bookId}/knowledge/related": {
+      "get": {
+        "operationId": "relatedMemory",
+        "summary": "relatedMemory",
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "tags": [
+          "Private AI knowledge"
+        ],
+        "parameters": [
+          {
+            "name": "bookId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "chapterId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 30
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Private no-store knowledge response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "403": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "404": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "405": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "409": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "413": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "422": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "429": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "500": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "503": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          }
+        }
+      }
+    },
+    "/studio/books/{bookId}/knowledge/entities/{entityId}": {
+      "get": {
+        "operationId": "getMemoryEntity",
+        "summary": "getMemoryEntity",
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "tags": [
+          "Private AI knowledge"
+        ],
+        "parameters": [
+          {
+            "name": "bookId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "entityId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 30
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Private no-store knowledge response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "403": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "404": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "405": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "409": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "413": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "422": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "429": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "500": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "503": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          }
+        }
+      }
+    },
+    "/studio/books/{bookId}/knowledge/jobs": {
+      "get": {
+        "operationId": "listMemoryjobs",
+        "summary": "listMemoryjobs",
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "tags": [
+          "Private AI knowledge"
+        ],
+        "parameters": [
+          {
+            "name": "bookId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 30
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Private no-store knowledge response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryJobs"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "403": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "404": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "405": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "409": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "413": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "422": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "429": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "500": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "503": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          }
+        }
+      }
+    },
+    "/studio/books/{bookId}/knowledge/history": {
+      "get": {
+        "operationId": "listMemoryhistory",
+        "summary": "listMemoryhistory",
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "tags": [
+          "Private AI knowledge"
+        ],
+        "parameters": [
+          {
+            "name": "bookId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 30
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Private no-store knowledge response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryHistory"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "403": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "404": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "405": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "409": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "413": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "422": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "429": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "500": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "503": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          }
+        }
+      }
+    },
+    "/studio/books/{bookId}/knowledge/corrections": {
+      "get": {
+        "operationId": "listMemorycorrections",
+        "summary": "listMemorycorrections",
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "tags": [
+          "Private AI knowledge"
+        ],
+        "parameters": [
+          {
+            "name": "bookId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 30
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Private no-store knowledge response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryCorrections"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "403": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "404": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "405": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "409": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "413": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "422": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "429": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "500": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "503": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          }
+        }
+      }
+    },
+    "/studio/books/{bookId}/knowledge/enable": {
+      "post": {
+        "operationId": "memoryenable",
+        "summary": "memoryenable",
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "tags": [
+          "Private AI knowledge"
+        ],
+        "parameters": [
+          {
+            "name": "bookId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoryMutation"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Private no-store knowledge response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "403": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "404": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "405": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "409": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "413": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "422": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "429": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "500": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "503": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          }
+        }
+      }
+    },
+    "/studio/books/{bookId}/knowledge/pause": {
+      "post": {
+        "operationId": "memorypause",
+        "summary": "memorypause",
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "tags": [
+          "Private AI knowledge"
+        ],
+        "parameters": [
+          {
+            "name": "bookId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoryMutation"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Private no-store knowledge response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "403": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "404": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "405": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "409": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "413": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "422": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "429": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "500": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "503": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          }
+        }
+      }
+    },
+    "/studio/books/{bookId}/knowledge/resume": {
+      "post": {
+        "operationId": "memoryresume",
+        "summary": "memoryresume",
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "tags": [
+          "Private AI knowledge"
+        ],
+        "parameters": [
+          {
+            "name": "bookId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoryMutation"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Private no-store knowledge response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "403": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "404": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "405": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "409": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "413": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "422": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "429": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "500": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "503": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          }
+        }
+      }
+    },
+    "/studio/books/{bookId}/knowledge/rebuild": {
+      "post": {
+        "operationId": "memoryrebuild",
+        "summary": "memoryrebuild",
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "tags": [
+          "Private AI knowledge"
+        ],
+        "parameters": [
+          {
+            "name": "bookId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoryMutation"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Private no-store knowledge response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "403": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "404": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "405": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "409": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "413": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "422": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "429": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "500": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "503": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          }
+        }
+      }
+    },
+    "/studio/books/{bookId}/knowledge/correct": {
+      "post": {
+        "operationId": "memorycorrect",
+        "summary": "memorycorrect",
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "tags": [
+          "Private AI knowledge"
+        ],
+        "parameters": [
+          {
+            "name": "bookId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoryMutation"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Private no-store knowledge response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "403": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "404": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "405": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "409": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "413": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "422": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "429": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "500": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "503": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          }
+        }
+      }
+    },
+    "/studio/books/{bookId}/knowledge/undo": {
+      "post": {
+        "operationId": "memoryundo",
+        "summary": "memoryundo",
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "tags": [
+          "Private AI knowledge"
+        ],
+        "parameters": [
+          {
+            "name": "bookId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoryMutation"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Private no-store knowledge response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "403": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "404": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "405": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "409": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "413": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "422": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "429": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "500": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          },
+          "503": {
+            "description": "Author, ownership, CAS, validation, budget or storage failure"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "authorBearer": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    },
+    "schemas": {
+      "MemoryPage": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "needsModelConsent": {
+            "type": "boolean"
+          },
+          "bookId": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "budgetDay": {
+            "type": "string"
+          },
+          "budgetTokens": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "budgetAttempts": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "settings": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "paused": {
+                "type": "boolean"
+              },
+              "consentAt": {
+                "type": "string"
+              },
+              "model": {
+                "type": "object",
+                "properties": {
+                  "provider": {
+                    "type": "string"
+                  },
+                  "model": {
+                    "type": "string"
+                  },
+                  "endpoint": {
+                    "type": "string"
+                  },
+                  "execution": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "provider",
+                  "model",
+                  "endpoint",
+                  "execution"
+                ],
+                "additionalProperties": false
+              },
+              "configFingerprint": {
+                "type": "string"
+              },
+              "dailyTokenBudget": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "dailyJobBudget": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "enabled",
+              "paused",
+              "model",
+              "dailyTokenBudget",
+              "dailyJobBudget"
+            ],
+            "additionalProperties": false
+          },
+          "available": {
+            "type": "boolean"
+          },
+          "workerStatus": {
+            "type": "string",
+            "enum": [
+              "online",
+              "offline",
+              "incompatible"
+            ]
+          },
+          "model": {
+            "type": "object",
+            "properties": {
+              "provider": {
+                "type": "string"
+              },
+              "model": {
+                "type": "string"
+              },
+              "endpoint": {
+                "type": "string"
+              },
+              "execution": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "provider",
+              "model",
+              "endpoint",
+              "execution"
+            ],
+            "additionalProperties": false
+          },
+          "disclosure": {
+            "type": "string"
+          },
+          "pending": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "running": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "failed": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "completed": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "chapterTotal": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "stale": {
+            "type": "boolean"
+          },
+          "entities": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "entityId": {
+                  "type": "string"
+                },
+                "bookId": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "character",
+                    "place",
+                    "organization",
+                    "world_rule",
+                    "event",
+                    "plot_line",
+                    "foreshadowing"
+                  ]
+                },
+                "name": {
+                  "type": "string"
+                },
+                "aliases": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "identity": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "observed",
+                    "inferred",
+                    "disputed",
+                    "stale",
+                    "deprecated"
+                  ]
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "updatedAt": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "entityId",
+                "bookId",
+                "type",
+                "name",
+                "aliases",
+                "identity",
+                "status",
+                "createdAt",
+                "updatedAt",
+                "version"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "assertions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "assertionId": {
+                  "type": "string"
+                },
+                "entityId": {
+                  "type": "string"
+                },
+                "predicate": {
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                },
+                "targetEntityId": {
+                  "type": "string"
+                },
+                "targetName": {
+                  "type": "string"
+                },
+                "epistemic": {
+                  "type": "string",
+                  "enum": [
+                    "observation",
+                    "claim",
+                    "inference"
+                  ]
+                },
+                "speaker": {
+                  "type": "string"
+                },
+                "time": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "current",
+                    "stale",
+                    "disputed"
+                  ]
+                },
+                "sources": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "bookId": {
+                        "type": "string"
+                      },
+                      "chapterId": {
+                        "type": "string"
+                      },
+                      "revisionId": {
+                        "type": "string"
+                      },
+                      "contentHash": {
+                        "type": "string"
+                      },
+                      "quote": {
+                        "type": "string"
+                      },
+                      "startUTF16": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "endUTF16": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "sourceKind": {
+                        "type": "string",
+                        "enum": [
+                          "narration",
+                          "dialogue",
+                          "thought",
+                          "author_note"
+                        ]
+                      },
+                      "validity": {
+                        "type": "string",
+                        "enum": [
+                          "current",
+                          "stale",
+                          "unavailable"
+                        ]
+                      },
+                      "retired": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "bookId",
+                      "chapterId",
+                      "revisionId",
+                      "contentHash",
+                      "quote",
+                      "startUTF16",
+                      "endUTF16",
+                      "sourceKind",
+                      "validity"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "assertionId",
+                "entityId",
+                "predicate",
+                "text",
+                "epistemic",
+                "status",
+                "sources"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "assertionTotal": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "nextAssertionCursor": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "bookId",
+          "version",
+          "budgetDay",
+          "budgetTokens",
+          "budgetAttempts",
+          "settings",
+          "available",
+          "model",
+          "disclosure",
+          "pending",
+          "running",
+          "failed",
+          "stale",
+          "entities",
+          "assertions",
+          "total",
+          "nextCursor",
+          "assertionTotal",
+          "nextAssertionCursor"
+        ],
+        "additionalProperties": false
+      },
+      "MemoryView": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "needsModelConsent": {
+            "type": "boolean"
+          },
+          "bookId": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "budgetDay": {
+            "type": "string"
+          },
+          "budgetTokens": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "budgetAttempts": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "settings": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "paused": {
+                "type": "boolean"
+              },
+              "consentAt": {
+                "type": "string"
+              },
+              "model": {
+                "type": "object",
+                "properties": {
+                  "provider": {
+                    "type": "string"
+                  },
+                  "model": {
+                    "type": "string"
+                  },
+                  "endpoint": {
+                    "type": "string"
+                  },
+                  "execution": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "provider",
+                  "model",
+                  "endpoint",
+                  "execution"
+                ],
+                "additionalProperties": false
+              },
+              "configFingerprint": {
+                "type": "string"
+              },
+              "dailyTokenBudget": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "dailyJobBudget": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "enabled",
+              "paused",
+              "model",
+              "dailyTokenBudget",
+              "dailyJobBudget"
+            ],
+            "additionalProperties": false
+          },
+          "available": {
+            "type": "boolean"
+          },
+          "workerStatus": {
+            "type": "string",
+            "enum": [
+              "online",
+              "offline",
+              "incompatible"
+            ]
+          },
+          "model": {
+            "type": "object",
+            "properties": {
+              "provider": {
+                "type": "string"
+              },
+              "model": {
+                "type": "string"
+              },
+              "endpoint": {
+                "type": "string"
+              },
+              "execution": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "provider",
+              "model",
+              "endpoint",
+              "execution"
+            ],
+            "additionalProperties": false
+          },
+          "disclosure": {
+            "type": "string"
+          },
+          "pending": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "running": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "failed": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "completed": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "chapterTotal": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "stale": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "bookId",
+          "version",
+          "budgetDay",
+          "budgetTokens",
+          "budgetAttempts",
+          "settings",
+          "available",
+          "model",
+          "disclosure",
+          "pending",
+          "running",
+          "failed",
+          "stale"
+        ],
+        "additionalProperties": false
+      },
+      "MemoryJobs": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "view": {
+            "type": "object",
+            "properties": {
+              "needsModelConsent": {
+                "type": "boolean"
+              },
+              "bookId": {
+                "type": "string"
+              },
+              "version": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "budgetDay": {
+                "type": "string"
+              },
+              "budgetTokens": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "budgetAttempts": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "settings": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "paused": {
+                    "type": "boolean"
+                  },
+                  "consentAt": {
+                    "type": "string"
+                  },
+                  "model": {
+                    "type": "object",
+                    "properties": {
+                      "provider": {
+                        "type": "string"
+                      },
+                      "model": {
+                        "type": "string"
+                      },
+                      "endpoint": {
+                        "type": "string"
+                      },
+                      "execution": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "provider",
+                      "model",
+                      "endpoint",
+                      "execution"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "configFingerprint": {
+                    "type": "string"
+                  },
+                  "dailyTokenBudget": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "dailyJobBudget": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "enabled",
+                  "paused",
+                  "model",
+                  "dailyTokenBudget",
+                  "dailyJobBudget"
+                ],
+                "additionalProperties": false
+              },
+              "available": {
+                "type": "boolean"
+              },
+              "workerStatus": {
+                "type": "string",
+                "enum": [
+                  "online",
+                  "offline",
+                  "incompatible"
+                ]
+              },
+              "model": {
+                "type": "object",
+                "properties": {
+                  "provider": {
+                    "type": "string"
+                  },
+                  "model": {
+                    "type": "string"
+                  },
+                  "endpoint": {
+                    "type": "string"
+                  },
+                  "execution": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "provider",
+                  "model",
+                  "endpoint",
+                  "execution"
+                ],
+                "additionalProperties": false
+              },
+              "disclosure": {
+                "type": "string"
+              },
+              "pending": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "running": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "failed": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "completed": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "chapterTotal": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "stale": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "bookId",
+              "version",
+              "budgetDay",
+              "budgetTokens",
+              "budgetAttempts",
+              "settings",
+              "available",
+              "model",
+              "disclosure",
+              "pending",
+              "running",
+              "failed",
+              "stale"
+            ],
+            "additionalProperties": false
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "jobId": {
+                  "type": "string"
+                },
+                "chapterId": {
+                  "type": "string"
+                },
+                "revisionId": {
+                  "type": "string"
+                },
+                "contentHash": {
+                  "type": "string"
+                },
+                "strategyVersion": {
+                  "type": "string"
+                },
+                "model": {
+                  "type": "object",
+                  "properties": {
+                    "provider": {
+                      "type": "string"
+                    },
+                    "model": {
+                      "type": "string"
+                    },
+                    "endpoint": {
+                      "type": "string"
+                    },
+                    "execution": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "provider",
+                    "model",
+                    "endpoint",
+                    "execution"
+                  ],
+                  "additionalProperties": false
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "pending",
+                    "running",
+                    "completed",
+                    "retry",
+                    "failed",
+                    "superseded",
+                    "cancelled"
+                  ]
+                },
+                "attempts": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "nextAttemptAt": {
+                  "type": "string"
+                },
+                "deadlineAt": {
+                  "type": "string"
+                },
+                "lease": {
+                  "type": "string"
+                },
+                "failureCode": {
+                  "type": "string"
+                },
+                "usage": {
+                  "type": "object",
+                  "properties": {
+                    "inputTokens": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "outputTokens": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "inputTokens",
+                    "outputTokens"
+                  ],
+                  "additionalProperties": false
+                },
+                "usageIncomplete": {
+                  "type": "boolean"
+                },
+                "modelCalls": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "discardedAliases": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "discardedAssertions": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "discardedEntities": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "reservedTokens": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "durationMs": {
+                  "type": "number"
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "completedAt": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "jobId",
+                "chapterId",
+                "revisionId",
+                "contentHash",
+                "strategyVersion",
+                "model",
+                "status",
+                "attempts",
+                "nextAttemptAt",
+                "reservedTokens",
+                "durationMs",
+                "createdAt"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "nextCursor"
+        ],
+        "additionalProperties": false
+      },
+      "MemoryHistory": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "view": {
+            "type": "object",
+            "properties": {
+              "needsModelConsent": {
+                "type": "boolean"
+              },
+              "bookId": {
+                "type": "string"
+              },
+              "version": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "budgetDay": {
+                "type": "string"
+              },
+              "budgetTokens": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "budgetAttempts": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "settings": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "paused": {
+                    "type": "boolean"
+                  },
+                  "consentAt": {
+                    "type": "string"
+                  },
+                  "model": {
+                    "type": "object",
+                    "properties": {
+                      "provider": {
+                        "type": "string"
+                      },
+                      "model": {
+                        "type": "string"
+                      },
+                      "endpoint": {
+                        "type": "string"
+                      },
+                      "execution": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "provider",
+                      "model",
+                      "endpoint",
+                      "execution"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "configFingerprint": {
+                    "type": "string"
+                  },
+                  "dailyTokenBudget": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "dailyJobBudget": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "enabled",
+                  "paused",
+                  "model",
+                  "dailyTokenBudget",
+                  "dailyJobBudget"
+                ],
+                "additionalProperties": false
+              },
+              "available": {
+                "type": "boolean"
+              },
+              "workerStatus": {
+                "type": "string",
+                "enum": [
+                  "online",
+                  "offline",
+                  "incompatible"
+                ]
+              },
+              "model": {
+                "type": "object",
+                "properties": {
+                  "provider": {
+                    "type": "string"
+                  },
+                  "model": {
+                    "type": "string"
+                  },
+                  "endpoint": {
+                    "type": "string"
+                  },
+                  "execution": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "provider",
+                  "model",
+                  "endpoint",
+                  "execution"
+                ],
+                "additionalProperties": false
+              },
+              "disclosure": {
+                "type": "string"
+              },
+              "pending": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "running": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "failed": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "completed": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "chapterTotal": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "stale": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "bookId",
+              "version",
+              "budgetDay",
+              "budgetTokens",
+              "budgetAttempts",
+              "settings",
+              "available",
+              "model",
+              "disclosure",
+              "pending",
+              "running",
+              "failed",
+              "stale"
+            ],
+            "additionalProperties": false
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "changeId": {
+                  "type": "string"
+                },
+                "at": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "chapterId": {
+                  "type": "string"
+                },
+                "revisionId": {
+                  "type": "string"
+                },
+                "jobId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "changeId",
+                "at",
+                "kind",
+                "chapterId",
+                "revisionId",
+                "jobId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "nextCursor"
+        ],
+        "additionalProperties": false
+      },
+      "MemoryCorrections": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "view": {
+            "type": "object",
+            "properties": {
+              "needsModelConsent": {
+                "type": "boolean"
+              },
+              "bookId": {
+                "type": "string"
+              },
+              "version": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "budgetDay": {
+                "type": "string"
+              },
+              "budgetTokens": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "budgetAttempts": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "settings": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "paused": {
+                    "type": "boolean"
+                  },
+                  "consentAt": {
+                    "type": "string"
+                  },
+                  "model": {
+                    "type": "object",
+                    "properties": {
+                      "provider": {
+                        "type": "string"
+                      },
+                      "model": {
+                        "type": "string"
+                      },
+                      "endpoint": {
+                        "type": "string"
+                      },
+                      "execution": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "provider",
+                      "model",
+                      "endpoint",
+                      "execution"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "configFingerprint": {
+                    "type": "string"
+                  },
+                  "dailyTokenBudget": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "dailyJobBudget": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "enabled",
+                  "paused",
+                  "model",
+                  "dailyTokenBudget",
+                  "dailyJobBudget"
+                ],
+                "additionalProperties": false
+              },
+              "available": {
+                "type": "boolean"
+              },
+              "workerStatus": {
+                "type": "string",
+                "enum": [
+                  "online",
+                  "offline",
+                  "incompatible"
+                ]
+              },
+              "model": {
+                "type": "object",
+                "properties": {
+                  "provider": {
+                    "type": "string"
+                  },
+                  "model": {
+                    "type": "string"
+                  },
+                  "endpoint": {
+                    "type": "string"
+                  },
+                  "execution": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "provider",
+                  "model",
+                  "endpoint",
+                  "execution"
+                ],
+                "additionalProperties": false
+              },
+              "disclosure": {
+                "type": "string"
+              },
+              "pending": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "running": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "failed": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "completed": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "chapterTotal": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "stale": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "bookId",
+              "version",
+              "budgetDay",
+              "budgetTokens",
+              "budgetAttempts",
+              "settings",
+              "available",
+              "model",
+              "disclosure",
+              "pending",
+              "running",
+              "failed",
+              "stale"
+            ],
+            "additionalProperties": false
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "correctionId": {
+                  "type": "string"
+                },
+                "anchorQuote": {
+                  "type": "string"
+                },
+                "entityId": {
+                  "type": "string"
+                },
+                "assertionId": {
+                  "type": "string"
+                },
+                "chapterId": {
+                  "type": "string"
+                },
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "claim",
+                    "dispute",
+                    "separate"
+                  ]
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "actorId": {
+                  "type": "string"
+                },
+                "active": {
+                  "type": "boolean"
+                },
+                "version": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "createdAt": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "correctionId",
+                "action",
+                "reason",
+                "actorId",
+                "active",
+                "version",
+                "createdAt"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "nextCursor"
+        ],
+        "additionalProperties": false
+      },
+      "MemoryMutation": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "baseVersion": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "consent": {
+            "type": "boolean"
+          },
+          "model": {
+            "type": "object",
+            "properties": {
+              "provider": {
+                "type": "string"
+              },
+              "model": {
+                "type": "string"
+              },
+              "endpoint": {
+                "type": "string"
+              },
+              "execution": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "provider",
+              "model",
+              "endpoint",
+              "execution"
+            ],
+            "additionalProperties": false
+          },
+          "dailyTokenBudget": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100000000
+          },
+          "dailyJobBudget": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000
+          },
+          "chapterId": {
+            "type": "string"
+          },
+          "entityId": {
+            "type": "string"
+          },
+          "assertionId": {
+            "type": "string"
+          },
+          "correctionId": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "claim",
+              "dispute",
+              "separate"
+            ]
+          }
+        },
+        "required": [
+          "baseVersion"
+        ],
+        "additionalProperties": false
+      }
+    }
+  }
+}

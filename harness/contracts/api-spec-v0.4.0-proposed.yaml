@@ -1,0 +1,5678 @@
+openapi: 3.1.0
+info:
+  title: Writer Agent API (proposed contract)
+  version: 0.4.0-proposed
+  summary: Suggested API contract derived from the Writer Agent V0.3 Figma Make prototype.
+  description: >
+    THIS IS A PROPOSED CONTRACT. No backend implements it yet.
+
+    Derived from UI behaviour in `src/` and the specs in `docs/features/*.md`.
+
+    Operations marked `x-design-status: proposed` contain unresolved product ambiguity
+
+    and must be confirmed during development (see docs/implementation/HANDOFF.md#open-questions).
+
+    Operations marked `x-design-status: derived-from-ui` map directly to an implemented prototype interaction.
+
+
+    Conventions
+
+    - Business IDs (WORLD-002, U-001, P-003, R-001) are stable and server-assigned.
+
+    - Mutable resources expose `version` and an `ETag`; writes require `If-Match` (optimistic locking).
+      A mismatch returns 409 `VERSION_CONFLICT` or 412; the server never silently overwrites.
+    - All POST operations that create or mutate accept `Idempotency-Key`.
+
+    - Errors use RFC 9457 Problem Details (`application/problem+json`).
+
+    - `x-required-role` lists the actor roles allowed (author | agent | system). See
+    docs/contracts/permissions.md.
+
+    - Long-running work returns 202 + AgentTask.
+servers:
+  - url: https://api.example.invalid/v1
+    description: Placeholder; deployment undecided (OQ-026)
+security:
+  - bearerAuth: []
+tags:
+  - name: Workspace
+  - name: Chapters
+  - name: Knowledge
+  - name: Relations
+  - name: Sources
+  - name: Issues
+  - name: Reasoning
+  - name: AgentTasks
+  - name: Proposals
+  - name: Audit
+  - name: Author Notes
+    description: Informal author application state, isolated from Harness facts.
+  - name: Evidence Review
+    description: Author-triggered, fixed-revision continuity review. Verified quotes are evidence, not verified AI
+      judgments.
+  - name: Agent Runtime
+    description: Secret-free local worker status for the authenticated author.
+paths:
+  /projects/{projectId}/workspace:
+    get:
+      tags:
+        - Workspace
+      operationId: getWorkspace
+      summary: Read project workspace and restore user state (Journey E)
+      x-feature-ids:
+        - WS-001
+        - WS-010
+        - KB-001
+      x-design-status: derived-from-ui
+      x-required-role:
+        - author
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      responses:
+        "200":
+          description: Workspace snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workspace"
+        "404":
+          $ref: "#/components/responses/NotFound"
+      x-implementation-status: implemented
+    patch:
+      tags:
+        - Workspace
+      operationId: updateWorkspaceState
+      summary: Persist user UI state (layout, theme, last view/chapter, recent entries)
+      x-feature-ids:
+        - WS-004
+        - WS-010
+        - WS-011
+        - KB-010
+      x-design-status: derived-from-ui
+      x-required-role:
+        - author
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserWorkspaceState"
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserWorkspaceState"
+      x-implementation-status: implemented
+  /projects/{projectId}/chapters:
+    get:
+      tags:
+        - Chapters
+      operationId: listChapters
+      summary: Chapter tree grouped by volume, with pending counts
+      x-feature-ids:
+        - WS-001
+      x-design-status: derived-from-ui
+      x-required-role:
+        - author
+        - agent
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      responses:
+        "200":
+          description: Chapters
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - volumes
+                properties:
+                  volumes:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/VolumeWithChapters"
+      x-implementation-status: implemented
+  /projects/{projectId}/chapters/{chapterId}:
+    get:
+      tags:
+        - Chapters
+      operationId: getChapter
+      summary: Chapter with head revision content
+      x-feature-ids:
+        - WS-001
+        - WS-002
+      x-design-status: derived-from-ui
+      x-required-role:
+        - author
+        - agent
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/ChapterId"
+      responses:
+        "200":
+          description: Chapter
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChapterDetail"
+        "404":
+          $ref: "#/components/responses/NotFound"
+      x-implementation-status: implemented
+  /projects/{projectId}/chapters/{chapterId}/revisions:
+    get:
+      tags:
+        - Chapters
+      operationId: listChapterRevisions
+      summary: Revision history of a chapter
+      x-feature-ids:
+        - WS-003
+      x-design-status: proposed
+      x-required-role:
+        - author
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/ChapterId"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Revisions (newest first, without paragraphs)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Page"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/ChapterRevisionSummary"
+      x-implementation-status: implemented
+    post:
+      tags:
+        - Chapters
+      operationId: saveChapterRevision
+      summary: Save manuscript (autosave / Cmd+S). AUTHOR ONLY.
+      description: >
+        Creates an immutable revision based on `baseRevisionId`.
+
+        If the head has moved, returns 409 REVISION_CONFLICT with the head revision; the server never
+        overwrites.
+
+        Identical content (same hash as head) returns 200 with the existing revision (idempotent no-op).
+
+        Agent credentials always receive 403 AGENT_WRITE_FORBIDDEN (INV-01).
+
+        Whether each save produces a Git commit is OQ-015.
+      x-feature-ids:
+        - WS-003
+        - REVIEW-006
+      x-design-status: proposed
+      x-required-role:
+        - author
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/ChapterId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChapterRevisionCreate"
+      responses:
+        "200":
+          description: No-op, content identical to head
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChapterRevisionSummary"
+        "201":
+          description: Revision created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChapterRevisionSummary"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+      x-implementation-status: implemented
+  /projects/{projectId}/knowledge/overview:
+    get:
+      tags:
+        - Knowledge
+      operationId: getKnowledgeOverview
+      summary: Knowledge home cards (recent viewed, recent changes, open issues, pending proposals)
+      x-feature-ids:
+        - KB-001
+        - KB-010
+      x-design-status: derived-from-ui
+      x-required-role:
+        - author
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      responses:
+        "200":
+          description: Overview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnowledgeOverview"
+      x-implementation-status: proposed
+  /projects/{projectId}/knowledge/entries:
+    get:
+      tags:
+        - Knowledge
+      operationId: searchKnowledgeEntries
+      summary: List / search knowledge entries
+      description: Search never creates entries (BR-KB-1). Matches id, title, summary and clause text.
+      x-feature-ids:
+        - KB-002
+        - KB-003
+        - KB-011
+      x-design-status: derived-from-ui
+      x-required-role:
+        - author
+        - agent
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - name: q
+          in: query
+          schema:
+            type: string
+        - name: category
+          in: query
+          schema:
+            $ref: "#/components/schemas/KnowledgeCategory"
+        - name: displayStatus
+          in: query
+          schema:
+            $ref: "#/components/schemas/DisplayStatus"
+        - name: includeDeprecated
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: include
+          in: query
+          description: Set to `relations` for the relation-card view (KB-011)
+          schema:
+            type: string
+            enum:
+              - relations
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Page of entries
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Page"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/KnowledgeEntrySummary"
+      x-implementation-status: proposed
+  /projects/{projectId}/knowledge/entries/{entryId}:
+    get:
+      tags:
+        - Knowledge
+      operationId: getKnowledgeEntry
+      summary: Entry detail with clauses, sources, versions, decisions, impacts, issues
+      x-feature-ids:
+        - KB-004
+        - KB-005
+        - KB-006
+      x-design-status: derived-from-ui
+      x-required-role:
+        - author
+        - agent
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/EntryId"
+      responses:
+        "200":
+          description: Entry
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnowledgeEntryDetail"
+        "404":
+          $ref: "#/components/responses/NotFound"
+      x-implementation-status: proposed
+  /projects/{projectId}/knowledge/entries/{entryId}/versions:
+    get:
+      tags:
+        - Knowledge
+      operationId: listKnowledgeVersions
+      summary: Immutable version history of an entry
+      x-feature-ids:
+        - KB-006
+      x-design-status: derived-from-ui
+      x-required-role:
+        - author
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/EntryId"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Versions
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Page"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/KnowledgeVersion"
+      x-implementation-status: proposed
+  /projects/{projectId}/knowledge/graph:
+    get:
+      tags:
+        - Relations
+      operationId: getRelationGraph
+      summary: One-level relation graph around a center object
+      x-feature-ids:
+        - REL-001
+        - REL-002
+        - REL-003
+        - REL-004
+      x-design-status: derived-from-ui
+      x-required-role:
+        - author
+        - agent
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - name: center
+          in: query
+          required: true
+          schema:
+            type: string
+          example: WORLD-003
+        - name: depth
+          in: query
+          description: Only 1 is supported in P0/P1 (OQ-039)
+          schema:
+            type: integer
+            enum:
+              - 1
+            default: 1
+        - name: kinds
+          in: query
+          style: form
+          explode: false
+          schema:
+            type: array
+            items:
+              $ref: "#/components/schemas/NodeKind"
+        - name: includeProposed
+          in: query
+          description: Include AI-inferred (status=proposed) relations, flagged as such
+          schema:
+            type: boolean
+            default: true
+      responses:
+        "200":
+          description: Graph
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RelationGraph"
+        "404":
+          $ref: "#/components/responses/NotFound"
+      x-implementation-status: proposed
+  /projects/{projectId}/sources/{sourceId}:
+    get:
+      tags:
+        - Sources
+      operationId: resolveSource
+      summary: Resolve a source / evidence locator to original material
+      description: |
+        Returns the excerpt in context (note paragraphs or chapter paragraphs), availability,
+        and whether the stored sourceHash still matches (stale detection, BR-KB-7).
+      x-feature-ids:
+        - KB-005
+        - WS-005
+        - REVIEW-005
+      x-design-status: derived-from-ui
+      x-required-role:
+        - author
+        - agent
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - name: sourceId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Resolved source
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResolvedSource"
+        "404":
+          $ref: "#/components/responses/NotFound"
+      x-implementation-status: proposed
+  /projects/{projectId}/issues:
+    get:
+      tags:
+        - Issues
+      operationId: listIssues
+      summary: Unknowns, conflicts and AI candidates
+      x-feature-ids:
+        - ISSUE-001
+        - ISSUE-002
+        - KB-001
+      x-design-status: derived-from-ui
+      x-required-role:
+        - author
+        - agent
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - name: kind
+          in: query
+          schema:
+            $ref: "#/components/schemas/IssueKind"
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/IssueStatus"
+        - name: scope
+          in: query
+          schema:
+            type: string
+            enum:
+              - book
+              - volume
+              - chapter
+        - name: urgency
+          in: query
+          schema:
+            type: string
+            enum:
+              - high
+              - medium
+              - low
+        - name: related
+          in: query
+          schema:
+            type: string
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Issues and counts per kind (non-resolved)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Page"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/KnowledgeIssue"
+                      countsByKind:
+                        type: object
+                        additionalProperties:
+                          type: integer
+      x-implementation-status: proposed
+    post:
+      tags:
+        - Issues
+      operationId: createIssue
+      summary: Create an issue (agent may create conflict / candidate only)
+      x-feature-ids:
+        - ISSUE-001
+      x-design-status: proposed
+      x-required-role:
+        - author
+        - agent
+        - system
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IssueCreate"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnowledgeIssue"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+      x-implementation-status: proposed
+  /projects/{projectId}/issues/{issueId}/transitions:
+    post:
+      tags:
+        - Issues
+      operationId: transitionIssue
+      summary: Author changes issue status (intentional, defer, reopen, not-a-conflict, convert, dismiss)
+      x-feature-ids:
+        - ISSUE-003
+        - ISSUE-004
+        - ISSUE-005
+        - ISSUE-006
+      x-design-status: derived-from-ui
+      x-required-role:
+        - author
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - name: issueId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/IfMatch"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - action
+              properties:
+                action:
+                  type: string
+                  enum:
+                    - mark_intentional
+                    - unmark_intentional
+                    - defer
+                    - reopen
+                    - judge_not_conflict
+                    - convert_to_proposal
+                    - dismiss
+                    - start_discussion
+                note:
+                  type: string
+                reasoningSessionId:
+                  type: string
+      responses:
+        "200":
+          description: Updated issue (+ created proposal when converting)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  issue:
+                    $ref: "#/components/schemas/KnowledgeIssue"
+                  decision:
+                    $ref: "#/components/schemas/Decision"
+                  proposal:
+                    $ref: "#/components/schemas/Proposal"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+      x-implementation-status: proposed
+  /projects/{projectId}/reasoning/sessions:
+    get:
+      tags:
+        - Reasoning
+      operationId: listReasoningSessions
+      x-feature-ids:
+        - CR-001
+      x-design-status: derived-from-ui
+      x-required-role:
+        - author
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/SessionStatus"
+        - name: related
+          in: query
+          description: Find sessions related to an entry / issue (KB-009, OQ-037)
+          schema:
+            type: string
+        - name: includeArchived
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Sessions
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Page"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/ReasoningSessionSummary"
+      x-implementation-status: proposed
+      summary: List reasoning sessions
+    post:
+      tags:
+        - Reasoning
+      operationId: createReasoningSession
+      x-feature-ids:
+        - CR-001
+        - KB-009
+        - ISSUE-007
+      x-design-status: derived-from-ui
+      x-required-role:
+        - author
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                relatedRefs:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/ObjectRef"
+                sourceIssueId:
+                  type: string
+      responses:
+        "201":
+          description: Created (status=empty, main branch)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReasoningSession"
+      x-implementation-status: proposed
+      summary: Create a reasoning session
+  /projects/{projectId}/reasoning/sessions/{sessionId}:
+    get:
+      tags:
+        - Reasoning
+      operationId: getReasoningSession
+      summary: Session with branches, nodes, hypotheses
+      x-feature-ids:
+        - CR-001
+        - CR-006
+        - CR-013
+      x-design-status: derived-from-ui
+      x-required-role:
+        - author
+        - agent
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: Session
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReasoningSession"
+        "404":
+          $ref: "#/components/responses/NotFound"
+      x-implementation-status: proposed
+    patch:
+      tags:
+        - Reasoning
+      operationId: updateReasoningSession
+      summary: Rename, pause, resume, archive, restore, set hypothesis status
+      x-feature-ids:
+        - CR-008
+        - CR-012
+        - CR-015
+      x-design-status: proposed
+      x-required-role:
+        - author
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/SessionId"
+        - $ref: "#/components/parameters/IfMatch"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                action:
+                  type: string
+                  enum:
+                    - pause
+                    - resume
+                    - archive
+                    - restore
+                hypotheses:
+                  type: object
+                  additionalProperties:
+                    type: string
+                    enum:
+                      - pending_verification
+                      - author_leaning
+                      - shelved
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReasoningSession"
+        "409":
+          $ref: "#/components/responses/Conflict"
+      x-implementation-status: proposed
+  /projects/{projectId}/reasoning/sessions/{sessionId}/branches:
+    post:
+      tags:
+        - Reasoning
+      operationId: createReasoningBranch
+      summary: Fork a new branch from any existing node (never rewrites history)
+      x-feature-ids:
+        - CR-006
+        - CR-005
+      x-design-status: derived-from-ui
+      x-required-role:
+        - author
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/SessionId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - forkNodeId
+              properties:
+                forkNodeId:
+                  type: string
+                name:
+                  type: string
+                fromInterpretationOptionId:
+                  type: string
+                  description: When choosing an interpretation; server returns the existing branch if one already forks from
+                    this node for this option (CR-005)
+      responses:
+        "200":
+          description: Existing branch for this interpretation returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReasoningBranch"
+        "201":
+          description: Branch created (headNodeId = forkNodeId)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReasoningBranch"
+        "404":
+          $ref: "#/components/responses/NotFound"
+      x-implementation-status: proposed
+  /projects/{projectId}/reasoning/sessions/{sessionId}/current-branch:
+    put:
+      tags:
+        - Reasoning
+      operationId: switchReasoningBranch
+      summary: Switch current branch (user state only; nodes unchanged)
+      x-feature-ids:
+        - CR-006
+      x-design-status: derived-from-ui
+      x-required-role:
+        - author
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/SessionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - branchId
+              properties:
+                branchId:
+                  type: string
+      responses:
+        "204":
+          description: Switched
+      x-implementation-status: proposed
+  /projects/{projectId}/reasoning/sessions/{sessionId}/branches/{branchId}/nodes:
+    post:
+      tags:
+        - Reasoning
+      operationId: appendAuthorNode
+      summary: Append an AUTHOR node (claim, response, choice, conclusion) to a branch head
+      description: >
+        Server sets `author` from credentials. Agent credentials get 403 ROLE_NODE_FORBIDDEN (INV-03).
+
+        `expectedHeadNodeId` must equal current head, otherwise 409 VERSION_CONFLICT (no silent append to a
+        moved head).
+
+        Optionally request an agent turn in the same call (`requestAgentTurn`), returning the AgentTask.
+      x-feature-ids:
+        - CR-002
+        - CR-004
+        - CR-005
+        - CR-009
+      x-design-status: derived-from-ui
+      x-required-role:
+        - author
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/SessionId"
+        - name: branchId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthorNodeCreate"
+      responses:
+        "201":
+          description: Node appended (and optional agent task queued)
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - node
+                properties:
+                  node:
+                    $ref: "#/components/schemas/ReasoningNode"
+                  agentTask:
+                    $ref: "#/components/schemas/AgentTask"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+      x-implementation-status: proposed
+  /projects/{projectId}/reasoning/sessions/{sessionId}/agent-turns:
+    post:
+      tags:
+        - Reasoning
+      operationId: requestAgentTurn
+      summary: Ask the agent to respond on a branch (understanding, challenges, focus, interpretations, links, reply)
+      x-feature-ids:
+        - CR-002
+        - CR-003
+        - CR-004
+        - CR-005
+        - CR-007
+      x-design-status: proposed
+      x-required-role:
+        - author
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/SessionId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - branchId
+                - expectedHeadNodeId
+                - intent
+              properties:
+                branchId:
+                  type: string
+                expectedHeadNodeId:
+                  type: string
+                intent:
+                  type: string
+                  enum:
+                    - understand_and_challenge
+                    - focus_challenge
+                    - respond
+                    - link_interpretation
+                challengeCardId:
+                  type: string
+      responses:
+        "202":
+          description: Agent task queued; nodes are appended by the agent service on success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentTask"
+        "409":
+          $ref: "#/components/responses/Conflict"
+      x-implementation-status: proposed
+  /projects/{projectId}/reasoning/sessions/{sessionId}/nodes/{nodeId}/confirm:
+    post:
+      tags:
+        - Reasoning
+      operationId: confirmConclusion
+      summary: Author confirms a tentative conclusion (affects only this node; knowledge unchanged)
+      x-feature-ids:
+        - CR-009
+      x-design-status: derived-from-ui
+      x-required-role:
+        - author
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/SessionId"
+        - name: nodeId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "200":
+          description: Conclusion node now tentative
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReasoningNode"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+      x-implementation-status: proposed
+  /projects/{projectId}/reasoning/sessions/{sessionId}/proposal-drafts:
+    post:
+      tags:
+        - Reasoning
+      operationId: draftProposalFromReasoning
+      summary: Generate a candidate proposal preview from a branch conclusion (not saved)
+      x-feature-ids:
+        - CR-011
+      x-design-status: proposed
+      x-required-role:
+        - author
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/SessionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - branchId
+                - conclusionNodeId
+              properties:
+                branchId:
+                  type: string
+                conclusionNodeId:
+                  type: string
+      responses:
+        "202":
+          description: Draft generation task; result contains a Proposal in status=draft
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentTask"
+      x-implementation-status: proposed
+  /projects/{projectId}/agent-tasks:
+    post:
+      tags:
+        - AgentTasks
+      operationId: createAgentTask
+      summary: Start a long-running agent task (e.g. chapter review)
+      x-feature-ids:
+        - REVIEW-001
+      x-design-status: derived-from-ui
+      x-required-role:
+        - author
+        - system
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - type
+              properties:
+                type:
+                  type: string
+                  enum:
+                    - chapter_review
+                chapterId:
+                  type: string
+                chapterRevisionId:
+                  type: string
+      responses:
+        "202":
+          description: Task accepted (or existing running task for same chapter revision)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentTask"
+        "409":
+          $ref: "#/components/responses/Conflict"
+      x-implementation-status: proposed
+    get:
+      tags:
+        - AgentTasks
+      operationId: listAgentTasks
+      x-feature-ids:
+        - REVIEW-002
+        - WS-010
+      x-design-status: proposed
+      x-required-role:
+        - author
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/AgentTaskStatus"
+        - name: chapterId
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Tasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AgentTask"
+      x-implementation-status: proposed
+      summary: List agent tasks
+  /projects/{projectId}/agent-tasks/{taskId}:
+    get:
+      tags:
+        - AgentTasks
+      operationId: getAgentTask
+      summary: Poll task status (survives server restart)
+      x-feature-ids:
+        - REVIEW-002
+      x-design-status: derived-from-ui
+      x-required-role:
+        - author
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/TaskId"
+      responses:
+        "200":
+          description: Task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentTask"
+        "404":
+          $ref: "#/components/responses/NotFound"
+      x-implementation-status: proposed
+  /projects/{projectId}/agent-tasks/{taskId}/cancel:
+    post:
+      tags:
+        - AgentTasks
+      operationId: cancelAgentTask
+      x-feature-ids:
+        - REVIEW-002
+      x-design-status: derived-from-ui
+      x-required-role:
+        - author
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/TaskId"
+      responses:
+        "200":
+          description: Cancelled (idempotent; late results are discarded)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentTask"
+        "409":
+          $ref: "#/components/responses/Conflict"
+      x-implementation-status: proposed
+      summary: Cancel an agent task
+  /projects/{projectId}/agent-tasks/{taskId}/retry:
+    post:
+      tags:
+        - AgentTasks
+      operationId: retryAgentTask
+      x-feature-ids:
+        - REVIEW-002
+      x-design-status: derived-from-ui
+      x-required-role:
+        - author
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/TaskId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "202":
+          description: New task with retryOf = taskId
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentTask"
+        "409":
+          $ref: "#/components/responses/Conflict"
+      x-implementation-status: proposed
+      summary: Retry an agent task
+  /projects/{projectId}/proposals:
+    get:
+      tags:
+        - Proposals
+      operationId: listProposals
+      x-feature-ids:
+        - PROP-003
+        - REVIEW-003
+        - KB-001
+        - KB-008
+      x-design-status: derived-from-ui
+      x-required-role:
+        - author
+        - agent
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/ProposalStatus"
+        - name: proposalType
+          in: query
+          schema:
+            $ref: "#/components/schemas/ProposalType"
+        - name: severity
+          in: query
+          schema:
+            type: string
+            enum:
+              - fact
+              - suggestion
+              - research
+        - name: origin
+          in: query
+          schema:
+            type: string
+            enum:
+              - review
+              - reasoning
+              - chat
+              - issue
+              - author
+        - name: chapterId
+          in: query
+          schema:
+            type: string
+        - name: target
+          in: query
+          description: Proposals with an item targeting this object id
+          schema:
+            type: string
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Proposals
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Page"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Proposal"
+      x-implementation-status: proposed
+      summary: List proposals
+    post:
+      tags:
+        - Proposals
+      operationId: createProposal
+      summary: Create a candidate proposal (never changes formal knowledge)
+      x-feature-ids:
+        - PROP-001
+        - CR-011
+        - WS-006
+        - ISSUE-005
+      x-design-status: proposed
+      x-required-role:
+        - author
+        - agent
+        - system
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProposalCreate"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Proposal"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+      x-implementation-status: proposed
+  /projects/{projectId}/proposals/{proposalId}:
+    get:
+      tags:
+        - Proposals
+      operationId: getProposal
+      summary: Proposal with items, evidence, impacts and decision history
+      x-feature-ids:
+        - KB-008
+        - PROP-003
+        - PROP-004
+        - PROP-005
+      x-design-status: derived-from-ui
+      x-required-role:
+        - author
+        - agent
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/ProposalId"
+      responses:
+        "200":
+          description: Proposal
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Proposal"
+                  - type: object
+                    properties:
+                      decisions:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Decision"
+        "404":
+          $ref: "#/components/responses/NotFound"
+      x-implementation-status: proposed
+  /projects/{projectId}/proposals/{proposalId}/decisions:
+    post:
+      tags:
+        - Proposals
+      operationId: decideProposal
+      summary: Author decision on a proposal or its items; accepted knowledge items are applied transactionally
+      description: >
+        For manuscript_issue / research_reference: `action` in adopt|reject|defer|note|reopen. Never modifies
+        manuscript.
+
+        For knowledge_change: `itemDecisions[]`; accepted items are applied in one Harness commit
+        (persistence.md §5).
+
+        Stale items (baseVersion mismatch) are reported and NOT applied.
+
+        Agent credentials: 403.
+      x-feature-ids:
+        - PROP-002
+        - PROP-004
+        - PROP-006
+      x-design-status: proposed
+      x-required-role:
+        - author
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/ProposalId"
+        - $ref: "#/components/parameters/IfMatch"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DecisionRequest"
+      responses:
+        "200":
+          description: Decision recorded (and apply result when applicable)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DecisionResult"
+        "202":
+          description: Apply in progress (status=applying); poll the proposal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DecisionResult"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+      x-implementation-status: proposed
+  /projects/{projectId}/decisions:
+    get:
+      tags:
+        - Proposals
+      operationId: listDecisions
+      summary: Decision history across proposals and issues
+      x-feature-ids:
+        - PROP-003
+        - KB-006
+      x-design-status: derived-from-ui
+      x-required-role:
+        - author
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - name: objectId
+          in: query
+          schema:
+            type: string
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Decisions (oldest first)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Page"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Decision"
+      x-implementation-status: proposed
+  /projects/{projectId}/audit:
+    get:
+      tags:
+        - Audit
+      operationId: listAudit
+      x-feature-ids:
+        - PROP-006
+      x-design-status: proposed
+      x-required-role:
+        - author
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - name: objectId
+          in: query
+          schema:
+            type: string
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Audit records
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Page"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/AuditRecord"
+      x-implementation-status: proposed
+      summary: List audit records
+  /projects/{projectId}/notes:
+    get:
+      operationId: listAuthorNotes
+      summary: listAuthorNotes
+      tags:
+        - Author Notes
+      x-implementation-status: implemented
+      x-design-status: engineering-extension
+      x-required-role:
+        - author
+      description: "Author-only, project-scoped application notes. No Harness or canon writes. Server-authenticated
+        author: production bearer token or local development identity."
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Successful author note operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NoteList"
+        "401":
+          description: Request rejected or application storage failed; preserve local input.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: Request rejected or application storage failed; preserve local input.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Request rejected or application storage failed; preserve local input.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "405":
+          description: Request rejected or application storage failed; preserve local input.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: Request rejected or application storage failed; preserve local input.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: Request rejected or application storage failed; preserve local input.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "500":
+          description: Request rejected or application storage failed; preserve local input.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+    post:
+      operationId: createAuthorNote
+      summary: createAuthorNote
+      tags:
+        - Author Notes
+      x-implementation-status: implemented
+      x-design-status: engineering-extension
+      x-required-role:
+        - author
+      description: "Author-only, project-scoped application notes. No Harness or canon writes. Server-authenticated
+        author: production bearer token or local development identity."
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: ^[A-Za-z0-9._:-]{1,128}$
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NoteCreate"
+      responses:
+        "201":
+          description: Successful author note operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthorNote"
+        "401":
+          description: Request rejected or application storage failed; preserve local input.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: Request rejected or application storage failed; preserve local input.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Request rejected or application storage failed; preserve local input.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "405":
+          description: Request rejected or application storage failed; preserve local input.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: Request rejected or application storage failed; preserve local input.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: Request rejected or application storage failed; preserve local input.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "500":
+          description: Request rejected or application storage failed; preserve local input.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /projects/{projectId}/notes/{noteId}:
+    get:
+      operationId: getAuthorNote
+      summary: getAuthorNote
+      tags:
+        - Author Notes
+      x-implementation-status: implemented
+      x-design-status: engineering-extension
+      x-required-role:
+        - author
+      description: "Author-only, project-scoped application notes. No Harness or canon writes. Server-authenticated
+        author: production bearer token or local development identity."
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: noteId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Successful author note operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthorNote"
+        "401":
+          description: Request rejected or application storage failed; preserve local input.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: Request rejected or application storage failed; preserve local input.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Request rejected or application storage failed; preserve local input.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "405":
+          description: Request rejected or application storage failed; preserve local input.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: Request rejected or application storage failed; preserve local input.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: Request rejected or application storage failed; preserve local input.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "500":
+          description: Request rejected or application storage failed; preserve local input.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+    patch:
+      operationId: updateAuthorNote
+      summary: updateAuthorNote
+      tags:
+        - Author Notes
+      x-implementation-status: implemented
+      x-design-status: engineering-extension
+      x-required-role:
+        - author
+      description: "Author-only, project-scoped application notes. No Harness or canon writes. Server-authenticated
+        author: production bearer token or local development identity."
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: noteId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: ^[A-Za-z0-9._:-]{1,128}$
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NoteUpdate"
+      responses:
+        "200":
+          description: Successful author note operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthorNote"
+        "401":
+          description: Request rejected or application storage failed; preserve local input.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: Request rejected or application storage failed; preserve local input.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Request rejected or application storage failed; preserve local input.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "405":
+          description: Request rejected or application storage failed; preserve local input.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: Request rejected or application storage failed; preserve local input.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: Request rejected or application storage failed; preserve local input.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "500":
+          description: Request rejected or application storage failed; preserve local input.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /projects/{projectId}/chapters/{chapterId}/review-preview:
+    post:
+      operationId: previewEvidenceReview
+      summary: previewEvidenceReview
+      tags:
+        - Evidence Review
+      x-implementation-status: implemented
+      x-runtime: go
+      x-required-role:
+        - author
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: chapterId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewPreviewInput"
+      responses:
+        "200":
+          description: Author-scoped evidence review result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewPlan"
+        "401":
+          description: Request refused, unavailable model or application storage failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: Request refused, unavailable model or application storage failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Request refused, unavailable model or application storage failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: Request refused, unavailable model or application storage failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: Request refused, unavailable model or application storage failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "500":
+          description: Request refused, unavailable model or application storage failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: Request refused, unavailable model or application storage failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /projects/{projectId}/chapters/{chapterId}/reviews:
+    get:
+      operationId: listEvidenceReviews
+      summary: listEvidenceReviews
+      tags:
+        - Evidence Review
+      x-implementation-status: implemented
+      x-runtime: go
+      x-required-role:
+        - author
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: chapterId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Author-scoped evidence review result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewList"
+        "401":
+          description: Request refused, unavailable model or application storage failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: Request refused, unavailable model or application storage failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Request refused, unavailable model or application storage failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: Request refused, unavailable model or application storage failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: Request refused, unavailable model or application storage failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "500":
+          description: Request refused, unavailable model or application storage failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: Request refused, unavailable model or application storage failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+    post:
+      operationId: createEvidenceReview
+      summary: createEvidenceReview
+      tags:
+        - Evidence Review
+      x-implementation-status: implemented
+      x-runtime: go
+      x-required-role:
+        - author
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: chapterId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewCreate"
+      responses:
+        "202":
+          description: Author-scoped evidence review result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewRun"
+        "401":
+          description: Request refused, unavailable model or application storage failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: Request refused, unavailable model or application storage failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Request refused, unavailable model or application storage failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: Request refused, unavailable model or application storage failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: Request refused, unavailable model or application storage failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "500":
+          description: Request refused, unavailable model or application storage failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: Request refused, unavailable model or application storage failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /projects/{projectId}/reviews/{runId}:
+    get:
+      operationId: getEvidenceReview
+      summary: getEvidenceReview
+      tags:
+        - Evidence Review
+      x-implementation-status: implemented
+      x-runtime: go
+      x-required-role:
+        - author
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Author-scoped evidence review result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewRun"
+        "401":
+          description: Request refused, unavailable model or application storage failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: Request refused, unavailable model or application storage failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Request refused, unavailable model or application storage failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: Request refused, unavailable model or application storage failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: Request refused, unavailable model or application storage failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "500":
+          description: Request refused, unavailable model or application storage failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: Request refused, unavailable model or application storage failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /projects/{projectId}/reviews/{runId}/cancel:
+    post:
+      operationId: cancelEvidenceReview
+      summary: cancelEvidenceReview
+      tags:
+        - Evidence Review
+      x-implementation-status: implemented
+      x-runtime: go
+      x-required-role:
+        - author
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+      responses:
+        "200":
+          description: Author-scoped evidence review result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewRun"
+        "401":
+          description: Request refused, unavailable model or application storage failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: Request refused, unavailable model or application storage failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Request refused, unavailable model or application storage failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: Request refused, unavailable model or application storage failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: Request refused, unavailable model or application storage failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "500":
+          description: Request refused, unavailable model or application storage failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: Request refused, unavailable model or application storage failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /projects/{projectId}/reviews/{runId}/findings/{findingId}/feedback:
+    post:
+      operationId: feedbackEvidenceReview
+      summary: feedbackEvidenceReview
+      tags:
+        - Evidence Review
+      x-implementation-status: implemented
+      x-runtime: go
+      x-required-role:
+        - author
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: findingId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewFeedbackInput"
+      responses:
+        "200":
+          description: Author-scoped evidence review result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewRun"
+        "401":
+          description: Request refused, unavailable model or application storage failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: Request refused, unavailable model or application storage failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Request refused, unavailable model or application storage failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: Request refused, unavailable model or application storage failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: Request refused, unavailable model or application storage failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "500":
+          description: Request refused, unavailable model or application storage failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: Request refused, unavailable model or application storage failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /agent-runtime:
+    get:
+      operationId: getAgentRuntime
+      x-runtime: go
+      summary: Read Worker health and task counters
+      tags:
+        - Agent Runtime
+      x-implementation-status: implemented
+      responses:
+        "200":
+          description: Worker heartbeat; online is false after five seconds without a heartbeat.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentRuntimeStatus"
+        "401":
+          description: Authentication required
+        "403":
+          description: Author role required
+        "503":
+          description: Worker status unavailable
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: "Production: one configured author authenticated by a 256-bit opaque Bearer token over HTTPS;
+        token never comes from query strings or actor headers. Local development identity is development/test
+        only."
+  headers:
+    ETag:
+      description: Current resource version (optimistic locking)
+      schema:
+        type: string
+  parameters:
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      schema:
+        type: string
+    ChapterId:
+      name: chapterId
+      in: path
+      required: true
+      schema:
+        type: string
+    EntryId:
+      name: entryId
+      in: path
+      required: true
+      schema:
+        type: string
+      example: WORLD-002
+    SessionId:
+      name: sessionId
+      in: path
+      required: true
+      schema:
+        type: string
+      example: R-001
+    TaskId:
+      name: taskId
+      in: path
+      required: true
+      schema:
+        type: string
+    ProposalId:
+      name: proposalId
+      in: path
+      required: true
+      schema:
+        type: string
+      example: P-001
+    Cursor:
+      name: cursor
+      in: query
+      schema:
+        type: string
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      description: ETag / version the client based its change on
+      schema:
+        type: string
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Repeat requests with the same key return the first result
+      schema:
+        type: string
+        maxLength: 128
+  responses:
+    NotFound:
+      description: Not found
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    Forbidden:
+      description: Role not allowed (e.g. AGENT_WRITE_FORBIDDEN, ROLE_NODE_FORBIDDEN, AUTHOR_DECISION_REQUIRED)
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    Conflict:
+      description: VERSION_CONFLICT, REVISION_CONFLICT, INVALID_TRANSITION, TASK_ALREADY_RUNNING
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    PreconditionFailed:
+      description: If-Match missing or stale
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    Unprocessable:
+      description: Validation failed (e.g. UNRESOLVABLE_EVIDENCE, MISSING_CERTAINTY, UNKNOWN_TARGET)
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+  schemas:
+    Problem:
+      type: object
+      required:
+        - type
+        - title
+        - status
+        - code
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+        code:
+          type: string
+          enum:
+            - NOT_FOUND
+            - VERSION_CONFLICT
+            - REVISION_CONFLICT
+            - INVALID_TRANSITION
+            - TASK_ALREADY_RUNNING
+            - AGENT_WRITE_FORBIDDEN
+            - ROLE_NODE_FORBIDDEN
+            - AUTHOR_DECISION_REQUIRED
+            - UNRESOLVABLE_EVIDENCE
+            - MISSING_CERTAINTY
+            - UNKNOWN_TARGET
+            - PRECONDITION_REQUIRED
+            - HARNESS_WRITE_FAILED
+            - VALIDATION_FAILED
+            - AUDIT_WRITE_FAILED
+            - REVIEW_CONTEXT_TOO_LARGE
+            - REVIEW_EMPTY_CHAPTER
+            - REVIEW_REVISION_CHANGED
+            - REVIEW_SOURCE_UNAVAILABLE
+            - REVIEW_UNAVAILABLE
+            - REVIEW_BUSY
+            - REVIEW_CONSENT_REQUIRED
+            - REVIEW_CONTEXT_CHANGED
+            - REVIEW_HISTORY_FULL
+            - REVIEW_NOT_COMPLETED
+            - REVIEW_NOT_RUNNING
+            - REVIEW_VERSION_CONFLICT
+            - REVIEW_STORAGE_FAILED
+            - NOTE_VERSION_CONFLICT
+            - NEXT_WRITING_EXISTS
+            - METHOD_NOT_ALLOWED
+        detail:
+          type: string
+        current:
+          description: Current server-side representation or version, for conflict resolution
+        requestId:
+          type: string
+    Page:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items: {}
+        nextCursor:
+          type:
+            - string
+            - "null"
+        total:
+          type: integer
+    Actor:
+      type: object
+      required:
+        - type
+      properties:
+        type:
+          type: string
+          enum:
+            - author
+            - agent
+            - system
+        id:
+          type: string
+        label:
+          type: string
+          description: "UI label: 作者 / Agent 整理 / 系统复审"
+    ObjectRef:
+      type: object
+      required:
+        - type
+        - id
+      properties:
+        type:
+          type: string
+          enum:
+            - entry
+            - clause
+            - relation
+            - issue
+            - proposal
+            - session
+            - node
+            - chapter
+            - note
+            - source
+        id:
+          type: string
+    Workspace:
+      type: object
+      required:
+        - project
+        - userState
+        - counts
+      properties:
+        project:
+          type: object
+          properties:
+            projectId:
+              type: string
+            title:
+              type: string
+            harnessHeadCommit:
+              type: string
+            projectedFromCommit:
+              type: string
+            demo:
+              type: boolean
+              description: True only for demo seeds; UI shows DemoFlag
+        userState:
+          $ref: "#/components/schemas/UserWorkspaceState"
+        counts:
+          type: object
+          properties:
+            pendingProposals:
+              type: integer
+            openIssues:
+              type: integer
+            runningTasks:
+              type: integer
+            pausedSessions:
+              type: integer
+        runningTasks:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentTask"
+        capabilities:
+          $ref: "#/components/schemas/WorkspaceCapabilities"
+    UserWorkspaceState:
+      type: object
+      properties:
+        lastView:
+          type: string
+          enum:
+            - write
+            - kb
+            - reasoning
+        lastChapterId:
+          type: string
+        layout:
+          type: object
+          properties:
+            leftOpen:
+              type: boolean
+            rightOpen:
+              type: boolean
+            leftW:
+              type: integer
+              minimum: 200
+              maximum: 360
+            rightW:
+              type: integer
+              minimum: 320
+              maximum: 560
+            focus:
+              type: boolean
+        theme:
+          type: string
+          enum:
+            - light
+            - dark
+        kbRecent:
+          type: array
+          maxItems: 6
+          items:
+            type: string
+        activeSessionId:
+          type: string
+        currentBranchBySession:
+          type: object
+          additionalProperties:
+            type: string
+    VolumeWithChapters:
+      type: object
+      properties:
+        volumeId:
+          type: string
+        title:
+          type: string
+        chapters:
+          type: array
+          items:
+            type: object
+            properties:
+              chapterId:
+                type: string
+              title:
+                type: string
+              meta:
+                type: string
+              order:
+                type: integer
+              wordCount:
+                type: integer
+              pendingProposalCount:
+                type: integer
+              needsReview:
+                type: boolean
+    ChapterDetail:
+      type: object
+      required:
+        - chapterId
+        - title
+        - headRevision
+      properties:
+        chapterId:
+          type: string
+        volumeId:
+          type: string
+        title:
+          type: string
+        meta:
+          type: string
+        headRevision:
+          allOf:
+            - $ref: "#/components/schemas/ChapterRevisionSummary"
+            - type: object
+              properties:
+                markdown:
+                  type: string
+                  description: Exact Markdown content; keeps formatting and block structure intact.
+    ChapterRevisionCreate:
+      type: object
+      required:
+        - baseRevisionId
+        - markdown
+      properties:
+        baseRevisionId:
+          type:
+            - string
+            - "null"
+        clientSavedAt:
+          type: string
+          format: date-time
+        trigger:
+          type: string
+          enum:
+            - autosave
+            - manual
+            - chapter_switch
+            - pre_review
+        markdown:
+          type: string
+          maxLength: 2097152
+          description: TipTap Markdown serialization; preserves paragraph, quote, list, hard-break and inline formatting
+            structure.
+    ChapterRevisionSummary:
+      type: object
+      properties:
+        revisionId:
+          type: string
+        parentRevisionId:
+          type:
+            - string
+            - "null"
+        contentHash:
+          type: string
+        wordCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        createdBy:
+          $ref: "#/components/schemas/Actor"
+        commitRef:
+          type:
+            - string
+            - "null"
+    KnowledgeCategory:
+      type: string
+      enum:
+        - intent
+        - world
+        - character
+        - plot
+        - timeline
+        - foreshadow
+        - style
+        - research
+    DisplayStatus:
+      type: string
+      description: Derived UI status (StatusPill). See domain-model.md#knowledge-status-model
+      enum:
+        - confirmed
+        - pending
+        - undetermined
+        - conflict
+        - deprecated
+    Lifecycle:
+      type: string
+      enum:
+        - proposed
+        - confirmed
+        - deprecated
+    NodeKind:
+      type: string
+      enum:
+        - intent
+        - world
+        - character
+        - plot
+        - timeline
+        - foreshadow
+        - style
+        - research
+        - proposal
+        - issue
+        - reasoning
+        - chapter
+    KnowledgeEntrySummary:
+      type: object
+      required:
+        - entryId
+        - title
+        - category
+        - displayStatus
+      properties:
+        entryId:
+          type: string
+        title:
+          type: string
+        category:
+          $ref: "#/components/schemas/KnowledgeCategory"
+        summary:
+          type: string
+        lifecycle:
+          $ref: "#/components/schemas/Lifecycle"
+        displayStatus:
+          $ref: "#/components/schemas/DisplayStatus"
+        unresolvedClauseCount:
+          type: integer
+          description: "UI: 含 N 项未定"
+        updatedAt:
+          type: string
+          format: date-time
+        relations:
+          type: array
+          items:
+            $ref: "#/components/schemas/RelationView"
+    KnowledgeClause:
+      type: object
+      required:
+        - clauseId
+        - section
+        - text
+        - lifecycle
+        - determination
+      properties:
+        clauseId:
+          type: string
+        section:
+          type: string
+          enum:
+            - rule
+            - scope
+            - exception
+            - question
+            - cost
+        order:
+          type: integer
+        text:
+          type: string
+        lifecycle:
+          $ref: "#/components/schemas/Lifecycle"
+        determination:
+          type: string
+          enum:
+            - determined
+            - undetermined
+        intentionalUnknown:
+          type: boolean
+        displayStatus:
+          $ref: "#/components/schemas/DisplayStatus"
+        sourceIds:
+          type: array
+          items:
+            type: string
+    SourceType:
+      type: string
+      enum:
+        - author_statement
+        - manuscript
+        - confirmed_knowledge
+        - ai_inference
+        - external_research
+    Locator:
+      oneOf:
+        - type: object
+          required:
+            - kind
+            - noteId
+            - paragraph
+          properties:
+            kind:
+              const: note_paragraph
+            noteId:
+              type: string
+            paragraph:
+              type: integer
+        - type: object
+          required:
+            - kind
+            - chapterId
+            - paragraph
+            - quote
+          properties:
+            kind:
+              const: chapter_text
+            chapterId:
+              type: string
+            revisionId:
+              type: string
+            paragraph:
+              type: integer
+            quote:
+              type: string
+            charStart:
+              type: integer
+            charEnd:
+              type: integer
+        - type: object
+          required:
+            - kind
+            - entryId
+          properties:
+            kind:
+              const: entry
+            entryId:
+              type: string
+            clauseId:
+              type: string
+        - type: object
+          required:
+            - kind
+            - citation
+          properties:
+            kind:
+              const: external
+            citation:
+              type: string
+            url:
+              type: string
+        - type: object
+          required:
+            - kind
+          properties:
+            kind:
+              const: none
+      discriminator:
+        propertyName: kind
+    EvidenceReference:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      properties:
+        sourceId:
+          type: string
+        quote:
+          type: string
+        verified:
+          type: boolean
+          const: true
+        contentHash:
+          type: string
+          pattern: ^sha256:[a-f0-9]{64}$
+        sourceHash:
+          type: string
+          pattern: ^sha256:[a-f0-9]{64}$
+        startUTF16:
+          anyOf:
+            - type: integer
+              minimum: 0
+              maximum: 9007199254740991
+            - type: "null"
+        endUTF16:
+          anyOf:
+            - type: integer
+              minimum: 0
+              maximum: 9007199254740991
+            - type: "null"
+        ambiguity:
+          type: string
+          enum:
+            - unique
+            - ambiguous
+      required:
+        - sourceId
+        - quote
+        - verified
+        - contentHash
+        - sourceHash
+        - startUTF16
+        - endUTF16
+        - ambiguity
+      additionalProperties: false
+    KnowledgeSource:
+      allOf:
+        - $ref: "#/components/schemas/EvidenceReference"
+        - type: object
+          required:
+            - sourceId
+          properties:
+            recordedAt:
+              type: string
+              format: date-time
+    KnowledgeVersion:
+      type: object
+      properties:
+        versionId:
+          type: string
+        entryId:
+          type: string
+        label:
+          type: string
+          example: v2
+        changeSummary:
+          type: string
+        createdBy:
+          $ref: "#/components/schemas/Actor"
+        proposalId:
+          type:
+            - string
+            - "null"
+        decisionIds:
+          type: array
+          items:
+            type: string
+        commitRef:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    ImpactAssessment:
+      type: object
+      properties:
+        target:
+          $ref: "#/components/schemas/ObjectRef"
+        level:
+          type: string
+          enum:
+            - high
+            - medium
+            - low
+        note:
+          type: string
+        speculative:
+          type: boolean
+    KnowledgeEntryDetail:
+      allOf:
+        - $ref: "#/components/schemas/KnowledgeEntrySummary"
+        - type: object
+          properties:
+            version:
+              type: integer
+            fields:
+              type: array
+              items:
+                type: object
+                properties:
+                  key:
+                    type: string
+                  value:
+                    type: string
+            clauses:
+              type: array
+              items:
+                $ref: "#/components/schemas/KnowledgeClause"
+            sources:
+              type: array
+              items:
+                $ref: "#/components/schemas/KnowledgeSource"
+            versions:
+              type: array
+              items:
+                $ref: "#/components/schemas/KnowledgeVersion"
+            decisions:
+              type: array
+              items:
+                $ref: "#/components/schemas/Decision"
+            impacts:
+              type: array
+              items:
+                $ref: "#/components/schemas/ImpactAssessment"
+            issues:
+              type: array
+              items:
+                $ref: "#/components/schemas/KnowledgeIssue"
+            pendingProposalIds:
+              type: array
+              items:
+                type: string
+            sourcePath:
+              type: string
+            sourceHash:
+              type: string
+    KnowledgeOverview:
+      type: object
+      properties:
+        recentViewed:
+          type: array
+          items:
+            $ref: "#/components/schemas/KnowledgeEntrySummary"
+        recentChanges:
+          type: array
+          items:
+            type: object
+            properties:
+              objectId:
+                type: string
+              at:
+                type: string
+                format: date-time
+              actor:
+                $ref: "#/components/schemas/Actor"
+              note:
+                type: string
+        openIssues:
+          type: array
+          items:
+            $ref: "#/components/schemas/KnowledgeIssue"
+        pendingProposals:
+          type: array
+          items:
+            $ref: "#/components/schemas/Proposal"
+        categoryCounts:
+          type: object
+          additionalProperties:
+            type: integer
+    RelationType:
+      type: string
+      description: Vocabulary pending author confirmation (OQ-018)
+      enum:
+        - refines
+        - involves
+        - depends_on
+        - supports
+        - conflicts_with
+        - manifested_in
+        - planted_in
+        - emblem_of
+        - raises_question
+        - discussed_in
+        - candidate
+    KnowledgeRelation:
+      type: object
+      required:
+        - relationId
+        - from
+        - to
+        - relationType
+        - status
+        - origin
+      properties:
+        relationId:
+          type: string
+        from:
+          $ref: "#/components/schemas/ObjectRef"
+        to:
+          $ref: "#/components/schemas/ObjectRef"
+        relationType:
+          $ref: "#/components/schemas/RelationType"
+        status:
+          type: string
+          enum:
+            - proposed
+            - confirmed
+            - deprecated
+        origin:
+          type: string
+          enum:
+            - author
+            - harness_import
+            - agent_inference
+            - review
+            - reasoning
+        derived:
+          type: boolean
+        note:
+          type: string
+        evidence:
+          type: array
+          items:
+            $ref: "#/components/schemas/EvidenceReference"
+    RelationView:
+      type: object
+      properties:
+        relation:
+          $ref: "#/components/schemas/KnowledgeRelation"
+        other:
+          type: object
+          properties:
+            id:
+              type: string
+            title:
+              type: string
+            kind:
+              $ref: "#/components/schemas/NodeKind"
+            displayStatus:
+              $ref: "#/components/schemas/DisplayStatus"
+        direction:
+          type: string
+          enum:
+            - in
+            - out
+    RelationGraph:
+      type: object
+      properties:
+        center:
+          type: object
+          properties:
+            id:
+              type: string
+            title:
+              type: string
+            kind:
+              $ref: "#/components/schemas/NodeKind"
+            displayStatus:
+              $ref: "#/components/schemas/DisplayStatus"
+        neighbors:
+          type: array
+          description: One entry per neighbor; multiple relations merged
+          items:
+            type: object
+            properties:
+              node:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  title:
+                    type: string
+                  kind:
+                    $ref: "#/components/schemas/NodeKind"
+                  displayStatus:
+                    $ref: "#/components/schemas/DisplayStatus"
+              relations:
+                type: array
+                items:
+                  $ref: "#/components/schemas/KnowledgeRelation"
+              allProposed:
+                type: boolean
+                description: True => dashed AI edge
+              hasConflict:
+                type: boolean
+              direction:
+                type: string
+                enum:
+                  - in
+                  - out
+        countsByKind:
+          type: object
+          additionalProperties:
+            type: integer
+    ResolvedSource:
+      allOf:
+        - $ref: "#/components/schemas/KnowledgeSource"
+        - type: object
+          properties:
+            hashMatches:
+              type: boolean
+            context:
+              description: Note paragraphs or chapter paragraphs around the locator
+              type: object
+              properties:
+                title:
+                  type: string
+                kind:
+                  type: string
+                paragraphs:
+                  type: array
+                  items:
+                    type: string
+                highlightParagraph:
+                  type: integer
+    IssueKind:
+      type: string
+      enum:
+        - unknown
+        - conflict
+        - candidate
+    IssueStatus:
+      type: string
+      enum:
+        - open
+        - intentional
+        - discussing
+        - deferred
+        - resolved
+    KnowledgeIssue:
+      type: object
+      required:
+        - issueId
+        - kind
+        - title
+        - status
+      properties:
+        issueId:
+          type: string
+          example: U-001
+        kind:
+          $ref: "#/components/schemas/IssueKind"
+        title:
+          type: string
+        detail:
+          type: string
+        relatedRefs:
+          type: array
+          items:
+            $ref: "#/components/schemas/ObjectRef"
+        scope:
+          type: string
+          enum:
+            - book
+            - volume
+            - chapter
+        urgency:
+          type: string
+          enum:
+            - high
+            - medium
+            - low
+        status:
+          $ref: "#/components/schemas/IssueStatus"
+        resolution:
+          type:
+            - string
+            - "null"
+          enum:
+            - not_a_conflict
+            - converted
+            - dismissed
+            - fixed_in_manuscript
+            - decided
+            - null
+        sourceType:
+          $ref: "#/components/schemas/SourceType"
+        reasoningSessionIds:
+          type: array
+          items:
+            type: string
+        proposalId:
+          type:
+            - string
+            - "null"
+        createdBy:
+          $ref: "#/components/schemas/Actor"
+        version:
+          type: integer
+    IssueCreate:
+      type: object
+      required:
+        - kind
+        - title
+        - relatedRefs
+      properties:
+        kind:
+          $ref: "#/components/schemas/IssueKind"
+        title:
+          type: string
+        detail:
+          type: string
+        relatedRefs:
+          type: array
+          items:
+            $ref: "#/components/schemas/ObjectRef"
+        scope:
+          type: string
+          enum:
+            - book
+            - volume
+            - chapter
+        urgency:
+          type: string
+          enum:
+            - high
+            - medium
+            - low
+        evidence:
+          type: array
+          items:
+            $ref: "#/components/schemas/EvidenceReference"
+    SessionStatus:
+      type: string
+      enum:
+        - empty
+        - active
+        - pending_author
+        - paused
+        - proposal_saved
+        - archived
+    Certainty:
+      type: string
+      enum:
+        - certain
+        - speculative
+    ReasoningBranch:
+      type: object
+      required:
+        - branchId
+        - name
+        - status
+      properties:
+        branchId:
+          type: string
+        name:
+          type: string
+        forkNodeId:
+          type:
+            - string
+            - "null"
+        headNodeId:
+          type:
+            - string
+            - "null"
+        parentBranchId:
+          type:
+            - string
+            - "null"
+        status:
+          type: string
+          enum:
+            - active
+            - paused
+            - concluded
+        nodeCount:
+          type: integer
+    ReasoningNode:
+      type: object
+      required:
+        - nodeId
+        - sessionId
+        - kind
+        - author
+        - createdAt
+        - payload
+      properties:
+        nodeId:
+          type: string
+        sessionId:
+          type: string
+        parentNodeId:
+          type:
+            - string
+            - "null"
+        branchId:
+          type: string
+        kind:
+          type: string
+          enum:
+            - claim
+            - understanding
+            - challenges
+            - focus
+            - response
+            - interpretations
+            - choice
+            - links
+            - reply
+            - conclusion
+            - proposal_draft
+        author:
+          type: string
+          enum:
+            - author
+            - agent
+            - system
+        createdAt:
+          type: string
+          format: date-time
+        agentTaskId:
+          type:
+            - string
+            - "null"
+        supersedesNodeId:
+          type:
+            - string
+            - "null"
+        state:
+          type:
+            - string
+            - "null"
+          description: Only for conclusion
+          enum:
+            - pending_author
+            - tentative
+            - null
+        payload:
+          type: object
+          description: >
+            Discriminated by kind; mirrors RNode in src/kb/types.ts.
+
+            Agent payload items MUST carry certainty; sourceRef MUST resolve.
+
+            claim/response {text}; understanding {items[{text, certainty, sourceRef?}]};
+
+            challenges {cards[{cardId, tag: logic|counterexample|stance|open, text, followup,
+            suggestedReply?}]};
+
+            focus {cardId, tag, quote, text, suggestedReply?}; interpretations {intro, options[{optionId,
+            title, explain, impact[]}]};
+
+            choice {optionId, title}; links {items[{target: ObjectRef, relation:
+            supports|tension|to_confirm|new_question, note, certainty}], questions[]};
+
+            reply {text, questions[]}; conclusion {text}; proposal_draft {proposalId}
+    AuthorNodeCreate:
+      type: object
+      required:
+        - kind
+        - expectedHeadNodeId
+        - payload
+      properties:
+        kind:
+          type: string
+          enum:
+            - claim
+            - response
+            - choice
+            - conclusion
+        expectedHeadNodeId:
+          type:
+            - string
+            - "null"
+        payload:
+          type: object
+          properties:
+            text:
+              type: string
+            optionId:
+              type: string
+            title:
+              type: string
+            supersedesNodeId:
+              type: string
+              description: Editing a conclusion appends a new node
+        requestAgentTurn:
+          type: boolean
+          default: false
+    ReasoningSessionSummary:
+      type: object
+      properties:
+        sessionId:
+          type: string
+        title:
+          type: string
+        status:
+          $ref: "#/components/schemas/SessionStatus"
+        relatedRefs:
+          type: array
+          items:
+            $ref: "#/components/schemas/ObjectRef"
+        updatedAt:
+          type: string
+          format: date-time
+    ReasoningSession:
+      allOf:
+        - $ref: "#/components/schemas/ReasoningSessionSummary"
+        - type: object
+          properties:
+            version:
+              type: integer
+            currentBranchId:
+              type: string
+            branches:
+              type: array
+              items:
+                $ref: "#/components/schemas/ReasoningBranch"
+            nodes:
+              type: array
+              items:
+                $ref: "#/components/schemas/ReasoningNode"
+            hypotheses:
+              type: object
+              additionalProperties:
+                type: string
+                enum:
+                  - pending_verification
+                  - author_leaning
+                  - shelved
+            savedProposalIds:
+              type: array
+              items:
+                type: string
+            noteSaved:
+              type: boolean
+            runningTask:
+              $ref: "#/components/schemas/AgentTask"
+    AgentTaskStatus:
+      type: string
+      enum:
+        - queued
+        - running
+        - succeeded
+        - failed
+        - cancelled
+    AgentTask:
+      type: object
+      required:
+        - taskId
+        - type
+        - status
+      properties:
+        taskId:
+          type: string
+        type:
+          type: string
+          enum:
+            - chapter_review
+            - reasoning_turn
+            - proposal_draft
+            - impact_analysis
+        status:
+          $ref: "#/components/schemas/AgentTaskStatus"
+        name:
+          type: string
+          example: 连续性审查 · 第 12 章 雨巷
+        progress:
+          type: object
+          properties:
+            step:
+              type: string
+              example: 比对时间线
+            percent:
+              type: number
+              minimum: 0
+              maximum: 100
+        result:
+          type: object
+          properties:
+            summary:
+              type: string
+              example: 新发现 2 项 · 保留 1 项 · 1 项已解决
+            createdProposalIds:
+              type: array
+              items:
+                type: string
+            resolvedProposalIds:
+              type: array
+              items:
+                type: string
+            appendedNodeIds:
+              type: array
+              items:
+                type: string
+            draftProposalId:
+              type: string
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              example: CONTENT_TOO_SHORT
+            message:
+              type: string
+            retryable:
+              type: boolean
+        retryOf:
+          type:
+            - string
+            - "null"
+        createdBy:
+          $ref: "#/components/schemas/Actor"
+        createdAt:
+          type: string
+          format: date-time
+        startedAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        finishedAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+    ProposalType:
+      type: string
+      enum:
+        - manuscript_issue
+        - research_reference
+        - knowledge_change
+        - creative_note
+    ProposalStatus:
+      type: string
+      enum:
+        - draft
+        - pending
+        - adopted
+        - rejected
+        - deferred
+        - noted
+        - resolved
+        - applying
+        - applied
+        - partially_applied
+        - apply_failed
+    ProposalItem:
+      type: object
+      required:
+        - itemId
+        - target
+        - op
+        - after
+        - baseVersion
+      properties:
+        itemId:
+          type: string
+        target:
+          $ref: "#/components/schemas/ObjectRef"
+        op:
+          type: string
+          enum:
+            - create
+            - update
+            - deprecate
+            - set_determination
+            - set_intentional
+        field:
+          type: string
+        before: {}
+        after: {}
+        baseVersion:
+          type: integer
+        baseSourceHash:
+          type: string
+        proposedStatus:
+          $ref: "#/components/schemas/DisplayStatus"
+        decision:
+          type: string
+          enum:
+            - undecided
+            - accepted
+            - rejected
+            - accepted_with_edit
+        editedAfter: {}
+        applyState:
+          type: string
+          enum:
+            - pending
+            - applied
+            - stale
+            - failed
+        requiresReview:
+          type: array
+          items:
+            $ref: "#/components/schemas/ObjectRef"
+    Proposal:
+      type: object
+      required:
+        - proposalId
+        - proposalType
+        - title
+        - status
+        - origin
+      properties:
+        proposalId:
+          type: string
+        proposalType:
+          $ref: "#/components/schemas/ProposalType"
+        severity:
+          type: string
+          enum:
+            - fact
+            - suggestion
+            - research
+        title:
+          type: string
+        summary:
+          type: string
+        origin:
+          type: string
+          enum:
+            - review
+            - reasoning
+            - chat
+            - issue
+            - author
+        originRef:
+          $ref: "#/components/schemas/ObjectRef"
+        ruleKey:
+          type:
+            - string
+            - "null"
+        chapterId:
+          type:
+            - string
+            - "null"
+        anchor:
+          type:
+            - object
+            - "null"
+          properties:
+            revisionId:
+              type: string
+            paragraph:
+              type: integer
+            quote:
+              type: string
+        analysis:
+          type: object
+          properties:
+            facts:
+              type: array
+              items:
+                type: string
+            inferences:
+              type: array
+              items:
+                type: string
+            suggestion:
+              type: string
+        options:
+          type: array
+          description: Describe what the AUTHOR may do. Never contains replacement manuscript text.
+          items:
+            type: object
+            properties:
+              optionId:
+                type: string
+              label:
+                type: string
+              detail:
+                type: string
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProposalItem"
+        evidence:
+          type: array
+          items:
+            $ref: "#/components/schemas/EvidenceReference"
+        impacts:
+          type: array
+          items:
+            $ref: "#/components/schemas/ImpactAssessment"
+        status:
+          $ref: "#/components/schemas/ProposalStatus"
+        chosenOptionId:
+          type:
+            - string
+            - "null"
+        createdBy:
+          $ref: "#/components/schemas/Actor"
+        version:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    ProposalCreate:
+      type: object
+      required:
+        - proposalType
+        - title
+        - origin
+      properties:
+        proposalType:
+          $ref: "#/components/schemas/ProposalType"
+        severity:
+          type: string
+          enum:
+            - fact
+            - suggestion
+            - research
+        title:
+          type: string
+        summary:
+          type: string
+        origin:
+          type: string
+          enum:
+            - review
+            - reasoning
+            - chat
+            - issue
+            - author
+        originRef:
+          $ref: "#/components/schemas/ObjectRef"
+        initialStatus:
+          type: string
+          enum:
+            - draft
+            - pending
+          default: pending
+        analysis:
+          type: object
+          properties:
+            facts:
+              type: array
+              items:
+                type: string
+            inferences:
+              type: array
+              items:
+                type: string
+            suggestion:
+              type: string
+        options:
+          type: array
+          items:
+            type: object
+            properties:
+              label:
+                type: string
+              detail:
+                type: string
+        items:
+          type: array
+          items:
+            type: object
+            required:
+              - target
+              - op
+              - after
+              - baseVersion
+            properties:
+              target:
+                $ref: "#/components/schemas/ObjectRef"
+              op:
+                type: string
+                enum:
+                  - create
+                  - update
+                  - deprecate
+                  - set_determination
+                  - set_intentional
+              field:
+                type: string
+              after: {}
+              baseVersion:
+                type: integer
+        evidence:
+          type: array
+          items:
+            $ref: "#/components/schemas/EvidenceReference"
+    DecisionRequest:
+      type: object
+      properties:
+        action:
+          type: string
+          enum:
+            - save_draft
+            - adopt
+            - reject
+            - defer
+            - note
+            - reopen
+            - apply_items
+        optionId:
+          type: string
+        note:
+          type: string
+        itemDecisions:
+          type: array
+          items:
+            type: object
+            required:
+              - itemId
+              - decision
+            properties:
+              itemId:
+                type: string
+              decision:
+                type: string
+                enum:
+                  - accepted
+                  - rejected
+                  - accepted_with_edit
+                  - undecided
+              editedAfter: {}
+    DecisionResult:
+      type: object
+      properties:
+        proposal:
+          $ref: "#/components/schemas/Proposal"
+        decisions:
+          type: array
+          items:
+            $ref: "#/components/schemas/Decision"
+        apply:
+          type: object
+          properties:
+            appliedItemIds:
+              type: array
+              items:
+                type: string
+            staleItemIds:
+              type: array
+              items:
+                type: string
+            commitRef:
+              type: string
+            newVersions:
+              type: array
+              items:
+                $ref: "#/components/schemas/KnowledgeVersion"
+    Decision:
+      type: object
+      required:
+        - decisionId
+        - action
+        - actor
+        - at
+      properties:
+        decisionId:
+          type: string
+        proposalId:
+          type:
+            - string
+            - "null"
+        itemId:
+          type:
+            - string
+            - "null"
+        issueId:
+          type:
+            - string
+            - "null"
+        action:
+          type: string
+          enum:
+            - create
+            - adopt
+            - reject
+            - defer
+            - note
+            - reopen
+            - accept_item
+            - reject_item
+            - apply
+            - review_resolved
+            - review_reappeared
+            - mark_intentional
+            - unmark_intentional
+            - judge_not_conflict
+            - dismiss
+        optionLabel:
+          type: string
+        actor:
+          $ref: "#/components/schemas/Actor"
+        note:
+          type: string
+        at:
+          type: string
+          format: date-time
+    AuditRecord:
+      type: object
+      properties:
+        auditId:
+          type: string
+        at:
+          type: string
+          format: date-time
+        actor:
+          $ref: "#/components/schemas/Actor"
+        action:
+          type: string
+        objectRef:
+          $ref: "#/components/schemas/ObjectRef"
+        beforeHash:
+          type:
+            - string
+            - "null"
+        afterHash:
+          type:
+            - string
+            - "null"
+        proposalId:
+          type:
+            - string
+            - "null"
+        decisionId:
+          type:
+            - string
+            - "null"
+        commitRef:
+          type:
+            - string
+            - "null"
+        requestId:
+          type: string
+        correlationId:
+          type: string
+          description: Equals requestId for the complete save attempt.
+        result:
+          type: string
+        failureType:
+          type: string
+          enum:
+            - validation
+            - conflict
+            - permission
+            - storage
+            - not_found
+    AuthorNote:
+      type: object
+      properties:
+        noteId:
+          type: string
+          format: uuid
+          pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+        projectId:
+          type: string
+        content:
+          type: string
+        chapterId:
+          type:
+            - string
+            - "null"
+        purpose:
+          type: string
+          enum:
+            - note
+            - next_writing
+        status:
+          type: string
+          enum:
+            - active
+            - archived
+        version:
+          type: integer
+          exclusiveMinimum: 0
+          maximum: 9007199254740991
+        createdAt:
+          type: string
+          format: date-time
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+        updatedAt:
+          type: string
+          format: date-time
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+        createdBy:
+          type: string
+      required:
+        - noteId
+        - projectId
+        - content
+        - chapterId
+        - purpose
+        - status
+        - version
+        - createdAt
+        - updatedAt
+        - createdBy
+      additionalProperties: false
+    NoteCreate:
+      type: object
+      properties:
+        content:
+          type: string
+          minLength: 1
+          maxLength: 20000
+          pattern: \S
+        chapterId:
+          default: null
+          anyOf:
+            - type: string
+              minLength: 1
+              maxLength: 200
+            - type: "null"
+        purpose:
+          default: note
+          type: string
+          enum:
+            - note
+            - next_writing
+      required:
+        - content
+      additionalProperties: false
+    NoteUpdate:
+      type: object
+      properties:
+        content:
+          type: string
+          minLength: 1
+          maxLength: 20000
+          pattern: \S
+        chapterId:
+          default: null
+          anyOf:
+            - type: string
+              minLength: 1
+              maxLength: 200
+            - type: "null"
+        purpose:
+          default: note
+          type: string
+          enum:
+            - note
+            - next_writing
+        baseVersion:
+          type: integer
+          exclusiveMinimum: 0
+          maximum: 9007199254740991
+        status:
+          type: string
+          enum:
+            - active
+            - archived
+      required:
+        - content
+        - baseVersion
+        - status
+      additionalProperties: false
+    NoteList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              noteId:
+                type: string
+                format: uuid
+                pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+              projectId:
+                type: string
+              content:
+                type: string
+              chapterId:
+                type:
+                  - string
+                  - "null"
+              purpose:
+                type: string
+                enum:
+                  - note
+                  - next_writing
+              status:
+                type: string
+                enum:
+                  - active
+                  - archived
+              version:
+                type: integer
+                exclusiveMinimum: 0
+                maximum: 9007199254740991
+              createdAt:
+                type: string
+                format: date-time
+                pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+              updatedAt:
+                type: string
+                format: date-time
+                pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+              createdBy:
+                type: string
+            required:
+              - noteId
+              - projectId
+              - content
+              - chapterId
+              - purpose
+              - status
+              - version
+              - createdAt
+              - updatedAt
+              - createdBy
+            additionalProperties: false
+      required:
+        - items
+      additionalProperties: false
+    WorkspaceCapabilities:
+      type: object
+      properties:
+        notes:
+          type: boolean
+        agentRuntime:
+          type: boolean
+        knowledge:
+          type: boolean
+        annotations:
+          type: boolean
+        canonChanges:
+          type: boolean
+        evidenceReview:
+          type: boolean
+      required:
+        - notes
+        - agentRuntime
+        - knowledge
+        - annotations
+        - canonChanges
+      additionalProperties: false
+    ReviewPreviewInput:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      properties:
+        revisionId:
+          type: string
+          minLength: 1
+          maxLength: 200
+        contentHash:
+          type: string
+          pattern: ^sha256:[a-f0-9]{64}$
+        reviewTypes:
+          minItems: 1
+          maxItems: 2
+          type: array
+          items:
+            type: string
+            enum:
+              - character_consistency
+              - timeline_consistency
+      required:
+        - revisionId
+        - contentHash
+        - reviewTypes
+      additionalProperties: false
+    ReviewCreate:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      properties:
+        revisionId:
+          type: string
+          minLength: 1
+          maxLength: 200
+        contentHash:
+          type: string
+          pattern: ^sha256:[a-f0-9]{64}$
+        reviewTypes:
+          minItems: 1
+          maxItems: 2
+          type: array
+          items:
+            type: string
+            enum:
+              - character_consistency
+              - timeline_consistency
+        consent:
+          type: object
+          properties:
+            confirmed:
+              type: boolean
+              const: true
+            planHash:
+              type: string
+              pattern: ^sha256:[a-f0-9]{64}$
+          required:
+            - confirmed
+            - planHash
+          additionalProperties: false
+      required:
+        - revisionId
+        - contentHash
+        - reviewTypes
+        - consent
+      additionalProperties: false
+    ReviewPlan:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      properties:
+        revisionId:
+          type: string
+          minLength: 1
+          maxLength: 200
+        contentHash:
+          type: string
+          pattern: ^sha256:[a-f0-9]{64}$
+        reviewTypes:
+          minItems: 1
+          maxItems: 2
+          type: array
+          items:
+            type: string
+            enum:
+              - character_consistency
+              - timeline_consistency
+        configFingerprint:
+          type: string
+        strategyVersion:
+          type: string
+          minLength: 1
+        projectId:
+          type: string
+        chapterId:
+          type: string
+        planHash:
+          type: string
+          pattern: ^sha256:[a-f0-9]{64}$
+        model:
+          type: object
+          properties:
+            provider:
+              type: string
+              const: openai-compatible
+            model:
+              type: string
+              minLength: 1
+            endpoint:
+              type: string
+              format: uri
+            execution:
+              type: string
+              enum:
+                - local
+                - external
+          required:
+            - provider
+            - model
+            - endpoint
+            - execution
+          additionalProperties: false
+        sources:
+          minItems: 1
+          type: array
+          items:
+            type: object
+            properties:
+              sourceId:
+                type: string
+              kind:
+                type: string
+                enum:
+                  - target
+                  - historical_chapter
+                  - confirmed_knowledge
+              projectId:
+                type: string
+              chapterId:
+                type:
+                  - string
+                  - "null"
+              documentId:
+                type:
+                  - string
+                  - "null"
+              revisionId:
+                type:
+                  - string
+                  - "null"
+              title:
+                type: string
+              path:
+                type: string
+              contentHash:
+                type: string
+                pattern: ^sha256:[a-f0-9]{64}$
+              sourceHash:
+                type: string
+                pattern: ^sha256:[a-f0-9]{64}$
+              structureHash:
+                type: string
+                pattern: ^sha256:[a-f0-9]{64}$
+              excerptHash:
+                type: string
+                pattern: ^sha256:[a-f0-9]{64}$
+              excerpt:
+                type: string
+              startUTF16:
+                type: integer
+                minimum: 0
+                maximum: 9007199254740991
+              endUTF16:
+                type: integer
+                minimum: 0
+                maximum: 9007199254740991
+              freshness:
+                type: string
+                enum:
+                  - current
+                  - changed
+                  - missing
+            required:
+              - sourceId
+              - kind
+              - projectId
+              - chapterId
+              - documentId
+              - revisionId
+              - title
+              - path
+              - contentHash
+              - sourceHash
+              - excerptHash
+              - excerpt
+              - startUTF16
+              - endUTF16
+              - freshness
+            additionalProperties: false
+        contextBytes:
+          type: integer
+          exclusiveMinimum: 0
+          maximum: 9007199254740991
+        budgetBytes:
+          type: integer
+          exclusiveMinimum: 0
+          maximum: 9007199254740991
+        excludedKnowledgeCount:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        skippedSourceCount:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+      required:
+        - revisionId
+        - contentHash
+        - reviewTypes
+        - strategyVersion
+        - projectId
+        - chapterId
+        - planHash
+        - model
+        - sources
+        - contextBytes
+        - budgetBytes
+        - excludedKnowledgeCount
+        - skippedSourceCount
+      additionalProperties: false
+    ReviewRun:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      properties:
+        revisionId:
+          type: string
+          minLength: 1
+          maxLength: 200
+        contentHash:
+          type: string
+          pattern: ^sha256:[a-f0-9]{64}$
+        reviewTypes:
+          minItems: 1
+          maxItems: 2
+          type: array
+          items:
+            type: string
+            enum:
+              - character_consistency
+              - timeline_consistency
+        configFingerprint:
+          type: string
+        strategyVersion:
+          type: string
+          minLength: 1
+        projectId:
+          type: string
+        chapterId:
+          type: string
+        planHash:
+          type: string
+          pattern: ^sha256:[a-f0-9]{64}$
+        model:
+          type: object
+          properties:
+            provider:
+              type: string
+              const: openai-compatible
+            model:
+              type: string
+              minLength: 1
+            endpoint:
+              type: string
+              format: uri
+            execution:
+              type: string
+              enum:
+                - local
+                - external
+          required:
+            - provider
+            - model
+            - endpoint
+            - execution
+          additionalProperties: false
+        sources:
+          minItems: 1
+          type: array
+          items:
+            type: object
+            properties:
+              sourceId:
+                type: string
+              kind:
+                type: string
+                enum:
+                  - target
+                  - historical_chapter
+                  - confirmed_knowledge
+              projectId:
+                type: string
+              chapterId:
+                type:
+                  - string
+                  - "null"
+              documentId:
+                type:
+                  - string
+                  - "null"
+              revisionId:
+                type:
+                  - string
+                  - "null"
+              title:
+                type: string
+              path:
+                type: string
+              contentHash:
+                type: string
+                pattern: ^sha256:[a-f0-9]{64}$
+              sourceHash:
+                type: string
+                pattern: ^sha256:[a-f0-9]{64}$
+              structureHash:
+                type: string
+                pattern: ^sha256:[a-f0-9]{64}$
+              excerptHash:
+                type: string
+                pattern: ^sha256:[a-f0-9]{64}$
+              excerpt:
+                type: string
+              startUTF16:
+                type: integer
+                minimum: 0
+                maximum: 9007199254740991
+              endUTF16:
+                type: integer
+                minimum: 0
+                maximum: 9007199254740991
+              freshness:
+                type: string
+                enum:
+                  - current
+                  - changed
+                  - missing
+            required:
+              - sourceId
+              - kind
+              - projectId
+              - chapterId
+              - documentId
+              - revisionId
+              - title
+              - path
+              - contentHash
+              - sourceHash
+              - excerptHash
+              - excerpt
+              - startUTF16
+              - endUTF16
+              - freshness
+            additionalProperties: false
+        contextBytes:
+          type: integer
+          exclusiveMinimum: 0
+          maximum: 9007199254740991
+        budgetBytes:
+          type: integer
+          exclusiveMinimum: 0
+          maximum: 9007199254740991
+        excludedKnowledgeCount:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        skippedSourceCount:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        runId:
+          type: string
+          format: uuid
+          pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+        createdBy:
+          type: string
+        version:
+          type: integer
+          exclusiveMinimum: 0
+          maximum: 9007199254740991
+        status:
+          type: string
+          enum:
+            - queued
+            - running
+            - completed
+            - failed
+            - cancelled
+        startedAt:
+          type: string
+          format: date-time
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+        completedAt:
+          anyOf:
+            - type: string
+              format: date-time
+              pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+            - type: "null"
+        deadlineAt:
+          type: string
+          format: date-time
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+        findings:
+          type: array
+          items:
+            type: object
+            properties:
+              findingId:
+                type: string
+                format: uuid
+                pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+              type:
+                type: string
+                enum:
+                  - character_consistency
+                  - timeline_consistency
+              title:
+                type: string
+              inference:
+                type: string
+              question:
+                type: string
+              alternativeExplanation:
+                type: string
+              evidence:
+                minItems: 2
+                type: array
+                items:
+                  type: object
+                  properties:
+                    sourceId:
+                      type: string
+                    quote:
+                      type: string
+                    verified:
+                      type: boolean
+                      const: true
+                    contentHash:
+                      type: string
+                      pattern: ^sha256:[a-f0-9]{64}$
+                    sourceHash:
+                      type: string
+                      pattern: ^sha256:[a-f0-9]{64}$
+                    startUTF16:
+                      anyOf:
+                        - type: integer
+                          minimum: 0
+                          maximum: 9007199254740991
+                        - type: "null"
+                    endUTF16:
+                      anyOf:
+                        - type: integer
+                          minimum: 0
+                          maximum: 9007199254740991
+                        - type: "null"
+                    ambiguity:
+                      type: string
+                      enum:
+                        - unique
+                        - ambiguous
+                  required:
+                    - sourceId
+                    - quote
+                    - verified
+                    - contentHash
+                    - sourceHash
+                    - startUTF16
+                    - endUTF16
+                    - ambiguity
+                  additionalProperties: false
+              anchor:
+                type: object
+                properties:
+                  revisionId:
+                    type: string
+                  contentHash:
+                    type: string
+                    pattern: ^sha256:[a-f0-9]{64}$
+                  quote:
+                    type: string
+                  offsetEncoding:
+                    type: string
+                    const: utf16
+                  status:
+                    type: string
+                    enum:
+                      - unique
+                      - ambiguous
+                  startUTF16:
+                    anyOf:
+                      - type: integer
+                        minimum: 0
+                        maximum: 9007199254740991
+                      - type: "null"
+                  endUTF16:
+                    anyOf:
+                      - type: integer
+                        minimum: 0
+                        maximum: 9007199254740991
+                      - type: "null"
+                required:
+                  - revisionId
+                  - contentHash
+                  - quote
+                  - offsetEncoding
+                  - status
+                  - startUTF16
+                  - endUTF16
+                additionalProperties: false
+              feedback:
+                anyOf:
+                  - type: object
+                    properties:
+                      findingId:
+                        type: string
+                        format: uuid
+                        pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+                      choice:
+                        type: string
+                        enum:
+                          - useful
+                          - false_positive
+                          - intentional
+                          - ignored
+                      authorId:
+                        type: string
+                      createdAt:
+                        type: string
+                        format: date-time
+                        pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+                      version:
+                        type: integer
+                        exclusiveMinimum: 0
+                        maximum: 9007199254740991
+                    required:
+                      - findingId
+                      - choice
+                      - authorId
+                      - createdAt
+                      - version
+                    additionalProperties: false
+                  - type: "null"
+            required:
+              - findingId
+              - type
+              - title
+              - inference
+              - question
+              - alternativeExplanation
+              - evidence
+              - anchor
+              - feedback
+            additionalProperties: false
+        rejectedCount:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        rejectionReasons:
+          type: array
+          items:
+            type: string
+        failureCode:
+          type:
+            - string
+            - "null"
+        stale:
+          type: boolean
+        staleReasons:
+          type: array
+          items:
+            type: string
+        usage:
+          anyOf:
+            - type: object
+              properties:
+                inputTokens:
+                  type: integer
+                  minimum: 0
+                  maximum: 9007199254740991
+                outputTokens:
+                  type: integer
+                  minimum: 0
+                  maximum: 9007199254740991
+              required:
+                - inputTokens
+                - outputTokens
+              additionalProperties: false
+            - type: "null"
+      required:
+        - revisionId
+        - contentHash
+        - reviewTypes
+        - strategyVersion
+        - projectId
+        - chapterId
+        - planHash
+        - model
+        - sources
+        - contextBytes
+        - budgetBytes
+        - excludedKnowledgeCount
+        - skippedSourceCount
+        - runId
+        - createdBy
+        - version
+        - status
+        - startedAt
+        - completedAt
+        - deadlineAt
+        - findings
+        - rejectedCount
+        - rejectionReasons
+        - failureCode
+        - stale
+        - staleReasons
+        - usage
+      additionalProperties: false
+    ReviewFeedbackInput:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      properties:
+        choice:
+          type: string
+          enum:
+            - useful
+            - false_positive
+            - intentional
+            - ignored
+        baseVersion:
+          type: integer
+          exclusiveMinimum: 0
+          maximum: 9007199254740991
+      required:
+        - choice
+        - baseVersion
+      additionalProperties: false
+    ReviewFeedback:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      properties:
+        findingId:
+          type: string
+          format: uuid
+          pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+        choice:
+          type: string
+          enum:
+            - useful
+            - false_positive
+            - intentional
+            - ignored
+        authorId:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+        version:
+          type: integer
+          exclusiveMinimum: 0
+          maximum: 9007199254740991
+      required:
+        - findingId
+        - choice
+        - authorId
+        - createdAt
+        - version
+      additionalProperties: false
+    ReviewFinding:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      properties:
+        findingId:
+          type: string
+          format: uuid
+          pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+        type:
+          type: string
+          enum:
+            - character_consistency
+            - timeline_consistency
+        title:
+          type: string
+        inference:
+          type: string
+        question:
+          type: string
+        alternativeExplanation:
+          type: string
+        evidence:
+          minItems: 2
+          type: array
+          items:
+            type: object
+            properties:
+              sourceId:
+                type: string
+              quote:
+                type: string
+              verified:
+                type: boolean
+                const: true
+              contentHash:
+                type: string
+                pattern: ^sha256:[a-f0-9]{64}$
+              sourceHash:
+                type: string
+                pattern: ^sha256:[a-f0-9]{64}$
+              startUTF16:
+                anyOf:
+                  - type: integer
+                    minimum: 0
+                    maximum: 9007199254740991
+                  - type: "null"
+              endUTF16:
+                anyOf:
+                  - type: integer
+                    minimum: 0
+                    maximum: 9007199254740991
+                  - type: "null"
+              ambiguity:
+                type: string
+                enum:
+                  - unique
+                  - ambiguous
+            required:
+              - sourceId
+              - quote
+              - verified
+              - contentHash
+              - sourceHash
+              - startUTF16
+              - endUTF16
+              - ambiguity
+            additionalProperties: false
+        anchor:
+          type: object
+          properties:
+            revisionId:
+              type: string
+            contentHash:
+              type: string
+              pattern: ^sha256:[a-f0-9]{64}$
+            quote:
+              type: string
+            offsetEncoding:
+              type: string
+              const: utf16
+            status:
+              type: string
+              enum:
+                - unique
+                - ambiguous
+            startUTF16:
+              anyOf:
+                - type: integer
+                  minimum: 0
+                  maximum: 9007199254740991
+                - type: "null"
+            endUTF16:
+              anyOf:
+                - type: integer
+                  minimum: 0
+                  maximum: 9007199254740991
+                - type: "null"
+          required:
+            - revisionId
+            - contentHash
+            - quote
+            - offsetEncoding
+            - status
+            - startUTF16
+            - endUTF16
+          additionalProperties: false
+        feedback:
+          anyOf:
+            - type: object
+              properties:
+                findingId:
+                  type: string
+                  format: uuid
+                  pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+                choice:
+                  type: string
+                  enum:
+                    - useful
+                    - false_positive
+                    - intentional
+                    - ignored
+                authorId:
+                  type: string
+                createdAt:
+                  type: string
+                  format: date-time
+                  pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+                version:
+                  type: integer
+                  exclusiveMinimum: 0
+                  maximum: 9007199254740991
+              required:
+                - findingId
+                - choice
+                - authorId
+                - createdAt
+                - version
+              additionalProperties: false
+            - type: "null"
+      required:
+        - findingId
+        - type
+        - title
+        - inference
+        - question
+        - alternativeExplanation
+        - evidence
+        - anchor
+        - feedback
+      additionalProperties: false
+    TextAnchor:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      properties:
+        revisionId:
+          type: string
+        contentHash:
+          type: string
+          pattern: ^sha256:[a-f0-9]{64}$
+        quote:
+          type: string
+        offsetEncoding:
+          type: string
+          const: utf16
+        status:
+          type: string
+          enum:
+            - unique
+            - ambiguous
+        startUTF16:
+          anyOf:
+            - type: integer
+              minimum: 0
+              maximum: 9007199254740991
+            - type: "null"
+        endUTF16:
+          anyOf:
+            - type: integer
+              minimum: 0
+              maximum: 9007199254740991
+            - type: "null"
+      required:
+        - revisionId
+        - contentHash
+        - quote
+        - offsetEncoding
+        - status
+        - startUTF16
+        - endUTF16
+      additionalProperties: false
+    ReviewList:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              revisionId:
+                type: string
+                minLength: 1
+                maxLength: 200
+              contentHash:
+                type: string
+                pattern: ^sha256:[a-f0-9]{64}$
+              reviewTypes:
+                minItems: 1
+                maxItems: 2
+                type: array
+                items:
+                  type: string
+                  enum:
+                    - character_consistency
+                    - timeline_consistency
+              configFingerprint:
+                type: string
+              strategyVersion:
+                type: string
+                minLength: 1
+              projectId:
+                type: string
+              chapterId:
+                type: string
+              planHash:
+                type: string
+                pattern: ^sha256:[a-f0-9]{64}$
+              model:
+                type: object
+                properties:
+                  provider:
+                    type: string
+                    const: openai-compatible
+                  model:
+                    type: string
+                    minLength: 1
+                  endpoint:
+                    type: string
+                    format: uri
+                  execution:
+                    type: string
+                    enum:
+                      - local
+                      - external
+                required:
+                  - provider
+                  - model
+                  - endpoint
+                  - execution
+                additionalProperties: false
+              sources:
+                minItems: 1
+                type: array
+                items:
+                  type: object
+                  properties:
+                    sourceId:
+                      type: string
+                    kind:
+                      type: string
+                      enum:
+                        - target
+                        - historical_chapter
+                        - confirmed_knowledge
+                    projectId:
+                      type: string
+                    chapterId:
+                      type:
+                        - string
+                        - "null"
+                    documentId:
+                      type:
+                        - string
+                        - "null"
+                    revisionId:
+                      type:
+                        - string
+                        - "null"
+                    title:
+                      type: string
+                    path:
+                      type: string
+                    contentHash:
+                      type: string
+                      pattern: ^sha256:[a-f0-9]{64}$
+                    sourceHash:
+                      type: string
+                      pattern: ^sha256:[a-f0-9]{64}$
+                    structureHash:
+                      type: string
+                      pattern: ^sha256:[a-f0-9]{64}$
+                    excerptHash:
+                      type: string
+                      pattern: ^sha256:[a-f0-9]{64}$
+                    excerpt:
+                      type: string
+                    startUTF16:
+                      type: integer
+                      minimum: 0
+                      maximum: 9007199254740991
+                    endUTF16:
+                      type: integer
+                      minimum: 0
+                      maximum: 9007199254740991
+                    freshness:
+                      type: string
+                      enum:
+                        - current
+                        - changed
+                        - missing
+                  required:
+                    - sourceId
+                    - kind
+                    - projectId
+                    - chapterId
+                    - documentId
+                    - revisionId
+                    - title
+                    - path
+                    - contentHash
+                    - sourceHash
+                    - excerptHash
+                    - excerpt
+                    - startUTF16
+                    - endUTF16
+                    - freshness
+                  additionalProperties: false
+              contextBytes:
+                type: integer
+                exclusiveMinimum: 0
+                maximum: 9007199254740991
+              budgetBytes:
+                type: integer
+                exclusiveMinimum: 0
+                maximum: 9007199254740991
+              excludedKnowledgeCount:
+                type: integer
+                minimum: 0
+                maximum: 9007199254740991
+              skippedSourceCount:
+                type: integer
+                minimum: 0
+                maximum: 9007199254740991
+              runId:
+                type: string
+                format: uuid
+                pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+              createdBy:
+                type: string
+              version:
+                type: integer
+                exclusiveMinimum: 0
+                maximum: 9007199254740991
+              status:
+                type: string
+                enum:
+                  - queued
+                  - running
+                  - completed
+                  - failed
+                  - cancelled
+              startedAt:
+                type: string
+                format: date-time
+                pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+              completedAt:
+                anyOf:
+                  - type: string
+                    format: date-time
+                    pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+                  - type: "null"
+              deadlineAt:
+                type: string
+                format: date-time
+                pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+              findings:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    findingId:
+                      type: string
+                      format: uuid
+                      pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+                    type:
+                      type: string
+                      enum:
+                        - character_consistency
+                        - timeline_consistency
+                    title:
+                      type: string
+                    inference:
+                      type: string
+                    question:
+                      type: string
+                    alternativeExplanation:
+                      type: string
+                    evidence:
+                      minItems: 2
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          sourceId:
+                            type: string
+                          quote:
+                            type: string
+                          verified:
+                            type: boolean
+                            const: true
+                          contentHash:
+                            type: string
+                            pattern: ^sha256:[a-f0-9]{64}$
+                          sourceHash:
+                            type: string
+                            pattern: ^sha256:[a-f0-9]{64}$
+                          startUTF16:
+                            anyOf:
+                              - type: integer
+                                minimum: 0
+                                maximum: 9007199254740991
+                              - type: "null"
+                          endUTF16:
+                            anyOf:
+                              - type: integer
+                                minimum: 0
+                                maximum: 9007199254740991
+                              - type: "null"
+                          ambiguity:
+                            type: string
+                            enum:
+                              - unique
+                              - ambiguous
+                        required:
+                          - sourceId
+                          - quote
+                          - verified
+                          - contentHash
+                          - sourceHash
+                          - startUTF16
+                          - endUTF16
+                          - ambiguity
+                        additionalProperties: false
+                    anchor:
+                      type: object
+                      properties:
+                        revisionId:
+                          type: string
+                        contentHash:
+                          type: string
+                          pattern: ^sha256:[a-f0-9]{64}$
+                        quote:
+                          type: string
+                        offsetEncoding:
+                          type: string
+                          const: utf16
+                        status:
+                          type: string
+                          enum:
+                            - unique
+                            - ambiguous
+                        startUTF16:
+                          anyOf:
+                            - type: integer
+                              minimum: 0
+                              maximum: 9007199254740991
+                            - type: "null"
+                        endUTF16:
+                          anyOf:
+                            - type: integer
+                              minimum: 0
+                              maximum: 9007199254740991
+                            - type: "null"
+                      required:
+                        - revisionId
+                        - contentHash
+                        - quote
+                        - offsetEncoding
+                        - status
+                        - startUTF16
+                        - endUTF16
+                      additionalProperties: false
+                    feedback:
+                      anyOf:
+                        - type: object
+                          properties:
+                            findingId:
+                              type: string
+                              format: uuid
+                              pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+                            choice:
+                              type: string
+                              enum:
+                                - useful
+                                - false_positive
+                                - intentional
+                                - ignored
+                            authorId:
+                              type: string
+                            createdAt:
+                              type: string
+                              format: date-time
+                              pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+                            version:
+                              type: integer
+                              exclusiveMinimum: 0
+                              maximum: 9007199254740991
+                          required:
+                            - findingId
+                            - choice
+                            - authorId
+                            - createdAt
+                            - version
+                          additionalProperties: false
+                        - type: "null"
+                  required:
+                    - findingId
+                    - type
+                    - title
+                    - inference
+                    - question
+                    - alternativeExplanation
+                    - evidence
+                    - anchor
+                    - feedback
+                  additionalProperties: false
+              rejectedCount:
+                type: integer
+                minimum: 0
+                maximum: 9007199254740991
+              rejectionReasons:
+                type: array
+                items:
+                  type: string
+              failureCode:
+                type:
+                  - string
+                  - "null"
+              stale:
+                type: boolean
+              staleReasons:
+                type: array
+                items:
+                  type: string
+              usage:
+                anyOf:
+                  - type: object
+                    properties:
+                      inputTokens:
+                        type: integer
+                        minimum: 0
+                        maximum: 9007199254740991
+                      outputTokens:
+                        type: integer
+                        minimum: 0
+                        maximum: 9007199254740991
+                    required:
+                      - inputTokens
+                      - outputTokens
+                    additionalProperties: false
+                  - type: "null"
+            required:
+              - revisionId
+              - contentHash
+              - reviewTypes
+              - strategyVersion
+              - projectId
+              - chapterId
+              - planHash
+              - model
+              - sources
+              - contextBytes
+              - budgetBytes
+              - excludedKnowledgeCount
+              - skippedSourceCount
+              - runId
+              - createdBy
+              - version
+              - status
+              - startedAt
+              - completedAt
+              - deadlineAt
+              - findings
+              - rejectedCount
+              - rejectionReasons
+              - failureCode
+              - stale
+              - staleReasons
+              - usage
+            additionalProperties: false
+      required:
+        - items
+      additionalProperties: false
+    ReviewCandidate:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      properties:
+        findings:
+          maxItems: 20
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                enum:
+                  - character_consistency
+                  - timeline_consistency
+              title:
+                type: string
+                minLength: 1
+                maxLength: 120
+              inference:
+                type: string
+                minLength: 1
+                maxLength: 2000
+              question:
+                type: string
+                minLength: 1
+                maxLength: 1000
+              alternativeExplanation:
+                type: string
+                minLength: 1
+                maxLength: 1000
+              evidence:
+                minItems: 2
+                maxItems: 4
+                type: array
+                items:
+                  type: object
+                  properties:
+                    sourceId:
+                      type: string
+                      minLength: 1
+                      maxLength: 200
+                    quote:
+                      type: string
+                      minLength: 1
+                      maxLength: 600
+                  required:
+                    - sourceId
+                    - quote
+                  additionalProperties: false
+            required:
+              - type
+              - title
+              - inference
+              - question
+              - alternativeExplanation
+              - evidence
+            additionalProperties: false
+      required:
+        - findings
+      additionalProperties: false
+    AgentRuntimeStatus:
+      type: object
+      required:
+        - protocol
+        - version
+        - instance
+        - at
+        - online
+        - compatible
+        - model
+        - configFingerprint
+        - active
+        - tasks
+        - executors
+      properties:
+        protocol: &a2
+          type: string
+        version: &a3
+          type: string
+        instance: &a4
+          type: string
+        at: &a5
+          type: string
+        online: &a6
+          type: boolean
+        compatible: &a7
+          type: boolean
+        model: &a8
+          type: object
+          additionalProperties:
+            type: string
+        configFingerprint: &a9
+          type: string
+          description: Public configuration only; excludes the provider credential.
+        active: &a10
+          type: integer
+          minimum: 0
+        lastSuccessAt: &a11
+          type: string
+        tasks: &a1
+          type: object
+          additionalProperties: false
+          required:
+            - pending
+            - running
+            - completed
+            - failed
+            - cancelled
+            - retried
+            - interrupted
+          properties:
+            pending:
+              type: integer
+              minimum: 0
+            running:
+              type: integer
+              minimum: 0
+            completed:
+              type: integer
+              minimum: 0
+            failed:
+              type: integer
+              minimum: 0
+            cancelled:
+              type: integer
+              minimum: 0
+            retried:
+              type: integer
+              minimum: 0
+            interrupted:
+              type: integer
+              minimum: 0
+        successByKind: &a12
+          type: object
+          additionalProperties:
+            type: string
+        byKind: &a13
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/AgentRuntimeCounts"
+        executors:
+          type: object
+          additionalProperties: false
+          required:
+            - review
+            - knowledge
+          properties:
+            review:
+              $ref: "#/components/schemas/AgentExecutorStatus"
+            knowledge:
+              $ref: "#/components/schemas/AgentExecutorStatus"
+      additionalProperties: false
+    AgentRuntimeCounts: *a1
+    AgentExecutorStatus:
+      type: object
+      required:
+        - protocol
+        - version
+        - instance
+        - at
+        - online
+        - compatible
+        - model
+        - configFingerprint
+        - active
+        - tasks
+        - executorKind
+        - executorOwner
+        - executorEpoch
+        - ready
+        - draining
+      properties:
+        protocol: *a2
+        version: *a3
+        instance: *a4
+        at: *a5
+        online: *a6
+        compatible: *a7
+        model: *a8
+        configFingerprint: *a9
+        active: *a10
+        lastSuccessAt: *a11
+        tasks: *a1
+        successByKind: *a12
+        byKind: *a13
+        executorKind:
+          type: string
+          enum:
+            - review
+            - knowledge
+        executorOwner:
+          type: string
+          enum:
+            - go
+            - pi
+            - disabled
+            - ""
+        executorEpoch:
+          type: integer
+          minimum: 0
+        ready:
+          type: boolean
+        draining:
+          type: boolean
+      additionalProperties: false
+x-source-provenance:
+  file: Figma Make docs/contracts/api-spec.yaml
+  fileKey: kWBOdcae5utBZ6VtBHHXui
+  retrievedAt: 2026-10-14
+  note: The Figma MCP resource response was truncated; the complete source copy was supplied in the author reply
+    in this task and preserved under harness/contracts/source/.
+x-notes-extension-provenance: "2026-10-14 author task: minimum persistent notes. VNext local export supplied
+  by author; Figma API YAML is semantically unchanged. Engineering extension, not a Figma API source copy."
+x-review-extension-provenance: "Sprint 3 author request: fixed revisions, explicit model consent, verified
+  evidence, author feedback; independent engineering extension, not a Figma source rewrite."
