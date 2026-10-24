@@ -20,6 +20,7 @@ describe('Writer Agent studio', () => {
   beforeEach(() => {
     cleanup()
     localStorage.clear()
+    sessionStorage.clear()
     window.history.replaceState(null, '', '/')
   })
 

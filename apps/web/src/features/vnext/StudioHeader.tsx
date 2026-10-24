@@ -52,7 +52,8 @@ export default function StudioHeader({
             </span>
           )}
         </div>
-        {!layout.focus && (
+        {/* Focus only applies to the manuscript; other spaces keep their navigation. */}
+        {!(layout.focus && view === 'read') && (
           <div className="chrome mx-auto md:absolute md:left-1/2 md:mx-0 md:-translate-x-1/2">
             <Seg
               label="主导航"

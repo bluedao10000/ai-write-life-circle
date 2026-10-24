@@ -23,21 +23,27 @@ export const storyNames = [
   "compare_plan_with_manuscript",
   "request_turn_organize",
 ] as const;
-// Creative tools read author-owned assets. request_turn_organize only queues
-// organizing of the current turn into proposals; no tool writes assets.
+// Creative tools read author-owned assets; request_turn_organize only queues
+// organizing into proposals. No tool writes assets. They are registered only
+// for sessions granted the "creative" scope, with narrow argument schemas to
+// keep every paid request small.
+const creativeNames = new Set<string>([
+  "list_creative_assets",
+  "get_creative_asset",
+  "list_creative_proposals",
+  "list_open_questions",
+  "get_writing_context",
+  "compare_plan_with_manuscript",
+  "request_turn_organize",
+]);
 const descriptions: Partial<Record<(typeof storyNames)[number], string>> = {
-  list_creative_assets:
-    "List the author's creative assets (characters, world rules, plans, foreshadowing, open questions). Optional kind and query. accepted = author-confirmed; draft = author draft. Plans are intentions, not manuscript facts.",
-  get_creative_asset: "Read one creative asset by assetId with its links.",
-  list_creative_proposals:
-    "List UNCONFIRMED AI proposals awaiting author review. Never treat them as canon; label them as possibilities.",
-  list_open_questions: "List the author's undecided questions and pending question proposals.",
-  get_writing_context:
-    "For chapterId, return author-confirmed plans, characters, rules and payoffs relevant to that chapter.",
-  compare_plan_with_manuscript:
-    "For chapterId, return accepted plans next to AI manuscript observations and recorded divergences. A difference is a question for the author, not an error.",
-  request_turn_organize:
-    "Queue organizing of the current discussion turn into reviewable proposals after this reply. Use only when the author asks to record or organize ideas. Nothing becomes canon automatically.",
+  list_creative_assets: "Author's creative assets (optional kind, query). accepted=confirmed, draft=draft; plans are intentions.",
+  get_creative_asset: "One creative asset by assetId, with links.",
+  list_creative_proposals: "UNCONFIRMED AI proposals awaiting review; never canon.",
+  list_open_questions: "Author's undecided questions.",
+  get_writing_context: "Confirmed plans, characters and rules for chapterId.",
+  compare_plan_with_manuscript: "Plans for chapterId beside AI manuscript observations; differences are questions, not errors.",
+  request_turn_organize: "Queue organizing this turn into proposals for author review. Only when the author asks.",
 };
 export async function authorize(
   config: Config,
@@ -60,7 +66,16 @@ export function tools(
   signal: AbortSignal,
   onSources: (v: ThinkingSource[]) => void,
   onCall: () => void,
+  scopes: readonly string[] = [],
 ): ToolDefinition[] {
+  const id128 = Type.String({ maxLength: 128 });
+  const narrow: Record<string, ReturnType<typeof Type.Object>> = {
+    list_creative_assets: Type.Object({ query: Type.Optional(Type.String({ maxLength: 256 })), kind: Type.Optional(Type.String({ maxLength: 40 })) }, { additionalProperties: false }),
+    get_creative_asset: Type.Object({ assetId: id128 }, { additionalProperties: false }),
+    get_writing_context: Type.Object({ chapterId: id128 }, { additionalProperties: false }),
+    compare_plan_with_manuscript: Type.Object({ chapterId: id128 }, { additionalProperties: false }),
+  };
+  const empty = Type.Object({}, { additionalProperties: false });
   const parameters = Type.Object(
     {
       quote: Type.Optional(Type.String({ maxLength: 4000 })),
@@ -69,13 +84,12 @@ export function tools(
       revisionId: Type.Optional(Type.String({ maxLength: 128 })),
       entityId: Type.Optional(Type.String({ maxLength: 128 })),
       startUTF16: Type.Optional(Type.Integer({ minimum: 0 })),
-      assetId: Type.Optional(Type.String({ maxLength: 128 })),
-      kind: Type.Optional(Type.String({ maxLength: 40 })),
     },
     { additionalProperties: false },
   );
+  const granted = storyNames.filter((name) => !creativeNames.has(name) || scopes.includes("creative"));
   return [
-    ...storyNames.map(
+    ...granted.map(
       (name) =>
         ({
           name,
@@ -83,7 +97,7 @@ export function tools(
           description:
             descriptions[name] ??
             `Read-only author-scoped Story Tool: ${name}. No paths, bookId or authorId accepted. Chapter windows are limited; follow truncated/totalUTF16 to retrieve more.`,
-          parameters,
+          parameters: creativeNames.has(name) ? (narrow[name] ?? empty) : parameters,
           async execute(_id, args) {
             onCall();
             const res = await fetch(

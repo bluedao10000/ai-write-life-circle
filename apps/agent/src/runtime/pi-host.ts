@@ -367,6 +367,7 @@ export class PiHost {
             throw err;
           }
         },
+        s.view.scopes,
       );
       const created = await createAgentSession({
         cwd: this.config.state,

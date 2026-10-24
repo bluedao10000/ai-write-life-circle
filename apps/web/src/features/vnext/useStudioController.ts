@@ -27,6 +27,19 @@ export function readCompose(search = window.location.search) {
   const params = new URLSearchParams(search)
   return params.get('compose') === '1' && readView(search) === 'read'
 }
+const composeKey = 'writer-agent:compose'
+function initialComposeIntent() {
+  try {
+    // An explicit reading/compose link wins and becomes this tab's intent.
+    if (readView() === 'read') {
+      sessionStorage.setItem(composeKey, readCompose() ? '1' : '0')
+      return readCompose()
+    }
+    return sessionStorage.getItem(composeKey) === '1'
+  } catch {
+    return readCompose()
+  }
+}
 function writeLocation(view: StudioView, compose: boolean) {
   const url = new URL(window.location.href)
   const before = url.search
@@ -41,26 +54,34 @@ export function useStudioController(
   initialWorkspace: WorkspaceSnapshot,
 ) {
   // The space lives in the URL so reload and browser back/forward keep it.
+  // Compose intent survives switching to 灵感/书 and back within this tab.
   const [view, setViewState] = useState<StudioView>(() => readView())
-  const [compose, setComposeState] = useState(() => readCompose())
+  const [intent, setIntent] = useState(() => initialComposeIntent())
+  const intentRef = useRef(intent)
+  const compose = view === 'read' && intent
+  const rememberIntent = useCallback((next: boolean) => {
+    intentRef.current = next
+    setIntent(next)
+    try { sessionStorage.setItem(composeKey, next ? '1' : '0') } catch { /* optional */ }
+  }, [])
   const setView = useCallback((next: StudioView) => {
     setViewState(next)
-    if (next !== 'read') setComposeState(false)
-    writeLocation(next, next === 'read' && readCompose())
+    writeLocation(next, next === 'read' && intentRef.current)
   }, [])
   const setCompose = useCallback((next: boolean) => {
-    setComposeState(next)
-    if (next) setViewState('read')
-    writeLocation(next ? 'read' : readView(), next)
-  }, [])
+    rememberIntent(next)
+    setViewState('read')
+    writeLocation('read', next)
+  }, [rememberIntent])
   useEffect(() => {
     const sync = () => {
-      setViewState(readView())
-      setComposeState(readCompose())
+      const next = readView()
+      setViewState(next)
+      if (next === 'read') rememberIntent(readCompose())
     }
     window.addEventListener('popstate', sync)
     return () => window.removeEventListener('popstate', sync)
-  }, [])
+  }, [rememberIntent])
   const [leftTab, setLeftTab] = useState<'toc' | 'related'>('toc')
   const [rightTab, setRightTab] = useState<'margin' | 'think'>('margin')
   const [bookNav, setBookNav] = useState<BookNav>({ section: 'chapter' })

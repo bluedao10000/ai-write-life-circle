@@ -11,7 +11,7 @@ type Studio = ReturnType<typeof useStudioController>
  * enables editing inside the existing Revision/CAS autosave pipeline.
  */
 export function ReadingBar({ studio, api }: { studio: Studio; api: boolean }) {
-  const { compose, setCompose, readonly, chapter, workspace, setAssetsOpen, assetsOpen } = studio
+  const { compose, setCompose, readonly, chapter, workspace, setAssetsOpen, assetsOpen, setLayout } = studio
   const loaded = workspace.chapterLoadState.status === 'loaded' && !!chapter.id
   if (compose) return null
   return (
@@ -23,7 +23,12 @@ export function ReadingBar({ studio, api }: { studio: Studio; api: boolean }) {
           本章设定
         </Btn>
       )}
-      <Btn size="sm" variant="primary" disabled={!loaded || readonly} title={readonly ? '此章节为只读保护格式' : undefined} onClick={() => setCompose(true)}>
+      <Btn size="sm" variant="primary" disabled={!loaded || readonly} title={readonly ? '此章节为只读保护格式' : undefined} onClick={() => {
+          // Entering from reading is immersive; deep links keep the current layout.
+          setCompose(true)
+          setLayout((l) => ({ ...l, focus: true, leftOpen: false, rightOpen: false }))
+          window.setTimeout(() => studio.editor.current?.commands.focus('end'), 0)
+        }}>
         进入创作
       </Btn>
     </div>
@@ -31,7 +36,7 @@ export function ReadingBar({ studio, api }: { studio: Studio; api: boolean }) {
 }
 
 export function ComposeBar({ studio, api }: { studio: Studio; api: boolean }) {
-  const { compose, setCompose, typewriter, toggleTypewriter, assetsOpen, setAssetsOpen, bridge, status, workspace, current } = studio
+  const { compose, setCompose, typewriter, toggleTypewriter, assetsOpen, setAssetsOpen, bridge, workspace, current, setLayout } = studio
   const start = useRef<{ chapter: string; words: number } | null>(null)
   const [history, setHistory] = useState(false)
   useEffect(() => {
@@ -48,17 +53,18 @@ export function ComposeBar({ studio, api }: { studio: Studio; api: boolean }) {
     <>
       <div role="toolbar" aria-label="创作工具栏" className="chrome pointer-events-auto fixed bottom-4 left-1/2 z-30 flex -translate-x-1/2 items-center gap-1 rounded-full border border-line bg-surface/95 px-3 py-1 text-ui-sm text-ink-3 shadow-soft backdrop-blur">
         <span className="font-mono-num tabular-nums" aria-live="polite">
-          {words} 字{delta !== 0 ? ` · 本次 ${delta > 0 ? '+' : ''}${delta}` : ''}
+          本章 {words} 字{delta !== 0 ? ` · 本次 ${delta > 0 ? '+' : ''}${delta}` : ''}
         </span>
-        <span className="mx-1 text-ink-4">|</span>
-        <span>{status}</span>
         <IconBtn icon="target" label={typewriter ? '关闭打字机模式' : '打字机模式'} active={typewriter} onClick={toggleTypewriter} size="sm" />
         {api && <IconBtn icon="layers" label={assetsOpen ? '收起本章设定' : '本章设定'} active={assetsOpen} onClick={() => setAssetsOpen(!assetsOpen)} size="sm" />}
         {api && <IconBtn icon="history" label="历史版本" onClick={() => setHistory(true)} size="sm" />}
         <Btn
           size="sm"
           onClick={() => {
-            void workspace.flushSave().finally(() => setCompose(false))
+            void workspace.flushSave().finally(() => {
+              setCompose(false)
+              setLayout((l) => ({ ...l, focus: false }))
+            })
           }}
         >
           完成创作

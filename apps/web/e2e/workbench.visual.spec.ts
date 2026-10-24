@@ -4,8 +4,8 @@ for (const width of [1440, 1024, 768, 390]) {
   for (const dark of [false, true]) {
     test(`${width}px ${dark ? 'dark' : 'light'} VNext writing, drawers and focus`, async ({ page }, testInfo) => {
       await page.setViewportSize({ width, height: 900 })
-      await page.goto('/')
-      await expect(page.getByRole('tab', { name: '写作', exact: true })).toBeVisible()
+      await page.goto('/?view=read&compose=1')
+      await expect(page.getByRole('tab', { name: '阅读', exact: true })).toBeVisible()
       if (dark) await page.getByRole('button', { name: '深色主题' }).click()
       await page.getByRole('button', { name: '直接进入正文', exact: true }).click()
       const editor = page.getByRole('textbox', { name: '正文编辑器' })
@@ -22,7 +22,7 @@ for (const width of [1440, 1024, 768, 390]) {
       await page.getByRole('button', { name: '收起辅助' }).click()
       const before = await editor.textContent()
       await page.getByRole('tab', { name: '书', exact: true }).click()
-      await page.getByRole('tab', { name: '写作', exact: true }).click()
+      await page.getByRole('tab', { name: '阅读', exact: true }).click()
       expect(await editor.textContent()).toBe(before)
       await page.getByRole('button', { name: '专注', exact: true }).click()
       await expect(editor).toBeVisible()
@@ -34,7 +34,7 @@ for (const width of [1440, 1024, 768, 390]) {
 
 test('old explicit layout restores, quick note persists and thinking uses one session', async ({ page }, testInfo) => {
   await page.addInitScript(() => localStorage.setItem('writer-agent.v2', JSON.stringify({ layout: { leftOpen: true, rightOpen: true, leftW: 300, rightW: 420, focus: false } })))
-  await page.goto('/')
+  await page.goto('/?view=read&compose=1')
   await expect(page.getByRole('navigation', { name: '书的地图' })).toBeVisible()
   await expect(page.getByRole('complementary', { name: '辅助' })).toBeVisible()
   await page.getByRole('button', { name: '收起辅助' }).click()
@@ -44,11 +44,12 @@ test('old explicit layout restores, quick note persists and thinking uses one se
   await page.getByRole('tab', { name: '书', exact: true }).click()
   await page.getByRole('button', { name: '创作笔记', exact: true }).click()
   await expect(page.getByText('演示笔记持久化检查', { exact: true })).toBeVisible()
-  await page.reload()
+  // The space is kept in the URL; reopen reading before using the drawer.
+  await page.goto('/?view=read')
   await page.getByRole('button', { name: '收起辅助' }).click()
-  await page.getByRole('button', { name: '思考', exact: true }).click()
+  await page.getByRole('button', { name: '灵感', exact: true }).click()
   await page.getByRole('textbox', { name: '你的想法' }).fill('作者思考输入')
-  await page.getByRole('button', { name: '展开为完整思考空间' }).click()
+  await page.getByRole('button', { name: '展开为完整灵感空间' }).click()
   await expect(page.getByRole('textbox', { name: '你的想法' })).toHaveValue('作者思考输入')
   await page.getByRole('button', { name: '开始思考' }).click()
   await expect(page.getByText('我理解你想表达的是')).toBeVisible()

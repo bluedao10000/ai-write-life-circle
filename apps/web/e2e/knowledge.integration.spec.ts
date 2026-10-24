@@ -23,7 +23,7 @@ test("saved prose automatically becomes private memory, links chapter two, revis
     (id) => sessionStorage.setItem("writer-agent:selected-book", id),
     work.bookId,
   );
-  await page.goto("/studio");
+  await page.goto("/studio?view=read&compose=1");
   const editor = page.getByLabel("正文编辑器");
   await expect(editor).toBeVisible();
   const ch1 = work.chapters[0].chapterId;
@@ -83,7 +83,8 @@ test("saved prose automatically becomes private memory, links chapter two, revis
   const two = await next.json();
   const ch2 = two.chapters[1].chapterId;
   // Author saves a second chapter via the real editor after refreshing the directory.
-  await page.reload();
+  // V3 keeps the current space in the URL, so reopen the reading/compose space.
+  await page.goto("/studio?view=read&compose=1");
   await expect(editor).toBeVisible();
   const toggle = page.getByRole("button", { name: "目录与本章相关" });
   if ((await toggle.getAttribute("aria-pressed")) !== "true")

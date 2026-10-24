@@ -5,6 +5,7 @@ import { Btn, Heading, Row, Select, TextInput } from '../../components/vnext/ui'
 import { creativeApi } from '../../services/api/creativeApi'
 import AssetEditor, { type EditorResult } from './AssetEditor'
 import ProposalList from './ProposalList'
+import ManuscriptMatches from './ManuscriptMatches'
 import { assetStatusLabels, creativeError, kindLabels, operationLabels, proposalStatusLabels, stanceLabels } from './labels'
 import { useCreativeOverview } from './useCreativeOverview'
 
@@ -145,15 +146,15 @@ export default function AssetLibrary({
     return (
       <div className="scroll h-full overflow-auto">
         {header}
-        <div className="mx-auto max-w-3xl px-5 pt-6 pb-24 md:px-8">
+        <div className="px-5 pt-6 pb-24 md:px-8"><div className="mx-auto max-w-3xl">
           <ProposalList bookId={bookId} chapters={chapters} onDecided={refresh} emptyText="没有待审核的候选。在“灵感”中讨论人物、世界或剧情后，候选会出现在这里。" />
-        </div>
+        </div></div>
       </div>
     )
   return (
     <div className="scroll h-full overflow-auto">
       {header}
-      <div className="mx-auto max-w-3xl px-5 pt-6 pb-24 md:px-8">
+      <div className="px-5 pt-6 pb-24 md:px-8"><div className="mx-auto max-w-3xl">
         {error && (
           <p role="alert" className="mb-4 rounded bg-danger-soft px-3 py-2 text-ui-sm text-danger">
             {error}
@@ -257,7 +258,7 @@ export default function AssetLibrary({
                 {detail.links.map((l) => (
                   <li key={l.linkId} className="flex items-center gap-2">
                     <span className="text-ink">
-                      {l.fromName} <span className="text-ink-3">—{l.relation}→</span> {l.toName || (l.to.type === 'chapter' ? chapterTitle.get(l.to.id) : l.to.id)}
+                      {l.fromName} <span className="text-ink-3">—{l.relation}→</span> {l.toName || (l.to.type === 'chapter' ? chapterTitle.get(l.to.id) : l.to.type === 'knowledge_entity' ? '正文观察条目' : l.to.id)}
                     </span>
                     <span className="text-micro text-ink-3">{l.origin === 'conversation' ? '来自候选' : '你建立'}</span>
                     <Btn size="sm" className="ml-auto" disabled={busy} onClick={() => void run(() => creativeApi.removeLink(bookId, l.linkId))}>
@@ -286,6 +287,13 @@ export default function AssetLibrary({
                 </Btn>
               </div>
             </section>
+            <ManuscriptMatches
+              bookId={bookId}
+              asset={detail.asset}
+              links={detail.links}
+              busy={busy}
+              onLink={(entityId) => void run(() => creativeApi.link(bookId, { fromAssetId: detail.asset.assetId, to: { type: 'knowledge_entity', id: entityId }, relation: '正文对应' }))}
+            />
             {detail.proposals.some((p) => p.status === 'proposed') && (
               <section>
                 <Heading level={3} className="mb-2">待审核候选</Heading>
@@ -339,7 +347,7 @@ export default function AssetLibrary({
             )}
           </article>
         )}
-      </div>
+      </div></div>
       {editing && (
         <AssetEditor
           title={editing === 'new' ? `新建${meta.label}` : `编辑：${detail?.asset.name}`}

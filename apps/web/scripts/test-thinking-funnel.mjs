@@ -216,9 +216,9 @@ try {
   const page = await context.newPage(),
     errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
-  await page.goto(origin + "/studio");
+  await page.goto(origin + "/studio?view=read&compose=1");
   await expect(page.getByLabel("正文编辑器")).toBeVisible();
-  await page.getByRole("tab", { name: "思考", exact: true }).click();
+  await page.getByRole("tab", { name: "灵感", exact: true }).click();
   await expect(page.getByText("确认这次思考的数据范围")).toBeVisible();
   await page.getByRole("button", { name: "同意以上范围并创建会话" }).click();
   const input = page.getByLabel("创作问题");
@@ -248,7 +248,7 @@ try {
     timeout: 20000,
   });
   await page.reload();
-  await page.getByRole("tab", { name: "思考", exact: true }).click();
+  await page.getByRole("tab", { name: "灵感", exact: true }).click();
   await expect(page.getByLabel("思考 Agent").locator("article")).toHaveCount(4);
   fixture.config.hang = true;
   await input.fill("取消这次思考");
@@ -260,13 +260,13 @@ try {
   await input.fill("服务离线时不重复接受");
   await page.getByRole("button", { name: "发送问题", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("输入已保留");
-  await page.getByRole("tab", { name: "写作", exact: true }).click();
+  await page.getByRole("tab", { name: "阅读", exact: true }).click();
   await page
     .getByLabel("正文编辑器")
     .fill("独立 Pi Agent 离线，正文仍然可以保存。");
   await expect(page.getByText(/^已保存 /)).toBeVisible();
   await fixture.restartAgent();
-  await page.getByRole("tab", { name: "思考", exact: true }).click();
+  await page.getByRole("tab", { name: "灵感", exact: true }).click();
   await page.getByRole("button", { name: "刷新", exact: true }).click();
   await page.getByRole("button", { name: "发送问题", exact: true }).click();
   await expect(page.getByLabel("思考 Agent").locator("article").last()).toContainText("已完成", {
@@ -283,7 +283,7 @@ try {
   // History and deletion remain available even when capabilities/snapshot RPC fail.
   await fixture.stopAgent();
   await page.reload();
-  await page.getByRole("tab", { name: "思考", exact: true }).click();
+  await page.getByRole("tab", { name: "灵感", exact: true }).click();
   await expect(page.getByLabel("历史思考会话").locator("option")).toHaveCount(2);
   await expect(page.getByRole("button", { name: "删除会话", exact: true })).toBeEnabled();
   page.once("dialog", (dialog) => dialog.accept());

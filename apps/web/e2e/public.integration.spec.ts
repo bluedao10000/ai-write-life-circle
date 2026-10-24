@@ -27,7 +27,7 @@ test('real Studio publish → anonymous SSR reading → draft isolation → upda
   const empty = await request.get('/')
   expect(await empty.text()).toContain('第一部故事')
   expect(empty.headers()['cache-control']).toBe('no-store')
-  await page.goto('/studio')
+  await page.goto('/studio?view=read')
   await expect(page.getByLabel('正文编辑器')).toBeVisible()
   draftReads = 0
   await page.getByRole('button', { name: '发布', exact: true }).click()

@@ -22,7 +22,7 @@ async function open(page: Page, b: ManagedBook) {
     (id) => { if(!sessionStorage.getItem('writer-agent:selected-book')) sessionStorage.setItem('writer-agent:selected-book', id) },
     b.bookId,
   )
-  await page.goto('/studio')
+  await page.goto('/studio?view=read&compose=1')
   await expect(page.getByLabel('正文编辑器')).toBeVisible()
 }
 async function directory(page: Page) {
@@ -52,7 +52,7 @@ async function syntheticEPUB() {
 test('zero-config first work, focused editor, 200 characters autosave and refresh', async ({
   page,
 }) => {
-  await page.goto('/studio')
+  await page.goto('/studio?view=read&compose=1')
   await expect(page.getByRole('heading', { name: '你的故事，从这里开始' })).toBeVisible()
   await page.getByRole('button', { name: '开始写作' }).click()
   const editor = page.getByLabel('正文编辑器')
@@ -246,7 +246,7 @@ test('upload EPUB, preview corrected names, atomically import and restore saved 
 }) => {
   const fixture = await syntheticEPUB()
   try {
-    await page.goto('/studio')
+    await page.goto('/studio?view=read&compose=1')
     await expect(page.getByRole('heading', { name: '合成导入作品', exact: true })).toHaveCount(0)
     const emptyStateImport = page.getByRole('button', {
       name: '从 EPUB 导入作品',
@@ -392,7 +392,7 @@ test('timeout after committed create replays the same work, not a duplicate', as
     } else await route.continue()
   })
   const before = (await (await request.get('/v1/studio/books')).json()).items.length
-  await page.goto('/studio')
+  await page.goto('/studio?view=read&compose=1')
   await expect(page.getByLabel('正文编辑器')).toBeVisible()
   await workMenu(page)
   await page.getByRole('menuitem', { name: '新建空白作品' }).click()

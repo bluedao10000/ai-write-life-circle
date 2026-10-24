@@ -11,7 +11,7 @@ test('real Harness chapter read, save, recovery, conflict safety, and Workspace 
     if (request.method() === 'POST' && request.url().includes('/revisions')) revisionPostsA++
   })
 
-  await pageA.goto('/')
+  await pageA.goto('/?view=read&compose=1')
   await pageA.getByRole('button', { name: '目录与本章相关' }).click()
   const chapterOne = pageA.getByRole('button', { name: /第一章 · 雨前/ })
   const chapterTwo = pageA.getByRole('button', { name: /第二章 · 风起/ })
@@ -50,7 +50,7 @@ test('real Harness chapter read, save, recovery, conflict safety, and Workspace 
 
   const contextB = await browser.newContext({ viewport: { width: 1440, height: 900 } })
   const pageB = await contextB.newPage()
-  await pageB.goto('/')
+  await pageB.goto('/?view=read&compose=1')
   await expect(pageB.getByLabel('正文编辑器')).toContainText(firstEdit)
 
   const localText = '浏览器 A 的未保存中文草稿。'
@@ -71,7 +71,7 @@ test('real Harness chapter read, save, recovery, conflict safety, and Workspace 
 
   const contextC = await browser.newContext({ viewport: { width: 1440, height: 900 } })
   const pageC = await contextC.newPage()
-  await pageC.goto('/')
+  await pageC.goto('/?view=read&compose=1')
   await expect(pageC.getByLabel('正文编辑器')).toContainText(serverText)
   expect(requestsA.some((url) => /\/api\/(agent|chapters|projects)/.test(url))).toBe(false)
 
@@ -133,7 +133,7 @@ test('API notes survive refresh, stay outside canon and protect concurrent edits
   page.on('request', (request) => urls.push(request.url()))
   const harnessBefore = await readFile('e2e/fixtures/harness/manuscript/CH-901.md', 'utf8')
   await page.request.patch('/v1/projects/e2e-fixture/workspace', { data: { layout: { focus: false, leftOpen: false, rightOpen: false } } })
-  await page.goto('/')
+  await page.goto('/?view=read&compose=1')
   await expect(page.getByLabel('正文编辑器')).toBeVisible()
   await page.getByRole('button', { name: '随手记', exact: true }).click()
   await page.getByLabel('随手记内容').fill('作者的真实 API 笔记')
@@ -154,7 +154,7 @@ test('API notes survive refresh, stay outside canon and protect concurrent edits
 
   const contextB = await browser.newContext()
   const pageB = await contextB.newPage()
-  await pageB.goto('/')
+  await pageB.goto('/?view=read&compose=1')
   await pageB.getByRole('tab', { name: '书', exact: true }).click()
   await pageB.getByRole('button', { name: '创作笔记', exact: true }).click()
   await pageB.getByRole('button', { name: /作者的真实 API 笔记/ }).click()
@@ -177,7 +177,7 @@ test('API notes survive refresh, stay outside canon and protect concurrent edits
   await page.getByRole('button', { name: '创作笔记', exact: true }).click()
   await page.getByRole('button', { name: '已归档', exact: true }).click()
   await expect(page.getByRole('button', { name: /另一个浏览器已更新的笔记/ })).toBeVisible()
-  await page.getByRole('tab', { name: '思考', exact: true }).click()
+  await page.getByRole('tab', { name: '灵感', exact: true }).click()
   await expect(page.getByLabel('思考 Agent')).toBeVisible()
   await expect(page.getByRole('alert')).toContainText('思考服务暂不可用')
   expect(urls.some((url) => /vnextData|vnextAgent|demoWriterAgent|demoData/.test(url))).toBe(false)

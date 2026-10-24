@@ -13,7 +13,6 @@ import type { WriterAgentAdapter } from '../../services/writerAgent'
 import ThinkingSpace from '../vnext/ThinkingSpace'
 import { ComposeBar, ReadingBar } from './ComposeBar'
 import WritingContextPanel from '../creative/WritingContextPanel'
-import { useEffect } from 'react'
 export default function WritingSpace({
   studio,
   adapter,
@@ -82,10 +81,6 @@ export default function WritingSpace({
     assetsOpen,
     setAssetsOpen,
   } = studio
-  // Compose is immersive: entering it focuses the page; leaving restores chrome.
-  useEffect(() => {
-    setLayout((l) => (compose ? { ...l, focus: true, leftOpen: false, rightOpen: false } : l.focus ? { ...l, focus: false } : l))
-  }, [compose, setLayout])
   const api = adapter.mode === 'api'
   const thinkView = (wide = false) => (
     <ThinkingSpace studio={studio} demo={adapter.mode === 'demo'} wide={wide} />
@@ -268,7 +263,7 @@ export default function WritingSpace({
           )}
         </main>
         {view === 'read' && assetsOpen && api && chapter.id && (
-          <div className="fixed inset-y-0 top-12 right-0 z-30 w-full max-w-sm border-l border-line bg-surface shadow-soft">
+          <div className="fixed inset-y-0 top-12 right-0 z-30 w-full max-w-sm border-l border-line bg-surface shadow-soft xl:static xl:z-auto xl:w-96 xl:max-w-none xl:shrink-0 xl:shadow-none">
             <WritingContextPanel
               key={current}
               bookId={workspace.projectId}
@@ -300,13 +295,13 @@ export default function WritingSpace({
                   onChange={setRightTab}
                   options={[
                     ['margin', '注记'],
-                    ['think', '思考'],
+                    ['think', '灵感'],
                   ]}
                 />
                 {rightTab === 'think' && (
                   <IconBtn
                     icon="expand"
-                    label="展开为完整思考空间"
+                    label="展开为完整灵感空间"
                     onClick={() => setView('inspire')}
                   />
                 )}
@@ -390,7 +385,7 @@ export default function WritingSpace({
                 </Btn>
               )}
               <Btn size="sm" onClick={() => openThink(selection)}>
-                思考
+                灵感
               </Btn>
               <Btn
                 size="sm"

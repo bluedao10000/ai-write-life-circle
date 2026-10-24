@@ -4,7 +4,7 @@ const api='http://127.0.0.1:8789/v1/projects/review-fixture'
 test('author consent, real HTTP review, verified snapshots, read-only location, persisted feedback and stale results',async({page,request})=>{
   let creates=0,saves=0
   page.on('request',(r)=>{if(r.method()==='POST'&&/\/chapters\/[^/]+\/reviews$/.test(r.url()))creates++;if(r.method()==='POST'&&r.url().includes('/revisions'))saves++})
-  await page.goto('/')
+  await page.goto('/?view=read&compose=1')
   await page.getByRole('button',{name:'目录与本章相关'}).click()
   await page.getByRole('button',{name:/当前审查夹具/}).click()
   const editor=page.getByLabel('正文编辑器')
@@ -71,7 +71,7 @@ test('author consent, real HTTP review, verified snapshots, read-only location, 
   expect(records.items.find((item: {runId:string})=>item.runId===previous.runId).findings[0].feedback.choice).toBe('intentional')
 })
 test('failed save prevents preview and model calls; no Demo fallback',async({page,request})=>{
-  await page.goto('/')
+  await page.goto('/?view=read&compose=1')
   await expect(page.getByLabel('正文编辑器')).toBeVisible()
   const before=(await (await request.get(`${model}/stats`)).json()).calls
   let previews=0
@@ -93,7 +93,7 @@ test('missing model capability disables new reviews while retaining real history
     body.capabilities={...body.capabilities,evidenceReview:false,annotations:false}
     await route.fulfill({response,json:body})
   })
-  await page.goto('/')
+  await page.goto('/?view=read&compose=1')
   await expect(page.getByLabel('正文编辑器')).toBeVisible()
   await expect(page.getByRole('button',{name:/^(审查本章|重新审查)$/}).first()).toBeDisabled()
   const notes=page.getByRole('button',{name:'注记',exact:true})
