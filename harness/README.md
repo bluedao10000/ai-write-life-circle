@@ -22,6 +22,7 @@
 | [publication-domain.md](architecture/publication-domain.md) | 出版领域 |
 | [public-site-rendering.md](architecture/public-site-rendering.md) | 公开站点渲染 ADR |
 | [ai-knowledge-memory.md](architecture/ai-knowledge-memory.md) | 私有 AI 作品记忆、授权与增量维护 |
+| [writer-agent-v3-creative-assets.md](architecture/writer-agent-v3-creative-assets.md) | V3 创作资产、灵感整理、计划与正文差异 |
 | [sprint3-evidence-review-agent.md](architecture/sprint3-evidence-review-agent.md) | 证据审查 Agent |
 | [author-workspace-management.md](architecture/author-workspace-management.md) | 作品管理 ADR |
 | [ADR-0002](architecture/adr/ADR-0002-vnext-author-notes.md) | 作者笔记 ADR |

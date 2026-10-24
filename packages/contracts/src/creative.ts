@@ -249,6 +249,7 @@ export const creativeOverviewSchema = z
     pendingProposals: z.number().int(),
     jobs: z.record(z.string(), z.number().int()),
     openDivergences: z.number().int(),
+    decisions: z.record(z.string(), z.number().int()).optional(),
   })
   .strict();
 const pageOf = <T extends z.ZodTypeAny>(item: T) =>

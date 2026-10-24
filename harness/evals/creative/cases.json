@@ -1,0 +1,113 @@
+[
+  {
+    "id": "A-from-zero",
+    "turns": [
+      {
+        "user": "主角叫林舟，是灯塔看守人。这个世界里，满月夜任何人不得出海。",
+        "assistant": "明白：林舟是灯塔看守人；满月夜禁止出海是世界规则。",
+        "expect": [
+          { "operation": "CREATE", "kind": "character", "name": "林舟", "stance": "author_decision" },
+          { "operation": "CREATE", "kind": "world_rule", "name": "潮汐禁令", "stance": "author_decision" }
+        ],
+        "acceptAfter": true,
+        "fixture": { "summary": "主角与规则", "noChange": false, "changes": [
+          { "ref": "a", "operation": "CREATE", "stance": "author_decision", "kind": "character", "name": "林舟", "fields": [{ "key": "身份", "value": "灯塔看守人" }], "evidence": [{ "messageId": "$USER", "quote": "主角叫林舟，是灯塔看守人" }] },
+          { "ref": "b", "operation": "CREATE", "stance": "author_decision", "kind": "world_rule", "name": "潮汐禁令", "summary": "满月夜任何人不得出海", "evidence": [{ "messageId": "$USER", "quote": "满月夜任何人不得出海" }] }
+        ] }
+      }
+    ],
+    "retain": [{ "kind": "character", "name": "林舟", "fields": ["身份"] }]
+  },
+  {
+    "id": "B-continuous-revision",
+    "turns": [
+      {
+        "user": "新人物阿宁，是流亡公主。",
+        "assistant": "好的，阿宁是流亡公主。",
+        "expect": [{ "operation": "CREATE", "kind": "character", "name": "阿宁", "stance": "author_decision" }],
+        "fixture": { "summary": "新人物", "noChange": false, "changes": [
+          { "ref": "a", "operation": "CREATE", "stance": "author_decision", "kind": "character", "name": "阿宁", "fields": [{ "key": "身份", "value": "流亡公主" }], "evidence": [{ "messageId": "$USER", "quote": "阿宁，是流亡公主" }] }
+        ] }
+      },
+      {
+        "user": "阿宁的动机是找回失踪的弟弟。",
+        "assistant": "这个动机让她更主动。",
+        "expect": [{ "operation": "CREATE", "kind": "character", "name": "阿宁", "stance": "author_decision" }],
+        "acceptAfter": true,
+        "fixture": { "summary": "补充动机", "noChange": false, "changes": [
+          { "ref": "a", "operation": "CREATE", "stance": "author_decision", "kind": "character", "name": "阿宁", "replacesProposalId": "$PENDING:阿宁", "fields": [{ "key": "身份", "value": "流亡公主" }, { "key": "动机", "value": "找回失踪的弟弟" }], "evidence": [{ "messageId": "$USER", "quote": "阿宁的动机是找回失踪的弟弟" }] }
+        ] }
+      },
+      {
+        "user": "不对，她不是公主，是渔村孤女。",
+        "assistant": "好，改为渔村孤女。",
+        "expect": [{ "operation": "SUPERSEDE", "kind": "character", "name": "阿宁", "stance": "author_rejection" }],
+        "acceptAfter": true,
+        "fixture": { "summary": "否定公主身份", "noChange": false, "changes": [
+          { "ref": "a", "operation": "SUPERSEDE", "stance": "author_rejection", "targetAssetId": "$ASSET:阿宁", "fields": [{ "key": "身份", "value": "渔村孤女" }], "evidence": [{ "messageId": "$USER", "quote": "她不是公主，是渔村孤女" }] }
+        ] }
+      }
+    ],
+    "retain": [{ "kind": "character", "name": "阿宁", "fields": ["身份", "动机"] }]
+  },
+  {
+    "id": "C-exclusive-endings",
+    "turns": [
+      {
+        "user": "结局还没想好：或者他牺牲，或者他出走，或者他回归。",
+        "assistant": "三种结局代价不同，你更想强调哪一种？",
+        "expect": [
+          { "operation": "CREATE", "kind": "plot_line", "name": "结局：牺牲", "stance": "author_hypothesis" },
+          { "operation": "CREATE", "kind": "plot_line", "name": "结局：出走", "stance": "author_hypothesis" },
+          { "operation": "CREATE", "kind": "plot_line", "name": "结局：回归", "stance": "author_hypothesis" }
+        ],
+        "fixture": { "summary": "三种结局", "noChange": false, "changes": [
+          { "ref": "1", "operation": "CREATE", "stance": "author_hypothesis", "alternativeGroup": "结局", "kind": "plot_line", "name": "结局：牺牲", "evidence": [{ "messageId": "$USER", "quote": "或者他牺牲" }] },
+          { "ref": "2", "operation": "CREATE", "stance": "author_hypothesis", "alternativeGroup": "结局", "kind": "plot_line", "name": "结局：出走", "evidence": [{ "messageId": "$USER", "quote": "或者他出走" }] },
+          { "ref": "3", "operation": "CREATE", "stance": "author_hypothesis", "alternativeGroup": "结局", "kind": "plot_line", "name": "结局：回归", "evidence": [{ "messageId": "$USER", "quote": "或者他回归" }] }
+        ] }
+      }
+    ]
+  },
+  {
+    "id": "D-ai-suggestion-not-adopted",
+    "turns": [
+      {
+        "user": "我还没想好林舟的弱点。",
+        "assistant": "可以考虑让他怕水，这和灯塔看守人的身份形成张力。",
+        "expect": [
+          { "operation": "CREATE", "kind": "open_question", "name": "林舟的弱点", "stance": "author_question" },
+          { "operation": "CREATE", "kind": "character", "name": "林舟", "stance": "ai_suggestion" }
+        ],
+        "fixture": { "summary": "弱点未定", "noChange": false, "changes": [
+          { "ref": "q", "operation": "CREATE", "stance": "author_question", "kind": "open_question", "name": "林舟的弱点", "evidence": [{ "messageId": "$USER", "quote": "我还没想好林舟的弱点" }] },
+          { "ref": "s", "operation": "CREATE", "stance": "ai_suggestion", "kind": "character", "name": "林舟", "fields": [{ "key": "弱点", "value": "怕水" }], "evidence": [{ "messageId": "$ANSWER", "quote": "可以考虑让他怕水" }] }
+        ] }
+      }
+    ]
+  },
+  {
+    "id": "E-no-change",
+    "turns": [
+      {
+        "user": "今天先聊到这里，谢谢。",
+        "assistant": "好的，下次见。",
+        "expect": [],
+        "fixture": { "summary": "结束对话", "noChange": true, "noChangeReason": "没有讨论新的设定", "changes": [] }
+      }
+    ]
+  },
+  {
+    "id": "F-ungrounded-output-rejected",
+    "turns": [
+      {
+        "user": "她的身份暂时保密。",
+        "assistant": "好的，先不确定。",
+        "expect": [],
+        "fixture": { "summary": "试图编造", "noChange": false, "changes": [
+          { "ref": "x", "operation": "CREATE", "stance": "author_decision", "kind": "character", "name": "神秘女子", "fields": [{ "key": "身份", "value": "王室间谍" }], "evidence": [{ "messageId": "$USER", "quote": "她是王室间谍" }] }
+        ] }
+      }
+    ]
+  }
+]

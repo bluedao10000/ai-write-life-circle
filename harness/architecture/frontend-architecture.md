@@ -14,6 +14,14 @@ Writer Agent 使用 React + TypeScript + Vite + Tailwind + TipTap。
 - `services/api/`：HTTP 路由。`services/mappers/`：DTO 映射。`mocks/`：仅 Demo 使用。
 - `packages/contracts/`：共享 Zod、TypeScript、Note 与 Workspace 能力声明。
 
+## V3 空间：灵感 / 阅读 / 书
+
+- 空间写在 URL：`?view=inspire|read|book`，创作模式为 `?view=read&compose=1`。旧值 `write`/`think` 映射到 `read`/`inspire`。刷新与浏览器前进后退保留空间；同一标签页内从「书」或「灵感」回到「阅读」时恢复创作意图（sessionStorage）。
+- 「灵感」是默认空间：左侧 Thinking 会话，右侧 `features/creative/InspirationOrganizer`（授权、自动整理开关、每轮整理状态、本会话候选审核）。前端轮询只刷新展示，整理的可靠性由 Go outbox 与 Worker 保证。
+- 「阅读」挂载同一个 TipTap 文档，`editable=false`。「进入创作」切换为可编辑，仍走原有 Revision/CAS、自动保存、本地恢复与 409 流程。创作工具栏：字数、本次增量、打字机模式、本章设定、历史版本、完成创作。专注只在创作中隐藏导航。
+- 「书」分为「创作设定 · 作者」（`features/creative/AssetLibrary`：候选审核、人物设定、世界规则、剧情规划、伏笔计划、人物轨迹、待决问题）与「正文观察 · AI」（原 KnowledgePanel）。资产详情可显示同名正文观察，并由作者显式建立关联；两侧存储不合并。
+- `services/api/creativeApi` 对全部响应做 Zod 校验。
+
 ## 两种模式
 
 Demo 展示原型，使用独立浏览器笔记命名空间。API 模式必须配置 `VITE_WRITER_AGENT_PROJECT_ID`，读取真实 Workspace、Chapter、Revision、Notes，响应均做运行时校验。API 不加载 Demo 数据或 Agent。
