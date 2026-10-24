@@ -40,7 +40,7 @@
 | `go test -race ./...`（含新包 creative 10 个测试、transport/thinking 新测试） | 全部通过 |
 | Web `vitest run`（24 文件 181 测试，含 creative.test.tsx） | 通过 |
 | Worker 代理测试（含 creative 白名单） | 18 通过 |
-| `pnpm typecheck`、`pnpm lint` | 通过（1 条既有 warning，App.tsx 135 行） |
+| `pnpm typecheck`、`pnpm lint`、`pnpm openapi:check` | 通过（lint 有 1 条既有 warning，App.tsx 135 行） |
 | Agent `tsx --test` | 9 通过 |
 | `scripts/test-creative-workflow.mjs`：真实 Go API + Pi + Go Worker + 本地 fixture 模型 | 通过：场景 A、C、D、E、F；3 次整理调用、1 次核对调用 |
 | Playwright：`creative`（新增）、`api`、`review`、`management`、`knowledge`、默认视觉、public、thinking funnel | 全部通过；management 4 次运行中 1 次有单个用例失败，重跑通过，未复现，记录为疑似既有时序抖动 |
@@ -82,4 +82,5 @@ fixture 模式回放脚本化输出，只验证管道与服务端校验。真实
 - 历史版本面板只列出版本元数据；旧版本正文查看需要新的只读 Revision 详情接口。
 - 自动整理依赖 API 进程每 2 秒对账一次 Pi 快照；Pi 长时间离线超过 15 分钟的回合标记为 expired，可手动重试。
 - 专注布局保存在工作区偏好中，创作中关闭页面后，下次打开阅读时仍处于专注布局（导航可见）。
+- creative 路由已有 Zod 契约与 Go/Worker 测试，但还没有生成 OpenAPI 文件（`thinking-api-v1.json` 已按新 scope 重新生成，`openapi:check` 通过）。
 - GitHub CLI 账户被暂停，未能创建 PR；分支只在本地。

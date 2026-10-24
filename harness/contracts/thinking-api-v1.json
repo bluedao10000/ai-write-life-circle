@@ -613,14 +613,15 @@
           },
           "scopes": {
             "minItems": 1,
-            "maxItems": 3,
+            "maxItems": 4,
             "type": "array",
             "items": {
               "type": "string",
               "enum": [
                 "chapters",
                 "knowledge",
-                "notes"
+                "notes",
+                "creative"
               ]
             }
           }
@@ -1037,7 +1038,8 @@
               "enum": [
                 "chapters",
                 "knowledge",
-                "notes"
+                "notes",
+                "creative"
               ]
             }
           }
@@ -1480,7 +1482,8 @@
               "enum": [
                 "chapters",
                 "knowledge",
-                "notes"
+                "notes",
+                "creative"
               ]
             }
           },
@@ -1571,7 +1574,8 @@
         "enum": [
           "chapters",
           "knowledge",
-          "notes"
+          "notes",
+          "creative"
         ]
       },
       "thinkingSession": {
@@ -1682,7 +1686,8 @@
               "enum": [
                 "chapters",
                 "knowledge",
-                "notes"
+                "notes",
+                "creative"
               ]
             }
           },
@@ -2051,7 +2056,8 @@
               "enum": [
                 "chapters",
                 "knowledge",
-                "notes"
+                "notes",
+                "creative"
               ]
             }
           },
@@ -2091,7 +2097,14 @@
               "find_related_chapters",
               "get_author_notes",
               "get_timeline",
-              "get_plot_threads"
+              "get_plot_threads",
+              "list_creative_assets",
+              "get_creative_asset",
+              "list_creative_proposals",
+              "list_open_questions",
+              "get_writing_context",
+              "compare_plan_with_manuscript",
+              "request_turn_organize"
             ]
           },
           "arguments": {
@@ -2118,6 +2131,14 @@
                 "type": "integer",
                 "minimum": 0,
                 "maximum": 9007199254740991
+              },
+              "assetId": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "kind": {
+                "type": "string",
+                "maxLength": 40
               }
             },
             "additionalProperties": false
