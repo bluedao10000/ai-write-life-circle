@@ -141,4 +141,6 @@ export type SaveState =
   | 'conflict'
   | 'readonly'
 
-export type View = 'write' | 'book' | 'think' | 'spec'
+/** Studio spaces. Legacy URL values write/think map to read/inspire. */
+export type View = 'inspire' | 'read' | 'book'
+export type StudioView = View

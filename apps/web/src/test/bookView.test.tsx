@@ -67,7 +67,11 @@ describe('BookView V2.1 layout', () => {
   it('keeps the knowledge navigation accessible', () => {
     renderBook()
     expect(screen.getByRole('navigation', { name: '书的分区' })).toBeVisible()
-    expect(screen.getAllByText('知识分类')).toHaveLength(2)
+    // Author-owned settings and AI manuscript observations are labelled as separate groups.
+    expect(screen.getByText('创作设定 · 作者')).toBeVisible()
+    expect(screen.getByText('正文观察 · AI')).toBeVisible()
+    expect(screen.getByRole('button', { name: '人物设定' })).toBeVisible()
+    expect(screen.getByRole('button', { name: '人物' })).toBeVisible()
   })
 
   it('lets the API knowledge panel own the only main header and scroll region', () => {

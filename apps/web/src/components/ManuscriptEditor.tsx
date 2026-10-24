@@ -85,9 +85,13 @@ type Props = {
   onSelectIssue: (id: string) => void
   onSelection: (text: string, paraIndex: number) => void
   onReady: (e: Editor | null) => void
+  /** Reading mode mounts the same document read-only; saving paths stay unchanged. */
+  editable?: boolean
+  /** Keep the caret line near the vertical centre while composing. */
+  typewriter?: boolean
 }
 
-export default function ManuscriptEditor({ chapterId, initial, initialMarkdown, annotations, flash, onChange, onSelectIssue, onSelection, onReady }: Props) {
+export default function ManuscriptEditor({ chapterId, initial, initialMarkdown, annotations, flash, onChange, onSelectIssue, onSelection, onReady, editable = true, typewriter = false }: Props) {
   const unsupportedMarkdown = useMemo(() => findUnsupportedMarkdown(initialMarkdown ?? ''), [initialMarkdown])
   const annRef = useRef(annotations)
   const flashRef = useRef(flash)
@@ -118,6 +122,7 @@ export default function ManuscriptEditor({ chapterId, initial, initialMarkdown, 
           },
         }),
       ],
+      editable,
       content: initialMarkdown ?? toHTML(initial),
       contentType: initialMarkdown !== undefined ? 'markdown' : 'html',
       editorProps: { attributes: { class: 'manuscript font-prose outline-none', 'aria-label': '正文编辑器', spellcheck: 'false' } },
@@ -131,6 +136,30 @@ export default function ManuscriptEditor({ chapterId, initial, initialMarkdown, 
     },
     [chapterId],
   )
+
+  useEffect(() => {
+    if (editor && !editor.isDestroyed && editor.isEditable !== editable) editor.setEditable(editable, false)
+  }, [editor, editable])
+
+  // Typewriter scrolling: centre the caret inside the nearest scroll container.
+  useEffect(() => {
+    if (!editor || !typewriter || !editable) return
+    const centre = () => {
+      if (editor.isDestroyed) return
+      const container = editor.view.dom.closest('.scroll')
+      if (!(container instanceof HTMLElement)) return
+      const caret = editor.view.coordsAtPos(editor.state.selection.head)
+      const box = container.getBoundingClientRect()
+      const delta = caret.top - (box.top + box.height / 2)
+      if (Math.abs(delta) > 24) container.scrollBy({ top: delta, behavior: 'smooth' })
+    }
+    editor.on('selectionUpdate', centre)
+    editor.on('update', centre)
+    return () => {
+      editor.off('selectionUpdate', centre)
+      editor.off('update', centre)
+    }
+  }, [editor, typewriter, editable])
 
   useEffect(() => {
     if (unsupportedMarkdown.length > 0) onReady(null)

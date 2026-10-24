@@ -126,12 +126,13 @@ function WriterStudio({
     }
   }, [management, managedWorkspace])
   const isManaged = management !== null
+  const composing = studio.compose
   useEffect(() => {
-    if (!isManaged || managedWorkspace.chapterLoadState.status !== 'loaded') return
+    if (!isManaged || !composing || managedWorkspace.chapterLoadState.status !== 'loaded') return
     // Inline names and note fields keep their own focus while the body loads.
     if (document.activeElement?.matches('input, textarea, select')) return
     managedEditor.current?.commands.focus('end')
-  }, [isManaged, managedWorkspace.current, managedWorkspace.chapterLoadState.status, managedEditor])
+  }, [isManaged, composing, managedWorkspace.current, managedWorkspace.chapterLoadState.status, managedEditor])
   const {
     view,
     setView,
@@ -166,7 +167,7 @@ function WriterStudio({
         <StudioHeader studio={studio} demo={adapter.mode === 'demo'} />
         <WritingSpace studio={studio} adapter={adapter} />
         <BookSpace studio={studio} adapter={adapter} />
-        {view === 'think' && <ThinkingPage studio={studio} adapter={adapter} />}
+        {view === 'inspire' && <ThinkingPage studio={studio} adapter={adapter} />}
       </div>
       {quick && (
         <QuickNote

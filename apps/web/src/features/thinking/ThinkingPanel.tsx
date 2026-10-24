@@ -55,7 +55,7 @@ export default function ThinkingPanel({
       className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-5"
     >
       <div className="flex flex-wrap items-center gap-2">
-        <h2 className="mr-auto font-prose text-lg">创作思考</h2>
+        <h2 className="mr-auto font-prose text-lg">灵感</h2>
         <Btn
           onClick={() => {
             t.select(null);
@@ -63,12 +63,12 @@ export default function ThinkingPanel({
           }}
           disabled={t.busy}
         >
-          新的思考
+          新的灵感会话
         </Btn>
         <Btn onClick={() => void t.reload()}>刷新</Btn>
       </div>
       <p className="text-ui-sm text-ink-3">
-        讨论不会改写正文、正式设定或发布作品。引文证明原文存在，分析仍需作者判断。
+        可以从零开始讨论人物、世界和剧情。讨论不会改写正文，也不会直接写入正式设定；整理出的设定候选需要你确认。引文证明原文存在，分析仍需作者判断。
       </p>
       <label className="text-ui-sm">
         历史会话
@@ -118,12 +118,13 @@ export default function ThinkingPanel({
             kind="reads"
             items={[
               "本作品已保存章节与知识检索结果",
+              "本作品的创作设定与未确认候选（只读）",
               "你的问题和本会话历史",
               "作者笔记（仅在下方勾选后）",
             ]}
           />
           <p className="text-ink-2">
-            仅发送本作品已保存章节与知识检索结果、你的问题和本会话历史；私有笔记须额外选择。模型或范围变化后需新建会话确认。
+            仅发送本作品已保存章节、知识检索结果、创作设定、你的问题和本会话历史；私有笔记须额外选择。模型或范围变化后需新建会话确认。
           </p>
           <p className="text-micro text-ink-3">
             每次最多 {t.model.limits.maxTurnsPerRequest} 轮、
@@ -149,8 +150,8 @@ export default function ThinkingPanel({
             onClick={() => {
               t.create(
                 notes
-                  ? ["chapters", "knowledge", "notes"]
-                  : ["chapters", "knowledge"],
+                  ? ["chapters", "knowledge", "notes", "creative"]
+                  : ["chapters", "knowledge", "creative"],
               );
               setConfirm(false);
             }}
@@ -244,7 +245,7 @@ export default function ThinkingPanel({
                     <Btn
                       onClick={() => {
                         studio.workspace.switchChapter(src.chapterId);
-                        studio.setView("write");
+                        studio.setView("read");
                       }}
                     >
                       打开章节
@@ -264,7 +265,7 @@ export default function ThinkingPanel({
           >
             <textarea
               aria-label="创作问题"
-              placeholder="想和 Agent 讨论什么？"
+              placeholder="从一个人物、一个世界规则或一个场景开始聊…"
               value={t.draft}
               onChange={(e) => t.setDraft(e.target.value)}
               maxLength={12000}

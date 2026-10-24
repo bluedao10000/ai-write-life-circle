@@ -20,6 +20,9 @@ type Props = {
   selectIssue: (id: string) => void
   handleEditorReady: (editor: Editor | null) => void
   setSelection: (text: string) => void
+  /** Reading mode is read-only; compose mode edits through the same save pipeline. */
+  editable?: boolean
+  typewriter?: boolean
 }
 export default function WritingCanvas({
   workspace,
@@ -35,6 +38,8 @@ export default function WritingCanvas({
   selectIssue,
   handleEditorReady,
   setSelection,
+  editable = true,
+  typewriter = false,
 }: Props) {
   const management = useManagement()
   const {
@@ -160,6 +165,8 @@ export default function WritingCanvas({
             onSelectIssue={selectIssue}
             onSelection={(t) => setSelection(t.trim())}
             onReady={handleEditorReady}
+            editable={editable}
+            typewriter={typewriter}
           />
         </article>
       )}

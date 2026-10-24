@@ -11,6 +11,9 @@ import MarginPanel from '../../components/vnext/MarginPanel'
 import { Btn, IconBtn, Icon, Seg, Kbd } from '../../components/vnext/ui'
 import type { WriterAgentAdapter } from '../../services/writerAgent'
 import ThinkingSpace from '../vnext/ThinkingSpace'
+import { ComposeBar, ReadingBar } from './ComposeBar'
+import WritingContextPanel from '../creative/WritingContextPanel'
+import { useEffect } from 'react'
 export default function WritingSpace({
   studio,
   adapter,
@@ -73,7 +76,17 @@ export default function WritingSpace({
     liveMargins,
     resumePending,
     toast,
+    compose,
+    setCompose,
+    typewriter,
+    assetsOpen,
+    setAssetsOpen,
   } = studio
+  // Compose is immersive: entering it focuses the page; leaving restores chrome.
+  useEffect(() => {
+    setLayout((l) => (compose ? { ...l, focus: true, leftOpen: false, rightOpen: false } : l.focus ? { ...l, focus: false } : l))
+  }, [compose, setLayout])
+  const api = adapter.mode === 'api'
   const thinkView = (wide = false) => (
     <ThinkingSpace studio={studio} demo={adapter.mode === 'demo'} wide={wide} />
   )
@@ -89,10 +102,10 @@ export default function WritingSpace({
         />
       )}
       <div
-        hidden={view !== 'write'}
-        className={view === 'write' ? 'relative flex min-h-0 flex-1' : ''}
+        hidden={view !== 'read'}
+        className={view === 'read' ? 'relative flex min-h-0 flex-1' : ''}
       >
-        {view === 'write' && layout.leftOpen && !layout.focus && (
+        {view === 'read' && layout.leftOpen && !layout.focus && (
           <>
             <button
               aria-label="关闭章节遮罩"
@@ -197,7 +210,10 @@ export default function WritingSpace({
                   回到正文原位置
                 </Btn>
               )}
+              <ReadingBar studio={studio} api={api} />
               <WritingCanvas
+                editable={compose}
+                typewriter={typewriter}
                 workspace={workspace}
                 chapters={chapters}
                 chapter={chapter}
@@ -239,7 +255,8 @@ export default function WritingSpace({
                       }
                       onContinue={() => {
                         setResume(false)
-                        editor.current?.commands.focus('end')
+                        setCompose(true)
+                        window.setTimeout(() => editor.current?.commands.focus('end'), 0)
                       }}
                       onThink={() => openThink(nextUp?.content)}
                       onSkip={() => setResume(false)}
@@ -250,7 +267,20 @@ export default function WritingSpace({
             </>
           )}
         </main>
-        {view === 'write' && layout.rightOpen && !layout.focus && (
+        {view === 'read' && assetsOpen && api && chapter.id && (
+          <div className="fixed inset-y-0 top-12 right-0 z-30 w-full max-w-sm border-l border-line bg-surface shadow-soft">
+            <WritingContextPanel
+              key={current}
+              bookId={workspace.projectId}
+              chapterId={current}
+              chapters={chapters.map((c) => ({ id: c.id, title: c.title }))}
+              onClose={() => setAssetsOpen(false)}
+              onFlushSave={() => workspace.flushSave()}
+            />
+          </div>
+        )}
+        {view === 'read' && <ComposeBar studio={studio} api={api} />}
+        {view === 'read' && layout.rightOpen && !layout.focus && (
           <>
             <button
               aria-label="关闭辅助遮罩"
@@ -277,7 +307,7 @@ export default function WritingSpace({
                   <IconBtn
                     icon="expand"
                     label="展开为完整思考空间"
-                    onClick={() => setView('think')}
+                    onClick={() => setView('inspire')}
                   />
                 )}
                 <IconBtn

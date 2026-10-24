@@ -1,7 +1,8 @@
 import { KnowledgePanel } from './KnowledgePanel'
 import LegacyRecords from './LegacyRecords'
 import type { useStudioController } from '../vnext/useStudioController'
-import BookView from '../../components/vnext/BookView'
+import BookView, { isCanonSection } from '../../components/vnext/BookView'
+import AssetLibrary from '../creative/AssetLibrary'
 import { NotesPanel } from '../notes/NotesPanel'
 import type { WriterAgentAdapter } from '../../services/writerAgent'
 export default function BookSpace({
@@ -48,7 +49,8 @@ export default function BookSpace({
           knowledgeContent={
             adapter.mode === 'api' &&
             view === 'book' &&
-            bookNav.section !== 'notes' ? (
+            bookNav.section !== 'notes' &&
+            !isCanonSection(bookNav.section) ? (
               <KnowledgePanel
                 key={workspace.projectId}
                 bookId={workspace.projectId}
@@ -62,6 +64,25 @@ export default function BookSpace({
               />
             ) : undefined
           }
+          creativeContent={
+            view === 'book' && isCanonSection(bookNav.section) ? (
+              adapter.mode === 'api' ? (
+                <AssetLibrary
+                  key={workspace.projectId}
+                  bookId={workspace.projectId}
+                  section={bookNav.section}
+                  chapters={chapters.map((c) => ({ id: c.id, title: c.title }))}
+                  onSection={(section) => setBookNav({ section })}
+                  onDiscuss={(seed) => {
+                    studio.thinking.setDraft(seed)
+                    setView('inspire')
+                  }}
+                />
+              ) : (
+                <p className="px-8 py-10 text-ui text-ink-3">演示模式不包含创作设定。连接作品后可以在这里管理人物、世界规则与剧情规划。</p>
+              )
+            ) : undefined
+          }
           unavailable={adapter.mode === 'api'}
           noteContent={
             <NotesPanel
@@ -71,7 +92,7 @@ export default function BookSpace({
               enabled={notesEnabled}
               demo={adapter.mode === 'demo'}
               onPropose={adapter.mode === 'demo' ? setCandidateNote : undefined}
-              onClose={() => setView('write')}
+              onClose={() => setView('read')}
             />
           }
           onChapter={(no) => {
@@ -81,7 +102,7 @@ export default function BookSpace({
           onSource={openSource}
           onThink={(seed) => {
             openThink(seed)
-            setView('think')
+            setView('inspire')
           }}
           onPropose={() => {}}
           onArchive={() => {}}
@@ -113,7 +134,7 @@ export default function BookSpace({
                 )
             }
           }}
-          onBackToWriting={() => setView('write')}
+          onBackToWriting={() => setView('read')}
         />
       </div>
     </>

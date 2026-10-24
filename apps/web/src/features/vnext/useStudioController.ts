@@ -14,13 +14,53 @@ import { useManuscriptBridge } from '../../hooks/useManuscriptBridge'
 import { findUnsupportedMarkdown } from '../../lib/manuscriptMarkdown'
 import type { Annotation, Flash } from '../../components/ManuscriptEditor'
 import type { BookNav } from '../../components/vnext/BookView'
-import type { Chapter as ViewChapter, Source, CanonCandidateContext } from './model'
+import type { Chapter as ViewChapter, Source, CanonCandidateContext, StudioView } from './model'
+
+const legacyViews: Record<string, StudioView> = { write: 'read', think: 'inspire' }
+/** Reads ?view=, mapping pre-V3 values; the inspiration space is the default. */
+export function readView(search = window.location.search): StudioView {
+  const raw = new URLSearchParams(search).get('view') ?? ''
+  const value = legacyViews[raw] ?? raw
+  return value === 'read' || value === 'book' || value === 'inspire' ? value : 'inspire'
+}
+export function readCompose(search = window.location.search) {
+  const params = new URLSearchParams(search)
+  return params.get('compose') === '1' && readView(search) === 'read'
+}
+function writeLocation(view: StudioView, compose: boolean) {
+  const url = new URL(window.location.href)
+  const before = url.search
+  url.searchParams.set('view', view)
+  if (compose) url.searchParams.set('compose', '1')
+  else url.searchParams.delete('compose')
+  if (url.search !== before) window.history.pushState(window.history.state, '', url)
+}
 
 export function useStudioController(
   adapter: WriterAgentAdapter,
   initialWorkspace: WorkspaceSnapshot,
 ) {
-  const [view, setView] = useState<'write' | 'book' | 'think'>('write')
+  // The space lives in the URL so reload and browser back/forward keep it.
+  const [view, setViewState] = useState<StudioView>(() => readView())
+  const [compose, setComposeState] = useState(() => readCompose())
+  const setView = useCallback((next: StudioView) => {
+    setViewState(next)
+    if (next !== 'read') setComposeState(false)
+    writeLocation(next, next === 'read' && readCompose())
+  }, [])
+  const setCompose = useCallback((next: boolean) => {
+    setComposeState(next)
+    if (next) setViewState('read')
+    writeLocation(next ? 'read' : readView(), next)
+  }, [])
+  useEffect(() => {
+    const sync = () => {
+      setViewState(readView())
+      setComposeState(readCompose())
+    }
+    window.addEventListener('popstate', sync)
+    return () => window.removeEventListener('popstate', sync)
+  }, [])
   const [leftTab, setLeftTab] = useState<'toc' | 'related'>('toc')
   const [rightTab, setRightTab] = useState<'margin' | 'think'>('margin')
   const [bookNav, setBookNav] = useState<BookNav>({ section: 'chapter' })
@@ -77,11 +117,19 @@ export function useStudioController(
   )
   const currentViewChapter = viewChapters.find((c) => c.id === current)
   const prototype = usePrototype(adapter.mode === 'demo', currentViewChapter, doc)
-  const thinking = useThinking(initialWorkspace.projectId, adapter.mode === 'api' && (view === 'think' || (view === 'write' && layout.rightOpen && rightTab === 'think')))
+  const thinking = useThinking(initialWorkspace.projectId, adapter.mode === 'api' && (view === 'inspire' || (view === 'read' && layout.rightOpen && rightTab === 'think')))
+  const [typewriter, setTypewriter] = useState(() => {
+    try { return localStorage.getItem('writer-agent:typewriter') === '1' } catch { return false }
+  })
+  const toggleTypewriter = () => setTypewriter((on) => {
+    try { localStorage.setItem('writer-agent:typewriter', on ? '0' : '1') } catch { /* optional preference */ }
+    return !on
+  })
+  const [assetsOpen, setAssetsOpen] = useState(false)
   const notesEnabled = initialWorkspace.capabilities?.notes === true && !!adapter.notes
   const notes = useNotes(adapter.notes, initialWorkspace.projectId, notesEnabled)
   const reviews = useReviewController({ adapter, workspace, available: initialWorkspace.capabilities?.evidenceReview === true,
-    paneOpen: view === 'write' && layout.rightOpen && rightTab === 'margin', toast })
+    paneOpen: view === 'read' && layout.rightOpen && rightTab === 'margin', toast })
   const locateReview = async (id: string) => {
     const request = ++locationRequest.current
     const value = await reviews.revalidate(id)
@@ -133,7 +181,7 @@ export function useStudioController(
   const switchChapter = (id: string) => {
     workspace.switchChapter(id)
     setResume(false)
-    setView('write')
+    setView('read')
     setSelection('')
     if (width < 1024) setLayout((l) => ({ ...l, leftOpen: false }))
   }
@@ -266,6 +314,12 @@ export function useStudioController(
     thinking, reviews, reviewAnnotations, reviewFlash, locateReview, selectReview,
     view,
     setView,
+    compose,
+    setCompose,
+    typewriter,
+    toggleTypewriter,
+    assetsOpen,
+    setAssetsOpen,
     leftTab,
     setLeftTab,
     rightTab,

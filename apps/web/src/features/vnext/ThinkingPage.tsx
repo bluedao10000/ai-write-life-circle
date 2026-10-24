@@ -1,6 +1,7 @@
 import type { WriterAgentAdapter } from '../../services/writerAgent'
 import type { useStudioController } from './useStudioController'
 import ThinkingSpace from './ThinkingSpace'
+import InspirationOrganizer from '../creative/InspirationOrganizer'
 import { Btn, Heading, Row, ago } from '../../components/vnext/ui'
 
 export default function ThinkingPage({
@@ -12,7 +13,26 @@ export default function ThinkingPage({
 }) {
   const { prototype, composer, setComposer, setThinkingSeed, setView, setRightTab, setLayout } =
     studio
-  if(adapter.mode !== 'demo') return <div className="scroll min-h-0 flex-1 overflow-auto"><ThinkingSpace studio={studio} demo={false} wide /></div>
+  if (adapter.mode !== 'demo')
+    return (
+      // 灵感 is the default space: conversation on the left, organizing and review on the right.
+      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+        <div className="scroll min-h-0 flex-1 overflow-auto">
+          <ThinkingSpace studio={studio} demo={false} wide />
+        </div>
+        <div className="scroll min-h-0 shrink-0 overflow-auto border-t border-line-soft p-5 lg:w-[26rem] lg:border-t-0 lg:border-l">
+          <InspirationOrganizer
+            bookId={studio.workspace.projectId}
+            session={studio.thinking.session}
+            chapters={studio.chapters.map((c) => ({ id: c.id, title: c.title }))}
+            onOpenBook={() => {
+              studio.setBookNav({ section: 'canon-review' })
+              studio.setView('book')
+            }}
+          />
+        </div>
+      </div>
+    )
   return (
     <div className="flex min-h-0 flex-1 flex-col md:flex-row">
       <nav
@@ -74,7 +94,7 @@ export default function ThinkingPage({
             variant="link"
             className="text-ui-sm"
             onClick={() => {
-              setView('write')
+              setView('read')
               setRightTab('think')
               setLayout((layout) => ({ ...layout, rightOpen: true, focus: false }))
             }}

@@ -40,3 +40,9 @@ export async function saveChapterRevision(
   emitGrowth('chapter_saved')
   return saved
 }
+/** Saved revision metadata. Content stays on the server. */
+export async function listChapterRevisions(projectId: string, chapterId: string) {
+  const body = (await getJson(`${chaptersPath(projectId)}/${encodeURIComponent(chapterId)}/revisions?limit=200`)) as { items?: unknown; total?: unknown }
+  if (!Array.isArray(body?.items)) throw new Error('历史版本响应格式无效。')
+  return { items: body.items.map((item) => chapterRevisionSummaryV04Schema.parse(item)), total: Number(body.total) || body.items.length }
+}

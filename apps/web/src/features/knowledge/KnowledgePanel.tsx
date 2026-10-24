@@ -8,7 +8,7 @@ import type {
   MemorySource,
   MemoryView,
 } from "@writer-agent/contracts";
-import type { BookSection } from "../../components/vnext/BookView";
+import type { KnowledgeSection as BookSection } from "../../components/vnext/BookView";
 import {
   ConsentFacts,
   ConsentList,

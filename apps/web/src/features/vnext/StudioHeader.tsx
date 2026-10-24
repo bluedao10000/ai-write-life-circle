@@ -35,7 +35,7 @@ export default function StudioHeader({
     <>
       <header className="relative z-40 flex min-h-12 shrink-0 flex-wrap items-center gap-1 px-2 sm:px-3">
         <div className="chrome flex min-w-0 items-center gap-1">
-          {view === 'write' && !layout.focus && (
+          {view === 'read' && !layout.focus && (
             <IconBtn
               icon="menu"
               label="目录与本章相关"
@@ -59,9 +59,9 @@ export default function StudioHeader({
               value={view}
               onChange={setView}
               options={[
-                ['write', '写作'],
+                ['inspire', '灵感'],
+                ['read', '阅读'],
                 ['book', '书'],
-                ['think', '思考'],
               ]}
             />
           </div>
@@ -105,7 +105,7 @@ export default function StudioHeader({
             </>
           )}
 
-          {(pinned || (view === 'write' && chapter.id)) && (
+          {(pinned || (view === 'read' && chapter.id)) && (
             // Data-safety states never fade and never rely on colour alone (icon + text).
             <span
               className={`${readonly ? 'text-ink-2' : pinned ? (saveState.s === 'recovery' ? 'text-warn' : 'text-danger') : 'chrome hidden text-ink-3 sm:inline-flex'} inline-flex items-center gap-1.5 text-ui-sm`}

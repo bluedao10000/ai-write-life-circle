@@ -6,9 +6,13 @@ import { chapters, initialDoc, knowledge } from '../mocks/demoData'
 import { createDemoWriterAgentAdapter } from '../mocks/demoWriterAgent'
 import type { WriterAgentAdapter } from '../services/writerAgent'
 
-async function renderStudio(adapter?: WriterAgentAdapter) {
+async function renderStudio(adapter?: WriterAgentAdapter, view: 'read' | 'compose' | 'inspire' = 'compose') {
   const result = render(<App adapter={adapter} />)
-  await screen.findByRole('tab', { name: '写作' })
+  await screen.findByRole('tab', { name: '灵感' })
+  if (view === 'inspire') return result
+  const user = userEvent.setup()
+  await user.click(screen.getByRole('tab', { name: '阅读' }))
+  if (view === 'compose') await user.click(await screen.findByRole('button', { name: '进入创作' }))
   return result
 }
 
@@ -16,19 +20,58 @@ describe('Writer Agent studio', () => {
   beforeEach(() => {
     cleanup()
     localStorage.clear()
+    window.history.replaceState(null, '', '/')
+  })
+
+  it('opens 灵感 by default and keeps the space in the URL', async () => {
+    const user = userEvent.setup()
+    await renderStudio(undefined, 'inspire')
+    expect(screen.getByRole('tab', { name: '灵感' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.queryByRole('tab', { name: '写作' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('tab', { name: '阅读' }))
+    expect(window.location.search).toBe('?view=read')
+    await user.click(screen.getByRole('tab', { name: '书' }))
+    expect(window.location.search).toBe('?view=book')
+    await act(async () => {
+      window.history.back()
+      await new Promise((resolve) => window.setTimeout(resolve, 50))
+    })
+    await waitFor(() => expect(screen.getByRole('tab', { name: '阅读' })).toHaveAttribute('aria-selected', 'true'))
+  })
+
+  it('maps legacy write/think URLs and reads chapters without editing until compose', async () => {
+    const user = userEvent.setup()
+    window.history.replaceState(null, '', '/?view=write')
+    render(<App />)
+    await waitFor(() => expect(screen.getByRole('tab', { name: '阅读' })).toHaveAttribute('aria-selected', 'true'))
+    const editor = await screen.findByRole('textbox', { name: '正文编辑器' })
+    expect(editor).toHaveAttribute('contenteditable', 'false')
+    await user.click(screen.getByRole('button', { name: '进入创作' }))
+    expect(window.location.search).toBe('?view=read&compose=1')
+    expect(screen.getByRole('textbox', { name: '正文编辑器' })).toHaveAttribute('contenteditable', 'true')
+    const toolbar = screen.getByRole('toolbar', { name: '创作工具栏' })
+    expect(toolbar).toHaveTextContent('字')
+    await user.click(within(toolbar).getByRole('button', { name: '打字机模式' }))
+    expect(localStorage.getItem('writer-agent:typewriter')).toBe('1')
+    await user.click(within(toolbar).getByRole('button', { name: '完成创作' }))
+    await waitFor(() => expect(screen.getByRole('textbox', { name: '正文编辑器' })).toHaveAttribute('contenteditable', 'false'))
+    cleanup()
+    window.history.replaceState(null, '', '/?view=think')
+    render(<App />)
+    await waitFor(() => expect(screen.getByRole('tab', { name: '灵感' })).toHaveAttribute('aria-selected', 'true'))
   })
 
   it('renders the VNext manuscript and reveals chapters only on request', async () => {
     const user = userEvent.setup()
-    await renderStudio()
-    expect(screen.getByRole('textbox', { name: '正文编辑器' })).toHaveAttribute('contenteditable', 'true')
+    await renderStudio(undefined, 'read')
+    expect(screen.getByRole('textbox', { name: '正文编辑器' })).toHaveAttribute('contenteditable', 'false')
     expect(screen.queryByRole('navigation', { name: '书的地图' })).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '目录与本章相关' }))
     expect(screen.getByRole('navigation', { name: '书的地图' })).toBeInTheDocument()
   })
 
   it('keeps development and old four-tab navigation out of the author interface', async () => {
-    await renderStudio()
+    await renderStudio(undefined, 'read')
     expect(screen.queryByRole('button', { name: '开发说明' })).not.toBeInTheDocument()
     expect(screen.queryByRole('tab', { name: '审查' })).not.toBeInTheDocument()
     expect(screen.getByRole('tab', { name: '书' })).toBeInTheDocument()
@@ -36,8 +79,8 @@ describe('Writer Agent studio', () => {
 
   it('runs the demo thinking challenge workflow and keeps the author in control', async () => {
     const user = userEvent.setup()
-    await renderStudio()
-    await user.click(screen.getByRole('tab', { name: '思考' }))
+    await renderStudio(undefined, 'inspire')
+    await user.click(screen.getByRole('tab', { name: '灵感' }))
     await user.type(await screen.findByRole('textbox', { name: '你的想法' }), '测试作者意图')
     await user.click(screen.getByRole('button', { name: '开始思考' }))
     await user.click(await screen.findByRole('button', { name: '理解对了，挑战它' }))
@@ -47,8 +90,8 @@ describe('Writer Agent studio', () => {
 
   it('supports author correction of a clearly labeled demo understanding', async () => {
     const user = userEvent.setup()
-    await renderStudio()
-    await user.click(screen.getByRole('tab', { name: '思考' }))
+    await renderStudio(undefined, 'inspire')
+    await user.click(screen.getByRole('tab', { name: '灵感' }))
     await user.type(await screen.findByRole('textbox', { name: '你的想法' }), '测试想法')
     await user.click(screen.getByRole('button', { name: '开始思考' }))
     await user.click(await screen.findByRole('button', { name: '不对，我来纠正' }))
@@ -85,8 +128,9 @@ describe('Writer Agent studio', () => {
       saveCount += 1
       return saveChapter(input)
     }
-    await renderStudio(adapter)
+    await renderStudio(adapter, 'read')
 
+    expect(screen.getByRole('button', { name: '进入创作' })).toBeDisabled()
     expect(screen.getByRole('alert')).toHaveTextContent('已切换为只读原文以保护内容')
     expect(screen.getByRole('alert').querySelector('pre')?.textContent).toBe('| 名称 | 内容 |\n| --- | --- |\n| 阿青 | 原文 |')
     expect(screen.queryByRole('textbox', { name: '正文编辑器' })).not.toBeInTheDocument()
@@ -120,7 +164,7 @@ describe('Writer Agent studio', () => {
 
   it('records a demo story judgment without changing chapter prose', async () => {
     const user = userEvent.setup()
-    await renderStudio()
+    await renderStudio(undefined, 'read')
     const editor = screen.getByRole('textbox', { name: '正文编辑器' })
     const original = editor.textContent
     await user.click(screen.getByRole('button', { name: '注记' }))
