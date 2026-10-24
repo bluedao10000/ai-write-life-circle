@@ -15,6 +15,16 @@ function allowedRoute(path: string, method: string, project: string) {
   if(path===thinking+'/sessions')return ['GET','POST'].includes(method)
   const thinkMatch=new RegExp(`^${thinking}/sessions/th-[a-f0-9-]{36}(/messages|/events|/cancel)?$`).exec(path)
   if(thinkMatch){return thinkMatch[1]==='/events'?method==='GET':thinkMatch[1]?method==='POST':['GET','DELETE'].includes(method)}
+  // Creative assets: author-owned settings and AI proposals. Only explicit routes are forwarded.
+  const creative = `/v1/studio/books/${encodeURIComponent(project)}/creative`
+  if (path === creative) return method === 'GET'
+  if (path.startsWith(creative + '/')) {
+    const suffix = path.slice(creative.length + 1)
+    if (method === 'GET') return /^(?:assets|proposals|turns|turns\/excerpt|context|divergences|assets\/ca-[a-f0-9-]{36})$/.test(suffix)
+    if (method === 'PATCH') return /^assets\/ca-[a-f0-9-]{36}$/.test(suffix)
+    if (method === 'POST') return /^(?:assets|links|links\/cl-[a-f0-9-]{36}\/remove|proposals\/decide|organize|plan-checks|divergences\/cd-[a-f0-9-]{36}\/decide|settings\/(?:enable|pause|resume|auto))$/.test(suffix)
+    return false
+  }
   const memory = `/v1/studio/books/${encodeURIComponent(project)}/knowledge`
   if (path === memory) return method === 'GET'
   if (path.startsWith(memory+'/')) {

@@ -182,5 +182,6 @@ export * from './management.js'
 export * from './knowledge.js'
 
 export * from "./thinking.js"
+export * from "./creative.js"
 
 export * from "./agent-tasks.js"

@@ -84,7 +84,7 @@ export class PiHost {
     bookId: string;
     createdAt: string;
     model: Config["model"];
-    scopes: ("chapters" | "knowledge" | "notes")[];
+    scopes: ("chapters" | "knowledge" | "notes" | "creative")[];
     capability: string;
   }) {
     const grant = await authorize(this.config, input.capability);

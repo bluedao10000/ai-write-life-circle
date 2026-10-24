@@ -285,3 +285,25 @@ describe('private knowledge proxy',()=>{
   expect(upstream).toHaveBeenCalledTimes(2)
  })
 })
+
+describe('private creative asset proxy',()=>{
+ it('forwards only declared creative routes and keeps origin protection',async()=>{
+  await signIn()
+  const book='book-11111111-1111-4111-8111-111111111111',root=`/v1/studio/books/${book}/creative`
+  const asset='ca-11111111-1111-4111-8111-111111111111'
+  const forwarded:string[]=[]
+  const upstream=vi.fn(async(input:unknown,init?:RequestInit)=>{
+   const path=new URL(String(input)).pathname
+   if(path===`/v1/studio/books/${book}`)return Response.json({bookId:book})
+   forwarded.push(`${init?.method??'GET'} ${path}`)
+   return Response.json({})
+  });vi.stubGlobal('fetch',upstream)
+  for(const [path,method] of [[root,'GET'],[root+'/assets','GET'],[root+'/assets/'+asset,'GET'],[root+'/assets/'+asset,'PATCH'],[root+'/proposals/decide','POST'],[root+'/settings/enable','POST'],[root+'/turns','GET']] as const)
+   expect((await handleRequest(request(path,method,method==='GET'?undefined:'{}'),env)).status).toBe(200)
+  expect(forwarded).toHaveLength(7)
+  for(const [path,method] of [[root+'/assets/'+asset,'DELETE'],[root+'/settings/raw','POST'],[root+'/assets/../knowledge','GET'],[root+'/proposals','POST'],[root+'/state','GET']] as const)
+   expect((await handleRequest(request(path,method,method==='GET'?undefined:'{}'),env)).status).toBe(404)
+  expect((await handleRequest(request(root+'/proposals/decide','POST','{}',{origin:'https://evil.example'}),env)).status).toBe(403)
+  expect(forwarded).toHaveLength(7)
+ })
+})

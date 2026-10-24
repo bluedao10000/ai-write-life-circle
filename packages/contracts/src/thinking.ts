@@ -1,6 +1,11 @@
 import { z } from "zod";
 export const thinkingProtocol = "thinking-v1" as const;
-export const thinkingScopeSchema = z.enum(["chapters", "knowledge", "notes"]);
+export const thinkingScopeSchema = z.enum([
+  "chapters",
+  "knowledge",
+  "notes",
+  "creative",
+]);
 export const thinkingLimitsSchema = z
   .object({
     maxTurnsPerRequest: z.number().int().positive(),
@@ -26,7 +31,7 @@ export const thinkingCreateSchema = z
   .object({
     consent: z.literal(true),
     model: thinkingModelSchema,
-    scopes: z.array(thinkingScopeSchema).min(1).max(3),
+    scopes: z.array(thinkingScopeSchema).min(1).max(4),
   })
   .strict();
 export const thinkingMessageInputSchema = z
@@ -174,6 +179,13 @@ export const thinkingToolRequestSchema = z
       "get_author_notes",
       "get_timeline",
       "get_plot_threads",
+      "list_creative_assets",
+      "get_creative_asset",
+      "list_creative_proposals",
+      "list_open_questions",
+      "get_writing_context",
+      "compare_plan_with_manuscript",
+      "request_turn_organize",
     ]),
     arguments: z
       .object({
@@ -183,6 +195,8 @@ export const thinkingToolRequestSchema = z
         revisionId: z.string().optional(),
         entityId: z.string().optional(),
         startUTF16: z.number().int().nonnegative().optional(),
+        assetId: z.string().max(128).optional(),
+        kind: z.string().max(40).optional(),
       })
       .strict(),
   })

@@ -15,7 +15,30 @@ export const storyNames = [
   "get_author_notes",
   "get_timeline",
   "get_plot_threads",
+  "list_creative_assets",
+  "get_creative_asset",
+  "list_creative_proposals",
+  "list_open_questions",
+  "get_writing_context",
+  "compare_plan_with_manuscript",
+  "request_turn_organize",
 ] as const;
+// Creative tools read author-owned assets. request_turn_organize only queues
+// organizing of the current turn into proposals; no tool writes assets.
+const descriptions: Partial<Record<(typeof storyNames)[number], string>> = {
+  list_creative_assets:
+    "List the author's creative assets (characters, world rules, plans, foreshadowing, open questions). Optional kind and query. accepted = author-confirmed; draft = author draft. Plans are intentions, not manuscript facts.",
+  get_creative_asset: "Read one creative asset by assetId with its links.",
+  list_creative_proposals:
+    "List UNCONFIRMED AI proposals awaiting author review. Never treat them as canon; label them as possibilities.",
+  list_open_questions: "List the author's undecided questions and pending question proposals.",
+  get_writing_context:
+    "For chapterId, return author-confirmed plans, characters, rules and payoffs relevant to that chapter.",
+  compare_plan_with_manuscript:
+    "For chapterId, return accepted plans next to AI manuscript observations and recorded divergences. A difference is a question for the author, not an error.",
+  request_turn_organize:
+    "Queue organizing of the current discussion turn into reviewable proposals after this reply. Use only when the author asks to record or organize ideas. Nothing becomes canon automatically.",
+};
 export async function authorize(
   config: Config,
   capability: string,
@@ -46,6 +69,8 @@ export function tools(
       revisionId: Type.Optional(Type.String({ maxLength: 128 })),
       entityId: Type.Optional(Type.String({ maxLength: 128 })),
       startUTF16: Type.Optional(Type.Integer({ minimum: 0 })),
+      assetId: Type.Optional(Type.String({ maxLength: 128 })),
+      kind: Type.Optional(Type.String({ maxLength: 40 })),
     },
     { additionalProperties: false },
   );
@@ -55,7 +80,9 @@ export function tools(
         ({
           name,
           label: name,
-          description: `Read-only author-scoped Story Tool: ${name}. No paths, bookId or authorId accepted. Chapter windows are limited; follow truncated/totalUTF16 to retrieve more.`,
+          description:
+            descriptions[name] ??
+            `Read-only author-scoped Story Tool: ${name}. No paths, bookId or authorId accepted. Chapter windows are limited; follow truncated/totalUTF16 to retrieve more.`,
           parameters,
           async execute(_id, args) {
             onCall();
