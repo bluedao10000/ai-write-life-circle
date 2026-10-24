@@ -49,6 +49,9 @@ type Record struct {
 	Pending bool     `json:"cleanupPending"`
 	Nonce   string   `json:"nonce"`
 	Calls   int      `json:"toolCalls"`
+	// LastMessage is the most recently accepted user message, used only to
+	// scope the controlled request_turn_organize tool to the current turn.
+	LastMessage string `json:"lastMessageId,omitempty"`
 }
 type receipt struct {
 	Hash string `json:"hash"`
@@ -65,6 +68,11 @@ type Service struct {
 	Secret                      []byte
 	Client                      *http.Client
 	ResolveActor                func(*http.Request) *application.Actor
+	// OnMessageAccepted runs after Pi durably accepted a message (202). It
+	// records the creative-organizing outbox entry; failures never fail chat.
+	OnMessageAccepted func(ctx context.Context, rec Record, messageID string)
+	// OnSessionDeleted invalidates derived creative work for a deleted session.
+	OnSessionDeleted func(ctx context.Context, rec Record)
 }
 type Create struct {
 	Consent bool     `json:"consent"`
@@ -187,6 +195,44 @@ func (s *Service) authorize(token string) (Record, error) {
 	_, e = s.Management.Resolve(application.Actor{ID: r.Owner, Role: "author"}, r.Book)
 	return r, e
 }
+
+// Owned verifies that a live session belongs to the author and book.
+func (s *Service) Owned(a application.Actor, book, id string) error {
+	_, e := s.owned(a, book, id)
+	return e
+}
+
+// Snapshot reads the Pi session view with the service token. found=false means
+// Pi or Go no longer has the session (deleted or unknown).
+func (s *Service) Snapshot(ctx context.Context, id string) (raw json.RawMessage, found bool, err error) {
+	st, e := s.load()
+	if e != nil {
+		return nil, true, e
+	}
+	if r, ok := st.Sessions[id]; !ok || r.Deleted {
+		return nil, false, nil
+	}
+	raw, e = s.agent(ctx, "GET", "/internal/v1/sessions/"+id, nil)
+	if e != nil {
+		var p *application.Error
+		if errors.As(e, &p) && (p.Status == 404 || p.Status == 410) {
+			return nil, false, nil
+		}
+		return nil, true, e
+	}
+	return raw, true, nil
+}
+
+// SessionBook reports the book and owner of a session for background reconciliation.
+func (s *Service) SessionBook(id string) (Record, bool) {
+	st, e := s.load()
+	if e != nil {
+		return Record{}, false
+	}
+	r, ok := st.Sessions[id]
+	return r, ok && !r.Deleted
+}
+
 func contains(items []string, item string) bool {
 	for _, v := range items {
 		if v == item {

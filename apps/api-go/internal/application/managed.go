@@ -649,6 +649,7 @@ func (m *Management) cleanupDeletedBook(ctx context.Context, a Actor, b ManagedB
 			filepath.Join(m.Legacy.State, "review-runs", bookKey+".json"),
 			filepath.Join(m.Legacy.State, "workspace", bookKey),
 			filepath.Join(m.Legacy.State, "knowledge", bookKey),
+			filepath.Join(m.Legacy.State, "creative", bookKey),
 		} {
 			if e := m.removeBookPath(path); e != nil {
 				return e

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/agenttasks"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/application"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/config"
+	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/creative"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/executorpolicy"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/identity"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/knowledge"
@@ -109,6 +111,37 @@ func run() error {
 		thought.Origin = ""
 		privateAddress = ""
 	}
+	creativeFor := func(app *application.Service) *creative.Service { return creative.New(app, modelConfig, nil) }
+	ownerActor := application.Actor{ID: ownerID, Role: "author"}
+	// Organizing is an outbox written after Pi durably accepted the message; a
+	// failure here never fails the conversation.
+	thought.OnMessageAccepted = func(ctx context.Context, rec thinking.Record, messageID string) {
+		app, e := management.Resolve(application.Actor{ID: rec.Owner, Role: "author"}, rec.Book)
+		if e == nil {
+			_, e = creativeFor(app).AcceptTurn(ctx, rec.ID, messageID, "auto")
+		}
+		if e != nil {
+			slog.Warn("creative turn not recorded", "code", application.AsError(e).Code)
+		}
+	}
+	thought.OnSessionDeleted = func(ctx context.Context, rec thinking.Record) {
+		if app, e := management.Resolve(application.Actor{ID: rec.Owner, Role: "author"}, rec.Book); e == nil {
+			if e = creativeFor(app).CancelSession(ctx, rec.ID); e != nil {
+				slog.Warn("creative session cleanup deferred")
+			}
+		}
+	}
+	reconciler := &creative.Reconciler{Management: management, Owner: ownerActor, For: creativeFor, Fetch: func(ctx context.Context, id string) (*creative.Snapshot, bool, error) {
+		raw, found, e := thought.Snapshot(ctx, id)
+		if e != nil || !found {
+			return nil, found, e
+		}
+		var snap creative.Snapshot
+		if e = json.Unmarshal(raw, &snap); e != nil {
+			return nil, true, e
+		}
+		return &snap, true, nil
+	}}
 	management.CleanupExternal = func(ctx context.Context, a application.Actor, book string) error {
 		return cleanupOwnedBook(ctx, a, book, publications, thought, tasks)
 	}
@@ -147,7 +180,7 @@ func run() error {
 		reviewServices[app.Project] = r
 		return r
 	}
-	h := transport.Handler(transport.Options{WorkerStatus: func() any { return agentruntime.ReadUnifiedStatus(c.State, modelConfig) }, KnowledgeFor: func(app *application.Service) *knowledge.Service { return knowledgeFor(app) }, Imports: imports, Management: management, ReviewFor: reviewFor, Service: s, Environment: c.Environment, ResolveActor: resolver, Reviews: reviews, Publications: publications})
+	h := transport.Handler(transport.Options{CreativeFor: creativeFor, SessionOwned: thought.Owned, WorkerStatus: func() any { return agentruntime.ReadUnifiedStatus(c.State, modelConfig) }, KnowledgeFor: func(app *application.Service) *knowledge.Service { return knowledgeFor(app) }, Imports: imports, Management: management, ReviewFor: reviewFor, Service: s, Environment: c.Environment, ResolveActor: resolver, Reviews: reviews, Publications: publications})
 	baseHandler := h
 	thinkingHandler := thought.PublicHandler()
 	h = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -207,6 +240,20 @@ func run() error {
 					_ = tasks.Sweep(clean)
 					stop()
 				}
+			}
+		}
+	}()
+	go func() {
+		ticker := time.NewTicker(2 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				sweep, cancel := context.WithTimeout(ctx, 10*time.Second)
+				_ = reconciler.Sweep(sweep)
+				cancel()
 			}
 		}
 	}()

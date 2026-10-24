@@ -15,6 +15,7 @@ import (
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/agentruntime"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/application"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/config"
+	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/creative"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/executorpolicy"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/knowledge"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/llm"
@@ -97,6 +98,7 @@ func run() error {
 	runtime := agentruntime.New("writer-agent-worker/"+agentruntime.Revision(), discover, []agentruntime.Executor{
 		&review.Executor{Config: modelConfig, Client: client, Resolve: resolve, Memory: memoryFor},
 		&knowledge.Executor{Config: modelConfig, Client: client, Resolve: resolve},
+		&creative.Executor{Config: modelConfig, Client: client, Resolve: resolve},
 	}, 2, slog.Default())
 	runtime.Model = modelConfig
 	runtime.Instance = compat.UUID()

@@ -21,6 +21,9 @@ func managedHandler(o Options) http.Handler {
 		if handleKnowledge(o, w, r, path) {
 			return
 		}
+		if handleCreative(o, w, r, path) {
+			return
+		}
 		isBooks := path == "/v1/studio/books" || strings.HasPrefix(path, "/v1/studio/books/")
 		isProject := strings.HasPrefix(path, "/v1/projects/")
 		if !isBooks && !isProject {

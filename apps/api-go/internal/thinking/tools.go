@@ -22,6 +22,8 @@ type toolArgs struct {
 	Revision string `json:"revisionId,omitempty"`
 	Entity   string `json:"entityId,omitempty"`
 	Start    int    `json:"startUTF16,omitempty"`
+	Asset    string `json:"assetId,omitempty"`
+	Kind     string `json:"kind,omitempty"`
 }
 
 func sliceUTF16(text string, start, end int) (string, bool) {
@@ -162,7 +164,7 @@ func (s *Service) PrivateHandler() http.Handler {
 		var args toolArgs
 		d := json.NewDecoder(bytes.NewReader(in.Args))
 		d.DisallowUnknownFields()
-		if d.Decode(&args) != nil || len(args.Query) > 256 {
+		if d.Decode(&args) != nil || len(args.Query) > 256 || len(args.Asset) > 128 || len(args.Kind) > 40 {
 			reply(w, nil, fail(422, "INVALID_TOOL_ARGUMENTS"), 0)
 			return
 		}
@@ -203,6 +205,9 @@ func (s *Service) execute(ctx context.Context, rec Record, name string, args too
 	}
 	if name == "get_author_notes" {
 		scope = "notes"
+	}
+	if creativeTools[name] {
+		scope = "creative"
 	}
 	if !contains(rec.Scopes, scope) {
 		return nil, fail(403, "SCOPE_FORBIDDEN")
@@ -291,6 +296,8 @@ func (s *Service) execute(ctx context.Context, rec Record, name string, args too
 		return map[string]any{"items": items[:min(8, len(items))], "candidateLimit": 64, "totalChapters": len(all)}, nil
 	case "get_author_notes":
 		return app.Notes()
+	case "list_creative_assets", "get_creative_asset", "list_creative_proposals", "list_open_questions", "get_writing_context", "compare_plan_with_manuscript", "request_turn_organize":
+		return s.creativeTool(ctx, rec, app, name, args)
 	case "search_knowledge", "get_entity", "get_timeline", "get_plot_threads":
 		k := knowledge.New(app, llm.Config{}, nil)
 		k.QueueOnly = true

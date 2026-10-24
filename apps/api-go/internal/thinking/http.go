@@ -165,12 +165,12 @@ func (s *Service) PublicHandler() http.Handler {
 				reply(w, nil, e, 0)
 				return
 			}
-			if !in.Consent || hash(model) != hash(in.Model) || len(in.Scopes) == 0 || len(in.Scopes) > 3 {
+			if !in.Consent || hash(model) != hash(in.Model) || len(in.Scopes) == 0 || len(in.Scopes) > 4 {
 				reply(w, nil, fail(422, "THINKING_CONSENT_REQUIRED"), 0)
 				return
 			}
 			for _, scope := range in.Scopes {
-				if !contains([]string{"chapters", "knowledge", "notes"}, scope) {
+				if !contains([]string{"chapters", "knowledge", "notes", "creative"}, scope) {
 					reply(w, nil, fail(422, "INVALID_SCOPE"), 0)
 					return
 				}
@@ -238,6 +238,9 @@ func (s *Service) PublicHandler() http.Handler {
 				return nil
 			})
 			if e == nil {
+				if s.OnSessionDeleted != nil {
+					s.OnSessionDeleted(r.Context(), record)
+				}
 				s.Cleanup(r.Context())
 			}
 			reply(w, nil, e, 204)
@@ -361,6 +364,26 @@ func (s *Service) PublicHandler() http.Handler {
 				v, e := s.agent(r.Context(), "POST", target+"/messages", map[string]any{"input": in, "key": key, "capability": s.capability(record)})
 				if e == nil {
 					_, e = s.owned(*a, book, id)
+				}
+				if e == nil {
+					var accepted struct {
+						MessageID string `json:"messageId"`
+					}
+					if json.Unmarshal(v, &accepted) == nil && accepted.MessageID != "" && len(accepted.MessageID) <= 128 {
+						_ = s.tx(r.Context(), func(st *registry) error {
+							current := st.Sessions[id]
+							if current.Deleted {
+								return nil
+							}
+							current.LastMessage = accepted.MessageID
+							st.Sessions[id] = current
+							record = current
+							return nil
+						})
+						if s.OnMessageAccepted != nil {
+							s.OnMessageAccepted(r.Context(), record, accepted.MessageID)
+						}
+					}
 				}
 				reply(w, v, e, 202)
 				return nil
