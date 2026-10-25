@@ -56,7 +56,7 @@ try {
         BETTER_AUTH_SECRET: secret,
         GOOGLE_CLIENT_ID: "fixture.apps.googleusercontent.com",
         GOOGLE_CLIENT_SECRET: "fixture",
-        WRITER_AGENT_AUTHOR_EMAILS: "author@example.com",
+        WRITER_AGENT_IDENTITY_PRIVATE_KEY: fixture.identity.privateKey,
         WRITER_AGENT_PROJECT_ID: "empty-external",
         WRITER_AGENT_API_TOKEN: bearer,
         WRITER_AGENT_API_ORIGIN: "https://api.example",

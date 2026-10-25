@@ -57,7 +57,7 @@ pnpm dev:local    # 本地 API + 前端
 
 作者在 `/studio` 保存章节，通过 `/studio/publish` 预览并主动发布；访客从 `/` 发现作品，在独立作品/章节 URL 阅读。草稿自动保存不会改变公开内容。公开页面由现有 Cloudflare Worker SSR，Go Publication 保存不可变快照与历史；下架和撤回后的新请求不读取旧公开内容。
 
-Google 登录、公开站点与在线作品管理已合并并部署。正式入口为 https://www.story2u.xyz，写作入口为 `/studio`。Cloudflare Worker 提供 SSR、Better Auth/D1 会话和同源代理；Go API 位于 https://api.story2u.xyz，以服务端 Bearer 校验作者权限。授权 Google 账号共享配置的作者身份。部署兼容条件、版本核对和回滚见 [生产部署指南](harness/deploy-guide.md)。
+Google 登录、公开站点与在线作品管理已合并并部署。正式入口为 https://www.story2u.xyz，写作入口为 `/studio`。Cloudflare Worker 提供 SSR、Better Auth/D1 会话和同源代理；Go API 位于 https://api.story2u.xyz。任何已验证邮箱的 Google 账号都可登录，每个账号是独立作者：Worker 为每个请求签发 Ed25519 用户声明，Go 同时校验它和服务端 Bearer（见 [Google 登录](harness/google-login.md)）。部署兼容条件、版本核对和回滚见 [生产部署指南](harness/deploy-guide.md)。
 
 本地公开站点可使用 `WRITER_AGENT_PUBLIC_SSR=1 VITE_STORY2U_PUBLIC_SITE=true VITE_WRITER_AGENT_MODE=api VITE_WRITER_AGENT_PROJECT_ID=local pnpm dev:local`（开发环境既有本地身份）；生产构建必须配置 Google 登录，禁止开发身份。`pnpm test:publication` 运行隔离真实 HTTP 契约检查，`pnpm test:e2e` 包含公开站点全链路、SEO和四种宽度截图。
 
@@ -69,7 +69,7 @@ Go API 支持在 Studio 内创建在线作品，无需创建 Markdown 文件。�
 
 删除作品需二次确认；已公开作品须先下架。删除会永久清理正文修订、笔记、审查、知识记录及导入资料，删除最后一本后返回开始写作页。外部只读作品不能删除。
 
-在线结构存于状态目录 `works/catalog-v1.json`；正文仍存于既有 `chapter-drafts`，外部 Harness 保持只读且不自动迁移。Google 账号继续共享已有配置作者身份。详见 [架构与回滚 ADR](harness/architecture/author-workspace-management.md) 和 [管理 API](harness/contracts/management-api-v1.json)。专项浏览器验收：`pnpm --filter @writer-agent/web test:management`（只使用临时合成数据）。
+在线结构存于状态目录 `works/catalog-v1.json`；正文仍存于既有 `chapter-drafts`，外部 Harness 保持只读且不自动迁移。作品按作者隔离；per-user 之前的数据只由配置的旧所有者账号继承。详见 [架构与回滚 ADR](harness/architecture/author-workspace-management.md) 和 [管理 API](harness/contracts/management-api-v1.json)。专项浏览器验收：`pnpm --filter @writer-agent/web test:management`（只使用临时合成数据）。
 
 ### EPUB 作品导入（Sprint 4.6A/4.6B）
 

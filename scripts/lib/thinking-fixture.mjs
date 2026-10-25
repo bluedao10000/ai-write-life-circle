@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
+import { identityFixture } from "./identity-fixture.mjs";
 const listen = async (s, port = 0) => {
   await new Promise((r) => s.listen(port, "127.0.0.1", r));
   return s.address().port;
@@ -17,6 +18,8 @@ const free = async () => {
   return p;
 };
 export async function startThinkingFixture({ live = false, taskProtocol = false } = {}) {
+  // Go runs in production mode, so every author call carries a signed user.
+  const identity = identityFixture();
   if (live && !process.env.WRITER_AGENT_LLM_API_KEY)
     throw Error("MODEL_KEY_REQUIRED_FOR_SYNTHETIC_EVAL");
   const root = await mkdtemp(join(tmpdir(), "story2u-thinking-")),
@@ -156,6 +159,7 @@ export async function startThinkingFixture({ live = false, taskProtocol = false 
     WRITER_AGENT_AUTH_MODE: "bearer",
     WRITER_AGENT_AUTH_TOKEN_FILE: join(root, "bearer"),
     WRITER_AGENT_AUTHOR_ID: "fixture-author",
+    ...identity.goEnv,
     WRITER_AGENT_PROJECT_ID: "empty-external",
     WRITER_AGENT_API_PORT: "0",
     WRITER_AGENT_API_HOST: "127.0.0.1",
@@ -255,7 +259,7 @@ export async function startThinkingFixture({ live = false, taskProtocol = false 
       const response = await fetch(apiOrigin + path, {
         method,
         headers: {
-          ...(auth ? { Authorization: "Bearer " + bearer } : {}),
+          ...(auth ? { Authorization: "Bearer " + bearer, ...identity.headers(method, path) } : {}),
           ...(body ? { "Content-Type": "application/json" } : {}),
           ...(key ? { "Idempotency-Key": key } : {}),
         },
@@ -271,6 +275,7 @@ export async function startThinkingFixture({ live = false, taskProtocol = false 
     return {
       root,
       bearer,
+      identity,
       api: apiOrigin,
       agentOrigin: `http://127.0.0.1:${agentPort}`,
       toolOrigin: `http://127.0.0.1:${toolPort}`,

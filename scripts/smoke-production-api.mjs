@@ -5,6 +5,8 @@ import { once } from 'node:events'
 import { mkdtemp, writeFile, readFile, rm, cp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { identityFixture } from './lib/identity-fixture.mjs'
+const identity = identityFixture({ id: 'smoke-user', email: 'owner@example.com' })
 
 const root = await mkdtemp(join(tmpdir(), 'writer-production-smoke-'))
 const tokenFile = join(root, 'token')
@@ -18,7 +20,7 @@ async function start() {
   const child = spawn(binary, [], { env: {
     ...process.env, NODE_ENV: 'production', WRITER_AGENT_ENV: 'production',
     WRITER_AGENT_AUTH_MODE: 'bearer', WRITER_AGENT_AUTH_TOKEN_FILE: tokenFile,
-    WRITER_AGENT_AUTHOR_ID: 'bruce', WRITER_AGENT_API_HOST: '127.0.0.1', WRITER_AGENT_API_PORT: '0',
+    WRITER_AGENT_AUTHOR_ID: 'bruce', ...identity.goEnv, WRITER_AGENT_API_HOST: '127.0.0.1', WRITER_AGENT_API_PORT: '0',
     WRITER_AGENT_HARNESS_ROOT: root, WRITER_AGENT_STATE_DIR: state, WRITER_AGENT_PROJECT_ID: project,
   }, stdio: ['ignore', 'pipe', 'pipe'] })
   const exited = once(child, 'exit')
@@ -43,16 +45,20 @@ async function start() {
   } catch (error) { child.kill('SIGKILL'); await exited; throw error }
 }
 
-async function request(path, credential, init = {}) {
+async function request(path, credential, init = {}, signed = true) {
   return fetch(`${running.url}${path}`, { ...init, headers: {
-    ...(credential ? { Authorization: `Bearer ${credential}` } : {}), ...init.headers,
+    ...(credential ? { Authorization: `Bearer ${credential}`, ...(signed ? identity.headers(init.method ?? 'GET', path) : {}) } : {}), ...init.headers,
   } })
 }
 
 try {
   await writeFile(tokenFile, `${token}\n`, { mode: 0o600 })
   running = await start()
-  assert.equal((await request('/healthz')).status, 200)
+  const health = await request('/healthz')
+  assert.equal(health.status, 200)
+  assert.equal(health.headers.get('x-writer-agent-identity-mode'), 'per-user-v1')
+  // A valid bearer without a signed user must never act as the configured author.
+  assert.equal((await request(`/v1/projects/${project}/workspace`, token, {}, false)).status, 401)
   const notes = `/v1/projects/${project}/notes`
   for (const credential of [undefined, randomBytes(32).toString('hex')]) {
     const rejected = await request(notes, credential, { method: 'POST', headers: { 'content-type': 'application/json', 'X-Actor-ID': 'attacker' }, body: '{"content":"must not persist"}' })

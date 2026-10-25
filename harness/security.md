@@ -20,6 +20,8 @@
 | AWS 凭证 | `~/.aws/config` |
 | 私有密钥 | `~/.ssh/` |
 | 生产 Bearer 令牌 | `/etc/writer-agent/auth-token`，权限 0640 |
+| 身份签名私钥 | GitHub Actions Secret `WRITER_AGENT_IDENTITY_PRIVATE_KEY`，只注入 Cloudflare Worker；生成后删除本地文件 |
+| 身份验签公钥 | `/etc/writer-agent/api.env` 的 `WRITER_AGENT_IDENTITY_PUBLIC_KEY`（公开值，但须与私钥成对） |
 
 ## 部署前检查
 
@@ -41,6 +43,12 @@ openssl rand -base64 32
 ## 令牌权限
 
 本地 curl 配置文件权限设为 0600。不要把令牌放进浏览器包或 Git。
+
+## 用户身份
+
+- 作品访问要求 Bearer 加 Worker 签名的用户声明（Ed25519，60 秒，绑定方法与路径），两者缺一不可。每个 Google 账号是独立作者。
+- 身份私钥泄漏等同于可以冒充任何用户，前提是攻击者同时拿到了 Bearer。处理方法：重新运行 `generate-identity-keys.mjs`，先更新 api.env 公钥并重启 API，再更新 Secret 并部署 Web，然后轮换 Bearer。
+- `state/identity/legacy-owner-v1.json` 决定谁继承 per-user 之前的数据，只能在停服务后由运维人员修改。
 
 ## 凭证泄漏后的处理
 

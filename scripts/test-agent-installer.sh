@@ -63,8 +63,15 @@ chmod 0600 "$root/input/worker.env"
 run_install() {
  bash scripts/deploy/install-api-systemd.sh "$root/input/api" "$1" author scripts/deploy/systemd/writer-agent-api.service "$root/input/worker" scripts/deploy/systemd/writer-agent-worker.service "$root/input/worker.env"
 }
+# Without the per-user identity key the installer refuses before touching services.
+: > "$root/events"
+if run_install aaaaaaa; then echo 'Expected missing identity key refusal' >&2; exit 1; fi
+test ! -s "$root/events"
+mkdir -p "$root/target/etc/writer-agent"
+printf '%s\n' 'WRITER_AGENT_IDENTITY_PUBLIC_KEY=MCowBQYDK2VwAyEAsyntheticinstalleronly0000000=' 'WRITER_AGENT_LEGACY_OWNER_EMAIL=owner@example.com' > "$root/target/etc/writer-agent/api.env"
 # Fresh install must preflight without an API token or HTTP listener.
 run_install aaaaaaa
+grep -q 'WRITER_AGENT_IDENTITY_PUBLIC_KEY' "$root/target/etc/writer-agent/api.env"
 ! grep -q 'synthetic-not-a-credential' "$root/target/etc/writer-agent/api.env"
 test -s "$root/target/opt/writer-agent/releases/aaaaaaa/SHA256SUMS"
 printf 'author revision\n' > "$root/target/var/lib/writer-agent/prose"

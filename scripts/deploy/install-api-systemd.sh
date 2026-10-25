@@ -55,6 +55,8 @@ worker=read(source)
 worker.update(WRITER_AGENT_ENV='production',WRITER_AGENT_AUTHOR_ID=author,WRITER_AGENT_STATE_DIR=state,WRITER_AGENT_HARNESS_ROOT=harness)
 api=read(config+'/api.env')
 if api.get('WRITER_AGENT_AUTHOR_ID',author)!=author: raise SystemExit('Author identity mismatch; services unchanged')
+# Per-user identity: the API refuses to start without the Worker's public key.
+if not api.get('WRITER_AGENT_IDENTITY_PUBLIC_KEY','').strip(): raise SystemExit('Add WRITER_AGENT_IDENTITY_PUBLIC_KEY (and WRITER_AGENT_LEGACY_OWNER_EMAIL) to api.env first; services unchanged')
 api={k:v for k,v in api.items() if not k.startswith('WRITER_AGENT_LLM_') and k!='WRITER_AGENT_REVIEW_MAX_CONTEXT_TOKENS'}
 project=api.get('WRITER_AGENT_PROJECT_ID',worker.get('WRITER_AGENT_PROJECT_ID','local'))
 worker['WRITER_AGENT_PROJECT_ID']=project

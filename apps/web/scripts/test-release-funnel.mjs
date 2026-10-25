@@ -7,6 +7,8 @@ import { join, extname, resolve } from 'node:path'
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare'
 import { makeSignature } from 'better-auth/crypto'
 import { chromium, expect } from '@playwright/test'
+import { identityFixture } from '../../../scripts/lib/identity-fixture.mjs'
+const identity = identityFixture()
 const root = await mkdtemp(join(tmpdir(), 'story2u-release-'))
 const origin = 'https://writer.example',
   secret = 'isolated-release-secret-with-no-production-credentials',
@@ -30,6 +32,7 @@ try {
       WRITER_AGENT_AUTH_MODE: 'bearer',
       WRITER_AGENT_AUTH_TOKEN_FILE: join(root, 'token'),
       WRITER_AGENT_AUTHOR_ID: 'fixture-author',
+      ...identity.goEnv,
       WRITER_AGENT_PROJECT_ID: 'empty-external',
       WRITER_AGENT_API_PORT: '8796',
       WRITER_AGENT_HARNESS_ROOT: join(root, 'harness'),
@@ -76,7 +79,7 @@ try {
         BETTER_AUTH_SECRET: secret,
         GOOGLE_CLIENT_ID: 'fixture.apps.googleusercontent.com',
         GOOGLE_CLIENT_SECRET: 'fixture',
-        WRITER_AGENT_AUTHOR_EMAILS: 'author@example.com',
+        WRITER_AGENT_IDENTITY_PRIVATE_KEY: identity.privateKey,
         WRITER_AGENT_PROJECT_ID: 'empty-external',
         WRITER_AGENT_API_TOKEN: bearer,
         WRITER_AGENT_API_ORIGIN: 'https://api.example',
@@ -339,7 +342,8 @@ try {
     404,
   )
   console.log('Funnel: open studio')
-  await page.goto(origin + '/studio')
+  // V3 opens 灵感 by default; the manuscript lives in the reading space.
+  await page.goto(origin + '/studio?view=read&compose=1')
   await expect(page.getByLabel('正文编辑器')).toBeVisible()
   const reopen = page.getByRole('button', { name: '目录与本章相关' })
   if ((await reopen.getAttribute('aria-pressed')) !== 'true')

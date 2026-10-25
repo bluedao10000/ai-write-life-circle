@@ -5,6 +5,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare'
 import { makeSignature } from 'better-auth/crypto'
+import { identityFixture } from '../../../scripts/lib/identity-fixture.mjs'
+const identity = identityFixture()
 
 const root = await mkdtemp(join(tmpdir(), 'writer-auth-runtime-'))
 let mf
@@ -47,7 +49,7 @@ try {
         BETTER_AUTH_SECRET: secret,
         GOOGLE_CLIENT_ID: 'fixture.apps.googleusercontent.com',
         GOOGLE_CLIENT_SECRET: 'fixture',
-        WRITER_AGENT_AUTHOR_EMAILS: 'author@example.com',
+        WRITER_AGENT_IDENTITY_PRIVATE_KEY: identity.privateKey,
         WRITER_AGENT_PROJECT_ID: 'local',
         WRITER_AGENT_API_TOKEN: 'fixture',
         WRITER_AGENT_API_ORIGIN: 'https://api.example',
@@ -67,7 +69,9 @@ try {
         }
         assert.equal(request.headers.get('authorization'), 'Bearer fixture')
         assert.equal(request.headers.has('cookie'), false)
-        return Response.json({ fixture: 'authenticated-upstream' })
+        // Every forwarded call names the signed-in user with a Worker-signed assertion.
+        assert.match(request.headers.get('x-writer-agent-identity') ?? '', /^[\w-]+\.[\w-]+\.[\w-]+$/)
+        return Response.json({ fixture: 'authenticated-upstream' }, { headers: { 'x-writer-agent-identity-mode': 'per-user-v1' } })
       },
       serviceBindings: {
         ASSETS: () =>
@@ -156,8 +160,10 @@ try {
     headers: { cookie },
   })
   assert.equal(response.status, 200)
-  assert.deepEqual(await response.json(), {
-    user: { name: 'Author', email: 'author@example.com' },
+  const sessionBody = await response.json()
+  assert.match(sessionBody.user.scope, /^[A-Za-z0-9_-]{22}$/)
+  assert.deepEqual(sessionBody, {
+    user: { name: 'Author', email: 'author@example.com', scope: sessionBody.user.scope },
     projectId: 'local',
   })
   response = await mf.dispatchFetch(origin + '/v1/projects/local/workspace', {

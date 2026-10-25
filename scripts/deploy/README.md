@@ -3,7 +3,7 @@
 当前入口：
 
 - Web：仓库的 [deploy-web.yml](../../.github/workflows/deploy-web.yml) 构建前端并通过 Wrangler 部署到 Cloudflare Workers，需要相应的 Secrets/Variables。
-- Go API：优先按 [生产部署指南](../../harness/deploy-guide.md) 使用 `install-api-systemd.sh` 安装原生二进制，`install-api-https.sh` 配置 HTTPS。单作者 Bearer 身份已实现，所有接口由 loopback API 和 TLS 边缘代理分层处理。
+- Go API：优先按 [生产部署指南](../../harness/deploy-guide.md) 使用 `install-api-systemd.sh` 安装原生二进制，`install-api-https.sh` 配置 HTTPS。身份为 Bearer 加 Worker 签名的每请求用户声明（每个 Google 账号独立，见 `generate-identity-keys.mjs`），所有接口由 loopback API 和 TLS 边缘代理分层处理。
 - [deploy-api.yml](../../.github/workflows/deploy-api.yml) 继续构建镜像；旧 EC2 deploy job 保持暂停，避免覆盖手工配置的服务和身份。
 - 镜像构建：从仓库根目录使用 `docker build -f scripts/deploy/Dockerfile.api .` 或 `docker build -f scripts/deploy/Dockerfile.web .`。构建成功不代表生产服务可以启动。
 

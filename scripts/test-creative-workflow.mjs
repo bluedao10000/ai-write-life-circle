@@ -3,6 +3,8 @@
 // Scenarios: A (from zero), C (alternatives), D (write then return), E (plan
 // divergence), F (deletion invalidates derived work).
 import assert from "node:assert/strict";
+import { identityFixture } from "./lib/identity-fixture.mjs";
+const identity = identityFixture();
 import { createServer } from "node:http";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -91,6 +93,7 @@ const env = {
   WRITER_AGENT_AUTH_MODE: "bearer",
   WRITER_AGENT_AUTH_TOKEN_FILE: join(root, "bearer"),
   WRITER_AGENT_AUTHOR_ID: "fixture-author",
+  ...identity.goEnv,
   WRITER_AGENT_PROJECT_ID: "empty-external",
   WRITER_AGENT_API_PORT: "0",
   WRITER_AGENT_API_HOST: "127.0.0.1",
@@ -153,7 +156,7 @@ try {
   const call = async (path, { method = "GET", body, key, status = 200 } = {}) => {
     const r = await fetch(api + path, {
       method,
-      headers: { Authorization: "Bearer " + secrets.bearer, ...(body ? { "Content-Type": "application/json" } : {}), ...(key ? { "Idempotency-Key": key } : {}) },
+      headers: { Authorization: "Bearer " + secrets.bearer, ...identity.headers(method, path), ...(body ? { "Content-Type": "application/json" } : {}), ...(key ? { "Idempotency-Key": key } : {}) },
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
     const value = r.status === 204 ? null : await r.json();
