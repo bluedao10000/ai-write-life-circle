@@ -237,6 +237,7 @@ body {
 @keyframes indeterminate { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }
 .bar-indeterminate { animation: indeterminate 1.4s ease-in-out infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+@keyframes grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 .spin { animation: spin 0.9s linear infinite; }
 .studio-prose p { font-family: var(--font-prose); font-size: 16px; line-height: 1.95; letter-spacing: 0.02em; text-indent: 2em; margin: 0 0 0.8em; }
 .meter { appearance: none; display: block; width: 100%; height: 4px; border: 0; border-radius: 999px; overflow: hidden; background: var(--surface-2); color: var(--accent); }

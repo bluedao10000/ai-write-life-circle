@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CreativeDecisionInput, CreativeProposal, CreativeTurn } from '@writer-agent/contracts'
-import { Btn, Dialog } from '../../components/vnext/ui'
+import { Btn, Dialog, Dot, Heading, Icon } from '../../components/vnext/ui'
+import { EmptyState } from './kit'
 import { creativeApi } from '../../services/api/creativeApi'
 import AssetEditor from './AssetEditor'
 import ProposalCard from './ProposalCard'
@@ -17,6 +18,12 @@ export default function ProposalList({
   chapters,
   onDecided,
   emptyText = '暂无待审核的设定候选。',
+  onSession,
+  dense,
+  only,
+  inbox,
+  q = '',
+  onIdea,
 }: {
   bookId: string
   sessionId?: string
@@ -24,6 +31,16 @@ export default function ProposalList({
   chapters: { id: string; title: string }[]
   onDecided?: () => void
   emptyText?: string
+  /** When set, “回到对话” jumps to the message instead of showing the excerpt. */
+  onSession?: (sessionId: string, messageId: string) => void
+  dense?: boolean
+  /** Show a single proposal (detail drawer). */
+  only?: string
+  /** 「书 · 待确认」 layout: banner, grouped by conflict / revision / new candidate. */
+  inbox?: boolean
+  /** Client-side filter on name, summary and reason. */
+  q?: string
+  onIdea?: () => void
 }) {
   const [items, setItems] = useState<CreativeProposal[] | null>(null)
   const [selected, setSelected] = useState<string[]>([])
@@ -40,14 +57,14 @@ export default function ProposalList({
       .proposals(bookId, { status: 'proposed', sessionId, limit: 100 }, abort.signal)
       .then((page) => {
         if (id !== generation.current) return
-        setItems(page.items)
+        setItems(only ? page.items.filter((p) => p.proposalId === only) : page.items)
         setSelected((all) => all.filter((p) => page.items.some((i) => i.proposalId === p)))
       })
       .catch((e: unknown) => {
         if (id === generation.current && !abort.signal.aborted) setError(creativeError(e))
       })
     return () => abort.abort()
-  }, [bookId, sessionId, refreshKey, reload])
+  }, [bookId, sessionId, refreshKey, reload, only])
   const decide = useCallback(
     async (decisions: CreativeDecisionInput[]) => {
       setBusy(true)
@@ -76,18 +93,85 @@ export default function ProposalList({
   if (!items) return <p className="text-ui-sm text-ink-3">{error || '正在读取设定候选…'}</p>
   const groups = new Map<string, number>()
   for (const p of items) if (p.alternativeGroup) groups.set(p.alternativeGroup, (groups.get(p.alternativeGroup) ?? 0) + 1)
+  const needle = q.trim()
+  const shown = needle ? items.filter((p) => [p.result?.name, p.result?.summary, p.draft?.name, p.reason].some((t) => t?.includes(needle))) : items
+  const card = (p: CreativeProposal) => (
+    <ProposalCard
+      key={p.proposalId}
+      proposal={p}
+      busy={busy}
+      alternatives={p.alternativeGroup ? groups.get(p.alternativeGroup) : undefined}
+      selected={selected.includes(p.proposalId)}
+      onSelect={only ? undefined : (on) => setSelected((all) => (on ? [...all, p.proposalId] : all.filter((id) => id !== p.proposalId)))}
+      onAccept={() => void decide([{ proposalId: p.proposalId, action: 'accept' }])}
+      onReject={() => void decide([{ proposalId: p.proposalId, action: 'reject' }])}
+      onEdit={() => setEditing(p)}
+      onShowConversation={() => (onSession ? onSession(p.source.sessionId, p.source.messageId) : void showConversation(p))}
+      dense={dense}
+    />
+  )
+  const sections: [string, string, string, CreativeProposal[]][] = [
+    ['conflict', '存在冲突', '两个版本都保留着，等你决定采用哪一个，或自己改写。', shown.filter((p) => p.operation === 'SUPERSEDE')],
+    ['draft', '修改草案', '已确认的设定不会被静默覆盖；修改需要你确认。', shown.filter((p) => p.operation === 'UPDATE')],
+    ['new', '新的候选', '来自灵感对话。确认后进入对应分区。', shown.filter((p) => p.operation !== 'SUPERSEDE' && p.operation !== 'UPDATE')],
+  ]
   return (
-    <section aria-label="设定候选" className="space-y-3">
+    <section aria-label="设定候选" className={inbox ? '' : 'space-y-3'}>
+      {inbox && (
+        <p className="mb-5 flex flex-wrap items-center gap-x-2 rounded-md bg-surface-2 px-3 py-2 text-ui-sm text-ink-2">
+          <Dot tone="quiet" />
+          这里的内容都还不是作品设定。确认后才会出现在人物、世界观等分区。
+        </p>
+      )}
       {error && (
         <p role="alert" className="rounded bg-danger-soft px-3 py-2 text-ui-sm text-danger">
           {error}
         </p>
       )}
-      {items.length === 0 ? (
+      {inbox && shown.length === 0 ? (
+        <EmptyState icon="check" title={needle ? `没有找到与“${needle}”相关的待确认内容` : '没有需要你决定的内容'} body="灵感对话整理出的候选，会先出现在这里。">
+          {!needle && onIdea && (
+            <Btn variant="outline" onClick={onIdea}>
+              <Icon name="think" />
+              去灵感聊聊
+            </Btn>
+          )}
+        </EmptyState>
+      ) : items.length === 0 ? (
         <p className="text-ui-sm text-ink-3">{emptyText}</p>
+      ) : inbox ? (
+        <>
+          <div className="mb-5 flex flex-wrap items-center gap-2 text-ui-sm">
+            <span className="text-ink-3">
+              {shown.length} 条待确认{selected.length ? `，已选 ${selected.length} 条` : ''}
+            </span>
+            <Btn size="sm" onClick={() => setSelected(selected.length === shown.length ? [] : shown.map((p) => p.proposalId))}>
+              {selected.length === shown.length ? '取消全选' : '全选'}
+            </Btn>
+            <Btn size="sm" variant="primary" disabled={busy || selected.length === 0} onClick={() => void decide(selected.map((proposalId) => ({ proposalId, action: 'accept' })))}>
+              确认所选
+            </Btn>
+            <Btn size="sm" disabled={busy || selected.length === 0} onClick={() => void decide(selected.map((proposalId) => ({ proposalId, action: 'reject' })))}>
+              否决所选
+            </Btn>
+          </div>
+          {sections.map(([id, title, hint, list]) =>
+            list.length > 0 ? (
+              <section key={id} aria-label={title} className="mb-8">
+                <div className="mb-3 flex flex-wrap items-baseline gap-x-2">
+                  <Heading level={3} className={id === 'conflict' ? 'text-conflict' : ''}>
+                    {title} · {list.length}
+                  </Heading>
+                  <span className="text-ui-sm text-ink-3">{hint}</span>
+                </div>
+                <ul className="space-y-3">{list.map((p) => <li key={p.proposalId}>{card(p)}</li>)}</ul>
+              </section>
+            ) : null,
+          )}
+        </>
       ) : (
         <>
-          <div className="flex flex-wrap items-center gap-2 text-ui-sm">
+          <div hidden={!!only} className="flex flex-wrap items-center gap-2 text-ui-sm">
             <span className="text-ink-3">
               {items.length} 条待审核{selected.length ? `，已选 ${selected.length} 条` : ''}
             </span>
@@ -95,32 +179,19 @@ export default function ProposalList({
               {selected.length === items.length ? '取消全选' : '全选'}
             </Btn>
             <Btn size="sm" variant="primary" disabled={busy || selected.length === 0} onClick={() => void decide(selected.map((proposalId) => ({ proposalId, action: 'accept' })))}>
-              接受所选
+              确认所选
             </Btn>
             <Btn size="sm" disabled={busy || selected.length === 0} onClick={() => void decide(selected.map((proposalId) => ({ proposalId, action: 'reject' })))}>
-              拒绝所选
+              否决所选
             </Btn>
           </div>
-          <p className="text-micro text-ink-3">候选只是建议。接受前不会进入正式设定；未审核的候选可以在灵感讨论中被提到，但会标注为未确认。</p>
-          {items.map((p) => (
-            <ProposalCard
-              key={p.proposalId}
-              proposal={p}
-              busy={busy}
-              alternatives={p.alternativeGroup ? groups.get(p.alternativeGroup) : undefined}
-              selected={selected.includes(p.proposalId)}
-              onSelect={(on) => setSelected((all) => (on ? [...all, p.proposalId] : all.filter((id) => id !== p.proposalId)))}
-              onAccept={() => void decide([{ proposalId: p.proposalId, action: 'accept' }])}
-              onReject={() => void decide([{ proposalId: p.proposalId, action: 'reject' }])}
-              onEdit={() => setEditing(p)}
-              onShowConversation={() => void showConversation(p)}
-            />
-          ))}
+          <p hidden={!!only} className="text-micro text-ink-3">整理结果都是候选，确认后才会成为作品设定。未确认的候选在灵感讨论中只作为可能性出现。</p>
+          {items.map(card)}
         </>
       )}
       {editing && (
         <AssetEditor
-          title="编辑后接受"
+          title="编辑后确认"
           kind={editing.kind}
           kindLocked
           showStatus={editing.operation === 'CREATE'}
@@ -129,7 +200,7 @@ export default function ProposalList({
           busy={busy}
           error={error}
           note={editing.stale ? '以当前版本为基础编辑；保存时会再次核对版本。' : '接受后成为你的设定，并保留来源对话。'}
-          submitLabel="保存并接受"
+          submitLabel="保存并确认"
           onClose={() => setEditing(null)}
           onSubmit={({ content, status }) =>
             void decide([

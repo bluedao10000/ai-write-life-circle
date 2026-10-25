@@ -16,6 +16,7 @@ export default function AssetEditor({
   initial,
   kind: initialKind,
   kindLocked,
+  kinds,
   showStatus,
   submitLabel,
   chapters,
@@ -29,6 +30,8 @@ export default function AssetEditor({
   initial?: CreativeContent
   kind?: CreativeKind
   kindLocked?: boolean
+  /** Restrict the kind choice to one book section. */
+  kinds?: CreativeKind[]
   showStatus?: boolean
   submitLabel: string
   chapters: { id: string; title: string }[]
@@ -80,26 +83,26 @@ export default function AssetEditor({
     >
       <div className="space-y-4">
         {!kindLocked && (
-          <Select label="设定类型" value={kind} onChange={(v) => setKind(v as CreativeKind)} options={Object.entries(kindLabels).map(([value, label]) => ({ value, label }))} />
+          <Select label="设定类型" value={kind} onChange={(v) => setKind(v as CreativeKind)} options={Object.entries(kindLabels).filter(([value]) => !kinds || kinds.includes(value as CreativeKind)).map(([value, label]) => ({ value, label }))} />
         )}
         <label className="block text-ui-sm">
           名称
-          <input aria-label="设定名称" maxLength={80} value={name} onChange={(e) => setName(e.target.value)} className="mt-1 block w-full rounded-md border border-line bg-transparent px-2.5 py-1.5 text-ui text-ink" />
+          <input aria-label="设定名称" maxLength={80} value={name} onChange={(e) => setName(e.target.value)} className="mt-1 block w-full rounded-md border border-line bg-paper px-3 py-2 text-ui text-ink" />
         </label>
         <label className="block text-ui-sm">
           别名（用顿号分隔）
-          <input aria-label="别名" value={aliases} onChange={(e) => setAliases(e.target.value)} className="mt-1 block w-full rounded-md border border-line bg-transparent px-2.5 py-1.5 text-ui text-ink" />
+          <input aria-label="别名" value={aliases} onChange={(e) => setAliases(e.target.value)} className="mt-1 block w-full rounded-md border border-line bg-paper px-3 py-2 text-ui text-ink" />
         </label>
         <label className="block text-ui-sm">
           概述
-          <textarea aria-label="概述" maxLength={2000} rows={3} value={summary} onChange={(e) => setSummary(e.target.value)} className="mt-1 block w-full rounded-md border border-line bg-transparent px-2.5 py-1.5 font-prose text-ui text-ink" />
+          <textarea aria-label="概述" maxLength={2000} rows={3} value={summary} onChange={(e) => setSummary(e.target.value)} className="mt-1 block w-full rounded-md border border-line bg-paper px-3 py-2 font-prose text-ui text-ink" />
         </label>
         <fieldset className="space-y-2">
           <legend className="text-ui-sm">属性</legend>
           {fields.map((f, i) => (
             <div key={i} className="flex gap-2">
-              <input aria-label={`属性名 ${i + 1}`} placeholder="如：动机" maxLength={40} value={f.key} onChange={(e) => setFields((all) => all.map((x, j) => (j === i ? { ...x, key: e.target.value } : x)))} className="w-28 rounded-md border border-line bg-transparent px-2 py-1 text-ui" />
-              <input aria-label={`属性值 ${i + 1}`} maxLength={2000} value={f.value} onChange={(e) => setFields((all) => all.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)))} className="min-w-0 flex-1 rounded-md border border-line bg-transparent px-2 py-1 text-ui" />
+              <input aria-label={`属性名 ${i + 1}`} placeholder="如：动机" maxLength={40} value={f.key} onChange={(e) => setFields((all) => all.map((x, j) => (j === i ? { ...x, key: e.target.value } : x)))} className="w-28 rounded-md border border-line bg-paper px-3 py-2 text-ui" />
+              <input aria-label={`属性值 ${i + 1}`} maxLength={2000} value={f.value} onChange={(e) => setFields((all) => all.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)))} className="min-w-0 flex-1 rounded-md border border-line bg-paper px-3 py-2 text-ui" />
               <Btn size="sm" ariaLabel={`删除属性 ${i + 1}`} onClick={() => setFields((all) => all.filter((_, j) => j !== i))}>
                 删除
               </Btn>

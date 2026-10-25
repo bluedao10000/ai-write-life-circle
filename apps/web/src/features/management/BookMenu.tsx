@@ -199,26 +199,26 @@ export default function BookMenu() {
     ) : null
 
   return (
-    <div className="relative min-w-0 text-ui">
+    <div className="relative min-w-0">
       <button
         ref={triggerRef}
         type="button"
         className={`${buttonClassName(
           'quiet',
           'sm',
-        )} max-w-52 gap-2 pr-1 pl-1 font-prose`}
+        )} max-w-full gap-2 pl-1`}
         aria-label={`当前作品：${management.book.title}，切换作品`}
         aria-pressed={open}
         data-current-book-id={management.book.bookId}
         onClick={() => setOpen((value) => !value)}
       >
         <span
-          className="flex h-7 w-6 shrink-0 items-center justify-center rounded-sm border border-line bg-surface-2 font-prose text-ui-sm text-ink-2"
+          className="flex h-8 w-6 shrink-0 items-center justify-center rounded-sm border border-line bg-surface-2 font-prose text-ui-sm text-ink-2"
           aria-hidden
         >
           {management.book.title.slice(0, 1) || '无'}
         </span>
-        <span className="min-w-0 truncate text-ink">
+        <span className="min-w-0 truncate font-prose text-ui text-ink max-sm:hidden">
           {management.book.title}
         </span>
         <Icon name="chevronDown" className="text-ink-3" />

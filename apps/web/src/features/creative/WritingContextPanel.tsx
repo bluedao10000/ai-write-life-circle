@@ -44,12 +44,15 @@ export default function WritingContextPanel({
   chapters,
   onClose,
   onFlushSave,
+  embedded,
 }: {
   bookId: string
   chapterId: string
   chapters: { id: string; title: string }[]
   onClose: () => void
   onFlushSave: () => Promise<boolean>
+  /** Rendered inside the reading drawer, which owns the title and close button. */
+  embedded?: boolean
 }) {
   const [context, setContext] = useState<CreativeWritingContext | null>(null)
   const [divergences, setDivergences] = useState<CreativeDivergence[]>([])
@@ -126,13 +129,15 @@ export default function WritingContextPanel({
       </section>
     )
   return (
-    <aside aria-label="本章设定" className="flex h-full flex-col gap-4 overflow-auto p-4">
-      <div className="flex items-center gap-2">
-        <Heading level={2} className="mr-auto">
-          本章设定
-        </Heading>
-        <IconBtn icon="x" label="关闭本章设定" onClick={onClose} />
-      </div>
+    <section aria-label="本章设定" className={`flex flex-col gap-4 ${embedded ? 'px-5 pb-6' : 'h-full overflow-auto p-4'}`}>
+      {!embedded && (
+        <div className="flex items-center gap-2">
+          <Heading level={2} className="mr-auto">
+            本章设定
+          </Heading>
+          <IconBtn icon="x" label="关闭本章设定" onClick={onClose} />
+        </div>
+      )}
       <p className="text-micro text-ink-3">{context?.notice ?? '只显示作者确认的设定。'}</p>
       {error && (
         <p role="alert" className="text-ui-sm text-danger">
@@ -212,6 +217,6 @@ export default function WritingContextPanel({
           onSubmit={(v) => void save(v)}
         />
       )}
-    </aside>
+    </section>
   )
 }

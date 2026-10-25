@@ -4,6 +4,7 @@ import type { Chapter } from '@writer-agent/contracts'
 import type { Editor } from '@tiptap/react'
 import ManuscriptEditor, { type Annotation, type Flash } from '../../components/ManuscriptEditor'
 import { Btn, Empty } from '../../components/ui'
+import { Btn as DBtn, Icon } from '../../components/vnext/ui'
 import type { useWorkspaceController } from './useWorkspaceController'
 
 type Props = {
@@ -23,6 +24,14 @@ type Props = {
   /** Reading mode is read-only; compose mode edits through the same save pipeline. */
   editable?: boolean
   typewriter?: boolean
+  compose?: boolean
+  onProgress?: (pct: number) => void
+  prev?: Chapter
+  next?: Chapter
+  onOpenChapter?: (id: string) => void
+  onStartWriting?: () => void
+  onIdea?: () => void
+  onSelectionRect?: (text: string, rect: { left: number; top: number } | null) => void
 }
 export default function WritingCanvas({
   workspace,
@@ -40,6 +49,14 @@ export default function WritingCanvas({
   setSelection,
   editable = true,
   typewriter = false,
+  compose = true,
+  onProgress,
+  prev,
+  next,
+  onOpenChapter,
+  onStartWriting,
+  onIdea,
+  onSelectionRect,
 }: Props) {
   const management = useManagement()
   const {
@@ -58,7 +75,16 @@ export default function WritingCanvas({
     onChange,
   } = workspace
   return (
-    <div ref={scrollRef} className="scroll relative min-h-0 flex-1 overflow-auto">
+    <div
+      ref={scrollRef}
+      className="scroll relative min-h-0 flex-1 overflow-auto"
+      onScroll={(e) => {
+        if (!onProgress) return
+        const t = e.currentTarget
+        const max = t.scrollHeight - t.clientHeight
+        onProgress(max > 0 ? Math.min(100, Math.round((t.scrollTop / max) * 100)) : 100)
+      }}
+    >
       {chapters.length === 0 ? (
         <Empty
           title={
@@ -117,17 +143,23 @@ export default function WritingCanvas({
         </section>
       ) : (
         <article
-          className={`mx-auto w-full max-w-page px-8 pb-48 sm:px-12 ${layout.focus ? 'pt-28' : 'pt-14 sm:pt-20'}`}
+          className={`mx-auto w-full max-w-page px-8 pb-48 sm:px-12 ${layout.focus && compose ? 'pt-28' : 'pt-14 sm:pt-20'}`}
         >
           {resume}
-          <div className="mb-2 text-ui-sm text-ink-3">
-            {chapter.volume}
-            {chapterNumber ? ` · 第 ${chapterNumber} 章` : ''}
-          </div>
-          <h1 className="font-prose text-display font-medium">{displayTitle ?? chapter.title}</h1>
-          <div className="mt-2 mb-12 text-ui-sm" style={{ color: 'var(--ink-3)' }}>
-            {chapter.meta}
-          </div>
+          <header className="mb-12">
+            <div className="text-ui-sm text-ink-3">
+              {chapter.volume}
+              {chapterNumber ? ` · 第 ${chapterNumber} 章` : ''}
+            </div>
+            <h1 className={`mt-2 font-prose text-display font-medium ${(displayTitle ?? chapter.title) ? 'text-ink' : 'text-ink-3'}`}>{displayTitle ?? chapter.title ?? '未命名'}</h1>
+            {chapter.meta && <div className="mt-2 text-ui-sm text-ink-3">{chapter.meta}</div>}
+            {compose && editable && (
+              <div className="mt-3 inline-flex items-center gap-1.5 text-micro text-ink-3">
+                <Icon name="pen" className="h-3 w-3" />
+                写作中 · ⌘E 回到阅读
+              </div>
+            )}
+          </header>
           {saveState.s === 'error' && saveState.conflict && (
             <section
               role="alert"
@@ -154,6 +186,23 @@ export default function WritingCanvas({
               </div>
             </section>
           )}
+          {!compose && !(markdownByChapter[current] ?? (doc[current] ?? []).join('')).trim() ? (
+            <div className="rounded-lg border border-dashed border-line px-6 py-12 text-center">
+              <p className="font-prose text-read text-ink-2">这一章还没有正文。</p>
+              <p className="mx-auto mt-2 max-w-prose text-ui-sm text-ink-3">直接开始写，或先在灵感里把这一幕想清楚。AI 不会替你生成正文。</p>
+              <div className="mt-6 flex flex-wrap justify-center gap-2">
+                <DBtn variant="primary" onClick={onStartWriting}>
+                  <Icon name="pen" />
+                  开始写这一章
+                </DBtn>
+                <DBtn variant="outline" onClick={onIdea}>
+                  <Icon name="think" />
+                  去灵感构思
+                </DBtn>
+              </div>
+            </div>
+          ) : null}
+          <div hidden={!compose && !(markdownByChapter[current] ?? (doc[current] ?? []).join('')).trim()}>
           <ManuscriptEditor
             key={`${current}:${editorGeneration}`}
             chapterId={current}
@@ -167,7 +216,25 @@ export default function WritingCanvas({
             onReady={handleEditorReady}
             editable={editable}
             typewriter={typewriter}
+            onSelectionRect={onSelectionRect}
           />
+          </div>
+          {!compose && (prev || next) && (
+            <nav aria-label="章节导航" className="mt-20 flex items-center gap-2 border-t border-line-soft pt-6">
+              {prev && (
+                <DBtn variant="quiet" onClick={() => onOpenChapter?.(prev.id)}>
+                  <Icon name="back" />
+                  {prev.title}
+                </DBtn>
+              )}
+              {next && (
+                <DBtn variant="quiet" className="ml-auto" onClick={() => onOpenChapter?.(next.id)}>
+                  {next.title}
+                  <Icon name="chevron" />
+                </DBtn>
+              )}
+            </nav>
+          )}
         </article>
       )}
     </div>

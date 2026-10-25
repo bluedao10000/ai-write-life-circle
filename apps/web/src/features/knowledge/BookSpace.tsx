@@ -1,7 +1,9 @@
 import { KnowledgePanel } from './KnowledgePanel'
 import LegacyRecords from './LegacyRecords'
 import type { useStudioController } from '../vnext/useStudioController'
-import BookView, { isCanonSection } from '../../components/vnext/BookView'
+import BookView, { SourceSwitch, isAssetSection, sourceOf } from '../../components/vnext/BookView'
+import { useCreativeOverview } from '../creative/useCreativeOverview'
+import { kindsOf } from '../creative/kit'
 import AssetLibrary from '../creative/AssetLibrary'
 import { NotesPanel } from '../notes/NotesPanel'
 import type { WriterAgentAdapter } from '../../services/writerAgent'
@@ -30,6 +32,26 @@ export default function BookSpace({
     switchChapter,
     openSource,
   } = studio
+  const api = adapter.mode === 'api'
+  const { overview } = useCreativeOverview(workspace.projectId, api && view === 'book')
+  const section = bookNav.section
+  // Demo has no creative assets: asset sections fall back to the prototype observations.
+  const canon = section === 'inbox' || (api && isAssetSection(section) && sourceOf(bookNav) === 'canon')
+  const sw = <SourceSwitch nav={bookNav} setNav={setBookNav} />
+  const counts = overview
+    ? {
+        people: kindsOf.person.reduce((n, k) => n + (overview.counts[k]?.accepted ?? 0) + (overview.counts[k]?.draft ?? 0), 0),
+        world: kindsOf.world.reduce((n, k) => n + (overview.counts[k]?.accepted ?? 0) + (overview.counts[k]?.draft ?? 0), 0),
+        timeline: kindsOf.event.reduce((n, k) => n + (overview.counts[k]?.accepted ?? 0) + (overview.counts[k]?.draft ?? 0), 0),
+        plot: kindsOf.plot.reduce((n, k) => n + (overview.counts[k]?.accepted ?? 0) + (overview.counts[k]?.draft ?? 0), 0),
+        threads: kindsOf.thread.reduce((n, k) => n + (overview.counts[k]?.accepted ?? 0) + (overview.counts[k]?.draft ?? 0), 0),
+        inbox: overview.pendingProposals,
+      }
+    : undefined
+  const toSession = (sessionId: string, messageId: string) => {
+    studio.setIdeaFocus({ sessionId, messageId, nonce: Date.now() })
+    setView('inspire')
+  }
   return (
     <>
       <div hidden={view !== 'book'} className={view === 'book' ? 'min-h-0 flex-1' : ''}>
@@ -43,43 +65,46 @@ export default function BookSpace({
           notes={[]}
           changes={prototype.changes}
           workTitle={workspace.projectTitle}
+          counts={counts}
           historyContent={
             <LegacyRecords proposals={workspace.proposals} decisions={workspace.decisions} />
           }
           knowledgeContent={
-            adapter.mode === 'api' &&
-            view === 'book' &&
-            bookNav.section !== 'notes' &&
-            !isCanonSection(bookNav.section) ? (
+            api && view === 'book' && section !== 'notes' && section !== 'inbox' && !canon ? (
               <KnowledgePanel
                 key={workspace.projectId}
                 bookId={workspace.projectId}
                 bookTitle={workspace.projectTitle}
                 chapterId={current}
-                section={bookNav.section}
+                section={section}
+                headerExtra={sw}
                 adapter={adapter}
                 chapters={chapters}
                 onChapter={switchChapter}
-                onSection={(section) => setBookNav({ section })}
+                onSection={(next) => setBookNav({ section: next, source: 'manuscript' })}
               />
             ) : undefined
           }
           creativeContent={
-            view === 'book' && isCanonSection(bookNav.section) ? (
-              adapter.mode === 'api' ? (
+            view === 'book' && canon && (section === 'inbox' || isAssetSection(section)) ? (
+              api ? (
                 <AssetLibrary
                   key={workspace.projectId}
                   bookId={workspace.projectId}
-                  section={bookNav.section}
+                  bookTitle={workspace.projectTitle}
+                  section={section}
+                  headerExtra={section === 'inbox' ? undefined : sw}
                   chapters={chapters.map((c) => ({ id: c.id, title: c.title }))}
-                  onSection={(section) => setBookNav({ section })}
+                  onSection={(next) => setBookNav({ section: next })}
+                  onChapter={(id) => switchChapter(id)}
+                  onSession={toSession}
                   onDiscuss={(seed) => {
                     studio.thinking.setDraft(seed)
                     setView('inspire')
                   }}
                 />
               ) : (
-                <p className="px-8 py-10 text-ui text-ink-3">演示模式不包含创作设定。连接作品后可以在这里管理人物、世界规则与剧情规划。</p>
+                <p className="px-8 py-10 text-ui text-ink-3">演示模式不包含创作设定。连接作品后可以在这里管理人物、世界观与剧情规划；切换到「正文观察 · AI」可以查看演示知识。</p>
               )
             ) : undefined
           }

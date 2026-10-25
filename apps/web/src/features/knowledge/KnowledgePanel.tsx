@@ -54,6 +54,8 @@ type Props = {
   chapters?: { id: string; title: string }[];
   onChapter: (id: string) => void;
   onSection?: (section: BookSection) => void;
+  /** Extra header controls supplied by the book shell (e.g. the source switch). */
+  headerExtra?: React.ReactNode;
 };
 
 type Records = {
@@ -100,7 +102,7 @@ const meta: Record<
   world: {
     type: "place,organization,world_rule",
     search: "查找地点、组织或规则",
-    label: "世界与规则",
+    label: "世界观",
     description: "地点、组织与世界规则。没有原文依据的条目会明确标出。",
     other: "chapter",
   },
@@ -153,6 +155,7 @@ export function KnowledgePanel(props: Props) {
     chapters = [],
     onChapter,
     onSection,
+    headerExtra,
   } = props;
   const [view, setView] = useState<MemoryView | null>(null);
   const [page, setPage] = useState<MemoryPage | null>(null);
@@ -688,6 +691,7 @@ export function KnowledgePanel(props: Props) {
                 {bookTitle || "当前作品"} <span className="text-ink-4">/</span> 书
               </span>
               <div className="relative ml-auto flex items-center gap-2">
+                {headerExtra}
                 {summaryError ? (
                   <span className="inline-flex items-center gap-2 rounded-full border border-dashed border-line px-2.5 py-0.5 text-ui-sm text-ink-3">
                     <Dot tone="warn" />

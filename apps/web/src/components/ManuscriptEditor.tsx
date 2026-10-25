@@ -89,14 +89,16 @@ type Props = {
   editable?: boolean
   /** Keep the caret line near the vertical centre while composing. */
   typewriter?: boolean
+  /** Viewport position of a non-empty selection, for the floating selection bar. */
+  onSelectionRect?: (text: string, rect: { left: number; top: number } | null) => void
 }
 
-export default function ManuscriptEditor({ chapterId, initial, initialMarkdown, annotations, flash, onChange, onSelectIssue, onSelection, onReady, editable = true, typewriter = false }: Props) {
+export default function ManuscriptEditor({ chapterId, initial, initialMarkdown, annotations, flash, onChange, onSelectIssue, onSelection, onReady, editable = true, typewriter = false, onSelectionRect }: Props) {
   const unsupportedMarkdown = useMemo(() => findUnsupportedMarkdown(initialMarkdown ?? ''), [initialMarkdown])
   const annRef = useRef(annotations)
   const flashRef = useRef(flash)
-  const cb = useRef({ onChange, onSelectIssue, onSelection })
-  cb.current = { onChange, onSelectIssue, onSelection }
+  const cb = useRef({ onChange, onSelectIssue, onSelection, onSelectionRect })
+  cb.current = { onChange, onSelectIssue, onSelection, onSelectionRect }
 
   const editor = useEditor(
     {
@@ -132,6 +134,13 @@ export default function ManuscriptEditor({ chapterId, initial, initialMarkdown, 
         const text = editor.state.doc.textBetween(from, to, '\n')
         const paraIndex = paragraphEntries(editor.state.doc).findIndex(({ pos, node }) => from >= pos && from <= pos + node.nodeSize)
         cb.current.onSelection(text, Math.max(0, paraIndex))
+        if (cb.current.onSelectionRect) {
+          const trimmed = text.trim()
+          if (trimmed.length > 1) {
+            const c = editor.view.coordsAtPos(from)
+            cb.current.onSelectionRect(trimmed, { left: c.left, top: c.top })
+          } else cb.current.onSelectionRect('', null)
+        }
       },
     },
     [chapterId],

@@ -8,11 +8,11 @@ import StoryConflictView from '../../components/vnext/StoryConflictView'
 import WritingCanvas from '../workspace/WritingCanvas'
 import Resume from '../../components/vnext/Resume'
 import MarginPanel from '../../components/vnext/MarginPanel'
-import { Btn, IconBtn, Icon, Seg, Kbd } from '../../components/vnext/ui'
+import { Btn, Dot, IconBtn, Icon, Seg, Kbd } from '../../components/vnext/ui'
 import type { WriterAgentAdapter } from '../../services/writerAgent'
 import ThinkingSpace from '../vnext/ThinkingSpace'
-import { ComposeBar, ReadingBar } from './ComposeBar'
 import WritingContextPanel from '../creative/WritingContextPanel'
+import { useState } from 'react'
 export default function WritingSpace({
   studio,
   adapter,
@@ -55,7 +55,6 @@ export default function WritingSpace({
     layout,
     setLayout,
     bridge,
-    editor,
     ready,
     chapters,
     chapter,
@@ -76,11 +75,18 @@ export default function WritingSpace({
     resumePending,
     toast,
     compose,
-    setCompose,
     typewriter,
-    assetsOpen,
-    setAssetsOpen,
+    openRight,
+    enterCompose,
   } = studio
+  // Focus only applies while composing; a remembered preference never hides reading chrome.
+  const focus = layout.focus && compose
+  const [readPct, setReadPct] = useState(0)
+  const [sel, setSel] = useState<{ text: string; x: number; y: number } | null>(null)
+  const words = bridge.words ?? (doc[current] ?? []).join('').replace(/\s/g, '').length
+  const index = chapters.findIndex((c) => c.id === current)
+  const prev = index > 0 ? chapters[index - 1] : undefined
+  const next = index >= 0 ? chapters[index + 1] : undefined
   const api = adapter.mode === 'api'
   const thinkView = (wide = false) => (
     <ThinkingSpace studio={studio} demo={adapter.mode === 'demo'} wide={wide} />
@@ -100,7 +106,7 @@ export default function WritingSpace({
         hidden={view !== 'read'}
         className={view === 'read' ? 'relative flex min-h-0 flex-1' : ''}
       >
-        {view === 'read' && layout.leftOpen && !layout.focus && (
+        {view === 'read' && layout.leftOpen && !focus && (
           <>
             <button
               aria-label="关闭章节遮罩"
@@ -205,8 +211,15 @@ export default function WritingSpace({
                   回到正文原位置
                 </Btn>
               )}
-              <ReadingBar studio={studio} api={api} />
               <WritingCanvas
+                compose={compose}
+                onProgress={compose ? undefined : setReadPct}
+                prev={prev}
+                next={next}
+                onOpenChapter={switchChapter}
+                onStartWriting={enterCompose}
+                onIdea={() => openThink(`构思${chapter.title || '这一章'}`)}
+                onSelectionRect={(text, rect) => setSel(text.length > 1 && rect ? { text, x: rect.left, y: rect.top } : null)}
                 editable={compose}
                 typewriter={typewriter}
                 workspace={workspace}
@@ -231,7 +244,7 @@ export default function WritingSpace({
                 setSelection={setSelection}
                 resume={
                   resume &&
-                  !layout.focus &&
+                  !focus &&
                   currentViewChapter &&
                   (bridge.paragraphs ?? doc[current] ?? []).some(Boolean) ? (
                     <Resume
@@ -249,9 +262,7 @@ export default function WritingSpace({
                           : undefined
                       }
                       onContinue={() => {
-                        setResume(false)
-                        setCompose(true)
-                        window.setTimeout(() => editor.current?.commands.focus('end'), 0)
+                        enterCompose()
                       }}
                       onThink={() => openThink(nextUp?.content)}
                       onSkip={() => setResume(false)}
@@ -262,20 +273,7 @@ export default function WritingSpace({
             </>
           )}
         </main>
-        {view === 'read' && assetsOpen && api && chapter.id && (
-          <div className="fixed inset-y-0 top-12 right-0 z-30 w-full max-w-sm border-l border-line bg-surface shadow-soft xl:static xl:z-auto xl:w-96 xl:max-w-none xl:shrink-0 xl:shadow-none">
-            <WritingContextPanel
-              key={current}
-              bookId={workspace.projectId}
-              chapterId={current}
-              chapters={chapters.map((c) => ({ id: c.id, title: c.title }))}
-              onClose={() => setAssetsOpen(false)}
-              onFlushSave={() => workspace.flushSave()}
-            />
-          </div>
-        )}
-        {view === 'read' && <ComposeBar studio={studio} api={api} />}
-        {view === 'read' && layout.rightOpen && !layout.focus && (
+        {view === 'read' && layout.rightOpen && !focus && (
           <>
             <button
               aria-label="关闭辅助遮罩"
@@ -293,10 +291,18 @@ export default function WritingSpace({
                   label="辅助内容"
                   value={rightTab}
                   onChange={setRightTab}
-                  options={[
-                    ['margin', '注记'],
-                    ['think', '灵感'],
-                  ]}
+                  options={
+                    api
+                      ? [
+                          ['context', '本章设定'],
+                          ['margin', '注记'],
+                          ['review', '审查'],
+                        ]
+                      : [
+                          ['margin', '注记'],
+                          ['think', '灵感'],
+                        ]
+                  }
                 />
                 {rightTab === 'think' && (
                   <IconBtn
@@ -313,9 +319,25 @@ export default function WritingSpace({
                 />
               </div>
               <div className="scroll min-h-0 flex-1 overflow-auto">
-                {rightTab === 'think' ? (
+                {rightTab === 'think' && !api ? (
                   thinkView()
-                ) : adapter.mode === 'api' ? (
+                ) : api && rightTab === 'context' ? (
+                  chapter.id ? (
+                    <WritingContextPanel
+                      key={current}
+                      bookId={workspace.projectId}
+                      chapterId={current}
+                      chapters={chapters.map((c) => ({ id: c.id, title: c.title }))}
+                      onClose={() => setLayout((l) => ({ ...l, rightOpen: false }))}
+                      onFlushSave={() => workspace.flushSave()}
+                      embedded
+                    />
+                  ) : (
+                    <p className="px-5 text-ui-sm text-ink-3">先打开一章。</p>
+                  )
+                ) : api && rightTab === 'review' ? (
+                  <ReviewTab studio={studio} />
+                ) : api ? (
                   <ReviewMarginPanel
                     review={reviews}
                     locate={(id) => void locateReview(id)}
@@ -350,56 +372,107 @@ export default function WritingSpace({
             </aside>
           </>
         )}
-        {!resume && !layout.rightOpen && !conflict && (
-          <div className="chrome pointer-events-none fixed bottom-4 left-1/2 z-0 hidden -translate-x-1/2 text-micro text-ink-3 lg:block">
-            <Kbd>⌘;</Kbd> 随手记 <Kbd>⌘\</Kbd> 注记 <Kbd>⌘⇧E</Kbd> 目录 <Kbd>⌘⇧F</Kbd> 专注
+        {!resume && !layout.rightOpen && !conflict && !focus && chapter.id && (
+          <div className="chrome pointer-events-none fixed bottom-4 left-1/2 z-0 hidden -translate-x-1/2 text-micro text-ink-3 xl:block">
+            {compose ? (
+              <>
+                <Kbd>⌘E</Kbd> 阅读{'\u3000'}<Kbd>⌘;</Kbd> 随手记{'\u3000'}<Kbd>⌘\</Kbd> 注记{'\u3000'}<Kbd>⌘⇧F</Kbd> 专注
+              </>
+            ) : (
+              <>
+                <Kbd>⌘E</Kbd> 开始写作{'\u3000'}<Kbd>⌘⇧E</Kbd> 目录{'\u3000'}<Kbd>⌘\</Kbd> 注记
+              </>
+            )}
           </div>
         )}
-        <footer className="chrome pointer-events-none fixed inset-x-0 bottom-0 z-10 flex items-end justify-between px-4 pb-4">
-          <span className="hidden text-micro text-ink-3 sm:inline">
-            {bridge.words ?? (doc[current] ?? []).join('').replace(/\s/g, '').length} 字
-          </span>
-          {(!layout.rightOpen || layout.focus) && (
-            <div className="pointer-events-auto ml-auto flex gap-0.5 rounded-lg bg-page/80 p-0.5 backdrop-blur">
-              <Btn size="sm" disabled={!notesEnabled} onClick={() => setQuick(true)}>
-                <Icon name="pen" />
-                随手记
-              </Btn>
-              {adapter.mode === 'api' && (
-                <Btn
-                  size="sm"
-                  disabled={
-                    !reviews.available ||
-                    !!reviews.busy ||
-                    !current ||
-                    !(workspace.markdownByChapter[current] ?? '').trim() ||
-                    reviews.run?.status === 'running'
-                  }
-                  onClick={() => void reviews.prepare()}
-                >
-                  {reviews.busy === 'preview'
-                    ? '准备审查…'
-                    : reviews.run?.status === 'completed'
-                      ? '重新审查'
-                      : '审查本章'}
-                </Btn>
+        {!conflict && chapter.id && (
+          <footer className="chrome pointer-events-none fixed inset-x-0 bottom-0 z-10 flex items-end justify-between px-4 pb-4">
+            <span className="pointer-events-auto hidden items-center gap-2 text-micro tabular-nums text-ink-3 sm:flex">
+              {!compose && words > 0 ? (
+                <>
+                  <span className="w-20">
+                    <progress className="meter" max={100} value={readPct} aria-label="阅读进度" />
+                  </span>
+                  <span>
+                    {readPct}% · <span>{words} 字</span>
+                  </span>
+                </>
+              ) : (
+                <span>
+                  <span>{words} 字</span>
+                  {compose && studio.composeDelta ? ` · 本次 ${studio.composeDelta > 0 ? '+' : ''}${studio.composeDelta}` : ''}
+                  {focus && ' · 专注中 · Esc 退出'}
+                </span>
               )}
-              <Btn size="sm" onClick={() => openThink(selection)}>
-                灵感
-              </Btn>
-              <Btn
-                size="sm"
-                onClick={() => {
-                  setRightTab('margin')
-                  setLayout((l) => ({ ...l, rightOpen: true, focus: false }))
-                }}
-              >
-                注记
-              </Btn>
-            </div>
-          )}
-        </footer>
+            </span>
+            {(!layout.rightOpen || focus) && (
+              <div className="pointer-events-auto ml-auto flex items-center gap-0.5 rounded-lg bg-page/80 p-0.5 backdrop-blur">
+                {compose && (
+                  <Btn size="sm" disabled={!notesEnabled} onClick={() => setQuick(true)} title="随手记 ⌘;">
+                    <Icon name="pen" />
+                    随手记
+                  </Btn>
+                )}
+                <Btn size="sm" onClick={() => openThink(selection)} title="带着这一章去灵感里讨论">
+                  <Icon name="think" />
+                  去灵感
+                </Btn>
+                {api && (
+                  <Btn size="sm" onClick={() => openRight('context')} title="本章的构想、相关设定与计划核对">
+                    <Icon name="book" />
+                    本章设定
+                  </Btn>
+                )}
+                <Btn size="sm" onClick={() => openRight('margin')} title="注记 ⌘\">
+                  {(api ? reviewAnnotations : liveMargins).length > 0 && <Dot tone="quiet" />}
+                  注记
+                </Btn>
+              </div>
+            )}
+          </footer>
+        )}
+        {sel && (
+          <div className="fade-up fixed z-40 flex -translate-x-1/2 -translate-y-full gap-0.5 rounded-lg bg-ink p-0.5 shadow-soft" style={{ left: Math.max(120, sel.x), top: sel.y - 8 }}>
+            <Btn size="sm" className="text-page hover:bg-transparent hover:text-page hover:opacity-80" onClick={() => { openThink(sel.text); setSel(null) }}>
+              带去灵感
+            </Btn>
+            <Btn size="sm" className="text-page hover:bg-transparent hover:text-page hover:opacity-80" disabled={!notesEnabled} onClick={() => { setQuick(true); setSel(null) }}>
+              记一笔
+            </Btn>
+          </div>
+        )}
       </div>
     </>
+  )
+}
+
+/** 审查 tab: starts the existing consented, evidence-validated review flow. */
+function ReviewTab({ studio }: { studio: ReturnType<typeof useStudioController> }) {
+  const { reviews, workspace, current, openRight } = studio
+  const empty = !(workspace.markdownByChapter[current] ?? '').trim()
+  const run = reviews.run
+  const findings = run?.status === 'completed' ? run.findings.length : 0
+  return (
+    <div className="space-y-4 px-5 pb-6">
+      <p className="text-ui-sm text-ink-2">检查本章与已保存的前文在人物和时间上是否一致。只发送你确认范围内的已保存正文；结果是需要你判断的注记，不会修改正文。</p>
+      {empty && <p className="text-ui-sm text-ink-3">这一章还没有已保存的正文。</p>}
+      {!reviews.available && <p className="text-ui-sm text-ink-3">审查服务暂不可用。写作与保存不受影响。</p>}
+      <Btn variant="outline" disabled={!reviews.available || !!reviews.busy || empty || run?.status === 'running'} onClick={() => void reviews.prepare()}>
+        {reviews.busy === 'preview' ? '准备审查…' : run?.status === 'completed' ? '重新审查' : '审查本章'}
+      </Btn>
+      {run && (
+        <div className="rounded-lg border border-line-soft bg-surface px-3.5 py-3 text-ui-sm">
+          <div className="text-ink">
+            {run.status === 'completed' ? (findings ? `审查完成：${findings} 处需要留意` : '审查完成：没有发现不一致') : run.status === 'running' || run.status === 'queued' ? '正在审查…' : `审查未完成（${run.status}）`}
+          </div>
+          {reviews.stale && <p className="mt-1 text-micro text-warn">正文已在审查后修改，结果可能过期。</p>}
+          {findings > 0 && (
+            <Btn variant="link" className="mt-1 text-ui-sm" onClick={() => openRight('margin')}>
+              在注记中查看
+            </Btn>
+          )}
+        </div>
+      )}
+    </div>
   )
 }

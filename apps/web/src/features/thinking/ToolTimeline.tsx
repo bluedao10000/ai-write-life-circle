@@ -10,6 +10,13 @@ export const toolLabel: Record<string, string> = {
   get_timeline: "整理已有时间线",
   get_plot_threads: "查阅剧情与伏笔",
   load_analysis_skill: "加载分析方法",
+  list_creative_assets: "查阅创作设定",
+  get_creative_asset: "查阅一项设定",
+  list_creative_proposals: "查看待确认候选",
+  list_open_questions: "查看待决问题",
+  get_writing_context: "整理本章设定",
+  compare_plan_with_manuscript: "对照计划与正文",
+  request_turn_organize: "安排整理本轮",
 };
 export const labelOf = (tool: string) => toolLabel[tool] ?? "作品资料";
 

@@ -83,8 +83,8 @@ export function useStudioController(
     return () => window.removeEventListener('popstate', sync)
   }, [rememberIntent])
   const [leftTab, setLeftTab] = useState<'toc' | 'related'>('toc')
-  const [rightTab, setRightTab] = useState<'margin' | 'think'>('margin')
-  const [bookNav, setBookNav] = useState<BookNav>({ section: 'chapter' })
+  const [rightTab, setRightTab] = useState<'margin' | 'think' | 'context' | 'review'>('margin')
+  const [bookNav, setBookNav] = useState<BookNav>({ section: 'people' })
   const [resume, setResume] = useState(true)
   const [quick, setQuick] = useState(false)
   const [selection, setSelection] = useState('')
@@ -146,7 +146,31 @@ export function useStudioController(
     try { localStorage.setItem('writer-agent:typewriter', on ? '0' : '1') } catch { /* optional preference */ }
     return !on
   })
-  const [assetsOpen, setAssetsOpen] = useState(false)
+  /** Opens a right-drawer tab (本章设定 / 注记 / 审查). */
+  const openRight = (tab: 'margin' | 'think' | 'context' | 'review') => {
+    setRightTab(tab)
+    setLayout((l) => ({ ...l, rightOpen: true, focus: false, leftOpen: window.innerWidth < 1280 ? false : l.leftOpen }))
+  }
+  // Words written since entering 写作 for this chapter.
+  const composeStart = useRef<{ chapter: string; words: number } | null>(null)
+  if (!compose) composeStart.current = null
+  else if (bridge.words !== null && composeStart.current?.chapter !== current) composeStart.current = { chapter: current, words: bridge.words }
+  const composeDelta = compose && composeStart.current && bridge.words !== null ? bridge.words - composeStart.current.words : 0
+  // 写作 is the same editor made editable; leaving flushes the save queue first.
+  const enterCompose = () => {
+    setCompose(true)
+    // Focus is a per-session choice made inside 写作 (as in the design), never restored on entry.
+    setLayout((l) => (l.focus ? { ...l, focus: false } : l))
+    setResume(false)
+    setSelection('')
+    window.setTimeout(() => editor.current?.commands.focus('end'), 60)
+  }
+  const leaveCompose = () => {
+    void workspace.flushSave().finally(() => {
+      setCompose(false)
+      setLayout((l) => (l.focus ? { ...l, focus: false } : l))
+    })
+  }
   const notesEnabled = initialWorkspace.capabilities?.notes === true && !!adapter.notes
   const notes = useNotes(adapter.notes, initialWorkspace.projectId, notesEnabled)
   const reviews = useReviewController({ adapter, workspace, available: initialWorkspace.capabilities?.evidenceReview === true,
@@ -181,6 +205,8 @@ export function useStudioController(
   const nextUp = notes.items.find((n) => n.status === 'active' && n.purpose === 'next_writing')
   const conflict = prototype.conflicts.find((c) => c.id === conflictId)
   const [thinkingSeed, setThinkingSeed] = useState('')
+  /** Jump target inside 灵感 (from 书 or a proposal's 回到对话). */
+  const [ideaFocus, setIdeaFocus] = useState<{ sessionId: string; messageId?: string; nonce: number } | null>(null)
   const [composer, setComposer] = useState<{
     draft: string
     mode: 'idle' | 'correct' | 'conclude'
@@ -194,8 +220,13 @@ export function useStudioController(
     setView('book')
     setBookNav({ section: 'notes' })
   }
+  // V3: every 思考 entry goes to 灵感; a quote travels with it. Demo keeps the drawer prototype.
   const openThink = (seed = '') => {
     setThinkingSeed(seed)
+    if (adapter.mode === 'api') {
+      setView('inspire')
+      return
+    }
     setRightTab('think')
     setLayout((l) => ({ ...l, rightOpen: true, focus: false }))
   }
@@ -282,6 +313,10 @@ export function useStudioController(
       } else if (event.shiftKey && event.key.toLowerCase() === 'e') {
         event.preventDefault()
         setLayout((l) => ({ ...l, leftOpen: !l.leftOpen, focus: false }))
+      } else if (!event.shiftKey && event.key.toLowerCase() === 'e' && view === 'read' && chapter.id) {
+        event.preventDefault()
+        if (compose) leaveCompose()
+        else if (!readonly) enterCompose()
       } else if (event.shiftKey && event.key.toLowerCase() === 'f') {
         event.preventDefault()
         setLayout((l) => ({ ...l, focus: !l.focus }))
@@ -339,8 +374,10 @@ export function useStudioController(
     setCompose,
     typewriter,
     toggleTypewriter,
-    assetsOpen,
-    setAssetsOpen,
+    openRight,
+    composeDelta,
+    enterCompose,
+    leaveCompose,
     leftTab,
     setLeftTab,
     rightTab,
@@ -399,6 +436,8 @@ export function useStudioController(
     conflict,
     thinkingSeed,
     setThinkingSeed,
+    ideaFocus,
+    setIdeaFocus,
     composer,
     setComposer,
     openNotes,

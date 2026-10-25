@@ -12,7 +12,7 @@ async function renderStudio(adapter?: WriterAgentAdapter, view: 'read' | 'compos
   if (view === 'inspire') return result
   const user = userEvent.setup()
   await user.click(screen.getByRole('tab', { name: '阅读' }))
-  if (view === 'compose') await user.click(await screen.findByRole('button', { name: '进入创作' }))
+  if (view === 'compose') await user.click(await screen.findByRole('button', { name: '写作' }))
   return result
 }
 
@@ -47,14 +47,13 @@ describe('Writer Agent studio', () => {
     await waitFor(() => expect(screen.getByRole('tab', { name: '阅读' })).toHaveAttribute('aria-selected', 'true'))
     const editor = await screen.findByRole('textbox', { name: '正文编辑器' })
     expect(editor).toHaveAttribute('contenteditable', 'false')
-    await user.click(screen.getByRole('button', { name: '进入创作' }))
+    await user.click(screen.getByRole('button', { name: '写作' }))
     expect(window.location.search).toBe('?view=read&compose=1')
     expect(screen.getByRole('textbox', { name: '正文编辑器' })).toHaveAttribute('contenteditable', 'true')
-    const toolbar = screen.getByRole('toolbar', { name: '创作工具栏' })
-    expect(toolbar).toHaveTextContent('字')
-    await user.click(within(toolbar).getByRole('button', { name: '打字机模式' }))
+    expect(screen.getAllByText(/\d+ 字/).length).toBeGreaterThan(0)
+    await user.click(screen.getByRole('button', { name: '打字机模式' }))
     expect(localStorage.getItem('writer-agent:typewriter')).toBe('1')
-    await user.click(within(toolbar).getByRole('button', { name: '完成创作' }))
+    await user.click(screen.getByRole('button', { name: '阅读' }))
     await waitFor(() => expect(screen.getByRole('textbox', { name: '正文编辑器' })).toHaveAttribute('contenteditable', 'false'))
     cleanup()
     window.history.replaceState(null, '', '/?view=think')
@@ -131,7 +130,7 @@ describe('Writer Agent studio', () => {
     }
     await renderStudio(adapter, 'read')
 
-    expect(screen.getByRole('button', { name: '进入创作' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '写作' })).toBeDisabled()
     expect(screen.getByRole('alert')).toHaveTextContent('已切换为只读原文以保护内容')
     expect(screen.getByRole('alert').querySelector('pre')?.textContent).toBe('| 名称 | 内容 |\n| --- | --- |\n| 阿青 | 原文 |')
     expect(screen.queryByRole('textbox', { name: '正文编辑器' })).not.toBeInTheDocument()

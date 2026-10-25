@@ -2,7 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react'
 import type { CanonChange, Chapter, Entry, Note, Source } from '../../features/vnext/model'
 import { kindLabel, statusLabel, type RelatedGroups } from '../../mocks/vnextRelevance'
 import { RelatedList } from './ChapterDrawer'
-import { Btn, Dot, Heading, Icon, Proto, Quote, Row, TextInput, ago, cn } from './ui'
+import { Btn, Dot, Heading, Icon, Proto, Quote, Row, Seg, TextInput, ago, cn } from './ui'
 
 /** Manuscript-derived knowledge sections (AI observations of saved text). */
 export type KnowledgeSection =
@@ -14,32 +14,28 @@ export type KnowledgeSection =
   | 'threads'
   | 'notes'
   | 'history'
-/** Author-owned creative asset sections. Stored separately from knowledge. */
-export type CanonSection =
-  | 'canon-review'
-  | 'canon-people'
-  | 'canon-world'
-  | 'canon-plot'
-  | 'canon-threads'
-  | 'canon-arcs'
-  | 'canon-questions'
-export type BookSection = KnowledgeSection | CanonSection
-export const isCanonSection = (s: BookSection): s is CanonSection => s.startsWith('canon-')
-export type BookNav = { section: BookSection; entryId?: string; changeId?: string; assetId?: string }
+/**
+ * V3 book sections (Figma Make BookView): five asset kinds, 待确认, notes and
+ * history. 'chapter' remains a legacy entry into manuscript knowledge.
+ */
+export type BookSection = KnowledgeSection | 'inbox'
+export type AssetSection = 'people' | 'world' | 'timeline' | 'plot' | 'threads'
+export const isAssetSection = (s: BookSection): s is AssetSection => s === 'people' || s === 'world' || s === 'timeline' || s === 'plot' || s === 'threads'
+/** canon = author-owned creative assets; manuscript = AI observations from saved prose. Stored separately. */
+export type BookSource = 'canon' | 'manuscript'
+export type BookNav = { section: BookSection; entryId?: string; changeId?: string; assetId?: string; source?: BookSource }
+export const sourceOf = (nav: BookNav): BookSource => (nav.section === 'chapter' ? 'manuscript' : nav.source ?? 'canon')
 
-export const CANON_SECTIONS: {
-  id: CanonSection
-  label: string
-  icon: 'target' | 'users' | 'globe' | 'clock' | 'layers' | 'thread' | 'note' | 'history' | 'check' | 'info'
-  desc: string
-}[] = [
-  { id: 'canon-review', label: '候选审核', icon: 'check', desc: '从灵感讨论中整理出的设定候选。接受前不会成为正式设定。' },
-  { id: 'canon-people', label: '人物设定', icon: 'users', desc: '你构思的人物：身份、动机、关系。可以在写任何正文之前建立。' },
-  { id: 'canon-world', label: '世界规则', icon: 'globe', desc: '世界观、规则、地点与组织的作者设定。' },
-  { id: 'canon-plot', label: '剧情规划', icon: 'layers', desc: '主线、支线与事件计划。计划不等于正文中已经发生。' },
-  { id: 'canon-threads', label: '伏笔计划', icon: 'thread', desc: '计划埋设与回收的伏笔。' },
-  { id: 'canon-arcs', label: '人物轨迹', icon: 'clock', desc: '人物成长与变化的规划。' },
-  { id: 'canon-questions', label: '待决问题', icon: 'info', desc: '你尚未决定的问题，留给后续讨论。' },
+type NavMeta = { id: BookSection; label: string; icon: 'users' | 'globe' | 'clock' | 'layers' | 'thread' | 'review' | 'note' | 'history'; asset?: boolean }
+export const BOOK_NAV: NavMeta[] = [
+  { id: 'people', label: '人物', icon: 'users', asset: true },
+  { id: 'world', label: '世界观', icon: 'globe', asset: true },
+  { id: 'timeline', label: '时间线', icon: 'clock', asset: true },
+  { id: 'plot', label: '剧情结构', icon: 'layers', asset: true },
+  { id: 'threads', label: '伏笔', icon: 'thread', asset: true },
+  { id: 'inbox', label: '待确认', icon: 'review' },
+  { id: 'notes', label: '创作笔记', icon: 'note' },
+  { id: 'history', label: '变更历史', icon: 'history' },
 ]
 
 const SECTIONS: {
@@ -64,7 +60,7 @@ const SECTIONS: {
   },
   {
     id: 'world',
-    label: '世界与规则',
+    label: '世界观',
     icon: 'globe',
     desc: '地点、组织与世界规则。没有原文依据的条目会明确标出。',
     search: '查找地点、组织或规则',
@@ -109,6 +105,8 @@ const SECTIONS: {
 type P = {
   knowledgeContent?: ReactNode
   creativeContent?: ReactNode
+  /** Counts shown beside the nav items (real data only). */
+  counts?: Partial<Record<BookSection, number>>
   historyContent?: ReactNode
   noteContent?: ReactNode
   unavailable?: boolean
@@ -130,14 +128,43 @@ type P = {
   workTitle?: string
 }
 
+function NavItem({ item, p }: { item: NavMeta; p: P }) {
+  const current = p.nav.section === item.id || (item.id === 'people' && p.nav.section === 'chapter')
+  const count = p.counts?.[item.id]
+  return (
+    <li>
+      <Row active={current} onClick={() => p.setNav({ section: item.id, source: p.nav.source })} className="flex items-center gap-2.5 px-3 py-2 text-ui">
+        <Icon name={item.icon} className={current ? 'text-accent' : 'text-ink-3'} />
+        <span className={current ? 'font-medium text-ink' : 'text-ink-2'}>{item.label}</span>
+        <span className={`ml-auto text-micro tabular-nums ${item.id === 'inbox' && count ? 'text-warn' : 'text-ink-3'}`}>{count || ''}</span>
+      </Row>
+    </li>
+  )
+}
+
+/** Author settings / manuscript observations switch for one asset section. */
+export function SourceSwitch({ nav, setNav }: { nav: BookNav; setNav: (n: BookNav) => void }) {
+  if (!isAssetSection(nav.section) && nav.section !== 'chapter') return null
+  const section = nav.section === 'chapter' ? 'people' : nav.section
+  return (
+    <Seg
+      size="sm"
+      label="资料来源"
+      value={sourceOf(nav)}
+      onChange={(source) => setNav({ section: source === 'manuscript' && nav.section === 'chapter' ? 'chapter' : section, source })}
+      options={[['canon', '作者设定'], ['manuscript', '正文观察 · AI']]}
+    />
+  )
+}
+
 export default function BookView(p: P) {
   const { nav, setNav } = p
   const section = SECTIONS.find((item) => item.id === nav.section) ?? SECTIONS[0]
-  const canon = isCanonSection(nav.section)
+  const canon = nav.section === 'inbox' || (isAssetSection(nav.section) && sourceOf(nav) === 'canon')
   const entry = nav.entryId ? p.entries.find((e) => e.id === nav.entryId) : undefined
   const change = nav.changeId ? p.changes.find((c) => c.id === nav.changeId) : undefined
-  const apiPanel = canon
-    ? p.creativeContent ?? null
+  const apiPanel = canon && p.creativeContent
+    ? p.creativeContent
     : p.knowledgeContent && !entry && !change && nav.section !== 'notes'
       ? p.knowledgeContent
       : null
@@ -147,51 +174,17 @@ export default function BookView(p: P) {
         aria-label="书的分区"
         className="scroll hidden w-56 shrink-0 flex-col overflow-auto border-r border-line-soft px-3 py-6 md:flex"
       >
-        <div className="px-3 pb-2 text-micro text-ink-3">创作设定 · 作者</div>
-        {CANON_SECTIONS.map((item) => (
-          <Row
-            key={item.id}
-            active={nav.section === item.id}
-            onClick={() => setNav({ section: item.id })}
-            className="flex items-center gap-2.5 px-3 py-2 text-ui"
-          >
-            <Icon name={item.icon} className={nav.section === item.id ? 'text-accent' : 'text-ink-3'} />
-            <span className={nav.section === item.id ? 'font-medium text-ink' : 'text-ink-2'}>{item.label}</span>
-          </Row>
-        ))}
-        <div className="px-3 pt-5 pb-2 text-micro text-ink-3">正文观察 · AI</div>
-        {SECTIONS.map((item) => (
-          <Row
-            key={item.id}
-            active={nav.section === item.id && !entry && !change}
-            onClick={() => setNav({ section: item.id })}
-            className="flex items-center gap-2.5 px-3 py-2 text-ui"
-          >
-            <Icon
-              name={item.icon}
-              className={nav.section === item.id ? 'text-accent' : 'text-ink-3'}
-            />
-            <span
-              className={
-                nav.section === item.id ? 'font-medium text-ink' : 'text-ink-2'
-              }
-            >
-              {item.label}
-            </span>
-            {item.id === 'chapter' && p.current && (
-              <span className="ml-auto text-micro tabular-nums text-ink-3">
-                {cn(p.current.no)}
-              </span>
-            )}
-          </Row>
-        ))}
-        <div className="mt-auto px-3 pt-8">
+        <div className="px-3 pb-2 text-micro text-ink-3">创作资产</div>
+        <ul className="space-y-0.5">{BOOK_NAV.filter((x) => x.asset).map((item) => <NavItem key={item.id} item={item} p={p} />)}</ul>
+        <div className="px-3 pt-5 pb-2 text-micro text-ink-3">整理与记录</div>
+        <ul className="space-y-0.5">{BOOK_NAV.filter((x) => !x.asset).map((item) => <NavItem key={item.id} item={item} p={p} />)}</ul>
+        <div className="mt-auto space-y-3 px-3 pt-8">
           <Btn variant="link" className="text-ui-sm" onClick={p.onBackToWriting}>
             <Icon name="back" className="h-3 w-3" />
-            回到正文
+            回到阅读
           </Btn>
-          <p className="mt-3 text-micro text-ink-3">
-            创作设定由你确认；正文观察由 AI 从已保存正文整理。两者分开保存，都不会修改正文。
+          <p className="text-micro text-ink-3">
+            设定只有经你确认才会成为作品的一部分。正文观察由 AI 从已保存正文整理，与设定分开保存。
           </p>
         </div>
       </nav>
@@ -219,11 +212,6 @@ export default function BookView(p: P) {
                     }
                     className="w-full rounded-md border border-line bg-surface px-3 py-2 text-ui text-ink"
                   >
-                    {CANON_SECTIONS.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        创作设定 · {item.label}
-                      </option>
-                    ))}
                     {SECTIONS.map((item) => (
                       <option key={item.id} value={item.id}>
                         {item.label}
