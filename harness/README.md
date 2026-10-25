@@ -32,6 +32,7 @@
 - [figma.md](design/figma.md)：设计来源与同步状态
 - [sync-workflow.md](design/sync-workflow.md)：Figma 同步工作流
 - [figma-v3-sync-report.md](design/figma-v3-sync-report.md)：V3 Figma Make 同步的组件映射、实测视觉差异与未解决项
+- [pricing-plans.md](design/pricing-plans.md)：Free / Plus / Pro 付费方案、AI 点数计量与分阶段实施规划
 
 ## 契约
 
