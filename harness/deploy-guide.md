@@ -70,6 +70,16 @@ systemd 以专用无登录用户运行，ProtectSystem=strict、ProtectHome、No
 - 回滚 Go 到旧版本后，新 Worker 会对所有作品请求返回 502，这是预期的拒绝行为。
 - 不要删除绑定文件，除非要改绑旧数据的所有者；改绑时须先停服务。
 
+## AI 点数与紧急开关
+
+所有模型调用按作者计 AI 点数，见 [付费方案](design/pricing-plans.md)。状态保存在 `/var/lib/writer-agent/billing`，随整个状态目录一起备份。需要暂停 Free 档或全部 AI 功能时，以服务用户运行：
+
+```sh
+sudo -u writer-agent /opt/writer-agent/current/writer-agent-control --state /var/lib/writer-agent --ai-pause free
+```
+
+同一工具可以用 `--free-daily-points` 调整全站 Free 每日池，用 `--billing` 查看当前设置。写作和保存永远不受影响。注意不要以 root 运行：root 写出的文件 API 读不到，会导致 AI 功能全部拒绝。
+
 ## HTTPS 与既有 Nginx
 
 DNS A 记录指向 EC2 公网地址。公网必须可访问 TCP 80/443。Cloudflare 初次配置建议「仅 DNS」。如使用代理，SSL/TLS 模式必须为 Full (strict)，不能使用 Flexible。API 后端 8787 不向公网开放。

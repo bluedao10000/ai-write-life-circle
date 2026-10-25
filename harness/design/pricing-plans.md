@@ -177,11 +177,40 @@ Free 档的总花费取决于活跃用户数，因此另设全站上限（§5）
 - 双账号互不扣点；
 - 灵感、知识、审查、创作四条路径各有一条端到端测试，不调用付费模型。
 
+## 6.6 阶段 0 实现说明（2026-10-25）
+
+已实现：
+
+- **记账**：新包 `internal/billing`，按本文 §6.1 的预留 → 结算 → 过期计费流程。
+- **准入规则**：已结算用量加上未结算的预留低于上限时，才允许新的调用。因此一个账号最多超出一次调用的实际用量。
+- **四条模型调用路径**：
+  - 灵感：Go 在转发消息前预留点数，并按 Pi 报告的累计用量结算。
+  - 知识、审查、创作：在领取任务时预留，在完成时结算，Go Worker 和 Pi Worker 两种执行方式都覆盖。
+- **审查**：在预览阶段就对 Free 返回 `402 PLAN_FEATURE_REQUIRED`，不会发送任何内容。
+- **全站 Free 每日池**和**暂停开关**：共享状态，API 和 Worker 进程都读同一份。
+- **`GET /v1/account`**：Worker 只放行 GET。
+- **顶栏点数与方案说明**：在窄屏（< 640px）上隐藏；额度不足时仍由 402 提示说明。
+- **旧数据所有者**：`WRITER_AGENT_AUTHOR_ID`（即 bluedao10000@gmail.com 继承的身份）默认按 Pro 计。
+
+与原计划不同的地方：
+
+- **单次上限没有改**。原计划在阶段 0 收紧审查和灵感的单次上限，但审查输出上限包含 DeepSeek 的推理 token，收紧有截断风险。所以不改模型请求参数，只用上面的准入规则控制，单次超出的上限就是一次调用的实际用量。灵感的按套餐单次上限需要改 Pi，留到阶段 1。
+- **`/v1/agent-runtime` 没有改**。它不在 Worker 放行的路由里，浏览器访问不到；而 Go 要求签名用户声明，外部也无法直接调用。所以不存在跨账号暴露，这次不修改。
+- **作品数、并发会话、EPUB 导入次数等非 AI 限制**，以及管理员开通套餐，都留到阶段 1。
+
+运维命令要以服务用户运行，否则生成的文件 API 无法读取，AI 功能会因此全部拒绝：
+
+```sh
+sudo -u writer-agent /opt/writer-agent/current/writer-agent-control --state /var/lib/writer-agent --billing
+sudo -u writer-agent /opt/writer-agent/current/writer-agent-control --state /var/lib/writer-agent --ai-pause free   # none / free / all
+sudo -u writer-agent /opt/writer-agent/current/writer-agent-control --state /var/lib/writer-agent --free-daily-points 100000
+```
+
 ## 7. 分阶段
 
 | 阶段 | 内容 | 前置 | 估计工作量 |
 | --- | --- | --- | --- |
-| 0 · 开放前止损 | 所有账号按 Free 计量与拦截，审查对 Free 关闭，全站 Free 日上限、紧急开关、402 提示，收紧审查和灵感上限，修 agent-runtime 汇总 | 无 | 2–3 天 |
+| 0 · 开放前止损（已实现，见 §6.6） | 所有账号按 Free 计量与拦截，审查对 Free 关闭，全站 Free 日上限、紧急开关、402 提示，收紧审查和灵感上限，修 agent-runtime 汇总 | 无 | 2–3 天 |
 | 1 · 套餐 | Plus/Pro 月付与年付、加油包、账户页与用量明细、管理员开通与兑换码、Pro 优先队列 | 阶段 0 | 4–5 天 |
 | 2 · 支付 | 选定渠道后对接订阅、续费、退款、发票，用支付回调改套餐（幂等、验签） | 收款主体与渠道 | 视渠道 1–2 周 |
 | 3 · 更强模型 | Pro 可选更强模型，按倍率扣点 | AGENT-001 多模型 | 另行评估 |

@@ -4,6 +4,7 @@ import { useManagement } from '../management/ManagedStudio'
 import type { useStudioController } from '../vnext/useStudioController'
 import { Btn, Icon, IconBtn, Seg, Proto } from '../../components/vnext/ui'
 import KnowledgeChip from '../knowledge/KnowledgeChip'
+import AccountMeter from '../account/AccountMeter'
 import { useKnowledgeSummary } from '../knowledge/useKnowledgeSummary'
 import { RevisionHistory } from '../workspace/ComposeBar'
 
@@ -104,6 +105,7 @@ export default function StudioHeader({ studio, demo }: { studio: ReturnType<type
                 }}
               />
             )}
+            <AccountMeter enabled={!demo && !!management} />
             <IconBtn icon={dark ? 'sun' : 'moon'} label={dark ? '浅色主题' : '深色主题'} onClick={() => setDark(!dark)} />
             {publicSite && !demo && (
               <Btn size="sm" variant="outline" className="sm:ml-1" title="选择章节，手动发布到 story2u" onClick={publish}>

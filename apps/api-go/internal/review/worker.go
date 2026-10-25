@@ -7,9 +7,11 @@ import (
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/agentruntime"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/executorpolicy"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/application"
+	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/billing"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/compat"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/llm"
 )
@@ -49,6 +51,7 @@ func (s *Service) claim(ctx context.Context) (*ClaimedRun, error) {
 		return nil, llm.Fail("LLM_NOT_CONFIGURED")
 	}
 	var run *Run
+	reserved := ""
 	e := s.transaction(ctx, func(st *state) (bool, error) {
 		now := time.Now().UTC()
 		deadline := now.Add(s.Config.Timeout + 15*time.Second).Format(time.RFC3339Nano)
@@ -71,6 +74,12 @@ func (s *Service) claim(ctx context.Context) (*ClaimedRun, error) {
 			if r.Status != "queued" && !(s.claimID != "" && r.Status == "running" && r.Lease == "") {
 				continue
 			}
+			// AI points: a run whose owner has no allowance waits in the queue.
+			op := meterOp(r.RunID, r.Attempts+1)
+			if s.App.MeterReserve(ctx, op, "review", s.reservePoints()) != nil {
+				continue
+			}
+			reserved = op
 			r.Status = "running"
 			r.CompletedAt = nil
 			r.ExecutorOwner = executorpolicy.Owner(s.ExecutorOwner)
@@ -85,6 +94,9 @@ func (s *Service) claim(ctx context.Context) (*ClaimedRun, error) {
 		}
 		return false, nil
 	})
+	if e != nil && reserved != "" {
+		s.App.MeterSettle(context.Background(), reserved, 0)
+	}
 	if e != nil || run == nil {
 		return nil, e
 	}
@@ -288,6 +300,8 @@ func (s *Service) claimRun(ctx context.Context, target string) (out *ClaimedRun,
 }
 func (s *Service) Complete(claimed *ClaimedRun, response llm.Response, modelErr error) error {
 	r := claimed.Run
+	// The model cost is incurred whether or not the fenced commit wins.
+	defer s.App.MeterSettle(context.Background(), meterOp(r.RunID, r.Attempts), settlePoints(response, modelErr))
 	if s.Completed(claimed, response, modelErr) {
 		return nil
 	}
@@ -308,4 +322,26 @@ func (s *Service) Completed(c *ClaimedRun, response llm.Response, e error) bool 
 		return false
 	}
 	return st.Runs[c.Run.RunID].CompletionReceipts[c.Run.Lease] == completionHash(response, e)
+}
+
+func meterOp(run string, attempt int) string { return "review:" + run + ":" + strconv.Itoa(attempt) }
+
+// reservePoints bounds one review attempt for admission; settlement uses the
+// reported usage.
+func (s *Service) reservePoints() int {
+	return billing.PointsFor(s.Config.MaxContextBytes+20000, min(s.Config.MaxOutputTokens, 16384))
+}
+
+// settlePoints charges reported usage; without usage it releases attempts
+// that failed before any model call (application errors from Prepare) and
+// otherwise charges the reservation.
+func settlePoints(response llm.Response, e error) int {
+	if response.Usage != nil {
+		return billing.PointsFor(response.Usage.InputTokens, response.Usage.OutputTokens)
+	}
+	var appError *application.Error
+	if e != nil && errors.As(e, &appError) {
+		return 0
+	}
+	return -1
 }

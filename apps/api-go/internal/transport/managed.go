@@ -24,6 +24,31 @@ func managedHandler(o Options) http.Handler {
 		if handleCreative(o, w, r, path) {
 			return
 		}
+		if path == "/v1/account" && o.Account != nil {
+			actor := (*application.Actor)(nil)
+			if o.ResolveActor != nil {
+				actor = o.ResolveActor(r)
+			}
+			if actor == nil {
+				w.Header().Set("WWW-Authenticate", `Bearer realm="writer-agent"`)
+				problem(w, application.Fail(401, "AUTHOR_DECISION_REQUIRED", "Authentication required."), "")
+				return
+			}
+			if r.Method != "GET" {
+				problem(w, application.Fail(405, "METHOD_NOT_ALLOWED", "Unsupported account method."), "")
+				return
+			}
+			if !role(w, actor, "author") {
+				return
+			}
+			v, e := o.Account(r.Context(), *actor)
+			if e != nil {
+				problem(w, application.AsError(e), "")
+				return
+			}
+			write(w, 200, v, "")
+			return
+		}
 		isBooks := path == "/v1/studio/books" || strings.HasPrefix(path, "/v1/studio/books/")
 		isProject := strings.HasPrefix(path, "/v1/projects/")
 		if !isBooks && !isProject {

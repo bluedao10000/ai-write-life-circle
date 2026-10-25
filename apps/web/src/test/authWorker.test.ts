@@ -380,3 +380,17 @@ describe('per-user identity for the Go API', () => {
     expect(scopes[0]).not.toBe(scopes[1])
   })
 })
+describe('AI point account route', () => {
+  it('forwards only GET /v1/account with the signed user', async () => {
+    await signIn()
+    const seen: string[] = []
+    stubAPI(vi.fn(async (input: unknown, init?: RequestInit) => {
+      seen.push(`${init?.method ?? 'GET'} ${new URL(String(input)).pathname} ${decodeAssertion(new Headers(init?.headers).get('x-writer-agent-identity')).claims.sub}`)
+      return Response.json({ plan: 'free' })
+    }))
+    expect((await handleRequest(request('/v1/account'), env)).status).toBe(200)
+    expect((await handleRequest(request('/v1/account', 'POST', '{}'), env)).status).toBe(404)
+    expect((await handleRequest(request('/v1/account/plan'), env)).status).toBe(404)
+    expect(seen).toEqual([`GET /v1/account ${signedUserId}`])
+  })
+})

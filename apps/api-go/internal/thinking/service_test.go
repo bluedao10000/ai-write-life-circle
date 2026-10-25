@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/application"
+	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/billing"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/compat"
 	"net/http"
 	"net/http/httptest"
@@ -299,5 +300,79 @@ func TestAcceptedMessageIntakeSurvivesHookFailure(t *testing.T) {
 	s.RetryIntake(ctx, 20)
 	if st, _ = s.load(); calls != 3 || len(st.Sessions[rec.ID].Intake) != 0 {
 		t.Fatal("deleted session intake not dropped")
+	}
+}
+
+// Pricing Phase 0: each message holds its ceiling in AI points before Pi can
+// call the model, is settled from Pi's reported usage, and is refused once
+// the owner's allowance is spent.
+func TestMessagesAreMeteredInAIPoints(t *testing.T) {
+	s, rec, _ := fixture(t)
+	ctx := context.Background()
+	model := Model{Provider: "fixture", Model: "synthetic", Endpoint: "http://127.0.0.1", Protocol: Protocol, Limits: Limits{Turns: 2, Input: 20000, Output: 2000, Tools: 8, Duration: 10000}}
+	rec.Model = model
+	if e := s.tx(ctx, func(st *registry) error { st.Sessions[rec.ID] = rec; return nil }); e != nil {
+		t.Fatal(e)
+	}
+	ledger := &billing.Ledger{State: s.State}
+	s.Meter = ledger
+	usage := map[string]any{"input": 0, "output": 0, "charged": 0, "incomplete": false}
+	posts := 0
+	node := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.URL.Path == "/internal/v1/health":
+			_ = json.NewEncoder(w).Encode(map[string]any{"protocol": Protocol, "model": model})
+		case r.Method == "GET":
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "idle", "usage": usage})
+		case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/messages"):
+			posts++
+			_, _ = w.Write([]byte(`{"messageId":"msg-` + compat.UUID() + `"}`))
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	defer node.Close()
+	s.Origin, s.ServiceToken = node.URL, strings.Repeat("t", 64)
+	s.ResolveActor = func(*http.Request) *application.Actor { return &application.Actor{ID: rec.Owner, Role: "author"} }
+	send := func(key string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("POST", "/v1/studio/books/"+rec.Book+"/thinking/sessions/"+rec.ID+"/messages", strings.NewReader(`{"text":"为什么？"}`))
+		r.Header.Set("Content-Type", "application/json")
+		r.Header.Set("Idempotency-Key", key)
+		w := httptest.NewRecorder()
+		s.PublicHandler().ServeHTTP(w, r)
+		return w
+	}
+	day := func() billing.Window { u, _ := ledger.View(ctx, rec.Owner); return u.Day }
+	if w := send("m1"); w.Code != 202 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if d := day(); d.Reserved != 56 || d.Used != 0 {
+		t.Fatalf("ceiling not reserved: %+v", d)
+	}
+	usage["input"], usage["output"] = 9000, 1000 // 13 points
+	s.SettleUsage(ctx, 10)
+	if d := day(); d.Reserved != 0 || d.Used != 13 {
+		t.Fatalf("usage not settled: %+v", d)
+	}
+	if w := send("m2"); w.Code != 202 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	// The next message settles the previous one inline from the cumulative usage.
+	usage["input"], usage["output"] = 18000, 2000
+	if w := send("m3"); w.Code != 202 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if d := day(); d.Used != 26 || d.Reserved != 56 {
+		t.Fatalf("cumulative settlement wrong: %+v", d)
+	}
+	// Spend the rest of the Free day: the next message is refused before Pi.
+	_ = ledger.Reserve(ctx, rec.Owner, "elsewhere", "knowledge", 1)
+	_ = ledger.Settle(ctx, rec.Owner, "elsewhere", 300)
+	s.SettleUsage(ctx, 10)
+	before := posts
+	w := send("m4")
+	if w.Code != 402 || !strings.Contains(w.Body.String(), "PLAN_QUOTA_EXCEEDED") || posts != before {
+		t.Fatal("exhausted allowance reached Pi", w.Code, w.Body.String())
 	}
 }

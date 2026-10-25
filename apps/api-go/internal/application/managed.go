@@ -64,6 +64,7 @@ type Management struct {
 	// never values supplied by an HTTP caller.
 	GuardDelete     func(context.Context, Actor, string) error
 	CleanupExternal func(context.Context, Actor, string) error
+	meter           Meter
 }
 type StructureInput struct {
 	BaseVersion int              `json:"baseVersion"`
@@ -78,7 +79,15 @@ type DeleteBookInput struct {
 }
 
 func NewManagement(legacy *Service, owner string) *Management {
+	legacy.Owner = owner
 	return &Management{Legacy: legacy, OwnerID: owner, write: storage.Write}
+}
+
+// UseMeter charges model usage of every resolved book to its owner. Call
+// once during startup, before serving requests.
+func (m *Management) UseMeter(meter Meter) {
+	m.meter = meter
+	m.Legacy.Meter = meter
 }
 func (m *Management) path() string { return filepath.Join(m.Legacy.State, "works", "catalog-v1.json") }
 
@@ -290,7 +299,7 @@ func (m *Management) Resolve(a Actor, id string) (*Service, error) {
 	if _, e := m.Get(a, id); e != nil {
 		return nil, e
 	}
-	s := &Service{State: m.Legacy.State, Project: id, ReviewsEnabled: m.Legacy.ReviewsEnabled}
+	s := &Service{State: m.Legacy.State, Project: id, ReviewsEnabled: m.Legacy.ReviewsEnabled, Owner: a.ID, Meter: m.meter}
 	s.managedExists = func() error { _, err := m.Get(a, id); return err }
 	s.ProjectTitle = func() (string, error) { b, e := m.Get(a, id); return b.Title, e }
 	s.DirectoryProvider = func() (any, error) {

@@ -14,6 +14,7 @@ import (
 
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/agentruntime"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/application"
+	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/billing"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/config"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/creative"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/executorpolicy"
@@ -77,6 +78,8 @@ func run() error {
 	// ownerID only owns the read-only Harness book and pre-identity data; every
 	// managed book carries its own owner, and jobs run as that owner.
 	management := application.NewManagement(s, ownerID)
+	// Background model calls draw on the same per-author AI points as the API.
+	management.UseMeter(&billing.Ledger{State: c.State, LegacyOwner: ownerID})
 	if _, e = management.OwnedBooks(); e != nil {
 		return fmt.Errorf("invalid work registry")
 	}

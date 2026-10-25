@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/application"
+	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/billing"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/compat"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/storage"
 )
@@ -56,6 +57,10 @@ type Record struct {
 	// OnMessageAccepted hook has not succeeded yet. It is written in the same
 	// registry commit as LastMessage and drained by RetryIntake.
 	Intake []string `json:"pendingIntake,omitempty"`
+	// BillOp is the open AI-point reservation of the last accepted message;
+	// Billed is the session's cumulative points already charged.
+	BillOp string `json:"billOp,omitempty"`
+	Billed int    `json:"billedPoints,omitempty"`
 }
 type receipt struct {
 	Hash string `json:"hash"`
@@ -78,6 +83,8 @@ type Service struct {
 	OnMessageAccepted func(ctx context.Context, rec Record, messageID string) error
 	// OnSessionDeleted invalidates derived creative work for a deleted session.
 	OnSessionDeleted func(ctx context.Context, rec Record)
+	// Meter charges each message's model usage to the session owner.
+	Meter application.Meter
 }
 type Create struct {
 	Consent bool     `json:"consent"`
@@ -361,5 +368,98 @@ func (s *Service) RetryIntake(ctx context.Context, limit int) {
 				_ = s.dropIntake(ctx, id, message)
 			}
 		}
+	}
+}
+
+// sessionUsage is the cumulative usage Pi reports in a session view.
+type sessionUsage struct {
+	Status string `json:"status"`
+	Usage  struct {
+		Input      int  `json:"input"`
+		Output     int  `json:"output"`
+		Charged    int  `json:"charged"`
+		Incomplete bool `json:"incomplete"`
+	} `json:"usage"`
+}
+
+// points converts Pi's cumulative usage; incomplete usage falls back to Pi's
+// conservative reservation ceiling.
+func (u sessionUsage) points() int {
+	p := billing.PointsFor(u.Usage.Input, u.Usage.Output)
+	if u.Usage.Incomplete {
+		p = max(p, (u.Usage.Charged+999)/1000)
+	}
+	return p
+}
+
+func (u sessionUsage) running() bool { return u.Status == "running" || u.Status == "accepted" }
+
+// messagePoints bounds one message: every allowed turn at full input/output.
+func messagePoints(l Limits) int {
+	return max(1, l.Turns) * max(1, billing.PointsFor(l.Input, l.Output))
+}
+
+func (s *Service) settle(ctx context.Context, r Record, u *sessionUsage) Record {
+	if s.Meter == nil || r.BillOp == "" {
+		return r
+	}
+	charge := -1
+	if u != nil {
+		total := u.points()
+		charge = max(0, total-r.Billed)
+		r.Billed = max(r.Billed, total)
+	}
+	if s.Meter.Settle(ctx, r.Owner, r.BillOp, charge) == nil {
+		r.BillOp = ""
+	}
+	return r
+}
+
+// SettleUsage charges finished messages from Pi's reported usage. Deleted or
+// unknown sessions are charged their reservation. At most limit sessions are
+// read per sweep.
+func (s *Service) SettleUsage(ctx context.Context, limit int) {
+	if s.Meter == nil {
+		return
+	}
+	st, e := s.load()
+	if e != nil {
+		return
+	}
+	for id, r := range st.Sessions {
+		if r.BillOp == "" {
+			continue
+		}
+		if limit <= 0 || ctx.Err() != nil {
+			return
+		}
+		limit--
+		var usage *sessionUsage
+		if !r.Deleted {
+			raw, found, err := s.Snapshot(ctx, id)
+			if err != nil {
+				continue // Pi offline: the ledger lease charges the reservation if this persists.
+			}
+			if found {
+				var u sessionUsage
+				if json.Unmarshal(raw, &u) != nil {
+					continue
+				}
+				if u.running() {
+					continue
+				}
+				usage = &u
+			}
+		}
+		next := s.settle(ctx, r, usage)
+		_ = s.tx(ctx, func(current *registry) error {
+			v, ok := current.Sessions[id]
+			if !ok || v.BillOp != r.BillOp {
+				return nil
+			}
+			v.BillOp, v.Billed = next.BillOp, next.Billed
+			current.Sessions[id] = v
+			return nil
+		})
 	}
 }

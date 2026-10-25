@@ -2,6 +2,7 @@
 package transport
 
 import (
+	"context"
 	"encoding/json"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/application"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/compat"
@@ -31,6 +32,8 @@ type Options struct {
 	Imports      *application.ImportService
 	Management   *application.Management
 	ReviewFor    func(*application.Service) *review.Service
+	// Account returns the caller's AI-point allowance (GET /v1/account).
+	Account      func(context.Context, application.Actor) (any, error)
 	Service      *application.Service
 	Environment  string
 	ResolveActor Resolver

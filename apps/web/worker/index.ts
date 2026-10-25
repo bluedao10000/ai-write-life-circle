@@ -155,7 +155,7 @@ async function handleRequestInternal(request: Request, env: Env): Promise<Respon
     return Response.json({ user: { name: session.user.name, email: session.user.email, scope: await storageScope(session.user.id) }, projectId: env.WRITER_AGENT_PROJECT_ID || 'local' }, { headers: { 'cache-control': 'no-store' } })
   }
   const configured = env.WRITER_AGENT_PROJECT_ID || 'local'
-  const booksRoot = url.pathname === '/v1/studio/books' && ['GET', 'POST'].includes(request.method)
+  const booksRoot = (url.pathname === '/v1/studio/books' && ['GET', 'POST'].includes(request.method)) || (url.pathname === '/v1/account' && request.method === 'GET')
   const importAllowed = importRoute(url.pathname, request.method)
   const structure = /^\/v1\/studio\/books\/([A-Za-z0-9_-]+)(?:\/(structure))?$/.exec(url.pathname)
   const managedID = (id: string) => /^book-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id)

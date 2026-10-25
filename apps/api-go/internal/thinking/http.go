@@ -331,20 +331,39 @@ func (s *Service) PublicHandler() http.Handler {
 					if e != nil {
 						return e
 					}
-					var state struct {
-						Status string `json:"status"`
-					}
+					var state sessionUsage
 					if json.Unmarshal(raw, &state) != nil {
 						return fail(502, "AGENT_INVALID_RESPONSE")
 					}
 					if state.Status == "running" {
 						return fail(409, "SESSION_BUSY")
 					}
+					// AI points: settle the previous message from Pi's usage, then
+					// hold this message's ceiling before Pi may call the model.
+					current := s.settle(r.Context(), st.Sessions[id], &state)
+					if current.BillOp != "" {
+						return fail(503, "BILLING_UNAVAILABLE")
+					}
+					op := ""
+					if s.Meter != nil {
+						op = "think:" + id + ":" + rk
+						if e := s.Meter.Reserve(r.Context(), current.Owner, op, "thinking", messagePoints(current.Model.Limits)); e != nil {
+							_ = s.tx(r.Context(), func(st *registry) error {
+								v := st.Sessions[id]
+								v.BillOp, v.Billed = current.BillOp, current.Billed
+								st.Sessions[id] = v
+								return nil
+							})
+							return e
+						}
+					}
 					e = s.tx(r.Context(), func(st *registry) error {
 						v := st.Sessions[id]
 						if v.Deleted {
 							return fail(404, "NOT_FOUND")
 						}
+						v.Billed = current.Billed
+						v.BillOp = op
 						v.Nonce = compat.UUID()
 						v.Calls = 0
 						if v.Title == "新的思考" {
@@ -356,12 +375,17 @@ func (s *Service) PublicHandler() http.Handler {
 						return nil
 					})
 					if e != nil {
+						if op != "" {
+							_ = s.Meter.Settle(r.Context(), current.Owner, op, 0)
+						}
 						return e
 					}
 				} else {
 					record = st.Sessions[id]
 				}
 				v, e := s.agent(r.Context(), "POST", target+"/messages", map[string]any{"input": in, "key": key, "capability": s.capability(record)})
+				// A failed hand-off keeps its reservation: Pi may still have accepted
+				// the message, and SettleUsage charges only what Pi reports.
 				if e == nil {
 					_, e = s.owned(*a, book, id)
 				}

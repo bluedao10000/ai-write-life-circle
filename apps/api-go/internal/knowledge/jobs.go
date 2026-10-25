@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/agentruntime"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/application"
+	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/billing"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/compat"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/executorpolicy"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/llm"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -250,6 +252,7 @@ func (s *Service) claim(ctx context.Context) (*ClaimedJob, error) {
 	}
 	var chosen *Job
 	reservedThisAttempt := 0
+	metered := ""
 	debitedDay := ""
 	var snapshot State
 	e = s.transaction(ctx, func(st *State) (bool, error) {
@@ -302,6 +305,12 @@ func (s *Service) claim(ctx context.Context) (*ClaimedJob, error) {
 			if spent+reserve > st.Settings.DailyTokenBudget || count >= st.Settings.DailyJobBudget {
 				return changed, nil
 			}
+			// AI points: the owner's allowance gates the book's queue as a whole.
+			op := meterOp(j.ID, j.Attempts+1)
+			if s.App.MeterReserve(ctx, op, "knowledge", s.reservePoints()) != nil {
+				return changed, nil
+			}
+			metered = op
 			reservedThisAttempt = reserve
 			debitedDay = st.BudgetDay
 			st.BudgetTokens += reserve
@@ -322,6 +331,9 @@ func (s *Service) claim(ctx context.Context) (*ClaimedJob, error) {
 		}
 		return changed, nil
 	})
+	if metered != "" && (e != nil || chosen == nil) {
+		s.App.MeterSettle(context.Background(), metered, 0)
+	}
 	if e != nil || chosen == nil {
 		return nil, e
 	}
@@ -618,6 +630,8 @@ func (s *Service) Claim(ctx context.Context) (out *ClaimedJob, err error) {
 }
 func (s *Service) Complete(ctx context.Context, p *PreparedJob, response llm.Response, sent bool, modelErr error) error {
 	j := p.Claim.Job
+	// Charge the call once it was sent, whether or not the fenced commit wins.
+	defer s.App.MeterSettle(context.Background(), meterOp(j.ID, j.Attempts), settlePoints(response, sent))
 	if s.Completed(p, response, sent, modelErr) {
 		return nil
 	}
@@ -643,4 +657,23 @@ func (s *Service) Completed(p *PreparedJob, response llm.Response, sent bool, e 
 		}
 	}
 	return false
+}
+
+func meterOp(job string, attempt int) string { return "knowledge:" + job + ":" + strconv.Itoa(attempt) }
+
+// reservePoints bounds one extraction attempt for admission.
+func (s *Service) reservePoints() int {
+	return billing.PointsFor(s.contextLimit()+20000, min(max(s.Config.MaxOutputTokens, 2048), 16384))
+}
+
+// settlePoints: unsent calls are free, reported usage is charged, and a sent
+// call without usage keeps its reservation.
+func settlePoints(response llm.Response, sent bool) int {
+	if !sent {
+		return 0
+	}
+	if response.Usage != nil {
+		return billing.PointsFor(response.Usage.InputTokens, response.Usage.OutputTokens)
+	}
+	return -1
 }

@@ -60,6 +60,10 @@ func (s *Service) Preview(ctx context.Context, a application.Actor, id string, i
 	if e := author(a); e != nil {
 		return Plan{}, e
 	}
+	// Tell Free accounts before they review the consent scope.
+	if e := s.App.MeterAllow(ctx, "review"); e != nil {
+		return Plan{}, e
+	}
 	return s.BuildPlan(ctx, id, in)
 }
 func (s *Service) Start(ctx context.Context, a application.Actor, chapterID, key string, in CreateInput) (Run, error) {
@@ -97,6 +101,12 @@ func (s *Service) Start(ctx context.Context, a application.Actor, chapterID, key
 	})
 	if e != nil {
 		return Run{}, e
+	}
+	// Review is a paid-plan feature; a replay of an accepted request still succeeds.
+	if existing == nil {
+		if e := s.App.MeterAllow(ctx, "review"); e != nil {
+			return Run{}, e
+		}
 	}
 	if existing != nil {
 		return s.freshen(ctx, *existing), nil

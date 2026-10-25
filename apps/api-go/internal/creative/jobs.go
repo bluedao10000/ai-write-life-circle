@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/billing"
+	"strconv"
 	"time"
 
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/application"
@@ -82,6 +84,7 @@ func failTurn(st *State, j Job) {
 
 func (s *Service) claim(ctx context.Context) (*claimed, error) {
 	var out *claimed
+	metered := ""
 	e := s.transaction(ctx, func(st *State) (bool, error) {
 		now := s.now()
 		changed := recoverLeases(st, now)
@@ -107,6 +110,12 @@ func (s *Service) claim(ctx context.Context) (*claimed, error) {
 			if st.BudgetTokens+reserve > st.Settings.DailyTokenBudget || st.BudgetAttempts >= st.Settings.DailyJobBudget {
 				return changed, nil
 			}
+			// AI points: the owner's allowance gates the book's queue as a whole.
+			op := meterOp(j.ID, j.Attempts+1)
+			if s.App.MeterReserve(ctx, op, "creative", s.reservePoints()) != nil {
+				return changed, nil
+			}
+			metered = op
 			st.BudgetTokens += reserve
 			st.BudgetAttempts++
 			j.AttemptReserve, j.DebitedDay = reserve, day
@@ -122,6 +131,9 @@ func (s *Service) claim(ctx context.Context) (*claimed, error) {
 		}
 		return changed, nil
 	})
+	if metered != "" && (e != nil || out == nil) {
+		s.App.MeterSettle(context.Background(), metered, 0)
+	}
 	return out, e
 }
 
@@ -178,7 +190,22 @@ func (s *Service) ProcessOne(ctx context.Context) (bool, error) {
 			e = errors.New("CREATIVE_LEASE_LOST")
 		}
 	}
+	points := 0
+	if sent {
+		points = -1
+		if resp.Usage != nil {
+			points = billing.PointsFor(resp.Usage.InputTokens, resp.Usage.OutputTokens)
+		}
+	}
+	s.App.MeterSettle(context.Background(), meterOp(c.Job.ID, c.Job.Attempts), points)
 	return true, s.complete(ctx, c, org, plan, resp, sent, e)
+}
+
+func meterOp(job string, attempt int) string { return "creative:" + job + ":" + strconv.Itoa(attempt) }
+
+// reservePoints bounds one organize or plan-check attempt for admission.
+func (s *Service) reservePoints() int {
+	return billing.PointsFor(s.reserve(), min(max(s.Config.MaxOutputTokens, 1024), 16384))
 }
 
 func (s *Service) leaseValid(j Job) bool {

@@ -44,14 +44,28 @@ func reuse() *Error {
 func pointer(s string) *string { return &s }
 func same(a, b *string) bool   { return (a == nil && b == nil) || (a != nil && b != nil && *a == *b) }
 
+// Meter meters AI points per author (implemented by internal/billing).
+type Meter interface {
+	// Allow checks an author-initiated feature (e.g. "review") before queuing it.
+	Allow(ctx context.Context, owner, feature string) error
+	// Reserve holds points before one model call; idempotent per op.
+	Reserve(ctx context.Context, owner, op, kind string, points int) error
+	// Settle records actual points (points < 0 charges the reservation).
+	Settle(ctx context.Context, owner, op string, points int) error
+}
+
 type Service struct {
 	Root, State, Project string
 	ReviewsEnabled       bool
-	DirectoryProvider    func() (any, error)
-	ProjectTitle         func() (string, error)
-	ProjectionProvider   func() (harness.Projection, error)
-	auditAppend          func(context.Context, string, any) error
-	managedExists        func() error
+	// Owner is the author who owns this book; Meter charges model usage to it.
+	// Both are set by Management.Resolve and empty for unmanaged fixtures.
+	Owner              string
+	Meter              Meter
+	DirectoryProvider  func() (any, error)
+	ProjectTitle       func() (string, error)
+	ProjectionProvider func() (harness.Projection, error)
+	auditAppend        func(context.Context, string, any) error
+	managedExists      func() error
 }
 
 func (s *Service) Projection() (harness.Projection, error) {
@@ -101,4 +115,25 @@ func (s *Service) CommitBookState(ctx context.Context, fn func() error) error {
 }
 func (s *Service) writeState(ctx context.Context, path string, value any) error {
 	return s.CommitBookState(ctx, func() error { return storage.Write(ctx, path, value) })
+}
+
+// MeterAllow, MeterReserve and MeterSettle are no-ops without a meter or owner.
+func (s *Service) MeterAllow(ctx context.Context, feature string) error {
+	if s == nil || s.Meter == nil || s.Owner == "" {
+		return nil
+	}
+	return s.Meter.Allow(ctx, s.Owner, feature)
+}
+func (s *Service) MeterReserve(ctx context.Context, op, kind string, points int) error {
+	if s == nil || s.Meter == nil || s.Owner == "" {
+		return nil
+	}
+	return s.Meter.Reserve(ctx, s.Owner, op, kind, points)
+}
+func (s *Service) MeterSettle(ctx context.Context, op string, points int) {
+	if s == nil || s.Meter == nil || s.Owner == "" {
+		return
+	}
+	// Settlement failures leave the reservation to expire and be charged.
+	_ = s.Meter.Settle(ctx, s.Owner, op, points)
 }

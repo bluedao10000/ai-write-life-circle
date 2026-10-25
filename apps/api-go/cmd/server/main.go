@@ -9,6 +9,7 @@ import (
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/agentruntime"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/agenttasks"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/application"
+	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/billing"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/config"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/creative"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/executorpolicy"
@@ -90,6 +91,9 @@ func run() error {
 	}
 	publications := publication.New(c.State, map[string]publication.Book{c.Project: {App: s, OwnerID: ownerID}})
 	management := application.NewManagement(s, ownerID)
+	// AI points (pricing Phase 0): every model call is charged to the book owner.
+	ledger := &billing.Ledger{State: c.State, LegacyOwner: ownerID}
+	management.UseMeter(ledger)
 	imports := application.NewImportService(management)
 	knowledgeFor := func(app *application.Service) *knowledge.Service {
 		k := knowledge.New(app, modelConfig, nil)
@@ -104,7 +108,7 @@ func run() error {
 	}
 	management.GuardDelete = publications.CheckDelete
 	tasks := &agenttasks.Service{Management: management, State: c.State, Config: modelConfig}
-	thought := &thinking.Service{Management: management, State: c.State, ResolveActor: resolver}
+	thought := &thinking.Service{Management: management, State: c.State, ResolveActor: resolver, Meter: ledger}
 	privateAddress, piErr := thought.Configure()
 	if piErr != nil {
 		slog.Warn("Thinking disabled: invalid private configuration")
@@ -188,7 +192,7 @@ func run() error {
 		reviewServices[app.Project] = r
 		return r
 	}
-	h := transport.Handler(transport.Options{CreativeFor: creativeFor, SessionOwned: thought.Owned, WorkerStatus: func() any { return agentruntime.ReadUnifiedStatus(c.State, modelConfig) }, KnowledgeFor: func(app *application.Service) *knowledge.Service { return knowledgeFor(app) }, Imports: imports, Management: management, ReviewFor: reviewFor, Service: s, Environment: c.Environment, ResolveActor: resolver, Reviews: reviews, Publications: publications})
+	h := transport.Handler(transport.Options{CreativeFor: creativeFor, SessionOwned: thought.Owned, WorkerStatus: func() any { return agentruntime.ReadUnifiedStatus(c.State, modelConfig) }, KnowledgeFor: func(app *application.Service) *knowledge.Service { return knowledgeFor(app) }, Imports: imports, Management: management, ReviewFor: reviewFor, Account: func(ctx context.Context, a application.Actor) (any, error) { return ledger.View(ctx, a.ID) }, Service: s, Environment: c.Environment, ResolveActor: resolver, Reviews: reviews, Publications: publications})
 	baseHandler := h
 	thinkingHandler := thought.PublicHandler()
 	perUser := c.IdentityPublicKey != ""
@@ -266,6 +270,7 @@ func run() error {
 			case <-ticker.C:
 				sweep, cancel := context.WithTimeout(ctx, 10*time.Second)
 				thought.RetryIntake(sweep, 20)
+				thought.SettleUsage(sweep, 20)
 				_ = reconciler.Sweep(sweep)
 				cancel()
 			}
