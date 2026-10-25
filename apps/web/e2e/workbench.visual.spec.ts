@@ -24,9 +24,12 @@ for (const width of [1440, 1024, 768, 390]) {
       await page.getByRole('tab', { name: '书', exact: true }).click()
       await page.getByRole('tab', { name: '阅读', exact: true }).click()
       expect(await editor.textContent()).toBe(before)
+      // Focus (desktop only, as in the design) fades the chrome; the editor and save status stay.
+      if (width < 640) return
       await page.getByRole('button', { name: '专注', exact: true }).click()
       await expect(editor).toBeVisible()
-      await expect(page.getByRole('tablist', { name: '主导航' })).toHaveCount(0)
+      await page.mouse.move(width / 2, 600)
+      await expect(page.getByRole('tablist', { name: '主导航' }).locator('..')).toHaveCSS('opacity', '0')
       await page.screenshot({ path: testInfo.outputPath(`focus-${width}-${dark ? 'dark' : 'light'}.png`) })
     })
   }
@@ -47,7 +50,7 @@ test('old explicit layout restores, quick note persists and thinking uses one se
   // The space is kept in the URL; reopen reading before using the drawer.
   await page.goto('/?view=read')
   await page.getByRole('button', { name: '收起辅助' }).click()
-  await page.getByRole('button', { name: '灵感', exact: true }).click()
+  await page.getByRole('button', { name: '去灵感', exact: true }).click()
   await page.getByRole('textbox', { name: '你的想法' }).fill('作者思考输入')
   await page.getByRole('button', { name: '展开为完整灵感空间' }).click()
   await expect(page.getByRole('textbox', { name: '你的想法' })).toHaveValue('作者思考输入')

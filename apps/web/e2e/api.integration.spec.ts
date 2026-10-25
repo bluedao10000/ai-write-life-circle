@@ -143,6 +143,8 @@ test('API notes survive refresh, stay outside canon and protect concurrent edits
   await page.reload()
   await expect(page.getByRole('region', { name: '继续写作' })).toContainText('作者的真实 API 笔记')
   await page.getByRole('tab', { name: '书', exact: true }).click()
+  // Asset sections open on author settings; manuscript observations sit behind the source switch.
+  await page.getByRole('tab', { name: '正文观察 · AI', exact: true }).click()
   await expect(page.getByText('尚未启用自动知识维护')).toBeVisible()
   await page.getByRole('button', { name: '创作笔记', exact: true }).click()
   const note = page.getByRole('button', { name: /作者的真实 API 笔记/ })
@@ -178,7 +180,7 @@ test('API notes survive refresh, stay outside canon and protect concurrent edits
   await page.getByRole('button', { name: '已归档', exact: true }).click()
   await expect(page.getByRole('button', { name: /另一个浏览器已更新的笔记/ })).toBeVisible()
   await page.getByRole('tab', { name: '灵感', exact: true }).click()
-  await expect(page.getByLabel('思考 Agent')).toBeVisible()
+  await expect(page.getByRole('main', { name: '灵感对话' })).toBeVisible()
   await expect(page.getByRole('alert')).toContainText('思考服务暂不可用')
   expect(urls.some((url) => /vnextData|vnextAgent|demoWriterAgent|demoData/.test(url))).toBe(false)
   expect(await readFile('e2e/fixtures/harness/manuscript/CH-901.md', 'utf8')).toBe(harnessBefore)

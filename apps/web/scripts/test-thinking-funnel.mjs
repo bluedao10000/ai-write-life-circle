@@ -219,59 +219,59 @@ try {
   await page.goto(origin + "/studio?view=read&compose=1");
   await expect(page.getByLabel("正文编辑器")).toBeVisible();
   await page.getByRole("tab", { name: "灵感", exact: true }).click();
-  await expect(page.getByText("确认这次思考的数据范围")).toBeVisible();
-  await page.getByRole("button", { name: "同意以上范围并创建会话" }).click();
-  const input = page.getByLabel("创作问题");
+  // 灵感 workspace (Figma V3): the first send asks for consent, then continues.
+  const talk = page.getByRole("main", { name: "灵感对话" });
+  const turns = talk.locator("ol > li");
+  const send = () => page.getByRole("button", { name: "发送", exact: true }).click();
+  const input = page.getByLabel("说说你的想法");
   await expect(input).toBeVisible();
   await input.fill("林舟与父亲的关系变化是否合理？");
-  await page.getByRole("button", { name: "发送问题", exact: true }).click();
+  await send();
+  await expect(page.getByText("确认这次灵感讨论的数据范围").first()).toBeVisible();
+  await page.getByRole("button", { name: "同意以上范围并创建会话" }).click();
   await expect(
     page.getByText("林舟与父亲从争执到理解，可能由信息差与保护动机推动；", {
       exact: false,
     }),
   ).toBeVisible({ timeout: 20000 });
-  await expect(page.getByLabel("思考 Agent").locator("details")).toHaveCount(3);
-  await page
-    .getByLabel("思考 Agent")
-    .locator("details")
-    .first()
-    .locator("summary")
-    .click();
-  await expect(page.getByText(/Revision /).first()).toBeVisible();
+  // Evidence stays inspectable: verified source quotes behind a disclosure.
+  await talk.locator("details").first().locator("summary").click();
+  await expect(talk.getByText(/原文位置已核验/).first()).toBeVisible();
   await input.fill("那么父亲还有什么其他解释？");
-  await expect(
-    page.getByRole("button", { name: "发送问题", exact: true }),
-  ).toBeEnabled();
-  await page.getByRole("button", { name: "发送问题", exact: true }).click();
-  await expect(page.getByLabel("思考 Agent").locator("article")).toHaveCount(4, { timeout: 20000 });
-  await expect(page.getByLabel("思考 Agent").locator("article").last()).toContainText("已完成", {
-    timeout: 20000,
-  });
+  await expect(page.getByRole("button", { name: "发送", exact: true })).toBeEnabled();
+  await send();
+  await expect(turns).toHaveCount(4, { timeout: 20000 });
+  await expect(talk.getByText("正在想…")).toHaveCount(0, { timeout: 20000 });
+  await expect(turns.last()).not.toContainText(/· (已接受|思考中|未完成|已取消|已中断)/, { timeout: 20000 });
+  await expect(turns.last()).not.toContainText("正在思考…");
   await page.reload();
   await page.getByRole("tab", { name: "灵感", exact: true }).click();
-  await expect(page.getByLabel("思考 Agent").locator("article")).toHaveCount(4);
+  await expect(turns).toHaveCount(4);
   fixture.config.hang = true;
   await input.fill("取消这次思考");
-  await page.getByRole("button", { name: "发送问题", exact: true }).click();
-  await page.getByRole("button", { name: "取消思考", exact: true }).click();
-  await expect(page.getByLabel("思考 Agent").locator("article").last()).toContainText("已取消");
+  await send();
+  await page.getByRole("button", { name: "停止", exact: true }).click();
+  await expect(turns.last()).toContainText("已取消");
   fixture.config.hang = false;
   await fixture.stopAgent();
   await input.fill("服务离线时不重复接受");
-  await page.getByRole("button", { name: "发送问题", exact: true }).click();
+  await send();
   await expect(page.getByRole("alert")).toContainText("输入已保留");
   await page.getByRole("tab", { name: "阅读", exact: true }).click();
-  await page
-    .getByLabel("正文编辑器")
-    .fill("独立 Pi Agent 离线，正文仍然可以保存。");
+  const editor = page.getByLabel("正文编辑器");
+  if ((await editor.getAttribute("contenteditable")) !== "true")
+    await page.getByRole("button", { name: "写作", exact: true }).click();
+  await editor.fill("独立 Pi Agent 离线，正文仍然可以保存。");
   await expect(page.getByText(/^已保存 /)).toBeVisible();
   await fixture.restartAgent();
   await page.getByRole("tab", { name: "灵感", exact: true }).click();
-  await page.getByRole("button", { name: "刷新", exact: true }).click();
-  await page.getByRole("button", { name: "发送问题", exact: true }).click();
-  await expect(page.getByLabel("思考 Agent").locator("article").last()).toContainText("已完成", {
-    timeout: 20000,
-  });
+  await page.getByRole("button", { name: "刷新会话", exact: true }).click();
+  const beforeRetry = await turns.count();
+  await send();
+  await expect(turns).toHaveCount(beforeRetry + 2, { timeout: 20000 });
+  await expect(talk.getByText("正在想…")).toHaveCount(0, { timeout: 20000 });
+  await expect(turns.last()).not.toContainText(/· (已接受|思考中|未完成|已取消|已中断)/, { timeout: 20000 });
+  await expect(turns.last()).not.toContainText("正在思考…");
   const screenshot = resolve("test-results-thinking/thinking-desktop.png");
   await mkdir(resolve("test-results-thinking"), { recursive: true });
   await page.screenshot({ path: screenshot, fullPage: true });
@@ -284,11 +284,13 @@ try {
   await fixture.stopAgent();
   await page.reload();
   await page.getByRole("tab", { name: "灵感", exact: true }).click();
-  await expect(page.getByLabel("历史思考会话").locator("option")).toHaveCount(2);
+  const history = page.locator('aside[aria-label="创作探索记录"] li');
+  await expect(history).toHaveCount(1);
+  await history.first().locator("[role=button], button").first().dispatchEvent("click");
   await expect(page.getByRole("button", { name: "删除会话", exact: true })).toBeEnabled();
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "删除会话", exact: true }).click();
-  await expect(page.getByLabel("历史思考会话").locator("option")).toHaveCount(1);
+  await expect(history).toHaveCount(0);
   await fixture.restartAgent();
   assert.deepEqual(errors, []);
   assert.equal(

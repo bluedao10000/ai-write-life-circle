@@ -1,13 +1,34 @@
 import { test, expect, type Page } from "@playwright/test";
+// Figma V3: 书 opens on author settings; AI observations sit behind the source switch.
+const manuscript = (page: Page) =>
+  page.getByRole("tab", { name: "正文观察 · AI", exact: true }).click();
 async function book(page: Page) {
   await page.getByRole("tab", { name: "书", exact: true }).click();
+  await manuscript(page);
   await expect(page.getByLabel("自动作品知识")).toBeVisible();
+}
+// The header knowledge chip opens what the AI observed in the current chapter.
+// Wait until the reopened chapter is the one just written (preferences are debounced).
+async function chapterKnowledge(page: Page, chapterId: string) {
+  const book = await page.evaluate(() => sessionStorage.getItem("writer-agent:selected-book"));
+  await expect
+    .poll(async () => (await (await page.request.get(`/v1/projects/${book}/workspace`)).json()).userState?.lastChapterId, { timeout: 10000 })
+    .toBe(chapterId);
+  await page.reload();
+  await page.getByRole("button", { name: /^知识维护：/ }).first().click();
+  const panel = page.getByLabel("自动作品知识");
+  await expect(panel).toBeVisible();
+  // The chapter's saved-prose evidence is grouped behind 原文依据.
+  const evidence = panel.getByRole("button", { name: /^原文依据/ });
+  await expect(evidence).toBeVisible({ timeout: 20000 });
+  if ((await evidence.getAttribute("aria-pressed")) !== "true") await evidence.click();
 }
 async function people(page: Page) {
   await page
     .getByRole("navigation", { name: "书的分区" })
-    .getByRole("button", { name: "人物", exact: true })
+    .getByRole("button", { name: /^人物/ })
     .click();
+  await manuscript(page);
 }
 test("saved prose automatically becomes private memory, links chapter two, revises and survives refresh", async ({
   page,
@@ -97,9 +118,7 @@ test("saved prose automatically becomes private memory, links chapter two, revis
   await waitForCurrentKnowledge("林舟来到江宁。");
   // The Worker has completed. Reload once so this assertion exercises the
   // finished knowledge response instead of the exact timing of the 15s poll.
-  await page.reload();
-  await book(page);
-  await people(page);
+  await chapterKnowledge(page, ch2);
   await expect(
     page
       .getByLabel("自动作品知识")
@@ -111,16 +130,14 @@ test("saved prose automatically becomes private memory, links chapter two, revis
   await expect(
     page.getByRole("heading", { name: "林舟", exact: true }),
   ).toHaveCount(1);
-  await page.getByRole("button", { name: "回到正文" }).click();
+  await page.getByRole("button", { name: "回到阅读" }).click();
   await page.getByRole("button", { name: "第一章", exact: true }).click();
   await editor.fill("林舟十六岁离开北港。");
   await expect
     .poll(() => savedMarkdown(ch1), { timeout: 10000 })
     .toBe("林舟十六岁离开北港。");
   await waitForCurrentKnowledge("林舟十六岁离开北港。");
-  await page.reload();
-  await book(page);
-  await people(page);
+  await chapterKnowledge(page, ch1);
   await expect(
     page
       .getByLabel("自动作品知识")
