@@ -2,6 +2,7 @@ import { createContext, useContext, useRef, useState, useEffect, type ReactNode 
 import type { ManagedBook, StructureInput, WorkspaceSnapshot } from '@writer-agent/contracts'
 import type { WriterAgentAdapter } from '../../services/writerAgent'
 import { clearLocalChapterDrafts } from '../../services/localChapterDraft'
+import { readScopedSession, writeScopedSession } from '../../services/storageScope'
 import EPUBImportDialog from './EPUBImportDialog'
 
 type ManagementUI = {
@@ -35,21 +36,10 @@ export function useManagement() {
 }
 const selectedKey = 'writer-agent:selected-book'
 const createKey = 'writer-agent:pending-create-book'
-function stored(key: string) {
-  try {
-    return sessionStorage.getItem(key)
-  } catch {
-    return null
-  }
-}
-function remember(key: string, value: string | null) {
-  try {
-    if (value === null) sessionStorage.removeItem(key)
-    else sessionStorage.setItem(key, value)
-  } catch {
-    /* persistence is a convenience; server receipts remain authoritative */
-  }
-}
+// Per-account keys (SEC-002); persistence is a convenience and server
+// receipts and ownership checks remain authoritative.
+const stored = readScopedSession
+const remember = writeScopedSession
 
 export default function ManagedStudio({
   adapter,
@@ -200,6 +190,11 @@ export default function ManagedStudio({
         { operation: 'create', baseVersion: 0 },
         key,
       )
+      // 「开始写作」 opens the first chapter for writing, not the default 灵感 space.
+      const url = new URL(window.location.href)
+      url.searchParams.set('view', 'read')
+      url.searchParams.set('compose', '1')
+      window.history.replaceState(window.history.state, '', url)
       await open(next, next.chapters[0]?.chapterId)
       remember(createKey, null)
       setBooks((all) => (all.some((b) => b.bookId === next.bookId) ? all : [...all, next]))

@@ -1,6 +1,7 @@
 import { handlePublicSite } from './public'
 import { publicationRoute } from './publication-route'
-import { authConfigured, authorAllowed, createAuth, type Env } from './auth'
+import { authConfigured, createAuth, verifiedGoogleUser, type Env } from './auth'
+import { IDENTITY_HEADER, perUserAPI, signIdentity, storageScope } from './identity'
 
 function problem(status: number, code: string, detail: string) {
   return Response.json({ type: 'about:blank', title: detail, status, code, detail }, {
@@ -145,11 +146,13 @@ async function handleRequestInternal(request: Request, env: Env): Promise<Respon
   }
   const session = await auth.api.getSession({ headers: request.headers, query: { disableCookieCache: true, disableRefresh: true } })
   if (!session) return problem(401, 'SESSION_REQUIRED', '请先使用 Google 登录。')
-  // Recheck on every request: changing the allowlist revokes project access immediately.
-  if (!authorAllowed(session.user, env)) return problem(403, 'AUTHOR_FORBIDDEN', '此 Google 账号没有作品访问权限。')
+  // Any verified Google account may sign in; Go scopes every work to its own author.
+  if (!verifiedGoogleUser(session.user)) return problem(403, 'AUTHOR_FORBIDDEN', '请使用已验证邮箱的 Google 账号登录。')
+  const user = { id: session.user.id, email: session.user.email, emailVerified: session.user.emailVerified }
   if (url.pathname === '/api/session') {
     if (request.method !== 'GET') return problem(405, 'METHOD_NOT_ALLOWED', '请求方法不支持。')
-    return Response.json({ user: { name: session.user.name, email: session.user.email }, projectId: env.WRITER_AGENT_PROJECT_ID || 'local' }, { headers: { 'cache-control': 'no-store' } })
+    // `scope` partitions browser-stored drafts per account; it is not a credential.
+    return Response.json({ user: { name: session.user.name, email: session.user.email, scope: await storageScope(session.user.id) }, projectId: env.WRITER_AGENT_PROJECT_ID || 'local' }, { headers: { 'cache-control': 'no-store' } })
   }
   const configured = env.WRITER_AGENT_PROJECT_ID || 'local'
   const booksRoot = url.pathname === '/v1/studio/books' && ['GET', 'POST'].includes(request.method)
@@ -171,17 +174,20 @@ async function handleRequestInternal(request: Request, env: Env): Promise<Respon
   if(selected && selected !== configured) {
     const check = new URL(`/v1/studio/books/${encodeURIComponent(selected)}`, target)
     try {
-      const response = await fetch(check, { headers: { authorization: `Bearer ${env.WRITER_AGENT_API_TOKEN}`, accept: 'application/json' }, redirect: 'manual', signal: AbortSignal.timeout(10_000) })
+      const assertion = await signIdentity(env.WRITER_AGENT_IDENTITY_PRIVATE_KEY, user, 'GET', check.pathname)
+      const response = await fetch(check, { headers: { authorization: `Bearer ${env.WRITER_AGENT_API_TOKEN}`, [IDENTITY_HEADER]: assertion, accept: 'application/json' }, redirect: 'manual', signal: AbortSignal.timeout(10_000) })
+      await response.body?.cancel()
+      if (!perUserAPI(response)) return problem(502, 'API_IDENTITY_UNSUPPORTED', '作品服务版本不兼容，请稍后重试。')
       // A committed delete disappears from GET immediately. Let Go validate
       // the owner-scoped tombstone when an authenticated author retries DELETE.
       const ok = response.status === 200 || (response.status === 404 && request.method === 'DELETE' && !!structure && !structure[2])
-      await response.body?.cancel()
       if(!ok) return problem(response.status >= 500 ? 502 : 404, 'BOOK_UNAVAILABLE', '作品不存在或没有访问权限。')
     } catch { return problem(502, 'API_CONNECTION_FAILED', '作品服务暂时无法连接。') }
   }
   target.pathname = url.pathname
   target.search = url.search
-  const headers = new Headers({ accept: 'application/json, application/problem+json', authorization: `Bearer ${env.WRITER_AGENT_API_TOKEN}` })
+  // The assertion is minted here from the verified session, never copied from the browser.
+  const headers = new Headers({ accept: 'application/json, application/problem+json', authorization: `Bearer ${env.WRITER_AGENT_API_TOKEN}`, [IDENTITY_HEADER]: await signIdentity(env.WRITER_AGENT_IDENTITY_PRIVATE_KEY, user, request.method, target.pathname) })
   for (const name of ['content-type', 'idempotency-key']) {
     const value = request.headers.get(name)
     if (value) headers.set(name, value)
@@ -189,6 +195,11 @@ async function handleRequestInternal(request: Request, env: Env): Promise<Respon
   try {
     const timeout = importAllowed ? 120_000 : 30_000
     const upstream = await fetch(target, { method: request.method, headers, body: request.body, redirect: 'manual', signal: AbortSignal.timeout(timeout) })
+    if (!perUserAPI(upstream)) {
+      // An API without per-user identity would merge every account onto one author.
+      await upstream.body?.cancel()
+      return problem(502, 'API_IDENTITY_UNSUPPORTED', '作品服务版本不兼容，请稍后重试。')
+    }
     if ((upstream.status >= 300 && upstream.status < 400) || upstream.status === 401 || upstream.status === 403) {
       await upstream.body?.cancel()
       return problem(502, 'API_CONNECTION_FAILED', '作品服务连接失败，请稍后重试。')

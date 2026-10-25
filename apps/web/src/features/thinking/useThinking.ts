@@ -6,6 +6,7 @@ import type {
   ThinkingSession,
 } from "@writer-agent/contracts";
 import { thinkingApi as api } from "../../services/api/thinkingApi";
+import { scopedKey } from "../../services/storageScope";
 import { applyToolEvents, type ToolStep } from "./toolActivity";
 type Summary = Pick<
   ThinkingSession,
@@ -18,7 +19,7 @@ export function useThinking(book: string, enabled: boolean) {
     [model, setModel] = useState<ThinkingModel | null>(null),
     [selected, setSelected] = useState<string | null>(() => {
       try {
-        return sessionStorage.getItem("thinking-v1:" + book);
+        return sessionStorage.getItem(scopedKey("thinking-v1:" + book));
       } catch {
         return null;
       }
@@ -56,8 +57,8 @@ export function useThinking(book: string, enabled: boolean) {
       setSteps([]);
       setError("");
       try {
-        if (id) sessionStorage.setItem("thinking-v1:" + book, id);
-        else sessionStorage.removeItem("thinking-v1:" + book);
+        if (id) sessionStorage.setItem(scopedKey("thinking-v1:" + book), id);
+        else sessionStorage.removeItem(scopedKey("thinking-v1:" + book));
       } catch {
         /* selection persistence is optional */
       }

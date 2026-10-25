@@ -17,6 +17,7 @@ import { Cover } from './kit'
 import { mapBook, volumeTitle } from './mapper'
 import { Markdown } from './Markdown'
 import { prefs } from './store'
+import { readScopedSession } from '../services/storageScope'
 
 type Loaded = {
   management: PublicationManagement
@@ -37,7 +38,7 @@ const initial: PublicationMetadata = {
 }
 function selectedStudioBook() {
   try {
-    return sessionStorage.getItem('writer-agent:selected-book') || ''
+    return readScopedSession('writer-agent:selected-book') || ''
   } catch {
     return ''
   }
