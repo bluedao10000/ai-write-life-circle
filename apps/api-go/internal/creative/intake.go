@@ -288,8 +288,8 @@ func (s *Service) Excerpt(ctx context.Context, key string) (Turn, error) {
 // model credential. It turns awaiting outbox entries into queued jobs by
 // reading Pi snapshots; it never calls a model.
 type Reconciler struct {
+	// Management enumerates every author's books; each is resolved as its owner.
 	Management *application.Management
-	Owner      application.Actor
 	// Fetch returns found=false when the session is deleted or unknown.
 	Fetch func(ctx context.Context, session string) (snap *Snapshot, found bool, err error)
 	// For builds the per-book service.
@@ -302,7 +302,7 @@ func (r *Reconciler) Sweep(ctx context.Context) error {
 	if r.Management == nil || r.Fetch == nil || r.For == nil {
 		return nil
 	}
-	books, e := r.Management.List(r.Owner)
+	books, e := r.Management.OwnedBooks()
 	if e != nil {
 		return e
 	}
@@ -311,7 +311,7 @@ func (r *Reconciler) Sweep(ctx context.Context) error {
 		budget = 20
 	}
 	for _, b := range books {
-		app, e := r.Management.Resolve(r.Owner, b.ID)
+		app, e := r.Management.Resolve(b.Owner, b.Book.ID)
 		if e != nil {
 			continue
 		}

@@ -39,6 +39,7 @@ func TestProductionRequiresExplicitBearerIdentity(t *testing.T) {
 			t.Setenv("WRITER_AGENT_AUTH_MODE", tc.mode)
 			t.Setenv("WRITER_AGENT_AUTH_TOKEN_FILE", tc.file)
 			t.Setenv("WRITER_AGENT_AUTHOR_ID", tc.author)
+			t.Setenv("WRITER_AGENT_IDENTITY_PUBLIC_KEY", "fixture-public-key")
 			t.Setenv("WRITER_AGENT_STATE_DIR", t.TempDir())
 			t.Setenv("WRITER_AGENT_API_HOST", "127.0.0.1")
 			t.Setenv("WRITER_AGENT_API_PORT", "8787")
@@ -60,5 +61,24 @@ func TestProductionWorkerDoesNotRequireHTTPBearerToken(t *testing.T) {
 	}
 	if _, err := Load(); err == nil {
 		t.Fatal("HTTP service bypassed bearer requirement")
+	}
+}
+
+func TestProductionAPIRequiresPerUserIdentityKey(t *testing.T) {
+	t.Setenv("WRITER_AGENT_ENV", "production")
+	t.Setenv("NODE_ENV", "production")
+	t.Setenv("WRITER_AGENT_AUTH_MODE", "bearer")
+	t.Setenv("WRITER_AGENT_AUTH_TOKEN_FILE", "/etc/writer-agent/auth-token")
+	t.Setenv("WRITER_AGENT_AUTHOR_ID", "bruce")
+	t.Setenv("WRITER_AGENT_IDENTITY_PUBLIC_KEY", "")
+	t.Setenv("WRITER_AGENT_STATE_DIR", t.TempDir())
+	t.Setenv("WRITER_AGENT_API_HOST", "127.0.0.1")
+	t.Setenv("WRITER_AGENT_API_PORT", "8787")
+	if _, err := Load(); err == nil {
+		t.Fatal("production API must not start with one shared author identity")
+	}
+	// The Worker process never authenticates browser callers.
+	if _, err := LoadWorker(); err != nil {
+		t.Fatal(err)
 	}
 }

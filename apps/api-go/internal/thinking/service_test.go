@@ -224,3 +224,80 @@ func TestDeletedSessionsReleaseCapacityWithoutResurrection(t *testing.T) {
 		t.Fatal("deleted receipts must remain without consuming live capacity or recreating transcripts")
 	}
 }
+
+// REL-001: a failed creative intake after Pi accepted a message stays in a
+// durable outbox and is retried until it commits; deleted sessions drop it.
+func TestAcceptedMessageIntakeSurvivesHookFailure(t *testing.T) {
+	s, rec, _ := fixture(t)
+	model := Model{Provider: "fixture", Model: "synthetic", Endpoint: "http://127.0.0.1", Protocol: Protocol, Limits: Limits{Tools: 8, Duration: 10000}}
+	rec.Model = model
+	if e := s.tx(context.Background(), func(st *registry) error { st.Sessions[rec.ID] = rec; return nil }); e != nil {
+		t.Fatal(e)
+	}
+	node := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.URL.Path == "/internal/v1/health":
+			_ = json.NewEncoder(w).Encode(map[string]any{"protocol": Protocol, "model": model})
+		case r.Method == "GET":
+			_, _ = w.Write([]byte(`{"status":"idle"}`))
+		case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/messages"):
+			_, _ = w.Write([]byte(`{"messageId":"msg-1"}`))
+		default:
+			t.Error(r.Method, r.URL.Path)
+			w.WriteHeader(404)
+		}
+	}))
+	defer node.Close()
+	s.Origin = node.URL
+	s.ServiceToken = strings.Repeat("t", 64)
+	s.ResolveActor = func(*http.Request) *application.Actor { return &application.Actor{ID: rec.Owner, Role: "author"} }
+	calls, healthy := 0, false
+	s.OnMessageAccepted = func(_ context.Context, got Record, message string) error {
+		calls++
+		if got.ID != rec.ID || message != "msg-1" {
+			t.Error(got.ID, message)
+		}
+		if !healthy {
+			return application.Fail(500, "WORKSPACE_STORAGE_FAILED", "disk full")
+		}
+		return nil
+	}
+	r := httptest.NewRequest("POST", "/v1/studio/books/"+rec.Book+"/thinking/sessions/"+rec.ID+"/messages", strings.NewReader(`{"text":"林舟为什么回来？"}`))
+	r.Header.Set("Content-Type", "application/json")
+	r.Header.Set("Idempotency-Key", "send-1")
+	w := httptest.NewRecorder()
+	s.PublicHandler().ServeHTTP(w, r)
+	if w.Code != 202 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	st, _ := s.load()
+	if got := st.Sessions[rec.ID].Intake; calls != 1 || len(got) != 1 || got[0] != "msg-1" {
+		t.Fatalf("intake not durable after hook failure: calls=%d %v", calls, got)
+	}
+	ctx := context.Background()
+	s.RetryIntake(ctx, 20)
+	if st, _ = s.load(); calls != 2 || len(st.Sessions[rec.ID].Intake) != 1 {
+		t.Fatal("still-failing intake must stay queued", calls)
+	}
+	healthy = true
+	s.RetryIntake(ctx, 20)
+	if st, _ = s.load(); calls != 3 || len(st.Sessions[rec.ID].Intake) != 0 {
+		t.Fatal("recovered intake not drained", calls, st.Sessions[rec.ID].Intake)
+	}
+	s.RetryIntake(ctx, 20)
+	if calls != 3 {
+		t.Fatal("drained intake retried again")
+	}
+	// A deleted session never resurrects its intake.
+	_ = s.tx(ctx, func(st *registry) error {
+		v := st.Sessions[rec.ID]
+		v.Intake, v.Deleted = []string{"msg-2"}, true
+		st.Sessions[rec.ID] = v
+		return nil
+	})
+	s.RetryIntake(ctx, 20)
+	if st, _ = s.load(); calls != 3 || len(st.Sessions[rec.ID].Intake) != 0 {
+		t.Fatal("deleted session intake not dropped")
+	}
+}

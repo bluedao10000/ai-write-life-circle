@@ -12,6 +12,15 @@ import (
 type Config struct {
 	Root, State, Project, Host, Port, Environment string
 	AuthMode, AuthTokenFile, AuthorID             string
+	// IdentityPublicKey verifies the per-request Ed25519 user assertion signed
+	// by the login Worker (base64 of the raw 32-byte key). Required for the
+	// production API: without it every bearer caller would share AuthorID.
+	IdentityPublicKey string
+	// LegacyOwnerEmail is the verified Google address that inherits AuthorID
+	// (all data created before per-user identity). The first verified sign-in
+	// with this address binds its immutable user ID; the address is not
+	// consulted again afterwards.
+	LegacyOwnerEmail string
 }
 
 func value(key, fallback string) string {
@@ -47,6 +56,8 @@ func load(worker bool) (Config, error) {
 	c.AuthMode = value("WRITER_AGENT_AUTH_MODE", "local")
 	c.AuthTokenFile = value("WRITER_AGENT_AUTH_TOKEN_FILE", "")
 	c.AuthorID = value("WRITER_AGENT_AUTHOR_ID", "")
+	c.IdentityPublicKey = strings.TrimSpace(value("WRITER_AGENT_IDENTITY_PUBLIC_KEY", ""))
+	c.LegacyOwnerEmail = strings.ToLower(strings.TrimSpace(value("WRITER_AGENT_LEGACY_OWNER_EMAIL", "")))
 	if os.Getenv("NODE_ENV") == "production" && c.Environment != "production" {
 		return c, errors.New("NODE_ENV=production requires WRITER_AGENT_ENV=production and production identity")
 	}
@@ -54,6 +65,9 @@ func load(worker bool) (Config, error) {
 	case "production":
 		if c.AuthorID == "" || (!worker && (c.AuthMode != "bearer" || c.AuthTokenFile == "")) {
 			return c, errors.New("production requires bearer identity, a token file and an explicit author ID; local identity is development-only")
+		}
+		if !worker && c.IdentityPublicKey == "" {
+			return c, errors.New("production requires WRITER_AGENT_IDENTITY_PUBLIC_KEY so each signed-in user is a separate author")
 		}
 	case "development", "test":
 		if c.AuthMode != "local" && c.AuthMode != "bearer" {

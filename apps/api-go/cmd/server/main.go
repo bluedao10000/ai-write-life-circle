@@ -103,7 +103,7 @@ func run() error {
 		return publication.Book{App: app, OwnerID: actor.ID}, e
 	}
 	management.GuardDelete = publications.CheckDelete
-	tasks := &agenttasks.Service{Management: management, Actor: application.Actor{ID: ownerID, Role: "author"}, State: c.State, Config: modelConfig}
+	tasks := &agenttasks.Service{Management: management, State: c.State, Config: modelConfig}
 	thought := &thinking.Service{Management: management, State: c.State, ResolveActor: resolver}
 	privateAddress, piErr := thought.Configure()
 	if piErr != nil {
@@ -112,17 +112,25 @@ func run() error {
 		privateAddress = ""
 	}
 	creativeFor := func(app *application.Service) *creative.Service { return creative.New(app, modelConfig, nil) }
-	ownerActor := application.Actor{ID: ownerID, Role: "author"}
 	// Organizing is an outbox written after Pi durably accepted the message; a
 	// failure here never fails the conversation.
-	thought.OnMessageAccepted = func(ctx context.Context, rec thinking.Record, messageID string) {
+	// Returning an error keeps the message in the session's durable intake
+	// outbox for RetryIntake; permanent rejections are logged and dropped.
+	thought.OnMessageAccepted = func(ctx context.Context, rec thinking.Record, messageID string) error {
 		app, e := management.Resolve(application.Actor{ID: rec.Owner, Role: "author"}, rec.Book)
 		if e == nil {
 			_, e = creativeFor(app).AcceptTurn(ctx, rec.ID, messageID, "auto")
 		}
-		if e != nil {
-			slog.Warn("creative turn not recorded", "code", application.AsError(e).Code)
+		if e == nil {
+			return nil
 		}
+		p := application.AsError(e)
+		if ctx.Err() == nil && p.Status >= 400 && p.Status < 500 && p.Status != 408 && p.Status != 409 && p.Status != 423 {
+			slog.Warn("creative turn rejected", "code", p.Code)
+			return nil
+		}
+		slog.Warn("creative turn deferred", "code", p.Code)
+		return e
 	}
 	thought.OnSessionDeleted = func(ctx context.Context, rec thinking.Record) {
 		if app, e := management.Resolve(application.Actor{ID: rec.Owner, Role: "author"}, rec.Book); e == nil {
@@ -131,7 +139,7 @@ func run() error {
 			}
 		}
 	}
-	reconciler := &creative.Reconciler{Management: management, Owner: ownerActor, For: creativeFor, Fetch: func(ctx context.Context, id string) (*creative.Snapshot, bool, error) {
+	reconciler := &creative.Reconciler{Management: management, For: creativeFor, Fetch: func(ctx context.Context, id string) (*creative.Snapshot, bool, error) {
 		raw, found, e := thought.Snapshot(ctx, id)
 		if e != nil || !found {
 			return nil, found, e
@@ -183,7 +191,12 @@ func run() error {
 	h := transport.Handler(transport.Options{CreativeFor: creativeFor, SessionOwned: thought.Owned, WorkerStatus: func() any { return agentruntime.ReadUnifiedStatus(c.State, modelConfig) }, KnowledgeFor: func(app *application.Service) *knowledge.Service { return knowledgeFor(app) }, Imports: imports, Management: management, ReviewFor: reviewFor, Service: s, Environment: c.Environment, ResolveActor: resolver, Reviews: reviews, Publications: publications})
 	baseHandler := h
 	thinkingHandler := thought.PublicHandler()
+	perUser := c.IdentityPublicKey != ""
 	h = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if perUser {
+			// The login Worker refuses any API that does not separate users.
+			w.Header().Set(identity.ModeHeader, identity.Mode)
+		}
 		if thinking.IsPublicPath(r.URL.Path) {
 			thinkingHandler.ServeHTTP(w, r)
 		} else {
@@ -252,6 +265,7 @@ func run() error {
 				return
 			case <-ticker.C:
 				sweep, cancel := context.WithTimeout(ctx, 10*time.Second)
+				thought.RetryIntake(sweep, 20)
 				_ = reconciler.Sweep(sweep)
 				cancel()
 			}

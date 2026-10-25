@@ -370,18 +370,25 @@ func (s *Service) PublicHandler() http.Handler {
 						MessageID string `json:"messageId"`
 					}
 					if json.Unmarshal(v, &accepted) == nil && accepted.MessageID != "" && len(accepted.MessageID) <= 128 {
-						_ = s.tx(r.Context(), func(st *registry) error {
+						// LastMessage and the intake outbox commit together, so a failed
+						// hook below is retried by RetryIntake instead of being lost.
+						queued := s.tx(r.Context(), func(st *registry) error {
 							current := st.Sessions[id]
 							if current.Deleted {
 								return nil
 							}
 							current.LastMessage = accepted.MessageID
+							if s.OnMessageAccepted != nil {
+								current.Intake = addIntake(current.Intake, accepted.MessageID)
+							}
 							st.Sessions[id] = current
 							record = current
 							return nil
-						})
-						if s.OnMessageAccepted != nil {
-							s.OnMessageAccepted(r.Context(), record, accepted.MessageID)
+						}) == nil
+						if s.OnMessageAccepted != nil && !record.Deleted {
+							if s.OnMessageAccepted(r.Context(), record, accepted.MessageID) == nil && queued {
+								_ = s.dropIntake(r.Context(), id, accepted.MessageID)
+							}
 						}
 					}
 				}

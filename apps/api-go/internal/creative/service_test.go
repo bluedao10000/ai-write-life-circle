@@ -84,7 +84,7 @@ func (f *fixture) say(session, user, answer string) Turn {
 
 func (f *fixture) reconcile() {
 	f.t.Helper()
-	r := &Reconciler{Management: f.m, Owner: author, For: func(app *application.Service) *Service {
+	r := &Reconciler{Management: f.m, For: func(app *application.Service) *Service {
 		return New(app, f.s.Config, nil)
 	}, Fetch: func(_ context.Context, id string) (*Snapshot, bool, error) {
 		s, ok := f.pi[id]

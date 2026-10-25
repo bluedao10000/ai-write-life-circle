@@ -36,19 +36,22 @@ func (s *Service) ReportWorker(ctx context.Context, in WorkerHeartbeat) error {
 		}
 	}
 	byKind := map[string]agentruntime.Counts{}
-	books, e := s.Management.List(s.Actor)
+	books, e := s.Management.OwnedBooks()
 	if e != nil {
 		return e
 	}
-	resolve := func(id string) (*application.Service, error) { return s.Management.Resolve(s.Actor, id) }
+	resolve := func(id string) (*application.Service, error) {
+		app, _, e := s.Management.ResolveOwned(id)
+		return app, e
+	}
 	for _, kind := range in.Kinds {
 		counts := agentruntime.Counts{}
 		for _, book := range books {
 			var got agentruntime.Counts
 			if kind == "review" {
-				got, e = (&review.Executor{Config: s.Config, Resolve: resolve}).Inspect(ctx, book.ID)
+				got, e = (&review.Executor{Config: s.Config, Resolve: resolve}).Inspect(ctx, book.Book.ID)
 			} else {
-				got, e = (&knowledge.Executor{Config: s.Config, Resolve: resolve}).Inspect(ctx, book.ID)
+				got, e = (&knowledge.Executor{Config: s.Config, Resolve: resolve}).Inspect(ctx, book.Book.ID)
 			}
 			if e != nil {
 				continue

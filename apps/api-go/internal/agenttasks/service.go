@@ -57,10 +57,20 @@ type Registry struct {
 }
 type Service struct {
 	Management *application.Management
-	Actor      application.Actor
-	State      string
-	Config     llm.Config
-	Token      string
+	// Tasks run as the owner of their book (Task.Author); there is no
+	// process-wide author.
+	State  string
+	Config llm.Config
+	Token  string
+}
+
+// resolveTask opens a task's book as the author recorded at claim time, and
+// only while that author still owns it.
+func (s *Service) resolveTask(t Task) (*application.Service, error) {
+	if t.Author == "" {
+		return nil, executorpolicy.ErrFenced
+	}
+	return s.Management.Resolve(application.Actor{ID: t.Author, Role: "author"}, t.Book)
 }
 
 func (s *Service) path() string { return filepath.Join(s.State, "agent-runtime/tasks-v1.json") }
@@ -116,7 +126,7 @@ func (s *Service) Claim(ctx context.Context, instance, config string, kinds ...s
 	if len(instance) < 1 || len(instance) > 128 || config != s.Config.Fingerprint() {
 		return nil, application.Fail(409, "AGENT_CONFIG_CHANGED", "Worker capability must match before claiming a source snapshot.")
 	}
-	books, e := s.Management.List(s.Actor)
+	books, e := s.Management.OwnedBooks()
 	if e != nil {
 		return nil, e
 	}
@@ -160,12 +170,13 @@ func (s *Service) Claim(ctx context.Context, instance, config string, kinds ...s
 			if assignment.Owner != "pi" || assignment.Draining {
 				continue
 			}
-			app, e := s.Management.Resolve(s.Actor, books[i/2].ID)
+			owner := books[i/2].Owner
+			app, e := s.Management.Resolve(owner, books[i/2].Book.ID)
 			if e != nil {
 				continue
 			}
 			rec := Record{Instance: instance}
-			task := Task{ID: compat.UUID(), Kind: taskKind(kind), Book: app.Project, Author: s.Actor.ID, Model: s.Config.Info(), Config: s.Config.Fingerprint(), OutputSchema: kind + "-candidates-v1"}
+			task := Task{ID: compat.UUID(), Kind: taskKind(kind), Book: app.Project, Author: owner.ID, Model: s.Config.Info(), Config: s.Config.Fingerprint(), OutputSchema: kind + "-candidates-v1"}
 			if kind == "review" {
 				r := s.review(app)
 				claim, e := r.Claim(ctx)
@@ -251,7 +262,7 @@ func (s *Service) check(ctx context.Context, rec Record) error {
 	if !(executorpolicy.Controller{State: s.State}).Valid(domain(t.Kind), "pi", t.Epoch, t.Lease) {
 		return executorpolicy.ErrFenced
 	}
-	app, e := s.Management.Resolve(s.Actor, t.Book)
+	app, e := s.resolveTask(t)
 	if e != nil {
 		return e
 	}
@@ -280,7 +291,7 @@ func (s *Service) Action(ctx context.Context, id, action string, in Envelope) er
 		// A domain receipt is the commit authority if the API crashed after the
 		// domain rename and before acknowledging the task-registry receipt.
 		if action == "complete" || action == "fail" {
-			app, e := s.Management.Resolve(s.Actor, t.Book)
+			app, e := s.resolveTask(t)
 			if e != nil {
 				return e
 			}
@@ -346,7 +357,7 @@ func (s *Service) Action(ctx context.Context, id, action string, in Envelope) er
 				}
 				modelErr = llm.Fail(in.Failure)
 			}
-			app, e := s.Management.Resolve(s.Actor, t.Book)
+			app, e := s.resolveTask(t)
 			if e != nil {
 				return e
 			}

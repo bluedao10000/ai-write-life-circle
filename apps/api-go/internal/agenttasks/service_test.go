@@ -15,11 +15,17 @@ import (
 )
 
 func fixture(t *testing.T) (*Service, *knowledge.Service) {
+	return fixtureOwnedBy(t, "author", "author")
+}
+
+// fixtureOwnedBy creates one book owned by owner in a deployment whose
+// configured (legacy) author is legacyOwner.
+func fixtureOwnedBy(t *testing.T, legacyOwner, owner string) (*Service, *knowledge.Service) {
 	t.Helper()
 	ctx := context.Background()
 	base := &application.Service{Root: t.TempDir(), State: t.TempDir(), Project: "legacy"}
-	actor := application.Actor{ID: "author", Role: "author"}
-	m := application.NewManagement(base, actor.ID)
+	actor := application.Actor{ID: owner, Role: "author"}
+	m := application.NewManagement(base, legacyOwner)
 	book, e := m.Mutate(ctx, actor, "", "create", application.StructureInput{Operation: "create", Title: "合成协议测试"})
 	if e != nil {
 		t.Fatal(e)
@@ -49,7 +55,7 @@ func fixture(t *testing.T) (*Service, *knowledge.Service) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	return &Service{Management: m, Actor: actor, State: base.State, Config: cfg, Token: strings.Repeat("a", 64)}, k
+	return &Service{Management: m, State: base.State, Config: cfg, Token: strings.Repeat("a", 64)}, k
 }
 func switchOwner(t *testing.T, s *Service, owner string) {
 	t.Helper()
@@ -168,7 +174,7 @@ func TestClaimSnapshotRevokedBeforeStartAndDeletedBookScrubbed(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	_, e = k.Mutate(ctx, s.Actor, "pause", "pause", knowledge.Mutation{BaseVersion: page.Version})
+	_, e = k.Mutate(ctx, application.Actor{ID: "author", Role: "author"}, "pause", "pause", knowledge.Mutation{BaseVersion: page.Version})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -205,7 +211,7 @@ func TestInputTamperingCannotCommit(t *testing.T) {
 	if e = s.Action(ctx, task.ID, "complete", in); e != nil {
 		t.Fatal(e)
 	}
-	app, _ := s.Management.Resolve(s.Actor, task.Book)
+	app, _ := s.Management.Resolve(application.Actor{ID: "author", Role: "author"}, task.Book)
 	page, e := s.knowledge(app).Query(ctx, knowledge.Query{Limit: 20})
 	if e != nil || len(page.Assertions) != 0 {
 		t.Fatal("invalid evidence reached Knowledge", e)
@@ -245,5 +251,30 @@ func TestKnowledgeLargeCandidatePreservesLegacyAllowance(t *testing.T) {
 	view, e := k.Query(ctx, knowledge.Query{Limit: 100})
 	if e != nil || view.AssertionTotal != 110 {
 		t.Fatal(view.AssertionTotal, e)
+	}
+}
+
+// SEC-003: background claiming covers every author's books and runs each task
+// as the owner of its book, not as the configured legacy author.
+func TestClaimRunsAsTheBookOwner(t *testing.T) {
+	s, _ := fixtureOwnedBy(t, "legacy-author", "u-0123456789abcdef0123456789abcdef")
+	ctx := context.Background()
+	switchOwner(t, s, "pi")
+	time.Sleep(2100 * time.Millisecond)
+	task, e := s.Claim(ctx, "fixture", s.Config.Fingerprint())
+	if e != nil || task == nil {
+		t.Fatal("per-user book was not discovered", task, e)
+	}
+	if task.Author != "u-0123456789abcdef0123456789abcdef" {
+		t.Fatalf("task runs as %q", task.Author)
+	}
+	if e := s.Action(ctx, task.ID, "started", envelope(task)); e != nil {
+		t.Fatal(e)
+	}
+	// A task whose recorded author no longer owns the book is fenced.
+	forged := *task
+	forged.Author = "legacy-author"
+	if _, e := s.resolveTask(forged); e == nil {
+		t.Fatal("task resolved for a non-owner")
 	}
 }

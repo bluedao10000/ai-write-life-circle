@@ -52,6 +52,10 @@ type Record struct {
 	// LastMessage is the most recently accepted user message, used only to
 	// scope the controlled request_turn_organize tool to the current turn.
 	LastMessage string `json:"lastMessageId,omitempty"`
+	// Intake is the durable creative-organizing outbox: accepted messages whose
+	// OnMessageAccepted hook has not succeeded yet. It is written in the same
+	// registry commit as LastMessage and drained by RetryIntake.
+	Intake []string `json:"pendingIntake,omitempty"`
 }
 type receipt struct {
 	Hash string `json:"hash"`
@@ -69,8 +73,9 @@ type Service struct {
 	Client                      *http.Client
 	ResolveActor                func(*http.Request) *application.Actor
 	// OnMessageAccepted runs after Pi durably accepted a message (202). It
-	// records the creative-organizing outbox entry; failures never fail chat.
-	OnMessageAccepted func(ctx context.Context, rec Record, messageID string)
+	// records the creative-organizing turn; failures never fail chat. A
+	// non-nil error means "retry later": the message stays in Record.Intake.
+	OnMessageAccepted func(ctx context.Context, rec Record, messageID string) error
 	// OnSessionDeleted invalidates derived creative work for a deleted session.
 	OnSessionDeleted func(ctx context.Context, rec Record)
 }
@@ -284,6 +289,77 @@ func (s *Service) Cleanup(ctx context.Context) {
 				current.Sessions[id] = v
 				return nil
 			})
+		}
+	}
+}
+
+// maxIntake bounds the per-session outbox; a session only ever has one
+// message in flight, so this is only reached after a long outage.
+const maxIntake = 32
+
+func addIntake(items []string, id string) []string {
+	for _, v := range items {
+		if v == id {
+			return items
+		}
+	}
+	items = append(items, id)
+	if len(items) > maxIntake {
+		items = items[len(items)-maxIntake:]
+	}
+	return items
+}
+
+func (s *Service) dropIntake(ctx context.Context, session, message string) error {
+	return s.tx(ctx, func(st *registry) error {
+		r, ok := st.Sessions[session]
+		if !ok {
+			return nil
+		}
+		next := r.Intake[:0:0]
+		for _, v := range r.Intake {
+			if v != message {
+				next = append(next, v)
+			}
+		}
+		r.Intake = next
+		st.Sessions[session] = r
+		return nil
+	})
+}
+
+// RetryIntake re-runs OnMessageAccepted for accepted messages whose intake
+// did not commit (REL-001). Deleted sessions drop their outbox. At most limit
+// hook calls are made per sweep.
+func (s *Service) RetryIntake(ctx context.Context, limit int) {
+	if s.OnMessageAccepted == nil {
+		return
+	}
+	st, e := s.load()
+	if e != nil {
+		return
+	}
+	for id, r := range st.Sessions {
+		if len(r.Intake) == 0 {
+			continue
+		}
+		if r.Deleted {
+			_ = s.tx(ctx, func(current *registry) error {
+				v := current.Sessions[id]
+				v.Intake = nil
+				current.Sessions[id] = v
+				return nil
+			})
+			continue
+		}
+		for _, message := range r.Intake {
+			if limit <= 0 || ctx.Err() != nil {
+				return
+			}
+			limit--
+			if s.OnMessageAccepted(ctx, r, message) == nil {
+				_ = s.dropIntake(ctx, id, message)
+			}
 		}
 	}
 }

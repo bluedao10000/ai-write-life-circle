@@ -74,18 +74,19 @@ func run() error {
 	if ownerID == "" && c.AuthMode == "local" && c.Environment != "production" {
 		ownerID = "local-author"
 	}
-	owner := application.Actor{ID: ownerID, Role: "author"}
+	// ownerID only owns the read-only Harness book and pre-identity data; every
+	// managed book carries its own owner, and jobs run as that owner.
 	management := application.NewManagement(s, ownerID)
-	if _, e = management.List(owner); e != nil {
+	if _, e = management.OwnedBooks(); e != nil {
 		return fmt.Errorf("invalid work registry")
 	}
 	if *check {
 		fmt.Println("worker configuration valid")
 		return nil
 	}
-	discover := review.BookDiscoverer{Management: management, Owner: owner}
+	discover := review.BookDiscoverer{Management: management}
 	resolve := func(bookID string) (*application.Service, error) {
-		app, e := management.Resolve(owner, bookID)
+		app, _, e := management.ResolveOwned(bookID)
 		if e != nil {
 			return nil, e
 		}

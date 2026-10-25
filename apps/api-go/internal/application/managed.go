@@ -178,6 +178,66 @@ func (m *Management) List(a Actor) ([]ManagedBook, error) {
 	}
 	return out, nil
 }
+
+// OwnedBook pairs a book with its owning author for trusted background work.
+type OwnedBook struct {
+	Book  ManagedBook
+	Owner Actor
+}
+
+// OwnedBooks enumerates every book of every author, including the read-only
+// Harness book of the configured owner. It is for in-process background
+// discovery (task claiming, reconciliation) only and must never back an HTTP
+// response; callers resolve each book with the returned Owner so the usual
+// per-author checks still apply.
+func (m *Management) OwnedBooks() ([]OwnedBook, error) {
+	st, e := m.load()
+	if e != nil {
+		return nil, e
+	}
+	out := []OwnedBook{}
+	if m.OwnerID != "" {
+		if legacy, err := m.legacyBook(); err == nil {
+			out = append(out, OwnedBook{Book: legacy, Owner: Actor{ID: m.OwnerID, Role: "author"}})
+		}
+	}
+	for _, b := range st.Books {
+		out = append(out, OwnedBook{Book: b.ManagedBook, Owner: Actor{ID: b.Owner, Role: "author"}})
+	}
+	return out, nil
+}
+
+// OwnerOf reports the owning author of a book for trusted background work.
+func (m *Management) OwnerOf(id string) (Actor, error) {
+	if id == m.Legacy.Project {
+		if m.OwnerID == "" {
+			return Actor{}, bookMissing()
+		}
+		return Actor{ID: m.OwnerID, Role: "author"}, nil
+	}
+	st, e := m.load()
+	if e != nil {
+		return Actor{}, e
+	}
+	for _, b := range st.Books {
+		if b.ID == id {
+			return Actor{ID: b.Owner, Role: "author"}, nil
+		}
+	}
+	return Actor{}, bookMissing()
+}
+
+// ResolveOwned resolves a book as its own author, for background executors
+// that hold a book ID but no request identity.
+func (m *Management) ResolveOwned(id string) (*Service, Actor, error) {
+	owner, e := m.OwnerOf(id)
+	if e != nil {
+		return nil, Actor{}, e
+	}
+	app, e := m.Resolve(owner, id)
+	return app, owner, e
+}
+
 func (m *Management) legacyBook() (ManagedBook, error) {
 	p, e := m.Legacy.Projection()
 	if e != nil {
