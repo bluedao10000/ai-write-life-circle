@@ -1,0 +1,35 @@
+# 作者工作台 P0：恢复、版本找回与有限审查
+
+日期：2026-10-26。实现基线：`cba465a`（含 Pricing Phase 1 审查修复）。目标是减少返回写作的操作次数，安全找回历史正文，让 Free 作者实际体验有证据的审查。沿用现有视觉语言、Go 领域、Revision、Workspace、ReviewController 和计费日志；不新增 Agent、正式设定写权限或自动代写，不部署生产。
+
+## 代码现状与复用
+
+| 模块 | 已有能力 | 缺口 / 风险 |
+| --- | --- | --- |
+| 工作台 | 按作者/作品保存 Workspace、按账号隔离本地草稿、切作品前保存屏障 | URL 默认灵感，compose 会话键未分账号；lastView 固定 write；缺阅读/编辑位置 |
+| 版本 | 完整不可变 StoredRevision、SavedRevisionAt、历史列表、CAS 与幂等保存 | HTTP 未暴露历史正文；列表顺序被前端反转，缺 Diff 和恢复 |
+| 审查 | prepareReview 保存屏障、Run 历史、反馈、证据快照、stale 与定位 | 抽屉三个入口重复；原始模型/Token 信息干扰作者；作者笔记未并列 |
+| Free | 作者账本、预留/结算、全站池与可恢复事务 | review 是付费开关；Review 预留上限与真实输出上限不一致，不能直接开放 |
+
+## 操作流程与技术方案
+
+1. **恢复**：显式 URL 的 book/chapter/view/compose 优先。其余按账号分区、按作品记录的最近位置 → 服务端 Workspace.resume → 已有正文默认写作/空作品默认灵感。resume 仅含版本号、章节、空间、读写模式、滚动位置、编辑选区和正文版本 ID，不含正文。正文仍从 Revision 加载，恢复草稿仍先显示原有处理界面。位置只在当前章节版本匹配时应用，不调用正文修改指令。切作品先运行既有 prepareStructure；账号切换重建工作台。
+2. **历史**：新增作者专用 GET `/v1/projects/{projectId}/chapters/{chapterId}/revisions/{revisionId}`，调用已有 SavedRevisionAt。按需加载一个历史版本，核验章节 ID 与原文 Hash。双栏行 Diff 标示新增、删除和修改；大章节限制比较计算量并展示完整原文，避免二次方计算。作者可复制选区或将选定 Markdown 追加到章末；全文恢复二次确认。先安全保存当前正文，再通过原有 onChange/flushSave 写入新 Revision；修改发生于等待期间、恢复草稿或 CAS 冲突时中止，不覆盖新输入。
+3. **审查与注记**：右侧只保留本章设定、审查与注记；沿用 ReviewMarginPanel 显示开始按钮、进度、结果、证据、反馈和历史，并列本章作者笔记。编辑器持续挂载，异步审查不夺焦。准备阶段和确认发送前都运行保存屏障；旧结果仍按固定 Revision 判定 stale。
+4. **Free 额度**：每作者每 UTC 自然月最多 2 个实际开始执行的逻辑 Review Run。领取时预占次数与点数；同 Run 的 Worker 重试共享一次次数；模型启动前取消/准备失败释放预占；模型可能已执行的超时、失败与取消仍计次，未知用量保守结算。额度持久化在现有 billing account，和账户/全站池使用同一事务。Paid 维持原有点数规则。
+5. **成本**：Free Review 使用固定、参与 consent hash 的受限执行配置：上下文最多 64 KiB、输出最多 32,768 token，最多优先给 6 项结果。以 UTF-8 输入字节作为保守 token 上界，含指令缓冲的最坏预留不超过 217 点，低于 Free 每日 300；账户日/月与全站池均要求覆盖整笔预留，不允许此路径透支。全文超过范围时拒绝并解释，不静默裁掉目标正文。根据 Usage 按缓存折扣退回多余预留；运行重试依然扣点但不再扣一次审查次数。真实文学效果与截断率仍需单独模型验收，Fixture 不代替质量证明。
+
+## 契约、一致性与权限
+
+- Workspace 增加可选 resume；历史正文增加只读 DTO；Review Plan 增加执行限制和点数报价；Account 增加审查次数窗口。同步 Zod/OpenAPI/Worker 白名单/测试。
+- 次数以 Run ID 去重，计费操作继续按 attempt 区分。reserved/used 状态和预留在同一 billing redo intent 中提交；模型开始前持久确认，进程故障不会退款不明消费。跨作品、API/Go/Pi Worker 都复用同一账本。
+- 历史读取继续经过认证和 Managed Resolve 所有权校验，作者之外的 Agent 不可读取历史正文接口；历史响应不暴露内部请求键。恢复操作不提供绕过 CAS 的新写接口。
+- 所有新持久字段可选，读取旧数据时回退；回滚代码不恢复旧作者状态。回滚 Free 审查策略前先停止/排空其 Worker，保留次数流水与新 Revision。计费锁协议仍遵循上一轮的统一升级约束。
+
+## 验收与观测
+
+逐模块提交并验证：恢复的账号/作品隔离、显式链接、草稿保护；完整历史读取/权限/Hash、Diff、片段/全文新 Revision 与 CAS；合并面板的证据定位/反馈/stale；Free 的跨作品并发、幂等、取消/失败/重试、月切换、点数和全站池。
+
+完整隔离 E2E：打开作品 → 自动恢复 → 写作保存 → 历史 Diff → 片段恢复 → 确认免费审查 → 证据 → 作者反馈；兼顾桌面/移动宽度。全部工程模型调用用合成 HTTP Fixture。
+
+隐私观测只提供默认关闭的进程内汇总 sink：Time to Writing（工作台加载至首次输入的耗时桶）、Recovery attempt/success、Free review started/completed、feedback useful/total。禁止正文、引文、作品/章节/用户 ID、完整 URL 或自由文本；不默认联网或持久上传。
