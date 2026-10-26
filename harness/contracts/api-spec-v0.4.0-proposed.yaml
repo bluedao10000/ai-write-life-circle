@@ -45,6 +45,10 @@ tags:
   - name: AgentTasks
   - name: Proposals
   - name: Audit
+  - name: Revisions
+    description: Immutable author-owned Markdown history; recovery uses existing revision CAS.
+  - name: Account
+    description: Author point balances and UTC monthly review allowance.
   - name: Author Notes
     description: Informal author application state, isolated from Harness facts.
   - name: Evidence Review
@@ -1889,6 +1893,12 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+        "402":
+          description: Request refused, unavailable model or application storage failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
         "403":
           description: Request refused, unavailable model or application storage failure
           content:
@@ -1956,6 +1966,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/ReviewList"
         "401":
+          description: Request refused, unavailable model or application storage failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "402":
           description: Request refused, unavailable model or application storage failure
           content:
             application/problem+json:
@@ -2045,6 +2061,12 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+        "402":
+          description: Request refused, unavailable model or application storage failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
         "403":
           description: Request refused, unavailable model or application storage failure
           content:
@@ -2112,6 +2134,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/ReviewRun"
         "401":
+          description: Request refused, unavailable model or application storage failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "402":
           description: Request refused, unavailable model or application storage failure
           content:
             application/problem+json:
@@ -2191,6 +2219,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/ReviewRun"
         "401":
+          description: Request refused, unavailable model or application storage failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "402":
           description: Request refused, unavailable model or application storage failure
           content:
             application/problem+json:
@@ -2282,6 +2316,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/ReviewRun"
         "401":
+          description: Request refused, unavailable model or application storage failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "402":
           description: Request refused, unavailable model or application storage failure
           content:
             application/problem+json:
@@ -2490,6 +2530,12 @@ components:
             - HARNESS_WRITE_FAILED
             - VALIDATION_FAILED
             - AUDIT_WRITE_FAILED
+            - REVIEW_TRIAL_EXHAUSTED
+            - PLAN_QUOTA_EXCEEDED
+            - FREE_POOL_EXHAUSTED
+            - AI_PAUSED
+            - BILLING_RESERVATION_EXPIRED
+            - PLAN_FEATURE_REQUIRED
             - REVIEW_CONTEXT_TOO_LARGE
             - REVIEW_EMPTY_CHAPTER
             - REVIEW_REVISION_CHANGED

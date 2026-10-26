@@ -64,6 +64,16 @@
               }
             }
           },
+          "402": {
+            "description": "Request refused, unavailable model or application storage failure",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "403": {
             "description": "Request refused, unavailable model or application storage failure",
             "content": {
@@ -171,6 +181,16 @@
             }
           },
           "401": {
+            "description": "Request refused, unavailable model or application storage failure",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "402": {
             "description": "Request refused, unavailable model or application storage failure",
             "content": {
               "application/problem+json": {
@@ -314,6 +334,16 @@
               }
             }
           },
+          "402": {
+            "description": "Request refused, unavailable model or application storage failure",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "403": {
             "description": "Request refused, unavailable model or application storage failure",
             "content": {
@@ -421,6 +451,16 @@
             }
           },
           "401": {
+            "description": "Request refused, unavailable model or application storage failure",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "402": {
             "description": "Request refused, unavailable model or application storage failure",
             "content": {
               "application/problem+json": {
@@ -547,6 +587,16 @@
             }
           },
           "401": {
+            "description": "Request refused, unavailable model or application storage failure",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "402": {
             "description": "Request refused, unavailable model or application storage failure",
             "content": {
               "application/problem+json": {
@@ -692,6 +742,16 @@
             }
           },
           "401": {
+            "description": "Request refused, unavailable model or application storage failure",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "402": {
             "description": "Request refused, unavailable model or application storage failure",
             "content": {
               "application/problem+json": {

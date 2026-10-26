@@ -30,3 +30,11 @@ it('rejects foreign/deleted chapters, corrupt records and invalid position bound
   expect(workspaceResumeSchema.safeParse({ ...position, scroll: -1 }).success).toBe(false)
   expect(workspaceResumeSchema.safeParse({ ...position, markdown: 'private prose' }).success).toBe(false)
 })
+
+it('uses newer server metadata when another device moved the workbench', () => {
+  rememberResume('one', position)
+  const snapshot=workspace()
+  const server={...position,chapterId:'CH-001',scroll:300,updatedAt:'2026-10-26T02:00:00Z'}
+  snapshot.preferences={theme:'light',resume:server}
+  expect(studioEntry(snapshot,'').position).toEqual(server)
+})

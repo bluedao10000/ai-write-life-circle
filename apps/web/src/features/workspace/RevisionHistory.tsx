@@ -5,6 +5,7 @@ import { Btn, Dialog } from '../../components/vnext/ui'
 import { getChapterRevision, listChapterRevisions } from '../../services/api/chapterApi'
 import { revisionDiff } from './revisionDiff'
 
+const selectedText = (area: HTMLTextAreaElement) => area.value.slice(area.selectionStart, area.selectionEnd)
 type Props = { workspace: ReturnType<typeof useWorkspaceController>; onClose: () => void }
 export default function RevisionHistory({ workspace, onClose }: Props) {
   const { projectId, current: chapterId } = workspace
@@ -47,6 +48,13 @@ export default function RevisionHistory({ workspace, onClose }: Props) {
     } catch (cause) { if (alive.current) setError(cause instanceof Error ? cause.message : '恢复未完成。') }
     finally { if (alive.current) setBusy(false) }
   }
+  const copySelection = async () => {
+    try {
+      if (!navigator.clipboard) throw new Error('clipboard unavailable')
+      await navigator.clipboard.writeText(selection)
+      if (alive.current) setMessage('所选文字已复制。')
+    } catch { if (alive.current) setError('无法访问剪贴板，请在历史正文中选择文字后手动复制。') }
+  }
   const more = async () => {
     setBusy(true)
     try { const page = await listChapterRevisions(projectId, chapterId, cursor ?? undefined); if (alive.current) { setItems((old) => [...old, ...page.items]); setCursor(page.nextCursor) } }
@@ -64,11 +72,11 @@ export default function RevisionHistory({ workspace, onClose }: Props) {
     {selected && body === undefined && !error && <p>正在读取历史正文…</p>}
     {body !== undefined && <>
       <div className="my-3 grid gap-3 md:grid-cols-2">
-        <label>历史版本正文<textarea aria-label="历史版本正文" readOnly value={body} className="mt-1 h-64 w-full resize-y rounded border border-line bg-surface p-2 font-prose text-ink" onSelect={(e) => setSelection(e.currentTarget.value.slice(e.currentTarget.selectionStart, e.currentTarget.selectionEnd))} /></label>
+        <label>历史版本正文<textarea aria-label="历史版本正文" readOnly value={body} className="mt-1 h-64 w-full resize-y rounded border border-line bg-surface p-2 font-prose text-ink" onSelect={(e) => setSelection(selectedText(e.currentTarget))} onKeyUp={(e) => setSelection(selectedText(e.currentTarget))} onMouseUp={(e) => setSelection(selectedText(e.currentTarget))} /></label>
         <label>当前正文{workspace.saveState.s !== 'saved' ? '（含未保存修改）' : ''}<textarea aria-label="当前正文" readOnly value={current} className="mt-1 h-64 w-full resize-y rounded border border-line bg-surface p-2 font-prose text-ink" /></label>
       </div>
       <div className="flex flex-wrap gap-2">
-        <Btn disabled={!selection || busy} onClick={() => void navigator.clipboard.writeText(selection).then(() => { if (alive.current) setMessage('所选文字已复制。') }).catch(() => { if (alive.current) setError('无法访问剪贴板，请在历史正文中选择文字后手动复制。') })}>复制所选文字</Btn>
+        <Btn disabled={!selection || busy} onClick={() => void copySelection()}>复制所选文字</Btn>
         <Btn disabled={!selection || busy} onClick={() => void restore('append')}>将所选片段追加到章末</Btn>
         <Btn disabled={busy || current === body || workspace.recoveryDraft !== undefined} onClick={() => setConfirm(true)}>恢复整个版本</Btn>
       </div>

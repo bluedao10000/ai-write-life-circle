@@ -283,7 +283,7 @@ test('upload EPUB, preview corrected names, atomically import and restore saved 
     await page.reload()
     await expect(page.getByLabel('正文编辑器')).toContainText('合成第一章正文')
     await directory(page)
-    await page.getByRole('button', { name: '第二章', exact: true }).click()
+    await page.getByRole('complementary').getByRole('button', { name: '第二章', exact: true }).click()
     await expect(page.getByLabel('正文编辑器')).toContainText('合成第二章正文')
   } finally {
     await rm(fixture.dir, { recursive: true, force: true })

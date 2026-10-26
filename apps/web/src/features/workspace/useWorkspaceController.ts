@@ -1,3 +1,4 @@
+import { emitAuthorMetric } from '../../observability/authorExperience'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ApiChapterVersion, ChallengeRound, ChatMessage, ChapterVersion, Decision, DecisionAction, Document, Proposal, UserWorkspaceStateV04, WorkspaceSnapshot, WorkspacePreferences, WorkspaceResume } from '@writer-agent/contracts'
 import type { AgentTask, Layout } from '../../types'
@@ -514,15 +515,19 @@ export function useWorkspaceController({ adapter, initialWorkspace, toast, reque
 
   /** Save the current draft first, then restore through the same CAS/idempotent queue. */
   const restoreHistoricalText = useCallback(async (text: string, mode: 'replace' | 'append') => {
+    emitAuthorMetric({event:'revision_recovery',bucket:'attempt'})
+    try {
     const id = current
     const saved = await prepareReview(id)
     if (!aliveRef.current || activeChapterRef.current !== id) throw new Error('工作台已关闭，请重新操作。')
     // prepareReview checks edits during I/O; this continuation has no further await before onChange.
     const next = mode === 'append' ? `${saved.markdown}${saved.markdown ? '\n\n' : ''}${text}` : text
-    if (next === saved.markdown) return
+    if (next === saved.markdown) {emitAuthorMetric({event:'revision_recovery',bucket:'success'});return}
     onChange([], next)
     setEditorGeneration((value) => value + 1)
     if (!await flushSave(id)) throw new Error('恢复内容已保留为本地草稿，尚未安全保存。请处理保存问题后重试。')
+    emitAuthorMetric({event:'revision_recovery',bucket:'success'})
+    } catch (error) {emitAuthorMetric({event:'revision_recovery',bucket:'failure'});throw error instanceof Error ? new Error(error.message.replace(/审查/g, '恢复')) : error}
   }, [current, prepareReview, onChange, flushSave])
 
   const retrySave = useCallback(() => flushSave(current), [current, flushSave])

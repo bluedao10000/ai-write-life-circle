@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.worker.json",
     "lint": "eslint src worker vite.config.ts playwright.config.ts e2e",
     "test": "vitest run && vitest run --config vitest.worker.config.ts",
-    "test:e2e": "playwright test --config playwright.config.ts && pnpm -w build:api:go && pnpm -w build:agent:worker && node e2e/run-api-e2e.mjs && node e2e/run-review-e2e.mjs && playwright test --config playwright.auth.config.ts && pnpm test:public && pnpm test:management && pnpm test:knowledge && pnpm test:thinking && pnpm test:creative",
+    "test:e2e": "playwright test --config playwright.config.ts && pnpm -w build:api:go && pnpm -w build:agent:worker && node e2e/run-api-e2e.mjs && node e2e/run-review-e2e.mjs && playwright test --config playwright.auth.config.ts && pnpm test:public && pnpm test:management && pnpm test:knowledge && pnpm test:thinking && pnpm test:creative && pnpm test:author-experience",
     "test:public": "pnpm -w build:api:go && node e2e/run-public-e2e.mjs",
     "build:ssr": "vite build --ssr worker/public.ts --outDir dist-server",
     "test:seo:performance": "VITE_STORY2U_PUBLIC_SITE=true VITE_WRITER_AGENT_MODE=api pnpm build && node scripts/measure-public-performance.mjs",
@@ -20,7 +20,8 @@
     "test:release:funnel": "pnpm -w build:api:go && node scripts/test-release-funnel.mjs",
     "test:knowledge": "pnpm -w build:api:go && pnpm -w build:agent:worker && playwright test --config playwright.knowledge.config.ts",
     "test:thinking": "pnpm -w build:api:go && pnpm -w build:agent && node scripts/test-thinking-funnel.mjs",
-    "test:creative": "pnpm -w build:api:go && node e2e/run-creative-e2e.mjs"
+    "test:creative": "pnpm -w build:api:go && node e2e/run-creative-e2e.mjs",
+    "test:author-experience": "pnpm -w build:api:go && pnpm -w build:agent:worker && node e2e/run-author-experience-e2e.mjs"
   },
   "dependencies": {
     "@tiptap/core": "^3.32.0",

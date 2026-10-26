@@ -108,17 +108,18 @@ export function useStudioController(
     requestConfirm: setConfirm,
   })
   const { current, doc, layout, setLayout, dark, setDark, saveState } = workspace
+  const navigateChapter = workspace.switchChapter
   useEffect(() => {
     const syncChapter = () => {
       const params = new URLSearchParams(window.location.search)
       if (!params.has('book') || params.get('book') === initialWorkspace.projectId) {
         const chapter = params.get('chapter')
-        if (chapter) workspace.switchChapter(chapter)
+        if (chapter) navigateChapter(chapter)
       }
     }
     window.addEventListener('popstate', syncChapter)
     return () => window.removeEventListener('popstate', syncChapter)
-  }, [workspace.switchChapter, initialWorkspace.projectId])
+  }, [navigateChapter, initialWorkspace.projectId])
   const bridge = useManuscriptBridge(current)
   const { editor } = bridge
   const versionsRef = useRef(workspace.chapterVersions)
@@ -127,10 +128,13 @@ export function useStudioController(
   const navigationRef = useRef({ view, intent })
   navigationRef.current = { view, intent }
   const restored = useRef(new WeakSet<Editor>())
+  const bridgeReady = bridge.onReady
   const ready = useCallback((next: Editor | null) => {
-    bridge.onReady(next)
+    bridgeReady(next)
     if (!next) return
-    const saved = readResume(initialWorkspace.projectId) ?? initialWorkspace.preferences?.resume
+    const saved = [readResume(initialWorkspace.projectId), entry.position]
+      .filter((value): value is WorkspaceResume => !!value && value.chapterId === current)
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0]
     const chapterId = current
     const sameVersion = saved?.chapterId === chapterId && saved.revisionId === (versionsRef.current[chapterId]?.mode === 'api' ? versionsRef.current[chapterId].revisionId : undefined)
     requestAnimationFrame(() => {
@@ -143,7 +147,7 @@ export function useStudioController(
       }
       if (navigationRef.current.view === 'read' && navigationRef.current.intent && !document.activeElement?.matches('input,textarea,select')) next.view.focus()
     })
-  }, [bridge.onReady, current, editor, initialWorkspace.projectId, initialWorkspace.preferences?.resume])
+  }, [bridgeReady, current, editor, initialWorkspace.projectId, entry.position])
   const choseDefault = useRef(false)
   useEffect(() => {
     if (!entry.automatic || choseDefault.current || workspace.chapterLoadState.status !== 'loaded') return
@@ -155,12 +159,13 @@ export function useStudioController(
   useEffect(() => {
     if (!current || !loaded) return
     let timer: ReturnType<typeof setTimeout> | undefined
+    const mounted = editor.current
+    const container = scroll.current
     const persist = (server = true) => {
-      const mounted = editor.current
       const version = versionsRef.current[current]
       const metadata: WorkspaceResume = {
         schema: 1, chapterId: current, view, compose: intent,
-        scroll: Math.max(0, Math.round(scroll.current?.scrollTop ?? 0)),
+        scroll: Math.max(0, Math.round(container?.scrollTop ?? 0)),
         from: mounted && !mounted.isDestroyed ? mounted.state.selection.from : 0,
         to: mounted && !mounted.isDestroyed ? mounted.state.selection.to : 0,
         ...(version?.mode === 'api' ? { revisionId: version.revisionId } : {}), updatedAt: new Date().toISOString(),
@@ -170,8 +175,6 @@ export function useStudioController(
     }
     const queue = () => { clearTimeout(timer); timer = setTimeout(() => persist(), 500) }
     const leaving = () => persist(false)
-    const container = scroll.current
-    const mounted = editor.current
     container?.addEventListener('scroll', queue, { passive: true })
     mounted?.on('selectionUpdate', queue)
     window.addEventListener('pagehide', leaving)

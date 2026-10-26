@@ -5,6 +5,11 @@ import { Btn, Dialog, Icon } from '../../components/vnext/ui'
 import type { Margin, Source } from '../vnext/model'
 import type { useReviewController } from './useReviewController'
 
+const failureMessage = (code: string | null) => ({
+  LLM_TIMEOUT: '等待审查超时，请稍后再试。', LLM_INCOMPLETE_OUTPUT: '审查内容没有完整返回，请稍后重试。',
+  REVIEW_CONFIG_CHANGED: '审查服务或范围已变化，请重新确认发送范围。', REVIEW_CONTEXT_CHANGED: '引用的正文或资料已变化，请保存后重新审查。',
+  BILLING_RESERVATION_EXPIRED: '本次审查预留已过期，请重新发起。', PLAN_FEATURE_REQUIRED: '方案已变化，请重新预览本次审查。',
+}[code ?? ''] ?? '本次审查未能完成，请稍后重试。')
 const statuses = { queued: '排队中', running: '审查中', completed: '已完成', failed: '审查失败', cancelled: '已取消' }
 export function ReviewMarginPanel({ review, locate, select, saveNote, marksHidden, setMarksHidden, emptyChapter, authorNotes = [], notesError, onAddNote, notesEnabled }: {
   authorNotes?: AuthorNote[]; notesError?: string; onAddNote?: () => void; notesEnabled?: boolean;
@@ -47,7 +52,7 @@ export function ReviewMarginPanel({ review, locate, select, saveNote, marksHidde
         <p className="mt-2 text-ui-sm text-ink-3">{run.status === 'queued' ? '正在等待后台审查。你可以继续写作，也可取消排队。' : '正在核对固定版本。你可以继续写作，结果完成后按需查看。'}</p>
         <Btn size="sm" variant="outline" className="mt-3" disabled={!!review.busy} onClick={() => void review.cancel()}>取消审查</Btn>
       </div>}
-      {run?.status === 'failed' && <p role="alert" className="flex items-start gap-2 rounded-lg border border-danger bg-danger-soft px-3.5 py-2.5 text-ui-sm text-ink"><Icon name="alert" className="mt-0.5 text-danger" /><span>审查未完成：{run.failureCode ?? '未知错误'}。正文和正式资料保持不变。</span></p>}
+      {run?.status === 'failed' && <p role="alert" className="flex items-start gap-2 rounded-lg border border-danger bg-danger-soft px-3.5 py-2.5 text-ui-sm text-ink"><Icon name="alert" className="mt-0.5 text-danger" /><span>{failureMessage(run.failureCode)}正文和正式资料保持不变。</span></p>}
       {review.stale && <p role="alert" className="flex items-start gap-2 rounded-lg border border-warn bg-warn-soft px-3.5 py-2.5 text-ui-sm text-ink"><Icon name="clock" className="mt-0.5 text-warn" /><span>正文或历史证据已变化。这份结果基于旧快照，不能定位到当前正文；可以重新审查。</span></p>}
       {run?.status === 'completed' && run.findings.length === 0 && <p className="text-ui-sm text-ink-2">没有发现可证实的冲突。{run.rejectedCount ? '部分模型候选未通过引用核验，没有作为注记展示。' : '本次仅覆盖已确认的发送范围。'}</p>}
       {run && run.rejectedCount > 0 && <p className="text-micro text-ink-3">有 {run.rejectedCount} 项候选引用未通过核验。</p>}

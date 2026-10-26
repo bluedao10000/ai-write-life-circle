@@ -13,7 +13,7 @@ test('author consent, real HTTP review, verified snapshots, read-only location, 
   const contentBefore=await editor.textContent()
   const count=(await (await request.get(`${model}/stats`)).json()).calls
   // Figma V3: review lives in the right drawer (注记 / 审查), not the footer.
-  await page.getByRole('button',{name:'注记',exact:true}).click()
+  await page.getByRole('button',{name:'审查与注记',exact:true}).click()
   await page.getByRole('button',{name:'审查本章',exact:true}).first().click()
   const consent=page.getByRole('dialog',{name:'确认审查与模型数据发送'})
   await expect(consent).toBeVisible()
@@ -80,7 +80,7 @@ test('failed save prevents preview and model calls; no Demo fallback',async({pag
   page.on('request',(r)=>{if(r.url().includes('/review-preview'))previews++})
   await page.route('**/chapters/*/revisions',route=>route.fulfill({status:500,contentType:'application/problem+json',body:JSON.stringify({type:'about:blank',title:'Storage failure',status:500,code:'INTERNAL_ERROR',detail:'Fixture save failure'})}))
   await page.getByLabel('正文编辑器').fill('保存失败的隔离输入。')
-  const notesButton=page.getByRole('button',{name:'注记',exact:true})
+  const notesButton=page.getByRole('button',{name:'审查与注记',exact:true})
   if(await notesButton.isVisible()) await notesButton.click()
   await page.getByRole('button',{name:/^(审查本章|重新审查)$/}).first().click()
   await expect(page.getByText('正文尚未安全保存，审查未开始。请先解决保存问题。').first()).toBeVisible()
@@ -99,7 +99,7 @@ test('missing model capability disables new reviews while retaining real history
   })
   await page.goto('/?view=read&compose=1')
   await expect(page.getByLabel('正文编辑器')).toBeVisible()
-  const notes=page.getByRole('button',{name:'注记',exact:true})
+  const notes=page.getByRole('button',{name:'审查与注记',exact:true})
   if(await notes.isVisible()) await notes.click()
   await expect(page.getByRole('button',{name:/^(审查本章|重新审查)$/}).first()).toBeDisabled()
   await expect(page.getByText(/真实审查不可用：服务端尚未配置可用模型/)).toBeVisible()

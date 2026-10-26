@@ -7,7 +7,7 @@ function operation(id: string, result: string, params: string[], input?: string,
     'x-required-role': ['author'], parameters: [...params.map(param), ...(mutation ? [{ name: 'Idempotency-Key', in: 'header', required: true, schema: { type: 'string', minLength: 1, maxLength: 128 } }] : [])],
     ...(input ? { requestBody: { required: true, content: { 'application/json': { schema: { $ref: `#/components/schemas/${input}` } } } } } : {}),
     responses: { [id === 'createEvidenceReview' ? '202' : '200']: response(result),
-      ...Object.fromEntries([401,403,404,409,422,500,503].map((status) => [status, { description: 'Request refused, unavailable model or application storage failure', content: { 'application/problem+json': { schema: { $ref: '#/components/schemas/Problem' } } } }])) },
+      ...Object.fromEntries([401,402,403,404,409,422,500,503].map((status) => [status, { description: 'Request refused, unavailable model or application storage failure', content: { 'application/problem+json': { schema: { $ref: '#/components/schemas/Problem' } } } }])) },
   }
 }
 const chapter = '/projects/{projectId}/chapters/{chapterId}'

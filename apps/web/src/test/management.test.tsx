@@ -28,7 +28,7 @@ const b: ManagedBook = {
   chapters: [{ chapterId: 'CH-001', title: '第一章', archived: false }],
   volumes: [],
 }
-beforeEach(() => sessionStorage.clear())
+beforeEach(() => { sessionStorage.clear(); window.history.replaceState({}, '', '/') })
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
@@ -516,4 +516,11 @@ it('does not report server deletion as failed when browser storage is unavailabl
   expect(() => clearLocalChapterDrafts(b.bookId)).not.toThrow()
   spy.mockRestore()
   expect(localStorage.getItem('unrelated')).toBe('preserve')
+})
+
+it('honors an explicit owned-book URL before automatic restoration', async () => {
+ const { managed } = await setup()
+ window.history.replaceState({}, '', '/?book=book-two')
+ render(<ManagedStudio adapter={managed} initialBooks={[b,{...b,bookId:'book-two',title:'链接作品'}]} render={()=><BookMenu />} />)
+ expect(await screen.findByRole('button',{name:'当前作品：链接作品，切换作品'})).toBeVisible()
 })
