@@ -742,6 +742,10 @@
                 "type": "number",
                 "minimum": 0
               },
+              "cachedInput": {
+                "type": "number",
+                "minimum": 0
+              },
               "output": {
                 "type": "number",
                 "minimum": 0
@@ -880,6 +884,10 @@
                   "type": "object",
                   "properties": {
                     "input": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "cachedInput": {
                       "type": "number",
                       "minimum": 0
                     },
@@ -1256,6 +1264,10 @@
             "type": "object",
             "properties": {
               "input": {
+                "type": "number",
+                "minimum": 0
+              },
+              "cachedInput": {
                 "type": "number",
                 "minimum": 0
               },
@@ -1806,6 +1818,10 @@
                       "type": "number",
                       "minimum": 0
                     },
+                    "cachedInput": {
+                      "type": "number",
+                      "minimum": 0
+                    },
                     "output": {
                       "type": "number",
                       "minimum": 0
@@ -1847,6 +1863,10 @@
             "type": "object",
             "properties": {
               "input": {
+                "type": "number",
+                "minimum": 0
+              },
+              "cachedInput": {
                 "type": "number",
                 "minimum": 0
               },
@@ -2156,6 +2176,10 @@
         "type": "object",
         "properties": {
           "input": {
+            "type": "number",
+            "minimum": 0
+          },
+          "cachedInput": {
             "type": "number",
             "minimum": 0
           },

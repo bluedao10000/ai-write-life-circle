@@ -158,6 +158,9 @@ func (s *Service) Process(ctx context.Context, claimed *ClaimedRun) error {
 	e := (executorpolicy.Controller{State: s.App.State}).Guard(callCtx, "review", run.ExecutorOwner, run.ExecutorEpoch, run.Lease, false, func() error { return nil })
 	var response llm.Response
 	if e == nil {
+		e = s.App.MeterAuthorize(callCtx, meterOp(run.RunID, run.Attempts), "review")
+	}
+	if e == nil {
 		response, e = s.Client.Generate(callCtx, request)
 	}
 	if callCtx.Err() != nil {
@@ -337,7 +340,7 @@ func (s *Service) reservePoints() int {
 // otherwise charges the reservation.
 func settlePoints(response llm.Response, e error) int {
 	if response.Usage != nil {
-		return billing.PointsFor(response.Usage.InputTokens, response.Usage.OutputTokens)
+		return billing.PointsFor(response.Usage.InputTokens, response.Usage.OutputTokens, response.Usage.CachedInputTokens)
 	}
 	var appError *application.Error
 	if e != nil && errors.As(e, &appError) {

@@ -57,7 +57,7 @@ export const reviewRunSchema = reviewPlanSchema.extend({
   findings: z.array(reviewFindingSchema), rejectedCount: z.number().int().nonnegative(),
   rejectionReasons: z.array(z.string()), failureCode: z.string().nullable(),
   stale: z.boolean(), staleReasons: z.array(z.string()),
-  usage: z.object({ inputTokens: z.number().int().nonnegative(), outputTokens: z.number().int().nonnegative() }).nullable(),
+  usage: z.object({ cachedInputTokens: z.number().int().nonnegative().optional(), inputTokens: z.number().int().nonnegative(), outputTokens: z.number().int().nonnegative() }).nullable(),
 })
 export const reviewFeedbackInputSchema = z.object({
   choice: reviewFeedbackChoiceSchema, baseVersion: z.number().int().positive(),

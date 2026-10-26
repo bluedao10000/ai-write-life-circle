@@ -148,14 +148,14 @@ func CreateCodes(ctx context.Context, state string, spec CodeSpec, n int, expire
 		}
 		path := filepath.Join(codesDir(state), codeDigest(code)+".json")
 		created := false
-		if e := storage.LockShort(ctx, staleLock, path+".lock", func() error {
+		if e := (&Ledger{State: state}).transaction(ctx, func(tx *transaction) error {
 			var existing codeRecord
 			found, e := storage.Read(path, &existing)
 			if e != nil || found {
 				return e // a collision is skipped and a new code drawn
 			}
 			created = true
-			return storage.Write(ctx, path, rec)
+			return tx.put(path, rec)
 		}); e != nil {
 			return nil, e
 		}
@@ -168,6 +168,16 @@ func CreateCodes(ctx context.Context, state string, spec CodeSpec, n int, expire
 
 // ListCodes returns every stored code, newest first.
 func ListCodes(state string) ([]CodeInfo, error) {
+	var out []CodeInfo
+	err := (&Ledger{State: state}).transaction(context.Background(), func(_ *transaction) error {
+		var err error
+		out, err = listCodes(state)
+		return err
+	})
+	return out, err
+}
+
+func listCodes(state string) ([]CodeInfo, error) {
 	entries, e := os.ReadDir(codesDir(state))
 	if os.IsNotExist(e) {
 		return []CodeInfo{}, nil
@@ -216,10 +226,17 @@ func (l *Ledger) Redeem(ctx context.Context, owner, raw string) (Usage, error) {
 	if owner == "" {
 		return Usage{}, application.Fail(401, "AUTHOR_DECISION_REQUIRED", "Authentication required.")
 	}
-	if a, e := l.load(owner); e != nil {
+	if e := l.transaction(ctx, func(_ *transaction) error {
+		a, err := l.load(owner)
+		if err != nil {
+			return err
+		}
+		if a.RedeemDay == l.now().Format("2006-01-02") && a.RedeemFails >= maxRedeemFails {
+			return application.Fail(429, "REDEEM_RATE_LIMITED", "今天输错兑换码的次数过多，请明天（UTC）再试。")
+		}
+		return nil
+	}); e != nil {
 		return Usage{}, e
-	} else if a.RedeemDay == l.now().Format("2006-01-02") && a.RedeemFails >= maxRedeemFails {
-		return Usage{}, application.Fail(429, "REDEEM_RATE_LIMITED", "今天输错兑换码的次数过多，请明天（UTC）再试。")
 	}
 	code, ok := normalizeCode(raw)
 	if !ok {
@@ -236,7 +253,7 @@ func (l *Ledger) Redeem(ctx context.Context, owner, raw string) (Usage, error) {
 	}
 	var out Usage
 	missing := false
-	e = storage.LockShort(ctx, staleLock, path+".lock", func() error {
+	e = l.transaction(ctx, func(tx *transaction) error {
 		var r codeRecord
 		found, e := storage.Read(path, &r)
 		if e != nil {
@@ -253,9 +270,9 @@ func (l *Ledger) Redeem(ctx context.Context, owner, raw string) (Usage, error) {
 		if r.RedeemedBy == "" && r.Expires != "" && !before(now, r.Expires) {
 			return application.Fail(410, "CODE_EXPIRED", "这个兑换码已过期。")
 		}
-		// The account records the digest first, so a crash before the code is
-		// marked lets the same owner finish the redemption without a double grant.
-		e = l.withAccount(ctx, owner, func(a *account, now time.Time) error {
+		// Entitlement and code ownership share one durable redo intent.
+		// Recovery finishes both before any other author can redeem the code.
+		e = l.accountTransaction(ctx, tx, owner, func(a *account, now time.Time) error {
 			if _, done := a.Redeemed[digest]; !done {
 				plan := l.planOf(*a, now)
 				switch r.Kind {
@@ -284,7 +301,7 @@ func (l *Ledger) Redeem(ctx context.Context, owner, raw string) (Usage, error) {
 			return e
 		}
 		r.RedeemedBy, r.RedeemedAt = owner, now.Format(time.RFC3339)
-		return storage.Write(ctx, path, r)
+		return tx.put(path, r)
 	})
 	if e != nil {
 		return Usage{}, e

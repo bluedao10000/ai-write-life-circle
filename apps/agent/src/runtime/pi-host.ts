@@ -1,4 +1,4 @@
-import {configuredModel,boundedModelFetch} from "./model-gateway.js";
+import {configuredModel,boundedModelFetch,completionUsage} from "./model-gateway.js";
 import {
   createAgentSession,
   createExtensionRuntime,
@@ -289,23 +289,41 @@ export class PiHost {
             // Reserve before network; never refund unknown/crashed usage. Charged is a
             // conservative token ceiling, not a currency estimate.
             s.view.usage.charged += reserve;
+            const hadIncomplete = s.view.usage.incomplete;
             s.view.usage.incomplete = true;
             persist({ type: "usage", usage: { ...s.view.usage } });
+            const providerUsage: {reported:ReturnType<typeof completionUsage>;seen:boolean} = {reported:null,seen:false};
             const providerStream = original(model, context, {
               ...options,
               maxTokens: limit.maxOutputTokens,
               maxRetries: 0,
               signal: active.abort.signal,
               fetch:boundedModelFetch(this.config.model.endpoint,limit.maxOutputTokens*32+65536,active.abort.signal),
+              onProviderStreamEvent(value, eventModel) {
+                const raw=(value as {usage?:Record<string,unknown>})?.usage;
+                if(raw && 'prompt_tokens' in raw) {
+                  providerUsage.seen=true;
+                  providerUsage.reported=completionUsage(value,limit.maxOutputTokens);
+                }
+                return options?.onProviderStreamEvent?.(value, eventModel);
+              },
             });
             for await (const event of providerStream) {
               alive();
               if (event.type === "done" || event.type === "error") {
                 const m = event.type === "done" ? event.message : event.error;
-                if (m.usage.totalTokens > 0) {
-                  s.view.usage.input +=
-                    m.usage.input + m.usage.cacheRead + m.usage.cacheWrite;
-                  s.view.usage.output += m.usage.output;
+                const reported = providerUsage.reported;
+                if (m.usage.totalTokens > 0 && (!providerUsage.seen || reported)) {
+                  const totalInput=reported?.inputTokens ?? (m.usage.input+m.usage.cacheRead+m.usage.cacheWrite);
+                  const cachedInput=reported?.cachedInputTokens ?? m.usage.cacheRead;
+                  const output=reported?.outputTokens ?? m.usage.output;
+                  const validTotal=Number.isInteger(totalInput)&&totalInput>=0&&totalInput<=1000000&&Number.isInteger(output)&&output>=0&&output<=limit.maxOutputTokens;
+                  if(validTotal){
+                    s.view.usage.input += totalInput;
+                    s.view.usage.cachedInput = (s.view.usage.cachedInput ?? 0) + (Number.isInteger(cachedInput)&&cachedInput>=0&&cachedInput<=totalInput?cachedInput:0);
+                    s.view.usage.output += output;
+                    s.view.usage.incomplete = hadIncomplete;
+                  }
                 }
                 if (m.stopReason === "error" || m.stopReason === "aborted")
                   errorCode = "MODEL_REQUEST_FAILED";

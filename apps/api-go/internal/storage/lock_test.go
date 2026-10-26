@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-func TestLockShortRecoversALockLeftByAnExitedProcess(t *testing.T) {
+func TestLockShortNeverStealsAnOldLock(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "account.json.lock")
 	if e := os.WriteFile(path, nil, 0600); e != nil {
@@ -18,12 +18,13 @@ func TestLockShortRecoversALockLeftByAnExitedProcess(t *testing.T) {
 	if e := os.Chtimes(path, old, old); e != nil {
 		t.Fatal(e)
 	}
-	ran := false
-	if e := LockShort(ctx, 30*time.Second, path, func() error { ran = true; return nil }); e != nil || !ran {
-		t.Fatal("stale lock not recovered", e)
+	shortOld, cancelOld := context.WithTimeout(ctx, 80*time.Millisecond)
+	defer cancelOld()
+	if e := LockShort(shortOld, time.Millisecond, path, func() error { t.Fatal("entered old lock"); return nil }); e == nil {
+		t.Fatal("old lock stolen")
 	}
-	if _, e := os.Stat(path); !os.IsNotExist(e) {
-		t.Fatal("lock not released", e)
+	if info, e := os.Stat(path); e != nil || !info.ModTime().Equal(old) {
+		t.Fatal("changed another holder's lock", e)
 	}
 	// A fresh lock is respected: the waiter times out instead of entering.
 	if e := os.WriteFile(path, nil, 0600); e != nil {

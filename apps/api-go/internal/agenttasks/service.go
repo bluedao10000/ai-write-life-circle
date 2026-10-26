@@ -13,6 +13,7 @@ import (
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/review"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/storage"
 	"path/filepath"
+	"strconv"
 	"time"
 )
 
@@ -291,7 +292,8 @@ func (s *Service) check(ctx context.Context, rec Record) error {
 	return r.Check(ctx, rec.Review)
 }
 func (s *Service) Action(ctx context.Context, id, action string, in Envelope) error {
-	return s.transaction(ctx, func(st *Registry) error {
+	var denied error
+	err := s.transaction(ctx, func(st *Registry) error {
 		rec, ok := st.Tasks[id]
 		t := rec.Task
 		if !ok || in.Lease != t.Lease || in.Epoch != t.Epoch || in.Attempt != t.Attempt || in.Kind != t.Kind || in.InputHash != t.InputHash || in.Instance != rec.Instance {
@@ -344,6 +346,30 @@ func (s *Service) Action(ctx context.Context, id, action string, in Envelope) er
 		}
 		switch action {
 		case "started":
+			if rec.Review != nil {
+				app, err := s.resolveTask(t)
+				if err != nil {
+					return err
+				}
+				op := "review:" + rec.Review.Run.RunID + ":" + strconv.Itoa(rec.Review.Run.Attempts)
+				if err := app.MeterAuthorize(ctx, op, "review"); err != nil {
+					if rec.Started {
+						return err
+					}
+					r := s.review(app)
+					completeErr := r.Complete(rec.Review, llm.Response{}, err)
+					r.Close()
+					if completeErr != nil {
+						return completeErr
+					}
+					s.recordOutcome(&rec, app)
+					rec.scrub()
+					rec.Finished, rec.ResultHash = true, fp
+					st.Tasks[id] = rec
+					denied = err
+					return nil
+				}
+			}
 			if rec.Started {
 				return nil
 			}
@@ -364,7 +390,7 @@ func (s *Service) Action(ctx context.Context, id, action string, in Envelope) er
 			if len(in.Response.Text) > limit {
 				return llm.Fail("LLM_RESPONSE_TOO_LARGE")
 			}
-			if in.Response.Usage != nil && (in.Response.Usage.InputTokens < 0 || in.Response.Usage.InputTokens > 1000000 || in.Response.Usage.OutputTokens < 0 || in.Response.Usage.OutputTokens > s.Config.MaxOutputTokens) {
+			if in.Response.Usage != nil && (in.Response.Usage.CachedInputTokens < 0 || in.Response.Usage.CachedInputTokens > in.Response.Usage.InputTokens || in.Response.Usage.InputTokens < 0 || in.Response.Usage.InputTokens > 1000000 || in.Response.Usage.OutputTokens < 0 || in.Response.Usage.OutputTokens > s.Config.MaxOutputTokens) {
 				return llm.Fail("LLM_INVALID_USAGE")
 			}
 			var modelErr error
@@ -398,6 +424,10 @@ func (s *Service) Action(ctx context.Context, id, action string, in Envelope) er
 		st.Tasks[id] = rec
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+	return denied
 }
 func failureAllowed(code string) bool {
 	switch code {

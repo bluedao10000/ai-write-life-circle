@@ -123,9 +123,9 @@ func TestKnowledgeQueueWaitsForAllowanceAndSettlesUsage(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	_ = k.Complete(ctx, p, llm.Response{Text: `{"entities":[],"assertions":[]}`, Usage: &llm.Usage{InputTokens: 6000, OutputTokens: 1000}}, true, nil)
+	_ = k.Complete(ctx, p, llm.Response{Text: `{"entities":[],"assertions":[]}`, Usage: &llm.Usage{InputTokens: 6000, OutputTokens: 1000, CachedInputTokens: 5000}}, true, nil)
 	u, _ := w.ledger.View(ctx, "u-writer")
-	if u.Day.Used != 10 || u.Day.Reserved != 0 {
-		t.Fatalf("expected 10 settled points, got %+v", u.Day)
+	if u.Day.Used != 6 || u.Day.Reserved != 0 {
+		t.Fatalf("expected 6 cache-discounted points, got %+v", u.Day)
 	}
 }

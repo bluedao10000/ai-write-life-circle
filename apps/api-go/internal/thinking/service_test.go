@@ -9,7 +9,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func fixture(t *testing.T) (*Service, Record, string) {
@@ -374,5 +376,101 @@ func TestMessagesAreMeteredInAIPoints(t *testing.T) {
 	w := send("m4")
 	if w.Code != 402 || !strings.Contains(w.Body.String(), "PLAN_QUOTA_EXCEEDED") || posts != before {
 		t.Fatal("exhausted allowance reached Pi", w.Code, w.Body.String())
+	}
+}
+
+func TestConcurrentMessagesCannotExceedPlanSessions(t *testing.T) {
+	for _, plan := range []billing.Plan{billing.Free, billing.Plus, billing.Pro} {
+		t.Run(string(plan), func(t *testing.T) {
+			s, rec, _ := fixture(t)
+			ctx := context.Background()
+			s.Meter = &billing.Ledger{State: s.State}
+			if e := s.Meter.(*billing.Ledger).SetPlan(ctx, rec.Owner, plan); e != nil {
+				t.Fatal(e)
+			}
+			model := Model{Provider: "fixture", Model: "synthetic", Endpoint: "http://127.0.0.1", Protocol: Protocol, Limits: Limits{Turns: 1, Input: 1000, Output: 128, Tools: 8, Duration: 10000}}
+			const requests = 12
+			records := make([]Record, requests)
+			if e := s.tx(ctx, func(st *registry) error {
+				for i := range records {
+					r := rec
+					r.ID = "th-" + compat.UUID()
+					r.Model = model
+					records[i] = r
+					st.Sessions[r.ID] = r
+				}
+				return nil
+			}); e != nil {
+				t.Fatal(e)
+			}
+			ready := make(chan struct{}, requests)
+			gate := make(chan struct{})
+			var posts atomic.Int32
+			node := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				switch {
+				case r.URL.Path == "/internal/v1/health":
+					_ = json.NewEncoder(w).Encode(map[string]any{"protocol": Protocol, "model": model})
+				case r.Method == "GET":
+					ready <- struct{}{}
+					<-gate
+					_, _ = w.Write([]byte(`{"status":"idle","usage":{"input":0,"output":0,"charged":0,"incomplete":false}}`))
+				case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/messages"):
+					posts.Add(1)
+					_, _ = w.Write([]byte(`{"messageId":"msg-synthetic"}`))
+				default:
+					w.WriteHeader(404)
+				}
+			}))
+			defer node.Close()
+			s.Origin, s.ServiceToken = node.URL, strings.Repeat("t", 64)
+			s.ResolveActor = func(*http.Request) *application.Actor { return &application.Actor{ID: rec.Owner, Role: "author"} }
+			codes := make(chan int, requests)
+			for _, record := range records {
+				go func(record Record) {
+					r := httptest.NewRequest("POST", "/v1/studio/books/"+record.Book+"/thinking/sessions/"+record.ID+"/messages", strings.NewReader(`{"text":"synthetic question"}`))
+					r.Header.Set("Content-Type", "application/json")
+					r.Header.Set("Idempotency-Key", "message")
+					w := httptest.NewRecorder()
+					s.PublicHandler().ServeHTTP(w, r)
+					codes <- w.Code
+				}(record)
+			}
+			for range requests {
+				select {
+				case <-ready:
+				case <-time.After(10 * time.Second):
+					close(gate)
+					t.Fatal("concurrent requests did not reach snapshot")
+				}
+			}
+			close(gate)
+			success := 0
+			for range requests {
+				status := <-codes
+				if status == 202 {
+					success++
+				} else if status != 402 {
+					t.Fatal("unexpected status", status)
+				}
+			}
+			want := billing.Plans[plan].Sessions
+			if success != want || int(posts.Load()) != want {
+				t.Fatal("concurrency cap", success, posts.Load(), want)
+			}
+			st, e := s.load()
+			if e != nil {
+				t.Fatal(e)
+			}
+			busy := 0
+			for _, r := range st.Sessions {
+				if r.BillOp != "" {
+					busy++
+				}
+			}
+			if busy != want {
+				t.Fatal("slot count", busy, want)
+			}
+		})
 	}
 }

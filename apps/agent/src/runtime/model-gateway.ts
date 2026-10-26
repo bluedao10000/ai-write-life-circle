@@ -32,6 +32,17 @@ export function boundedModelFetch(endpoint:string,maxBytes:number,signal:AbortSi
 }
 export const executionConfigSchema=z.object({Provider:z.literal("openai-compatible"),BaseURL:z.string().url(),APIKey:z.literal(""),Model:z.string().min(1),ResponseFormat:z.enum(["none","json_object","json_schema"]),TokenParameter:z.enum(["max_tokens","max_completion_tokens"]),Timeout:z.number().int().positive().max(180_000_000_000),MaxContextBytes:z.number().int().min(2048).max(256*1024),MaxOutputTokens:z.number().int().min(128).max(131072),MaxResponseBytes:z.number().int().min(1024).max(2*1024*1024)}).strict();
 export type ExecutionConfig=z.infer<typeof executionConfigSchema>;
+
+// prompt_tokens includes cached input. Optional inconsistent cache details never
+// earn a discount; missing/invalid total usage remains unknown.
+export function completionUsage(value:unknown,maxOutput:number):AgentModelResponse['usage'] {
+  const raw=(value as {usage?:{prompt_tokens?:number;completion_tokens?:number;prompt_cache_hit_tokens?:number;prompt_tokens_details?:{cached_tokens?:number}}})?.usage;
+  if(!raw||!Number.isInteger(raw.prompt_tokens)||!Number.isInteger(raw.completion_tokens)||raw.prompt_tokens!<0||raw.prompt_tokens!>1000000||raw.completion_tokens!<0||raw.completion_tokens!>maxOutput)return null;
+  const hit=raw.prompt_cache_hit_tokens,details=raw.prompt_tokens_details?.cached_tokens;
+  const cached=hit??details??0;
+  const valid=Number.isInteger(cached)&&cached>=0&&cached<=raw.prompt_tokens!&&(hit===undefined||details===undefined||hit===details);
+  return {inputTokens:raw.prompt_tokens!,outputTokens:raw.completion_tokens!,cachedInputTokens:valid?cached:0};
+}
 export class ModelGateway {
   constructor(readonly config:ExecutionConfig,readonly key:string){}
   validate(task:AgentTask){
@@ -58,8 +69,8 @@ export class ModelGateway {
           return payload;
         },
         onProviderStreamEvent(value){
-          const raw=(value as {usage?:{prompt_tokens?:number;completion_tokens?:number}}).usage;
-          if(raw&&Number.isInteger(raw.prompt_tokens)&&Number.isInteger(raw.completion_tokens)&&raw.prompt_tokens!>=0&&raw.prompt_tokens!<=1000000&&raw.completion_tokens!>=0&&raw.completion_tokens!<=cfg.MaxOutputTokens)usage={inputTokens:raw.prompt_tokens!,outputTokens:raw.completion_tokens!};
+          const reported=completionUsage(value,cfg.MaxOutputTokens);
+          if(reported)usage=reported;
         },
       });
       const text=result.content.filter(b=>b.type==="text").map(b=>b.text).join("");

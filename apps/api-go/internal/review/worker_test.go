@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/billing"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/llm"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/storage"
 )
@@ -155,5 +156,51 @@ func TestPublicWorkerFieldsAreStripped(t *testing.T) {
 	public := PublicRun(claim.Run)
 	if public.Lease != "" || public.Attempts != 0 {
 		t.Fatal("internal scheduling state leaked")
+	}
+}
+
+func TestWorkerRechecksPaidReviewAtClaimAndBeforeProvider(t *testing.T) {
+	for _, stage := range []string{"before-claim", "before-provider"} {
+		t.Run(stage, func(t *testing.T) {
+			ctx := context.Background()
+			s, fake := testService(t, nil)
+			ledger := &billing.Ledger{State: s.App.State}
+			s.App.Owner = testAuthor.ID
+			s.App.Meter = ledger
+			if err := ledger.SetPlan(ctx, testAuthor.ID, billing.Plus); err != nil {
+				t.Fatal(err)
+			}
+			queued(t, s, "paid-review")
+			if stage == "before-claim" {
+				if err := ledger.SetPlan(ctx, testAuthor.ID, billing.Free); err != nil {
+					t.Fatal(err)
+				}
+				claim, err := s.Claim(ctx)
+				if err != nil || claim != nil {
+					t.Fatal("Free queued review claimed", claim, err)
+				}
+			} else {
+				claim, err := s.Claim(ctx)
+				if err != nil || claim == nil {
+					t.Fatal(claim, err)
+				}
+				if err := ledger.SetPlan(ctx, testAuthor.ID, billing.Free); err != nil {
+					t.Fatal(err)
+				}
+				if err := s.Process(ctx, claim); err != nil {
+					t.Fatal(err)
+				}
+				usage, err := ledger.View(ctx, testAuthor.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if usage.Day.Used != 0 || usage.Day.Reserved != 0 {
+					t.Fatal("unexecuted review charged", usage.Day)
+				}
+			}
+			if fake.calls.Load() != 0 {
+				t.Fatal("unauthorized provider invocation", fake.calls.Load())
+			}
+		})
 	}
 }

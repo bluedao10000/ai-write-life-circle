@@ -383,6 +383,11 @@
               {
                 "type": "object",
                 "properties": {
+                  "cachedInputTokens": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
                   "inputTokens": {
                     "type": "integer",
                     "minimum": 0,
@@ -701,6 +706,11 @@
                   {
                     "type": "object",
                     "properties": {
+                      "cachedInputTokens": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
                       "inputTokens": {
                         "type": "integer",
                         "minimum": 0,

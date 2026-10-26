@@ -194,7 +194,7 @@ func (s *Service) ProcessOne(ctx context.Context) (bool, error) {
 	if sent {
 		points = -1
 		if resp.Usage != nil {
-			points = billing.PointsFor(resp.Usage.InputTokens, resp.Usage.OutputTokens)
+			points = billing.PointsFor(resp.Usage.InputTokens, resp.Usage.OutputTokens, resp.Usage.CachedInputTokens)
 		}
 	}
 	s.App.MeterSettle(context.Background(), meterOp(c.Job.ID, c.Job.Attempts), points)
@@ -298,6 +298,7 @@ func (s *Service) complete(ctx context.Context, c *claimed, org *organizeContext
 					current.Usage = &llm.Usage{}
 				}
 				current.Usage.InputTokens += resp.Usage.InputTokens
+				current.Usage.CachedInputTokens += resp.Usage.CachedInputTokens
 				current.Usage.OutputTokens += resp.Usage.OutputTokens
 			}
 		}

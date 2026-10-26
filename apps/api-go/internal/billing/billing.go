@@ -1,7 +1,8 @@
 // Package billing meters model usage per author in AI points and holds each
 // author's plan (harness/design/pricing-plans.md).
 //
-// 1 point = 1,000 billable tokens, where billable = input + 4 × output (the
+// 1 point = 1,000 billable tokens, where billable = uncached input +
+// 0.02 × cached input + 4 × output (the
 // DeepSeek flash peak price ratio). Every model call follows reserve → settle:
 //   - Reserve before the call. An operation is admitted while the account's
 //     open reservations are below what is left of its monthly allowance plus
@@ -20,7 +21,7 @@
 // while the account is on Free.
 //
 // State lives under <state>/billing as atomic JSON guarded by the shared
-// O_EXCL lock protocol, so the API and Worker processes can both meter.
+// kernel lock and recoverable redo journal, so the API and Worker processes can both meter.
 package billing
 
 import (
@@ -89,18 +90,22 @@ const (
 	// MaxTopupPoints bounds one operator or code top-up.
 	MaxTopupPoints = 1000000
 	topupLifetime  = 12 // months
-	// staleLock: billing critical sections take milliseconds, so an older
-	// lock file was left by a process that exited while holding it.
-	staleLock = 15 * time.Second
 )
 
-// PointsFor converts token usage into AI points, rounding up.
-func PointsFor(input, output int) int {
-	billable := max(input, 0) + 4*max(output, 0)
+const PricingVersion = "ai-points-cache-v1"
+
+// PointsFor counts input inclusive of cached tokens. Integer hundredths avoid
+// rounding away the 0.02 cache rate before the final point ceiling.
+func PointsFor(input, output int, cachedInput ...int) int {
+	cached := 0
+	if len(cachedInput) > 0 && cachedInput[0] >= 0 && cachedInput[0] <= max(input, 0) {
+		cached = cachedInput[0]
+	}
+	billable := 100*(max(input, 0)-cached) + 2*cached + 400*max(output, 0)
 	if billable <= 0 {
 		return 0
 	}
-	return (billable + 999) / 1000
+	return (billable + 99999) / 100000
 }
 
 // Ledger implements application.Meter.
@@ -111,17 +116,20 @@ type Ledger struct {
 	LegacyOwner string
 	TTL         time.Duration
 	Now         func() time.Time
+	// write is overridden only by fault-injection tests.
+	write func(context.Context, string, any) error
 }
 
 var _ application.Meter = (*Ledger)(nil)
 
 type hold struct {
-	Kind    string `json:"kind"`
-	Points  int    `json:"points"`
-	Month   string `json:"month"`
-	Day     string `json:"day"`
-	Expires string `json:"expiresAt"`
-	Free    bool   `json:"free,omitempty"`
+	PricingVersion string `json:"pricingVersion,omitempty"`
+	Kind           string `json:"kind"`
+	Points         int    `json:"points"`
+	Month          string `json:"month"`
+	Day            string `json:"day"`
+	Expires        string `json:"expiresAt"`
+	Free           bool   `json:"free,omitempty"`
 }
 
 type topup struct {
@@ -134,12 +142,15 @@ type topup struct {
 }
 
 type entry struct {
-	Kind   string `json:"kind"`
-	Points int    `json:"points"`
-	At     string `json:"at"`
+	PricingVersion string `json:"pricingVersion,omitempty"`
+	Kind           string `json:"kind"`
+	Points         int    `json:"points"`
+	At             string `json:"at"`
 }
 
 type account struct {
+	tx *transaction
+
 	Schema int    `json:"schema"`
 	Actor  string `json:"actorId"`
 	// Plan is an explicit plan; PlanUntil (RFC 3339) bounds it when set.
@@ -202,6 +213,16 @@ func ControlPath(state string) string        { return filepath.Join(state, "bill
 
 // ReadControl returns the operator switch (zero value when unset).
 func ReadControl(state string) (Control, error) {
+	var out Control
+	err := (&Ledger{State: state}).transaction(context.Background(), func(_ *transaction) error {
+		var err error
+		out, err = readControl(state)
+		return err
+	})
+	return out, err
+}
+
+func readControl(state string) (Control, error) {
 	var c Control
 	found, e := storage.Read(ControlPath(state), &c)
 	if e != nil {
@@ -219,7 +240,7 @@ func WriteControl(ctx context.Context, state string, c Control) error {
 		return fmt.Errorf("paused must be empty, free or all")
 	}
 	c.Schema = 1
-	return storage.LockShort(ctx, staleLock, ControlPath(state)+".lock", func() error { return storage.Write(ctx, ControlPath(state), c) })
+	return (&Ledger{State: state}).transaction(ctx, func(tx *transaction) error { return tx.put(ControlPath(state), c) })
 }
 
 func before(now time.Time, rfc string) bool {
@@ -268,35 +289,40 @@ func (l *Ledger) load(actor string) (account, error) {
 
 // withAccount runs fn on the locked, rolled-over account and persists it.
 func (l *Ledger) withAccount(ctx context.Context, actor string, fn func(*account, time.Time) error) error {
-	path := l.accountPath(actor)
-	return storage.LockShort(ctx, staleLock, path+".lock", func() error {
-		a, e := l.load(actor)
-		if e != nil {
-			return e
-		}
-		now := l.now()
-		month, day := now.Format("2006-01"), now.Format("2006-01-02")
-		if a.Month != month {
-			a.Month, a.MonthUsed, a.TopupUsed, a.ByKind = month, 0, 0, nil
-		}
-		if a.Day != day {
-			a.Day, a.DayUsed = day, 0
-		}
-		// Expired reservations are charged in full: the model may have run.
-		for op, h := range a.Open {
-			if before(now, h.Expires) {
-				continue
-			}
-			if e := l.finish(ctx, &a, op, h, h.Points, now); e != nil {
-				return e
-			}
-		}
-		if e := fn(&a, now); e != nil {
-			return e
-		}
-		l.prune(&a, now)
-		return storage.Write(ctx, path, a)
+	return l.transaction(ctx, func(tx *transaction) error {
+		return l.accountTransaction(ctx, tx, actor, fn)
 	})
+}
+
+func (l *Ledger) accountTransaction(ctx context.Context, tx *transaction, actor string, fn func(*account, time.Time) error) error {
+	path := l.accountPath(actor)
+	a, e := l.load(actor)
+	if e != nil {
+		return e
+	}
+	a.tx = tx
+	now := l.now()
+	month, day := now.Format("2006-01"), now.Format("2006-01-02")
+	if a.Month != month {
+		a.Month, a.MonthUsed, a.TopupUsed, a.ByKind = month, 0, 0, nil
+	}
+	if a.Day != day {
+		a.Day, a.DayUsed = day, 0
+	}
+	// Expired reservations are charged in full: the model may have run.
+	for op, h := range a.Open {
+		if before(now, h.Expires) {
+			continue
+		}
+		if e := l.finish(ctx, &a, op, h, h.Points, now); e != nil {
+			return e
+		}
+	}
+	if e := fn(&a, now); e != nil {
+		return e
+	}
+	l.prune(&a, now)
+	return tx.put(path, a)
 }
 
 // activeTopups returns indices of usable top-ups, earliest expiry first.
@@ -349,12 +375,12 @@ func (l *Ledger) finish(ctx context.Context, a *account, op string, h hold, char
 		a.DayUsed += charge
 	}
 	if h.Free {
-		if e := l.withPool(ctx, h.Day, func(p *pool) { delete(p.Open, op); p.Used += charge }); e != nil {
+		if e := l.withPool(a.tx, h.Day, func(p *pool) { delete(p.Open, poolOp(a.Actor, op)); delete(p.Open, op); p.Used += charge }); e != nil {
 			return e
 		}
 	}
 	if charge > 0 {
-		a.Recent = append(a.Recent, entry{Kind: h.Kind, Points: charge, At: now.Format(time.RFC3339)})
+		a.Recent = append(a.Recent, entry{PricingVersion: h.PricingVersion, Kind: h.Kind, Points: charge, At: now.Format(time.RFC3339)})
 		if len(a.Recent) > maxRecent {
 			a.Recent = a.Recent[len(a.Recent)-maxRecent:]
 		}
@@ -397,23 +423,21 @@ func (l *Ledger) prune(a *account, now time.Time) {
 	}
 }
 
-func (l *Ledger) withPool(ctx context.Context, day string, fn func(*pool)) error {
+func (l *Ledger) withPool(tx *transaction, day string, fn func(*pool)) error {
 	path := l.poolPath(day)
-	return storage.LockShort(ctx, staleLock, path+".lock", func() error {
-		p := pool{Schema: 1, Day: day, Open: map[string]int{}}
-		found, e := storage.Read(path, &p)
-		if e != nil {
-			return e
-		}
-		if found && (p.Schema != 1 || p.Day != day) {
-			return fmt.Errorf("invalid free pool")
-		}
-		if p.Open == nil {
-			p.Open = map[string]int{}
-		}
-		fn(&p)
-		return storage.Write(ctx, path, p)
-	})
+	p := pool{Schema: 1, Day: day, Open: map[string]int{}}
+	found, e := tx.read(path, &p)
+	if e != nil {
+		return e
+	}
+	if found && (p.Schema != 1 || p.Day != day) {
+		return fmt.Errorf("invalid free pool")
+	}
+	if p.Open == nil {
+		p.Open = map[string]int{}
+	}
+	fn(&p)
+	return tx.put(path, p)
 }
 
 func outstanding(a account) (month, day int) {
@@ -475,12 +499,12 @@ func (l *Ledger) Allow(ctx context.Context, owner, feature string) error {
 	if owner == "" {
 		return nil
 	}
-	c, e := ReadControl(l.State)
-	if e != nil {
-		return e
-	}
 	var out error
-	e = l.withAccount(ctx, owner, func(a *account, now time.Time) error {
+	e := l.withAccount(ctx, owner, func(a *account, now time.Time) error {
+		c, err := readControl(l.State)
+		if err != nil {
+			return err
+		}
 		plan := l.planOf(*a, now)
 		if feature == "review" && !Plans[plan].Review {
 			out = application.Fail(402, "PLAN_FEATURE_REQUIRED", "连续性审查需要 Plus 或 Pro 方案。写作和其他功能不受影响。")
@@ -503,29 +527,36 @@ func (l *Ledger) Reserve(ctx context.Context, owner, op, kind string, points int
 	if op == "" || len(op) > 256 {
 		return fmt.Errorf("invalid billing operation")
 	}
-	c, e := ReadControl(l.State)
-	if e != nil {
-		return e
-	}
 	var out error
-	e = l.withAccount(ctx, owner, func(a *account, now time.Time) error {
-		if _, ok := a.Open[op]; ok {
+	e := l.withAccount(ctx, owner, func(a *account, now time.Time) error {
+		c, err := readControl(l.State)
+		if err != nil {
+			return err
+		}
+		plan := l.planOf(*a, now)
+		if kind == "review" && !Plans[plan].Review {
+			out = application.Fail(402, "PLAN_FEATURE_REQUIRED", "连续性审查需要 Plus 或 Pro 方案。")
 			return nil
 		}
 		if _, ok := a.Done[op]; ok {
 			return nil
 		}
-		plan := l.planOf(*a, now)
+		if h, ok := a.Open[op]; ok {
+			if h.Kind != kind {
+				return fmt.Errorf("billing operation kind mismatch")
+			}
+			return nil
+		}
 		if out = l.admit(*a, plan, c, now); out != nil {
 			return nil
 		}
-		h := hold{Kind: kind, Points: max(points, 1), Month: a.Month, Day: a.Day, Expires: now.Add(l.ttl()).Format(time.RFC3339Nano), Free: plan == Free}
+		h := hold{PricingVersion: PricingVersion, Kind: kind, Points: max(points, 1), Month: a.Month, Day: a.Day, Expires: now.Add(l.ttl()).Format(time.RFC3339Nano), Free: plan == Free}
 		if h.Free {
 			cap := c.FreeDailyPoints
 			if cap <= 0 {
 				cap = DefaultFreeDailyPoints
 			}
-			if e := l.withPool(ctx, a.Day, func(p *pool) {
+			if e := l.withPool(a.tx, a.Day, func(p *pool) {
 				open := 0
 				for _, v := range p.Open {
 					open += v
@@ -534,7 +565,7 @@ func (l *Ledger) Reserve(ctx context.Context, owner, op, kind string, points int
 					out = quotaError("pool")
 					return
 				}
-				p.Open[op] = h.Points
+				p.Open[poolOp(a.Actor, op)] = h.Points
 			}); e != nil {
 				return e
 			}
@@ -549,6 +580,32 @@ func (l *Ledger) Reserve(ctx context.Context, owner, op, kind string, points int
 		return e
 	}
 	return out
+}
+
+// Authorize checks current rights without charging the account's own open hold
+// against admission a second time. It is shared by Go and Pi execution starts.
+func (l *Ledger) Authorize(ctx context.Context, owner, op, kind string) error {
+	if owner == "" {
+		return nil
+	}
+	return l.withAccount(ctx, owner, func(a *account, now time.Time) error {
+		plan := l.planOf(*a, now)
+		if kind == "review" && !Plans[plan].Review {
+			return application.Fail(402, "PLAN_FEATURE_REQUIRED", "连续性审查需要 Plus 或 Pro 方案。")
+		}
+		control, err := readControl(l.State)
+		if err != nil {
+			return err
+		}
+		if paused(control, plan) {
+			return pausedError()
+		}
+		h, ok := a.Open[op]
+		if !ok || h.Kind != kind || !before(now, h.Expires) {
+			return application.Fail(409, "BILLING_RESERVATION_EXPIRED", "AI 点数预留已失效，请重新发起。")
+		}
+		return nil
+	})
 }
 
 // Settle records the actual points of a reserved operation; points < 0
@@ -571,18 +628,23 @@ func (l *Ledger) Settle(ctx context.Context, owner, op string, points int) error
 }
 
 // Entitlements returns the non-AI limits of the owner's current plan. It
-// reads the atomic account snapshot without taking the account lock.
+// recovers pending billing writes before reading the account snapshot.
 func (l *Ledger) Entitlements(ctx context.Context, owner string) (application.Entitlements, error) {
 	if owner == "" {
 		return application.Entitlements{}, nil
 	}
-	a, e := l.load(owner)
-	if e != nil {
-		return application.Entitlements{}, e
-	}
-	plan := l.planOf(a, l.now())
-	limits := Plans[plan]
-	return application.Entitlements{Plan: string(plan), Books: limits.Books, Sessions: limits.Sessions, ImportsPerMonth: limits.ImportsPerMonth, Priority: limits.Priority}, nil
+	var out application.Entitlements
+	err := l.transaction(ctx, func(_ *transaction) error {
+		a, err := l.load(owner)
+		if err != nil {
+			return err
+		}
+		plan := l.planOf(a, l.now())
+		limits := Plans[plan]
+		out = application.Entitlements{Plan: string(plan), Books: limits.Books, Sessions: limits.Sessions, ImportsPerMonth: limits.ImportsPerMonth, Priority: limits.Priority}
+		return nil
+	})
+	return out, err
 }
 
 // Usage is the author-facing view of an account.
@@ -630,9 +692,10 @@ type PlanLimits struct {
 	Priority        bool `json:"priority"`
 }
 type Entry struct {
-	Kind   string `json:"kind"`
-	Points int    `json:"points"`
-	At     string `json:"at"`
+	PricingVersion string `json:"pricingVersion,omitempty"`
+	Kind           string `json:"kind"`
+	Points         int    `json:"points"`
+	At             string `json:"at"`
 }
 type Counts struct {
 	Books            int `json:"books"`
@@ -719,6 +782,16 @@ func (l *Ledger) RecordEmail(ctx context.Context, owner, email string) error {
 
 // FindByEmail returns the actor IDs whose last verified email matches.
 func FindByEmail(state, email string) ([]string, error) {
+	var out []string
+	err := (&Ledger{State: state}).transaction(context.Background(), func(_ *transaction) error {
+		var err error
+		out, err = findByEmail(state, email)
+		return err
+	})
+	return out, err
+}
+
+func findByEmail(state, email string) ([]string, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 	dir := filepath.Join(state, "billing", "accounts")
 	entries, e := os.ReadDir(dir)

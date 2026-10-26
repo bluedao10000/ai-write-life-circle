@@ -8,7 +8,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -376,17 +375,18 @@ func (s *Service) RetryIntake(ctx context.Context, limit int) {
 type sessionUsage struct {
 	Status string `json:"status"`
 	Usage  struct {
-		Input      int  `json:"input"`
-		Output     int  `json:"output"`
-		Charged    int  `json:"charged"`
-		Incomplete bool `json:"incomplete"`
+		Input       int  `json:"input"`
+		CachedInput int  `json:"cachedInput"`
+		Output      int  `json:"output"`
+		Charged     int  `json:"charged"`
+		Incomplete  bool `json:"incomplete"`
 	} `json:"usage"`
 }
 
 // points converts Pi's cumulative usage; incomplete usage falls back to Pi's
 // conservative reservation ceiling.
 func (u sessionUsage) points() int {
-	p := billing.PointsFor(u.Usage.Input, u.Usage.Output)
+	p := billing.PointsFor(u.Usage.Input, u.Usage.Output, u.Usage.CachedInput)
 	if u.Usage.Incomplete {
 		p = max(p, (u.Usage.Charged+999)/1000)
 	}
@@ -398,42 +398,6 @@ func (u sessionUsage) running() bool { return u.Status == "running" || u.Status 
 // messagePoints bounds one message: every allowed turn at full input/output.
 func messagePoints(l Limits) int {
 	return max(1, l.Turns) * max(1, billing.PointsFor(l.Input, l.Output))
-}
-
-// concurrencyLimit enforces the plan's number of sessions generating at the
-// same time. A session is generating while its message reservation is open
-// (BillOp), which SettleUsage clears once Pi reports the turn finished. The
-// settled state of this session's previous message is persisted either way.
-// Two first messages racing in different sessions can both pass; the plan
-// limit can then be exceeded by one, never by more.
-func (s *Service) concurrencyLimit(ctx context.Context, id string, current Record) error {
-	if s.Meter == nil {
-		return nil
-	}
-	plan, e := s.Meter.Entitlements(ctx, current.Owner)
-	if e != nil || plan.Sessions <= 0 {
-		return e
-	}
-	var limited error
-	e = s.tx(ctx, func(st *registry) error {
-		v := st.Sessions[id]
-		v.BillOp, v.Billed = current.BillOp, current.Billed
-		st.Sessions[id] = v
-		busy := 0
-		for other, r := range st.Sessions {
-			if other != id && r.Owner == current.Owner && !r.Deleted && r.BillOp != "" {
-				busy++
-			}
-		}
-		if busy >= plan.Sessions {
-			limited = application.PlanLimit(fmt.Sprintf("当前方案最多 %d 个灵感会话同时回复。请等其他会话回复完成后再发送，或升级方案。", plan.Sessions))
-		}
-		return nil
-	})
-	if e != nil {
-		return e
-	}
-	return limited
 }
 
 func (s *Service) settle(ctx context.Context, r Record, u *sessionUsage) Record {
@@ -471,31 +435,41 @@ func (s *Service) SettleUsage(ctx context.Context, limit int) {
 			return
 		}
 		limit--
-		var usage *sessionUsage
-		if !r.Deleted {
-			raw, found, err := s.Snapshot(ctx, id)
+		_ = storage.Lock(ctx, s.path()+"."+compat.Key(id)+".lock", func() error {
+			latest, err := s.load()
 			if err != nil {
-				continue // Pi offline: the ledger lease charges the reservation if this persists.
+				return err
 			}
-			if found {
-				var u sessionUsage
-				if json.Unmarshal(raw, &u) != nil {
-					continue
-				}
-				if u.running() {
-					continue
-				}
-				usage = &u
-			}
-		}
-		next := s.settle(ctx, r, usage)
-		_ = s.tx(ctx, func(current *registry) error {
-			v, ok := current.Sessions[id]
-			if !ok || v.BillOp != r.BillOp {
+			if latest.Sessions[id].BillOp != r.BillOp {
 				return nil
 			}
-			v.BillOp, v.Billed = next.BillOp, next.Billed
-			current.Sessions[id] = v
+			var usage *sessionUsage
+			if !r.Deleted {
+				raw, found, err := s.Snapshot(ctx, id)
+				if err != nil {
+					return nil // Pi offline: the ledger lease charges the reservation if this persists.
+				}
+				if found {
+					var u sessionUsage
+					if json.Unmarshal(raw, &u) != nil {
+						return nil
+					}
+					if u.running() {
+						return nil
+					}
+					usage = &u
+				}
+			}
+			next := s.settle(ctx, r, usage)
+			_ = s.tx(ctx, func(current *registry) error {
+				v, ok := current.Sessions[id]
+				if !ok || v.BillOp != r.BillOp {
+					return nil
+				}
+				v.BillOp, v.Billed = next.BillOp, next.Billed
+				current.Sessions[id] = v
+				return nil
+			})
 			return nil
 		})
 	}

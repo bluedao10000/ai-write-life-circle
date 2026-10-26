@@ -9,6 +9,7 @@ type limitMeter struct{ plan Entitlements }
 
 func (limitMeter) Allow(context.Context, string, string) error                { return nil }
 func (limitMeter) Reserve(context.Context, string, string, string, int) error { return nil }
+func (limitMeter) Authorize(context.Context, string, string, string) error    { return nil }
 func (limitMeter) Settle(context.Context, string, string, int) error          { return nil }
 func (m limitMeter) Entitlements(context.Context, string) (Entitlements, error) {
 	return m.plan, nil

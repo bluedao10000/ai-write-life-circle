@@ -54,6 +54,8 @@ type Meter interface {
 	Allow(ctx context.Context, owner, feature string) error
 	// Reserve holds points before one model call; idempotent per op.
 	Reserve(ctx context.Context, owner, op, kind string, points int) error
+	// Authorize rechecks a reserved operation immediately before execution.
+	Authorize(ctx context.Context, owner, op, kind string) error
 	// Settle records actual points (points < 0 charges the reservation).
 	Settle(ctx context.Context, owner, op string, points int) error
 	// Entitlements returns the owner's current non-AI plan limits.
@@ -148,6 +150,12 @@ func (s *Service) MeterReserve(ctx context.Context, op, kind string, points int)
 		return nil
 	}
 	return s.Meter.Reserve(ctx, s.Owner, op, kind, points)
+}
+func (s *Service) MeterAuthorize(ctx context.Context, op, kind string) error {
+	if s == nil || s.Meter == nil || s.Owner == "" {
+		return nil
+	}
+	return s.Meter.Authorize(ctx, s.Owner, op, kind)
 }
 func (s *Service) MeterSettle(ctx context.Context, op string, points int) {
 	if s == nil || s.Meter == nil || s.Owner == "" {

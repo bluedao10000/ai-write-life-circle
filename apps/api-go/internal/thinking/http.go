@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"encoding/json"
+	"fmt"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/application"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/compat"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/storage"
@@ -344,19 +345,14 @@ func (s *Service) PublicHandler() http.Handler {
 					if current.BillOp != "" {
 						return fail(503, "BILLING_UNAVAILABLE")
 					}
-					if e := s.concurrencyLimit(r.Context(), id, current); e != nil {
-						return e
-					}
 					op := ""
 					if s.Meter != nil {
 						op = "think:" + id + ":" + rk
-						if e := s.Meter.Reserve(r.Context(), current.Owner, op, "thinking", messagePoints(current.Model.Limits)); e != nil {
-							_ = s.tx(r.Context(), func(st *registry) error {
-								v := st.Sessions[id]
-								v.BillOp, v.Billed = current.BillOp, current.Billed
-								st.Sessions[id] = v
-								return nil
-							})
+					}
+					plan := application.Entitlements{}
+					if s.Meter != nil {
+						plan, e = s.Meter.Entitlements(r.Context(), current.Owner)
+						if e != nil {
 							return e
 						}
 					}
@@ -364,6 +360,22 @@ func (s *Service) PublicHandler() http.Handler {
 						v := st.Sessions[id]
 						if v.Deleted {
 							return fail(404, "NOT_FOUND")
+						}
+						if plan.Sessions > 0 {
+							busy := 0
+							for other, r := range st.Sessions {
+								if other != id && r.Owner == current.Owner && r.BillOp != "" {
+									busy++
+								}
+							}
+							if busy >= plan.Sessions {
+								return application.PlanLimit(fmt.Sprintf("当前方案最多 %d 个灵感会话同时回复。请等待其他回复完成。", plan.Sessions))
+							}
+						}
+						if s.Meter != nil {
+							if err := s.Meter.Reserve(r.Context(), current.Owner, op, "thinking", messagePoints(current.Model.Limits)); err != nil {
+								return err
+							}
 						}
 						v.Billed = current.Billed
 						v.BillOp = op

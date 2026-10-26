@@ -125,7 +125,7 @@ export const memoryJobSchema = z
     lease: z.string().optional(),
     failureCode: z.string().optional(),
     usage: z
-      .object({ inputTokens: z.number().int(), outputTokens: z.number().int() })
+      .object({ cachedInputTokens: z.number().int().nonnegative().optional(), inputTokens: z.number().int(), outputTokens: z.number().int() })
       .strict()
       .optional(),
     usageIncomplete: z.boolean().optional(),

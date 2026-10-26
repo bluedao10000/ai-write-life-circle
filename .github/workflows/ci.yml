@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'feat/pricing-phase1', 'codex/pricing-phase1-*']
   pull_request:
     branches: [main, 'codex/**']
   workflow_dispatch:
