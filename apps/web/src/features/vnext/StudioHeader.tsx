@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import BookMenu from '../management/BookMenu'
 import { useManagement } from '../management/ManagedStudio'
 import type { useStudioController } from '../vnext/useStudioController'
@@ -6,7 +6,7 @@ import { Btn, Icon, IconBtn, Seg, Proto } from '../../components/vnext/ui'
 import KnowledgeChip from '../knowledge/KnowledgeChip'
 import AccountMeter from '../account/AccountMeter'
 import { useKnowledgeSummary } from '../knowledge/useKnowledgeSummary'
-import { RevisionHistory } from '../workspace/ComposeBar'
+const RevisionHistory = lazy(() => import('../workspace/RevisionHistory'))
 
 /**
  * Top bar from Figma Make App.tsx: menu · story2u / work · centred 灵感/阅读/书 ·
@@ -94,9 +94,10 @@ export default function StudioHeader({ studio, demo }: { studio: ReturnType<type
               <span className="hidden items-center gap-1 sm:flex">
                 <IconBtn icon="focus" label={layout.focus ? '退出专注' : '专注'} shortcut="⌘⇧F" active={layout.focus} onClick={() => setLayout((l) => ({ ...l, focus: !l.focus }))} />
                 <IconBtn icon="target" label={typewriter ? '关闭打字机模式' : '打字机模式'} active={typewriter} onClick={toggleTypewriter} />
-                {!demo && <IconBtn icon="revision" label="历史版本" onClick={() => setHistory(true)} />}
+
               </span>
             )}
+            {!demo && loaded && <IconBtn icon="revision" label="历史版本" onClick={() => setHistory(true)} />}
             {knowledge && (
               <KnowledgeChip
                 view={knowledge}
@@ -130,7 +131,7 @@ export default function StudioHeader({ studio, demo }: { studio: ReturnType<type
           </Btn>
         </div>
       )}
-      {history && <RevisionHistory projectId={workspace.projectId} chapterId={workspace.current} onClose={() => setHistory(false)} />}
+      {history && <Suspense fallback={<p role="status">正在打开历史版本…</p>}><RevisionHistory key={`${workspace.projectId}:${workspace.current}`} workspace={workspace} onClose={() => setHistory(false)} /></Suspense>}
     </>
   )
 }

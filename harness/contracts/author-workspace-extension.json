@@ -1,5 +1,87 @@
 {
   "schemas": {
+    "ChapterRevisionContent": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "chapterId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revision": {
+          "type": "object",
+          "properties": {
+            "revisionId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "parentRevisionId": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "contentHash": {
+              "type": "string",
+              "minLength": 1
+            },
+            "wordCount": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "createdAt": {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+            },
+            "createdBy": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "author",
+                    "agent",
+                    "system"
+                  ]
+                },
+                "id": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type"
+              ],
+              "additionalProperties": false
+            },
+            "commitRef": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "markdown": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "revisionId",
+            "contentHash",
+            "markdown"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "chapterId",
+        "revision"
+      ],
+      "additionalProperties": false
+    },
     "WorkspaceResume": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
@@ -62,5 +144,68 @@
       "additionalProperties": false
     }
   },
-  "paths": {}
+  "paths": {
+    "/projects/{projectId}/chapters/{chapterId}/revisions/{revisionId}": {
+      "get": {
+        "operationId": "getChapterRevisionContent",
+        "summary": "Read immutable author-owned revision content",
+        "tags": [
+          "Revisions"
+        ],
+        "x-required-role": [
+          "author"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "chapterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "revisionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Verified historical Markdown without private receipts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChapterRevisionContent"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authorized or not found"
+          },
+          "403": {
+            "description": "Not authorized or not found"
+          },
+          "404": {
+            "description": "Not authorized or not found"
+          }
+        }
+      }
+    }
+  }
 }

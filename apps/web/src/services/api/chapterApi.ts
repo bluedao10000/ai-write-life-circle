@@ -1,6 +1,8 @@
+import { hashMarkdown } from '../../lib/sourceHash'
 import { emitGrowth } from '../../observability/growth'
 import {
   chapterDetailV04Schema,
+  chapterRevisionContentV04Schema,
   chapterListV04Schema,
   chapterRevisionCreateV04Schema,
   chapterRevisionSummaryV04Schema,
@@ -40,9 +42,14 @@ export async function saveChapterRevision(
   emitGrowth('chapter_saved')
   return saved
 }
-/** Saved revision metadata. Content stays on the server. */
-export async function listChapterRevisions(projectId: string, chapterId: string) {
-  const body = (await getJson(`${chaptersPath(projectId)}/${encodeURIComponent(chapterId)}/revisions?limit=200`)) as { items?: unknown; total?: unknown }
+export async function listChapterRevisions(projectId: string, chapterId: string, cursor?: string, signal?: AbortSignal) {
+  const body = (await getJson(`${chaptersPath(projectId)}/${encodeURIComponent(chapterId)}/revisions?limit=50${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`, signal)) as { items?: unknown; total?: unknown; nextCursor?: string | null }
   if (!Array.isArray(body?.items)) throw new Error('历史版本响应格式无效。')
-  return { items: body.items.map((item) => chapterRevisionSummaryV04Schema.parse(item)), total: Number(body.total) || body.items.length }
+  return { items: body.items.map((item) => chapterRevisionSummaryV04Schema.parse(item)), total: Number(body.total) || body.items.length, nextCursor: body.nextCursor }
+}
+
+export async function getChapterRevision(projectId: string, chapterId: string, revisionId: string, signal?: AbortSignal) {
+  const value = chapterRevisionContentV04Schema.parse(await getJson(`${chaptersPath(projectId)}/${encodeURIComponent(chapterId)}/revisions/${encodeURIComponent(revisionId)}`, signal))
+  if (value.chapterId !== chapterId || value.revision.revisionId !== revisionId || await hashMarkdown(value.revision.markdown) !== value.revision.contentHash) throw new Error('历史正文校验失败，请重新读取。')
+  return value.revision
 }

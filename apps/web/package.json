@@ -30,6 +30,7 @@
     "@tiptap/starter-kit": "^3.32.0",
     "@writer-agent/contracts": "workspace:*",
     "better-auth": "1.7.10",
+    "diff": "8.0.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-markdown": "10.1.0",

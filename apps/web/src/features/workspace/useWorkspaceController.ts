@@ -97,7 +97,9 @@ export function useWorkspaceController({ adapter, initialWorkspace, toast, reque
   const [chat, setChat] = useState(initialWorkspace.chat)
   const [challenge, setChallenge] = useState(initialWorkspace.challenge)
   const [seq, setSeq] = useState(initialWorkspace.sequence)
+  const activeChapterRef = useRef('')
   const [current, setCurrent] = useState(chapterIds.has(initialWorkspace.currentChapterId) ? initialWorkspace.currentChapterId : initialWorkspace.chapters[0]?.id ?? '')
+  activeChapterRef.current = current
   const [dark, setDark] = useState(preferences.dark)
   const [task, setTask] = useState<AgentTask>({ state: 'idle' })
   const [saveStates, setSaveStates] = useState<Record<string, SaveState>>(() => Object.fromEntries(
@@ -510,6 +512,19 @@ export function useWorkspaceController({ adapter, initialWorkspace, toast, reque
     }
   }, [adapter.mode, current, initialWorkspace.projectId, scheduleSave, setChapterSaveState])
 
+  /** Save the current draft first, then restore through the same CAS/idempotent queue. */
+  const restoreHistoricalText = useCallback(async (text: string, mode: 'replace' | 'append') => {
+    const id = current
+    const saved = await prepareReview(id)
+    if (!aliveRef.current || activeChapterRef.current !== id) throw new Error('工作台已关闭，请重新操作。')
+    // prepareReview checks edits during I/O; this continuation has no further await before onChange.
+    const next = mode === 'append' ? `${saved.markdown}${saved.markdown ? '\n\n' : ''}${text}` : text
+    if (next === saved.markdown) return
+    onChange([], next)
+    setEditorGeneration((value) => value + 1)
+    if (!await flushSave(id)) throw new Error('恢复内容已保留为本地草稿，尚未安全保存。请处理保存问题后重试。')
+  }, [current, prepareReview, onChange, flushSave])
+
   const retrySave = useCallback(() => flushSave(current), [current, flushSave])
 
   const restoreLocalDraft = useCallback(async (chapterId = current) => {
@@ -593,6 +608,7 @@ export function useWorkspaceController({ adapter, initialWorkspace, toast, reque
   const switchChapter = useCallback((chapterId: string) => {
     if (chapterId === current || !chapterIds.has(chapterId)) return
     void flushSave(current)
+    activeChapterRef.current = chapterId
     setCurrent(chapterId)
   }, [chapterIds, current, flushSave])
 
@@ -810,7 +826,7 @@ export function useWorkspaceController({ adapter, initialWorkspace, toast, reque
     editorGeneration,
     recoveryDraft: recoveryDrafts[current],
     restoreLocalDraft, reloadServerVersion, retryLoadChapter, exportLocalDraft,
-    updateResume, flushSave, prepareReview, prepareStructure, retrySave, onChange, switchChapter, runReview, cancelReview, decide,
+    updateResume, restoreHistoricalText, flushSave, prepareReview, prepareStructure, retrySave, onChange, switchChapter, runReview, cancelReview, decide,
     createProposal, sendChat, markChatSaved, requestChallenge,
   }
 }

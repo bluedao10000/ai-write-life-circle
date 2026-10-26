@@ -81,6 +81,13 @@ export const chapterRevisionSummaryV04Schema = z.object({
 })
 export type ChapterRevisionSummaryV04 = z.infer<typeof chapterRevisionSummaryV04Schema>
 
+export const chapterRevisionContentV04Schema = z.object({
+  chapterId: z.string().min(1),
+  revision: chapterRevisionSummaryV04Schema.extend({
+    revisionId: z.string().min(1), contentHash: z.string().min(1), markdown: z.string(),
+  }),
+})
+
 export const chapterRevisionCreateV04Schema = z.object({
   baseRevisionId: z.string().nullable(),
   markdown: z.string().max(2 * 1024 * 1024),

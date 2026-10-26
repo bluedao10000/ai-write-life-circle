@@ -66,6 +66,24 @@ async function setupApiController(options: {
 }
 
 describe('API workspace chapter workflow', () => {
+  it('saves present edits before restoring historical text through the same revision queue', async () => {
+    const { result, fetchMock } = await setupApiController()
+    act(() => result.current.onChange(['今天'], '今天'))
+    await act(async () => { await result.current.restoreHistoricalText('昨日删除的一段。', 'append') })
+    const writes = fetchMock.mock.calls.filter(([path, init]) => String(path).endsWith('/revisions') && init?.method === 'POST').map(([, init]) => JSON.parse(String(init?.body)))
+    expect(writes).toEqual([
+      expect.objectContaining({ markdown: '今天', baseRevisionId: 'source:blob-1' }),
+      expect.objectContaining({ markdown: '今天\n\n昨日删除的一段。', baseRevisionId: 'draft:revision-2' }),
+    ])
+    expect(result.current.saveState.s).toBe('saved')
+  })
+  it.each([409, 500])('never replaces present prose if the initial save fails with %s', async (status) => {
+    const { result } = await setupApiController({ saveResponse: async () => apiResponse({type:'about:blank',title:'Conflict',status,code:status===409?'REVISION_CONFLICT':'INTERNAL_ERROR'},status) })
+    act(() => result.current.onChange(['保留当前'], '保留当前'))
+    await act(async () => { await expect(result.current.restoreHistoricalText('历史', 'replace')).rejects.toThrow() })
+    expect(result.current.markdownByChapter[chapterId]).toBe('保留当前')
+  })
+
   beforeEach(() => localStorage.clear())
   afterEach(() => {
     cleanup()
