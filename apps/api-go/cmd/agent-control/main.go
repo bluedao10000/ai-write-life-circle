@@ -20,12 +20,22 @@ func run() error {
 	billingStatus := flag.Bool("billing", false, "print the AI-point switch (pause, Free daily pool)")
 	pause := flag.String("ai-pause", "", "pause AI features: none, free or all (writing is never paused)")
 	freeDaily := flag.Int("free-daily-points", 0, "site-wide Free AI points per UTC day (0 keeps the current value)")
+	flag.Usage = func() {
+		fmt.Fprintln(flag.CommandLine.Output(), "usage: writer-agent-control --state DIR [flags]\n       writer-agent-control --state DIR billing usage|grant|topup|codes ...")
+		flag.PrintDefaults()
+	}
 	flag.Parse()
 	if *state == "" {
 		return fmt.Errorf("--state is required")
 	}
 	if st, e := os.Stat(*state); e != nil || !st.IsDir() {
 		return fmt.Errorf("existing state directory required")
+	}
+	if flag.NArg() > 0 {
+		if flag.Arg(0) != "billing" {
+			return fmt.Errorf("unknown command %q", flag.Arg(0))
+		}
+		return billingCommand(*state, flag.Args()[1:])
 	}
 	if *billingStatus || *pause != "" || *freeDaily != 0 {
 		c, e := billing.ReadControl(*state)

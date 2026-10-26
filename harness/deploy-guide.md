@@ -80,6 +80,27 @@ sudo -u writer-agent /opt/writer-agent/current/writer-agent-control --state /var
 
 同一工具可以用 `--free-daily-points` 调整全站 Free 每日池，用 `--billing` 查看当前设置。写作和保存永远不受影响。注意不要以 root 运行：root 写出的文件 API 读不到，会导致 AI 功能全部拒绝。
 
+### 开通方案、加油包与兑换码
+
+在线付款对接之前，用同一工具开通。账户按作者最近一次登录的邮箱查找，所以作者需要先登录并打开过一次作品台。下面以 `C` 代指 `sudo -u writer-agent /opt/writer-agent/current/writer-agent-control --state /var/lib/writer-agent`：
+
+```sh
+$C billing usage --email writer@example.com                                  # 查看方案、点数和加油包
+$C billing grant --email writer@example.com --plan plus --interval month     # 开通 1 个月 Plus；同一方案再次开通会顺延
+$C billing grant --email writer@example.com --plan pro --interval year       # 换成 Pro 年付，从现在开始计算
+$C billing grant --email writer@example.com --plan free                      # 撤销开通的方案
+$C billing topup --email writer@example.com --points 3000                    # 加油包，12 个月有效
+$C billing codes create --kind plan --plan plus --interval month --count 20 --batch beta --expires 2026-12-31
+$C billing codes create --kind topup --points 3000 --count 5
+$C billing codes list                                                        # 只列摘要和核销状态，不含兑换码本身
+```
+
+- 兑换码只在生成时显示一次，状态目录里只存摘要。请通过私下渠道发给作者，作者在页头「AI」→「账户与方案」里兑换。
+- 每个账户每天最多输错 10 次兑换码。
+- 同一邮箱对应多个账户时，工具会列出 actor ID，改用 `--actor u-…`。
+- 旧数据所有者（`WRITER_AGENT_AUTHOR_ID`）在没有开通记录时默认是 Pro。若希望 `usage` 显示这一点，运行前设置同名环境变量。
+- 计费文件的锁超过 15 秒视为崩溃遗留，会被自动清理，所以进程异常退出不会长期锁住账户。API 退出时会先等待正在处理的请求和后台扫描完成。
+
 ## HTTPS 与既有 Nginx
 
 DNS A 记录指向 EC2 公网地址。公网必须可访问 TCP 80/443。Cloudflare 初次配置建议「仅 DNS」。如使用代理，SSL/TLS 模式必须为 Full (strict)，不能使用 Flexible。API 后端 8787 不向公网开放。

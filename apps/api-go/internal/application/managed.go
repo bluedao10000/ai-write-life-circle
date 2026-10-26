@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -90,6 +91,75 @@ func (m *Management) UseMeter(meter Meter) {
 	m.Legacy.Meter = meter
 }
 func (m *Management) path() string { return filepath.Join(m.Legacy.State, "works", "catalog-v1.json") }
+
+// entitlements returns the author's plan limits; unlimited without a meter.
+func (m *Management) entitlements(ctx context.Context, a Actor) (Entitlements, error) {
+	if m.meter == nil || a.ID == "" {
+		return Entitlements{}, nil
+	}
+	return m.meter.Entitlements(ctx, a.ID)
+}
+
+func ownedCount(st managedState, owner string) int {
+	n := 0
+	for _, b := range st.Books {
+		if b.Owner == owner {
+			n++
+		}
+	}
+	return n
+}
+
+// importsIn counts the author's committed EPUB imports in a UTC month
+// ("2006-01") from the catalog audit, which commits with each import.
+// Deleting an imported book does not give the import back.
+func importsIn(st managedState, owner, month string) int {
+	n := 0
+	for _, raw := range st.Audit {
+		entry, ok := raw.(map[string]any)
+		if !ok || entry["operation"] != "epub_import" {
+			continue
+		}
+		at, _ := entry["at"].(string)
+		if !strings.HasPrefix(at, month) {
+			continue
+		}
+		id := ""
+		switch actor := entry["actor"].(type) {
+		case map[string]any:
+			id, _ = actor["id"].(string)
+		case Actor:
+			id = actor.ID
+		}
+		if id == owner {
+			n++
+		}
+	}
+	return n
+}
+
+func bookLimit(e Entitlements, st managedState, owner string) error {
+	if e.Books > 0 && ownedCount(st, owner) >= e.Books {
+		return PlanLimit(fmt.Sprintf("当前方案最多 %d 部作品。删除不需要的作品或升级方案后再新建，已有作品不受影响。", e.Books))
+	}
+	return nil
+}
+
+func importLimit(e Entitlements, st managedState, owner string) error {
+	if e.ImportsPerMonth > 0 && importsIn(st, owner, time.Now().UTC().Format("2006-01")) >= e.ImportsPerMonth {
+		return PlanLimit(fmt.Sprintf("当前方案每月可导入 %d 次 EPUB，本月已用完。下月 1 日（UTC）恢复，或升级方案。", e.ImportsPerMonth))
+	}
+	return nil
+}
+
+// Counts reports the author's books and this month's EPUB imports.
+func (m *Management) Counts(a Actor) (books, imports int, err error) {
+	st, err := m.load()
+	if err != nil {
+		return 0, 0, err
+	}
+	return ownedCount(st, a.ID), importsIn(st, a.ID, time.Now().UTC().Format("2006-01")), nil
+}
 
 // Reject symlinks in every existing state ancestor. No client value becomes a path.
 func (m *Management) safe() error {
@@ -396,6 +466,13 @@ func (m *Management) Mutate(ctx context.Context, a Actor, id, key string, in Str
 	if e := m.safe(); e != nil {
 		return result, e
 	}
+	var plan Entitlements
+	if id == "" {
+		var e error
+		if plan, e = m.entitlements(ctx, a); e != nil {
+			return result, e
+		}
+	}
 	e := storage.Lock(ctx, m.path()+".lock", func() error {
 		st, e := m.load()
 		if e != nil {
@@ -447,6 +524,9 @@ func (m *Management) Mutate(ctx context.Context, a Actor, id, key string, in Str
 		if id == "" {
 			if in.Operation != "create" || in.BaseVersion != 0 {
 				return Fail(422, "VALIDATION_FAILED", "Use create to start a work.")
+			}
+			if e := bookLimit(plan, st, a.ID); e != nil {
+				return e
 			}
 			b = ManagedBook{ID: "book-" + compat.UUID(), Title: "未命名作品", Version: 1, Volumes: []ManagedVolume{}, Chapters: []ManagedChapter{{ID: "CH-000001", Title: "第一章"}}}
 			if in.Title != "" {

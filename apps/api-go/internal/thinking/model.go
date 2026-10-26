@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -397,6 +398,42 @@ func (u sessionUsage) running() bool { return u.Status == "running" || u.Status 
 // messagePoints bounds one message: every allowed turn at full input/output.
 func messagePoints(l Limits) int {
 	return max(1, l.Turns) * max(1, billing.PointsFor(l.Input, l.Output))
+}
+
+// concurrencyLimit enforces the plan's number of sessions generating at the
+// same time. A session is generating while its message reservation is open
+// (BillOp), which SettleUsage clears once Pi reports the turn finished. The
+// settled state of this session's previous message is persisted either way.
+// Two first messages racing in different sessions can both pass; the plan
+// limit can then be exceeded by one, never by more.
+func (s *Service) concurrencyLimit(ctx context.Context, id string, current Record) error {
+	if s.Meter == nil {
+		return nil
+	}
+	plan, e := s.Meter.Entitlements(ctx, current.Owner)
+	if e != nil || plan.Sessions <= 0 {
+		return e
+	}
+	var limited error
+	e = s.tx(ctx, func(st *registry) error {
+		v := st.Sessions[id]
+		v.BillOp, v.Billed = current.BillOp, current.Billed
+		st.Sessions[id] = v
+		busy := 0
+		for other, r := range st.Sessions {
+			if other != id && r.Owner == current.Owner && !r.Deleted && r.BillOp != "" {
+				busy++
+			}
+		}
+		if busy >= plan.Sessions {
+			limited = application.PlanLimit(fmt.Sprintf("当前方案最多 %d 个灵感会话同时回复。请等其他会话回复完成后再发送，或升级方案。", plan.Sessions))
+		}
+		return nil
+	})
+	if e != nil {
+		return e
+	}
+	return limited
 }
 
 func (s *Service) settle(ctx context.Context, r Record, u *sessionUsage) Record {

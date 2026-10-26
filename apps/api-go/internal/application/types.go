@@ -12,6 +12,10 @@ import (
 type Actor struct {
 	ID   string `json:"id"`
 	Role string `json:"role"`
+	// Email is the verified sign-in email from the identity assertion. It is
+	// only used to let operators find an account and is never persisted with
+	// the actor (audit records keep ID and role only).
+	Email string `json:"-"`
 }
 type RevisionActor struct {
 	Type  string  `json:"type"`
@@ -52,7 +56,22 @@ type Meter interface {
 	Reserve(ctx context.Context, owner, op, kind string, points int) error
 	// Settle records actual points (points < 0 charges the reservation).
 	Settle(ctx context.Context, owner, op string, points int) error
+	// Entitlements returns the owner's current non-AI plan limits.
+	Entitlements(ctx context.Context, owner string) (Entitlements, error)
 }
+
+// Entitlements are the non-AI limits of the owner's current plan. A zero
+// count means unlimited (unmetered fixtures and unlimited plan features).
+type Entitlements struct {
+	Plan            string `json:"plan"`
+	Books           int    `json:"books"`
+	Sessions        int    `json:"sessions"`
+	ImportsPerMonth int    `json:"importsPerMonth"`
+	Priority        bool   `json:"priority"`
+}
+
+// PlanLimit is the author-facing error for a non-AI plan limit.
+func PlanLimit(detail string) error { return Fail(402, "PLAN_LIMIT_REACHED", detail) }
 
 type Service struct {
 	Root, State, Project string

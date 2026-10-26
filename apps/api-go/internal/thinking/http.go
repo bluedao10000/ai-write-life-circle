@@ -344,6 +344,9 @@ func (s *Service) PublicHandler() http.Handler {
 					if current.BillOp != "" {
 						return fail(503, "BILLING_UNAVAILABLE")
 					}
+					if e := s.concurrencyLimit(r.Context(), id, current); e != nil {
+						return e
+					}
 					op := ""
 					if s.Meter != nil {
 						op = "think:" + id + ":" + rk

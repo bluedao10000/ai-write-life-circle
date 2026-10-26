@@ -79,7 +79,8 @@ func run() error {
 	// managed book carries its own owner, and jobs run as that owner.
 	management := application.NewManagement(s, ownerID)
 	// Background model calls draw on the same per-author AI points as the API.
-	management.UseMeter(&billing.Ledger{State: c.State, LegacyOwner: ownerID})
+	ledger := &billing.Ledger{State: c.State, LegacyOwner: ownerID}
+	management.UseMeter(ledger)
 	if _, e = management.OwnedBooks(); e != nil {
 		return fmt.Errorf("invalid work registry")
 	}
@@ -87,7 +88,8 @@ func run() error {
 		fmt.Println("worker configuration valid")
 		return nil
 	}
-	discover := review.BookDiscoverer{Management: management}
+	// Pro books get the first claim on free worker slots.
+	discover := review.BookDiscoverer{Management: management, Priority: (&billing.PriorityCache{Ledger: ledger}).Priority}
 	resolve := func(bookID string) (*application.Service, error) {
 		app, _, e := management.ResolveOwned(bookID)
 		if e != nil {

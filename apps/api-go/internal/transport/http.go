@@ -33,7 +33,9 @@ type Options struct {
 	Management   *application.Management
 	ReviewFor    func(*application.Service) *review.Service
 	// Account returns the caller's AI-point allowance (GET /v1/account).
-	Account      func(context.Context, application.Actor) (any, error)
+	Account func(context.Context, application.Actor) (any, error)
+	// Redeem applies a redeem code (POST /v1/account/redeem).
+	Redeem       func(context.Context, application.Actor, string) (any, error)
 	Service      *application.Service
 	Environment  string
 	ResolveActor Resolver

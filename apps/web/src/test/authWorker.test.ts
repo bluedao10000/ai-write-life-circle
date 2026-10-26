@@ -381,16 +381,19 @@ describe('per-user identity for the Go API', () => {
   })
 })
 describe('AI point account route', () => {
-  it('forwards only GET /v1/account with the signed user', async () => {
+  it('forwards only GET /v1/account and POST /v1/account/redeem with the signed user', async () => {
     await signIn()
     const seen: string[] = []
     stubAPI(vi.fn(async (input: unknown, init?: RequestInit) => {
-      seen.push(`${init?.method ?? 'GET'} ${new URL(String(input)).pathname} ${decodeAssertion(new Headers(init?.headers).get('x-writer-agent-identity')).claims.sub}`)
+      const claims = decodeAssertion(new Headers(init?.headers).get('x-writer-agent-identity')).claims
+      seen.push(`${init?.method ?? 'GET'} ${new URL(String(input)).pathname} ${claims.sub} ${claims.pth}`)
       return Response.json({ plan: 'free' })
     }))
     expect((await handleRequest(request('/v1/account'), env)).status).toBe(200)
+    expect((await handleRequest(request('/v1/account/redeem', 'POST', '{"code":"WA-0000-0000-0000-0000"}'), env)).status).toBe(200)
     expect((await handleRequest(request('/v1/account', 'POST', '{}'), env)).status).toBe(404)
+    expect((await handleRequest(request('/v1/account/redeem'), env)).status).toBe(404)
     expect((await handleRequest(request('/v1/account/plan'), env)).status).toBe(404)
-    expect(seen).toEqual([`GET /v1/account ${signedUserId}`])
+    expect(seen).toEqual([`GET /v1/account ${signedUserId} /v1/account`, `POST /v1/account/redeem ${signedUserId} /v1/account/redeem`])
   })
 })

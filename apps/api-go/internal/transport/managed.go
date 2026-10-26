@@ -24,7 +24,7 @@ func managedHandler(o Options) http.Handler {
 		if handleCreative(o, w, r, path) {
 			return
 		}
-		if path == "/v1/account" && o.Account != nil {
+		if (path == "/v1/account" && o.Account != nil) || (path == "/v1/account/redeem" && o.Redeem != nil) {
 			actor := (*application.Actor)(nil)
 			if o.ResolveActor != nil {
 				actor = o.ResolveActor(r)
@@ -34,14 +34,40 @@ func managedHandler(o Options) http.Handler {
 				problem(w, application.Fail(401, "AUTHOR_DECISION_REQUIRED", "Authentication required."), "")
 				return
 			}
-			if r.Method != "GET" {
+			want := "GET"
+			if path == "/v1/account/redeem" {
+				want = "POST"
+			}
+			if r.Method != want {
 				problem(w, application.Fail(405, "METHOD_NOT_ALLOWED", "Unsupported account method."), "")
 				return
 			}
 			if !role(w, actor, "author") {
 				return
 			}
-			v, e := o.Account(r.Context(), *actor)
+			var v any
+			var e error
+			if want == "GET" {
+				v, e = o.Account(r.Context(), *actor)
+			} else {
+				var input struct {
+					Code string `json:"code"`
+				}
+				data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1024))
+				if err != nil {
+					problem(w, application.Fail(413, "VALIDATION_FAILED", "Redeem request too large."), "")
+					return
+				}
+				if err := publication.DecodeInput(data, &input); err != nil {
+					problem(w, application.AsError(err), "")
+					return
+				}
+				if input.Code == "" || len(input.Code) > 64 {
+					problem(w, application.Fail(422, "VALIDATION_FAILED", "请输入兑换码。"), "")
+					return
+				}
+				v, e = o.Redeem(r.Context(), *actor, input.Code)
+			}
 			if e != nil {
 				problem(w, application.AsError(e), "")
 				return

@@ -26,6 +26,19 @@ func Read(path string, v any) (bool, error) {
 	return true, nil
 }
 func Lock(ctx context.Context, path string, fn func() error) error {
+	return lock(ctx, path, 0, fn)
+}
+
+// LockShort is Lock for critical sections that take milliseconds (billing
+// counters). A lock file older than stale is taken to be left by a process
+// that exited while holding it, and is removed, so a crash cannot block the
+// file forever. Two waiters noticing the same stale lock at the same instant
+// can race; the cost is one lost counter update, not a stuck account.
+func LockShort(ctx context.Context, stale time.Duration, path string, fn func() error) error {
+	return lock(ctx, path, stale, fn)
+}
+
+func lock(ctx context.Context, path string, stale time.Duration, fn func() error) error {
 	if e := os.MkdirAll(filepath.Dir(path), 0700); e != nil {
 		return e
 	}
@@ -40,6 +53,16 @@ func Lock(ctx context.Context, path string, fn func() error) error {
 		}
 		if !errors.Is(e, os.ErrExist) {
 			return e
+		}
+		if stale > 0 {
+			if info, err := os.Stat(path); err == nil && time.Since(info.ModTime()) > stale {
+				// Move it aside first so only one waiter deletes this file.
+				aside := path + "." + compat.UUID() + ".stale"
+				if os.Rename(path, aside) == nil {
+					_ = os.Remove(aside)
+				}
+				continue
+			}
 		}
 		select {
 		case <-ctx.Done():

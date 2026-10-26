@@ -223,6 +223,36 @@ export function TextInput({
   )
 }
 
+/** Single-line text field without an icon (codes, short values). */
+export function Field({
+  value,
+  onChange,
+  placeholder,
+  label,
+  maxLength,
+  className = '',
+}: {
+  value: string
+  onChange: (v: string) => void
+  placeholder?: string
+  label: string
+  maxLength?: number
+  className?: string
+}) {
+  return (
+    <input
+      aria-label={label}
+      value={value}
+      placeholder={placeholder}
+      maxLength={maxLength}
+      autoComplete="off"
+      spellCheck={false}
+      onChange={(e) => onChange(e.target.value)}
+      className={`h-8 min-w-0 rounded-md bg-surface-2 px-2.5 text-ui text-ink outline-none placeholder:text-ink-3 focus:ring-1 focus:ring-line ${className}`}
+    />
+  )
+}
+
 export function Seg<T extends string>({
   value,
   options,

@@ -66,7 +66,7 @@ func TestNodeFingerprintGolden(t *testing.T) {
 func TestRevisionNoopReplayCASAndAdoption(t *testing.T) {
 	s := fixture(t)
 	ctx := context.Background()
-	a := Actor{"writer", "author"}
+	a := Actor{ID: "writer", Role: "author"}
 	h := stateHead(t, s)
 	noopKey := "noop"
 	if r, e := s.Save(ctx, a, "CH-001", "noop", payload(h.ID, h.Markdown), &noopKey); e != nil || r.Status != 200 {
@@ -123,7 +123,7 @@ func TestRevisionNoopReplayCASAndAdoption(t *testing.T) {
 func TestNoteTransactionRestartAndUniquePlan(t *testing.T) {
 	s := fixture(t)
 	ctx := context.Background()
-	a := Actor{"writer", "author"}
+	a := Actor{ID: "writer", Role: "author"}
 	created, e := s.MutateNote(ctx, a, nil, "note", map[string]any{"content": "Idea"})
 	if e != nil {
 		t.Fatal(e)
@@ -162,7 +162,7 @@ func TestConcurrentWorkspacePatchPreservesFields(t *testing.T) {
 		wg.Add(1)
 		go func(p map[string]any) {
 			defer wg.Done()
-			if _, e := s.PatchWorkspace(context.Background(), Actor{"writer", "author"}, p); e != nil {
+			if _, e := s.PatchWorkspace(context.Background(), Actor{ID: "writer", Role: "author"}, p); e != nil {
 				t.Error(e)
 			}
 		}(p)
@@ -181,10 +181,10 @@ func TestStorageFailureCannotReportSuccess(t *testing.T) {
 	if e := os.WriteFile(s.State, []byte("blocked"), 0600); e != nil {
 		t.Fatal(e)
 	}
-	if _, e := s.MutateNote(context.Background(), Actor{"a", "author"}, nil, "note", map[string]any{"content": "Idea"}); e == nil {
+	if _, e := s.MutateNote(context.Background(), Actor{ID: "a", Role: "author"}, nil, "note", map[string]any{"content": "Idea"}); e == nil {
 		t.Fatal("false note success")
 	}
-	if _, e := s.Save(context.Background(), Actor{"a", "author"}, "CH-001", "failure", payload("source:unknown", "body"), nil); e == nil || AsError(e).Code != "AUDIT_WRITE_FAILED" {
+	if _, e := s.Save(context.Background(), Actor{ID: "a", Role: "author"}, "CH-001", "failure", payload("source:unknown", "body"), nil); e == nil || AsError(e).Code != "AUDIT_WRITE_FAILED" {
 		t.Fatal(e)
 	}
 }
@@ -200,11 +200,11 @@ func TestRevisionCompletionAuditFailureAndRetry(t *testing.T) {
 		return storage.Append(ctx, path, v)
 	}
 	key := "retry"
-	if _, e := s.Save(context.Background(), Actor{"writer", "author"}, "CH-001", "first", payload(h.ID, "Stored despite failed completion audit"), &key); e == nil || AsError(e).Code != "AUDIT_WRITE_FAILED" {
+	if _, e := s.Save(context.Background(), Actor{ID: "writer", Role: "author"}, "CH-001", "first", payload(h.ID, "Stored despite failed completion audit"), &key); e == nil || AsError(e).Code != "AUDIT_WRITE_FAILED" {
 		t.Fatal(e)
 	}
 	s.auditAppend = nil
-	result, e := s.Save(context.Background(), Actor{"writer", "author"}, "CH-001", "retry", payload(h.ID, "Stored despite failed completion audit"), &key)
+	result, e := s.Save(context.Background(), Actor{ID: "writer", Role: "author"}, "CH-001", "retry", payload(h.ID, "Stored despite failed completion audit"), &key)
 	if e != nil || result.Status != 200 || result.Result != "idempotent_replay" {
 		t.Fatal(result, e)
 	}
@@ -230,10 +230,10 @@ func TestApplicationProcessHelper(t *testing.T) {
 	var e error
 	status := 200
 	if mode == "revision" {
-		_, e = s.Save(context.Background(), Actor{"writer", "author"}, "CH-001", compat.UUID(), payload(os.Getenv("WRITER_TEST_BASE"), os.Getenv("WRITER_TEST_VALUE")), nil)
+		_, e = s.Save(context.Background(), Actor{ID: "writer", Role: "author"}, "CH-001", compat.UUID(), payload(os.Getenv("WRITER_TEST_BASE"), os.Getenv("WRITER_TEST_VALUE")), nil)
 		status = 201
 	} else {
-		_, e = s.MutateNote(context.Background(), Actor{"writer", "author"}, pointer(os.Getenv("WRITER_TEST_NOTE")), os.Getenv("WRITER_TEST_VALUE"), map[string]any{"content": os.Getenv("WRITER_TEST_VALUE"), "baseVersion": json.Number("1"), "status": "active"})
+		_, e = s.MutateNote(context.Background(), Actor{ID: "writer", Role: "author"}, pointer(os.Getenv("WRITER_TEST_NOTE")), os.Getenv("WRITER_TEST_VALUE"), map[string]any{"content": os.Getenv("WRITER_TEST_VALUE"), "baseVersion": json.Number("1"), "status": "active"})
 	}
 	if e != nil {
 		status = AsError(e).Status
@@ -247,7 +247,7 @@ func TestCrossProcessOptimisticWrites(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			s := fixture(t)
 			h := stateHead(t, s)
-			n, e := s.MutateNote(context.Background(), Actor{"writer", "author"}, nil, "seed", map[string]any{"content": "Initial"})
+			n, e := s.MutateNote(context.Background(), Actor{ID: "writer", Role: "author"}, nil, "seed", map[string]any{"content": "Initial"})
 			if e != nil {
 				t.Fatal(e)
 			}

@@ -54,6 +54,8 @@ type Registry struct {
 	Schema int               `json:"schema"`
 	Tasks  map[string]Record `json:"tasks"`
 	Cursor int               `json:"cursor"`
+	// Claims counts claimed tasks; every third claim ignores plan priority.
+	Claims int `json:"claims,omitempty"`
 }
 type Service struct {
 	Management *application.Management
@@ -62,6 +64,9 @@ type Service struct {
 	State  string
 	Config llm.Config
 	Token  string
+	// Priority reports whether an owner's plan gets the first claim on
+	// background work (Pro); nil means normal priority for everyone.
+	Priority func(ctx context.Context, owner string) bool
 }
 
 // resolveTask opens a task's book as the author recorded at claim time, and
@@ -147,13 +152,22 @@ func (s *Service) Claim(ctx context.Context, instance, config string, kinds ...s
 		if active >= 2 {
 			return nil
 		}
-		start := st.Cursor % total
 		policy, e := (executorpolicy.Controller{State: s.State}).Read()
 		if e != nil {
 			return e
 		}
-		for n := 0; n < total; n++ {
-			i := (start + n) % total
+		// Pro books get the first claim, except on every third claim, so a
+		// busy priority author cannot starve everyone else. Priority claims
+		// leave the rotation cursor alone.
+		priority := map[string]bool{}
+		if s.Priority != nil && st.Claims%3 != 2 {
+			for _, b := range books {
+				if _, seen := priority[b.Owner.ID]; !seen {
+					priority[b.Owner.ID] = s.Priority(ctx, b.Owner.ID)
+				}
+			}
+		}
+		for _, i := range compat.PriorityOrder(total, st.Cursor, func(i int) bool { return priority[books[i/2].Owner.ID] }) {
 			kind := []string{"review", "knowledge"}[i%2]
 			if len(kinds) > 0 {
 				supported := false
@@ -236,7 +250,10 @@ func (s *Service) Claim(ctx context.Context, instance, config string, kinds ...s
 			task.InputHash = compat.Hash(string(raw))
 			rec.Task = task
 			st.Tasks[task.ID] = rec
-			st.Cursor = (i + 1) % total
+			if !priority[owner.ID] {
+				st.Cursor = (i + 1) % total
+			}
+			st.Claims = (st.Claims + 1) % 3000
 			out = &task
 			return nil
 		}
