@@ -172,7 +172,7 @@ func TestRedeemPlanAndTopupCodes(t *testing.T) {
 		t.Fatal("conflicting plan code accepted")
 	}
 	// Top-up codes need a paid plan.
-	top, _ := CreateCodes(ctx, l.State, CodeSpec{Kind: "topup", Points: 3000}, 1, c.t.AddDate(0, 0, 1), "")
+	top, _ := CreateCodes(ctx, l.State, CodeSpec{Kind: "topup", Points: 3000}, 1, time.Now().UTC().Add(time.Hour), "")
 	if code(func() error { _, e := l.Redeem(ctx, "carol", top[0]); return e }()) != "PLAN_FEATURE_REQUIRED" {
 		t.Fatal("Free account redeemed a top-up")
 	}
