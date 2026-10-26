@@ -24,7 +24,14 @@ func New(c Config) (*OpenAICompatible, error) {
 func (c *OpenAICompatible) Generate(ctx context.Context, r Request) (Response, error) {
 	timeout, cancel := context.WithTimeout(ctx, c.Config.Timeout)
 	defer cancel()
-	payload := map[string]any{"model": c.Config.Model, "messages": []map[string]string{{"role": "system", "content": r.System}, {"role": "user", "content": r.Input}}, c.Config.TokenParameter: c.Config.MaxOutputTokens, "stream": false}
+	output := c.Config.MaxOutputTokens
+	if r.OutputLimit != 0 {
+		if r.OutputLimit < 128 || r.OutputLimit > output {
+			return Response{}, Fail("LLM_INVALID_REQUEST")
+		}
+		output = r.OutputLimit
+	}
+	payload := map[string]any{"model": c.Config.Model, "messages": []map[string]string{{"role": "system", "content": r.System}, {"role": "user", "content": r.Input}}, c.Config.TokenParameter: output, "stream": false}
 	if c.Config.ResponseFormat == "json_object" {
 		payload["response_format"] = map[string]any{"type": "json_object"}
 	}
@@ -75,7 +82,11 @@ func (c *OpenAICompatible) Generate(ctx context.Context, r Request) (Response, e
 			Finish string `json:"finish_reason"`
 		} `json:"choices"`
 		Usage *struct {
-			Prompt     *int `json:"prompt_tokens"`
+			Prompt        *int `json:"prompt_tokens"`
+			CacheHit      *int `json:"prompt_cache_hit_tokens"`
+			PromptDetails *struct {
+				Cached *int `json:"cached_tokens"`
+			} `json:"prompt_tokens_details"`
 			Completion *int `json:"completion_tokens"`
 		} `json:"usage"`
 	}
@@ -95,8 +106,12 @@ func (c *OpenAICompatible) Generate(ctx context.Context, r Request) (Response, e
 		return Response{}, Fail("LLM_INCOMPLETE_OUTPUT")
 	}
 	var usage *Usage
-	if decoded.Usage != nil && decoded.Usage.Prompt != nil && decoded.Usage.Completion != nil && *decoded.Usage.Prompt >= 0 && *decoded.Usage.Prompt <= 1000000 && *decoded.Usage.Completion >= 0 && *decoded.Usage.Completion <= c.Config.MaxOutputTokens {
-		usage = &Usage{*decoded.Usage.Prompt, *decoded.Usage.Completion}
+	if decoded.Usage != nil && decoded.Usage.Prompt != nil && decoded.Usage.Completion != nil && *decoded.Usage.Prompt >= 0 && *decoded.Usage.Prompt <= 1000000 && *decoded.Usage.Completion >= 0 && *decoded.Usage.Completion <= output {
+		var details *int
+		if decoded.Usage.PromptDetails != nil {
+			details = decoded.Usage.PromptDetails.Cached
+		}
+		usage = &Usage{InputTokens: *decoded.Usage.Prompt, OutputTokens: *decoded.Usage.Completion, CachedInputTokens: CachedInput(*decoded.Usage.Prompt, decoded.Usage.CacheHit, details)}
 	}
 	return Response{*choice.Message.Content, usage}, nil
 }

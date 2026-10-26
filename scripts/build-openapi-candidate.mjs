@@ -64,7 +64,7 @@ chapterRevisionCreate.required = chapterRevisionCreate.required.map((name) => na
 
 const problemCodes = source.components.schemas.Problem?.properties?.code?.enum
 if (Array.isArray(problemCodes) && !problemCodes.includes('AUDIT_WRITE_FAILED')) problemCodes.push('AUDIT_WRITE_FAILED')
-for (const code of ['REVIEW_CONTEXT_TOO_LARGE', 'REVIEW_EMPTY_CHAPTER', 'REVIEW_REVISION_CHANGED', 'REVIEW_SOURCE_UNAVAILABLE', 'REVIEW_UNAVAILABLE', 'REVIEW_BUSY', 'REVIEW_CONSENT_REQUIRED', 'REVIEW_CONTEXT_CHANGED', 'REVIEW_HISTORY_FULL', 'REVIEW_NOT_COMPLETED', 'REVIEW_NOT_RUNNING', 'REVIEW_VERSION_CONFLICT', 'REVIEW_STORAGE_FAILED']) {
+for (const code of ['REVIEW_TRIAL_EXHAUSTED', 'PLAN_QUOTA_EXCEEDED', 'FREE_POOL_EXHAUSTED', 'AI_PAUSED', 'BILLING_RESERVATION_EXPIRED', 'PLAN_FEATURE_REQUIRED', 'REVIEW_CONTEXT_TOO_LARGE', 'REVIEW_EMPTY_CHAPTER', 'REVIEW_REVISION_CHANGED', 'REVIEW_SOURCE_UNAVAILABLE', 'REVIEW_UNAVAILABLE', 'REVIEW_BUSY', 'REVIEW_CONSENT_REQUIRED', 'REVIEW_CONTEXT_CHANGED', 'REVIEW_HISTORY_FULL', 'REVIEW_NOT_COMPLETED', 'REVIEW_NOT_RUNNING', 'REVIEW_VERSION_CONFLICT', 'REVIEW_STORAGE_FAILED']) {
   if (Array.isArray(problemCodes) && !problemCodes.includes(code)) problemCodes.push(code)
 }
 
@@ -82,12 +82,18 @@ source['x-source-provenance'] = {
   note: 'The Figma MCP resource response was truncated; the complete source copy was supplied in the author reply in this task and preserved under harness/contracts/source/.',
 }
 
+const authorExtension = JSON.parse(await readFile(new URL('../harness/contracts/author-workspace-extension.json', import.meta.url), 'utf8'))
+Object.assign(source.paths, authorExtension.paths)
+Object.assign(source.components.schemas, authorExtension.schemas)
+source.components.schemas.UserWorkspaceState.properties.resume = { $ref: '#/components/schemas/WorkspaceResume' }
+
 const notesExtension = JSON.parse(await readFile(new URL('../harness/contracts/notes-engineering-extension.json', import.meta.url), 'utf8'))
 Object.assign(source.paths, notesExtension.paths)
 Object.assign(source.components.schemas, notesExtension.schemas)
 source.components.schemas.Workspace.properties.capabilities = { $ref: '#/components/schemas/WorkspaceCapabilities' }
 source.components.securitySchemes.bearerAuth.description = 'Production: one configured author authenticated by a 256-bit opaque Bearer token over HTTPS; token never comes from query strings or actor headers. Local development identity is development/test only.'
 source.tags ??= []
+source.tags.push({ name: 'Revisions', description: 'Immutable author-owned Markdown history; recovery uses existing revision CAS.' }, { name: 'Account', description: 'Author point balances and UTC monthly review allowance.' })
 source.tags.push({ name: 'Author Notes', description: 'Informal author application state, isolated from Harness facts.' })
 for (const code of ['NOTE_VERSION_CONFLICT', 'NEXT_WRITING_EXISTS', 'METHOD_NOT_ALLOWED']) {
   if (Array.isArray(problemCodes) && !problemCodes.includes(code)) problemCodes.push(code)

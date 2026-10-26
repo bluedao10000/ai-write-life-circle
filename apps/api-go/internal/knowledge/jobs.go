@@ -492,6 +492,7 @@ func (s *Service) complete(ctx context.Context, p *PreparedJob, response llm.Res
 				current.Usage = &llm.Usage{}
 			}
 			current.Usage.InputTokens += response.Usage.InputTokens
+			current.Usage.CachedInputTokens += response.Usage.CachedInputTokens
 			current.Usage.OutputTokens += response.Usage.OutputTokens
 		}
 		return current
@@ -673,7 +674,7 @@ func settlePoints(response llm.Response, sent bool) int {
 		return 0
 	}
 	if response.Usage != nil {
-		return billing.PointsFor(response.Usage.InputTokens, response.Usage.OutputTokens)
+		return billing.PointsFor(response.Usage.InputTokens, response.Usage.OutputTokens, response.Usage.CachedInputTokens)
 	}
 	return -1
 }

@@ -25,6 +25,7 @@ test("real Pi SDK tool loop, durable multi-turn context, replay, cancellation an
     toolCalls = 0,
     mode = "normal",
     revoked = false;
+  let cacheHit = 80;
   const prompts: unknown[] = [];
   const source = {
     sourceId: "src-fixture",
@@ -146,6 +147,8 @@ test("real Pi SDK tool loop, durable multi-turn context, replay, cancellation an
           ],
           usage: {
             prompt_tokens: 100,
+ prompt_cache_hit_tokens: cacheHit,
+ prompt_tokens_details: {cached_tokens: 80},
             completion_tokens: 20,
             total_tokens: 120,
           },
@@ -196,6 +199,8 @@ test("real Pi SDK tool loop, durable multi-turn context, replay, cancellation an
       "fixture",
     );
     await host.active.get(id)?.done;
+    assert.equal(host.get(id).view.usage.incomplete, false);
+    assert.ok((host.get(id).view.usage.cachedInput ?? 0) > 0);
     assert.equal(
       host.get(id).view.messages.at(-1)?.status,
       "completed",
@@ -215,6 +220,8 @@ test("real Pi SDK tool loop, durable multi-turn context, replay, cancellation an
       accepted,
     );
     assert.equal(requests, 3);
+    const previousCached=host.get(id).view.usage.cachedInput;
+    cacheHit=90; // conflicting aliases must not discount the next turn
     await host.close();
     host = new PiHost(config, new Store(state));
     await host.accept(
@@ -224,6 +231,7 @@ test("real Pi SDK tool loop, durable multi-turn context, replay, cancellation an
       "fixture",
     );
     await host.active.get(id)?.done;
+    assert.equal(host.get(id).view.usage.cachedInput,previousCached);
     assert(
       JSON.stringify(prompts.at(-1)).includes("林舟与父亲的关系变化是否合理"),
     );

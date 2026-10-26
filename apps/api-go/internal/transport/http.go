@@ -33,7 +33,9 @@ type Options struct {
 	Management   *application.Management
 	ReviewFor    func(*application.Service) *review.Service
 	// Account returns the caller's AI-point allowance (GET /v1/account).
-	Account      func(context.Context, application.Actor) (any, error)
+	Account func(context.Context, application.Actor) (any, error)
+	// Redeem applies a redeem code (POST /v1/account/redeem).
+	Redeem       func(context.Context, application.Actor, string) (any, error)
 	Service      *application.Service
 	Environment  string
 	ResolveActor Resolver
@@ -47,6 +49,7 @@ var decimalRE = regexp.MustCompile(`^[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE
 var workspaceRE = regexp.MustCompile(`^/v1/projects/([^/]+)/workspace$`)
 var chaptersRE = regexp.MustCompile(`^/v1/projects/([^/]+)/chapters$`)
 var chapterRE = regexp.MustCompile(`^/v1/projects/([^/]+)/chapters/([^/]+)$`)
+var revisionContentRE = regexp.MustCompile(`^/v1/projects/([^/]+)/chapters/([^/]+)/revisions/([^/]+)$`)
 var revisionsRE = regexp.MustCompile(`^/v1/projects/([^/]+)/chapters/([^/]+)/revisions$`)
 var notesRE = regexp.MustCompile(`^/v1/projects/([^/]+)/notes(?:/([^/]+))?$`)
 var internalRE = regexp.MustCompile(`^/internal/projects/([^/]+)/harness-projection$`)
@@ -211,7 +214,7 @@ func Handler(o Options) http.Handler {
 		for _, route := range []struct {
 			name    string
 			pattern *regexp.Regexp
-		}{{"notes", notesRE}, {"internal", internalRE}, {"workspace", workspaceRE}, {"chapters", chaptersRE}, {"chapter", chapterRE}, {"revisions", revisionsRE}} {
+		}{{"notes", notesRE}, {"internal", internalRE}, {"workspace", workspaceRE}, {"chapters", chaptersRE}, {"chapter", chapterRE}, {"revisions", revisionsRE}, {"revisionContent", revisionContentRE}} {
 			if match := route.pattern.FindStringSubmatch(path); match != nil {
 				kind = route.name
 				m = match
@@ -332,6 +335,25 @@ func Handler(o Options) http.Handler {
 					w.Header().Set("ETag", compat.Quote(rev))
 				}
 				respond(b, e, 200, "")
+				return
+			}
+		case "revisionContent":
+			if method == "GET" {
+				if !role(w, actor, "author") {
+					return
+				}
+				id, ok := decode(m[2])
+				revision, valid := decode(m[3])
+				if !ok || !valid {
+					problem(w, application.Fail(400, "VALIDATION_FAILED", "Invalid revision path."), "")
+					return
+				}
+				value, e := o.Service.SavedRevisionAt(r.Context(), id, revision)
+				// Deliberately exclude private idempotency and request hash fields.
+				respond(map[string]any{"chapterId": id, "revision": struct {
+					application.Revision
+					Markdown string `json:"markdown"`
+				}{value.Revision, value.Markdown}}, e, 200, "")
 				return
 			}
 		case "revisions":

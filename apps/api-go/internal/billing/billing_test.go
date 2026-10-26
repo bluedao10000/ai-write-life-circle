@@ -53,7 +53,7 @@ func TestFreeDailyAndMonthlyLimitsAdmitAtMostOneOverrun(t *testing.T) {
 	}
 	// Admission is checked before adding the hold: one large op may overrun.
 	c.t = c.t.AddDate(0, 0, 1)
-	if e := l.Reserve(ctx, "alice", "big", "review", 250); e != nil {
+	if e := l.Reserve(ctx, "alice", "big", "knowledge", 250); e != nil {
 		t.Fatal(e)
 	}
 	if code(l.Reserve(ctx, "alice", "next", "thinking", 100)) != "" {
@@ -88,15 +88,15 @@ func TestFreeDailyAndMonthlyLimitsAdmitAtMostOneOverrun(t *testing.T) {
 func TestReserveSettleIdempotentAndExpiry(t *testing.T) {
 	l, c := ledger(t)
 	ctx := context.Background()
-	if e := l.Reserve(ctx, "bob", "op", "review", 50); e != nil {
+	if e := l.Reserve(ctx, "bob", "op", "knowledge", 50); e != nil {
 		t.Fatal(e)
 	}
-	if e := l.Reserve(ctx, "bob", "op", "review", 50); e != nil {
+	if e := l.Reserve(ctx, "bob", "op", "knowledge", 50); e != nil {
 		t.Fatal(e)
 	}
 	_ = l.Settle(ctx, "bob", "op", 7)
 	_ = l.Settle(ctx, "bob", "op", 500) // second settle ignored
-	if e := l.Reserve(ctx, "bob", "op", "review", 50); e != nil {
+	if e := l.Reserve(ctx, "bob", "op", "knowledge", 50); e != nil {
 		t.Fatal(e) // settled op replays without a new hold
 	}
 	u, _ := l.View(ctx, "bob")
@@ -122,8 +122,8 @@ func TestReserveSettleIdempotentAndExpiry(t *testing.T) {
 func TestPlansFeaturesLegacyOwnerAndIsolation(t *testing.T) {
 	l, _ := ledger(t)
 	ctx := context.Background()
-	if code(l.Allow(ctx, "free-user", "review")) != "PLAN_FEATURE_REQUIRED" {
-		t.Fatal("Free account allowed review")
+	if e := l.Allow(ctx, "free-user", "review"); e != nil {
+		t.Fatal("Free trial unavailable", e)
 	}
 	if e := l.Allow(ctx, "free-user", "thinking"); e != nil {
 		t.Fatal(e)
@@ -219,5 +219,31 @@ func TestOwnerlessCallsAreNotMetered(t *testing.T) {
 	ctx := context.Background()
 	if l.Reserve(ctx, "", "op", "review", 1e6) != nil || l.Settle(ctx, "", "op", 5) != nil || l.Allow(ctx, "", "review") != nil {
 		t.Fatal("unmanaged fixtures must not be metered")
+	}
+}
+
+func TestCachedInputUsesVersionedIntegerPricing(t *testing.T) {
+	for _, tc := range []struct{ input, output, cached, want int }{
+		{50000, 0, 50000, 1}, {50001, 0, 50001, 2}, {10000, 2000, 5000, 14},
+		{10000, 2000, 10000, 9}, {10000, 2000, 0, 18}, {10000, 2000, 10001, 18},
+	} {
+		if got := PointsFor(tc.input, tc.output, tc.cached); got != tc.want {
+			t.Fatalf("%+v got %d", tc, got)
+		}
+	}
+	l, _ := ledger(t)
+	ctx := context.Background()
+	if e := l.Reserve(ctx, "cache", "op", "knowledge", 50); e != nil {
+		t.Fatal(e)
+	}
+	if e := l.Settle(ctx, "cache", "op", PointsFor(50000, 0, 50000)); e != nil {
+		t.Fatal(e)
+	}
+	u, e := l.View(ctx, "cache")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if u.Day.Used != 1 || len(u.Recent) != 1 || u.Recent[0].PricingVersion != PricingVersion {
+		t.Fatal(u)
 	}
 }

@@ -240,3 +240,57 @@ func TestByteCapacitySettingPrecedenceAndOutputLimit(t *testing.T) {
 		t.Fatal("unbounded output accepted")
 	}
 }
+
+func TestProviderCacheUsageIsValidated(t *testing.T) {
+	for _, tc := range []struct {
+		details string
+		want    int
+	}{
+		{`"prompt_cache_hit_tokens":9000`, 9000},
+		{`"prompt_tokens_details":{"cached_tokens":8000}`, 8000},
+		{`"prompt_cache_hit_tokens":9000,"prompt_tokens_details":{"cached_tokens":9000}`, 9000},
+		{`"prompt_cache_hit_tokens":10001`, 0},
+		{`"prompt_cache_hit_tokens":-1`, 0},
+		{`"prompt_cache_hit_tokens":9000,"prompt_tokens_details":{"cached_tokens":8000}`, 0},
+	} {
+		t.Run(tc.details, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{}"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10000,"completion_tokens":100,` + tc.details + `}}`))
+			}))
+			defer server.Close()
+			client, e := New(testConfig(server.URL))
+			if e != nil {
+				t.Fatal(e)
+			}
+			response, e := client.Generate(context.Background(), Request{System: "fixture", Input: "fixture"})
+			if e != nil {
+				t.Fatal(e)
+			}
+			if response.Usage == nil || response.Usage.InputTokens != 10000 || response.Usage.CachedInputTokens != tc.want {
+				t.Fatal(response.Usage)
+			}
+		})
+	}
+}
+
+func TestConsentedOutputLimitBoundsActualProviderRequest(t *testing.T) {
+	var output int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		output = int(body["max_completion_tokens"].(float64))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{}"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":8}}`))
+	}))
+	defer server.Close()
+	c, e := New(testConfig(server.URL))
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = c.Generate(context.Background(), Request{System: "fixture", Input: "synthetic", OutputLimit: 512}); e != nil || output != 512 {
+		t.Fatal(output, e)
+	}
+	if _, e = c.Generate(context.Background(), Request{OutputLimit: 2048}); errorCode(e) != "LLM_INVALID_REQUEST" {
+		t.Fatal("request may not raise configured ceiling", e)
+	}
+}

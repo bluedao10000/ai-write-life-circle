@@ -375,17 +375,18 @@ func (s *Service) RetryIntake(ctx context.Context, limit int) {
 type sessionUsage struct {
 	Status string `json:"status"`
 	Usage  struct {
-		Input      int  `json:"input"`
-		Output     int  `json:"output"`
-		Charged    int  `json:"charged"`
-		Incomplete bool `json:"incomplete"`
+		Input       int  `json:"input"`
+		CachedInput int  `json:"cachedInput"`
+		Output      int  `json:"output"`
+		Charged     int  `json:"charged"`
+		Incomplete  bool `json:"incomplete"`
 	} `json:"usage"`
 }
 
 // points converts Pi's cumulative usage; incomplete usage falls back to Pi's
 // conservative reservation ceiling.
 func (u sessionUsage) points() int {
-	p := billing.PointsFor(u.Usage.Input, u.Usage.Output)
+	p := billing.PointsFor(u.Usage.Input, u.Usage.Output, u.Usage.CachedInput)
 	if u.Usage.Incomplete {
 		p = max(p, (u.Usage.Charged+999)/1000)
 	}
@@ -434,31 +435,41 @@ func (s *Service) SettleUsage(ctx context.Context, limit int) {
 			return
 		}
 		limit--
-		var usage *sessionUsage
-		if !r.Deleted {
-			raw, found, err := s.Snapshot(ctx, id)
+		_ = storage.Lock(ctx, s.path()+"."+compat.Key(id)+".lock", func() error {
+			latest, err := s.load()
 			if err != nil {
-				continue // Pi offline: the ledger lease charges the reservation if this persists.
+				return err
 			}
-			if found {
-				var u sessionUsage
-				if json.Unmarshal(raw, &u) != nil {
-					continue
-				}
-				if u.running() {
-					continue
-				}
-				usage = &u
-			}
-		}
-		next := s.settle(ctx, r, usage)
-		_ = s.tx(ctx, func(current *registry) error {
-			v, ok := current.Sessions[id]
-			if !ok || v.BillOp != r.BillOp {
+			if latest.Sessions[id].BillOp != r.BillOp {
 				return nil
 			}
-			v.BillOp, v.Billed = next.BillOp, next.Billed
-			current.Sessions[id] = v
+			var usage *sessionUsage
+			if !r.Deleted {
+				raw, found, err := s.Snapshot(ctx, id)
+				if err != nil {
+					return nil // Pi offline: the ledger lease charges the reservation if this persists.
+				}
+				if found {
+					var u sessionUsage
+					if json.Unmarshal(raw, &u) != nil {
+						return nil
+					}
+					if u.running() {
+						return nil
+					}
+					usage = &u
+				}
+			}
+			next := s.settle(ctx, r, usage)
+			_ = s.tx(ctx, func(current *registry) error {
+				v, ok := current.Sessions[id]
+				if !ok || v.BillOp != r.BillOp {
+					return nil
+				}
+				v.BillOp, v.Billed = next.BillOp, next.Billed
+				current.Sessions[id] = v
+				return nil
+			})
 			return nil
 		})
 	}

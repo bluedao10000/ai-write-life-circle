@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/application"
+	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/billing"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/executorpolicy"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/knowledge"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/llm"
+	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/review"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -276,5 +278,83 @@ func TestClaimRunsAsTheBookOwner(t *testing.T) {
 	forged.Author = "legacy-author"
 	if _, e := s.resolveTask(forged); e == nil {
 		t.Fatal("task resolved for a non-owner")
+	}
+}
+
+func TestPiReviewStartRechecksPlanAndReleasesUnusedReservation(t *testing.T) {
+	s, k := fixture(t)
+	ctx := context.Background()
+	actor := application.Actor{Role: "author"}
+	// Use the actual managed owner from the fixture rather than the configured legacy owner.
+	books, e := s.Management.OwnedBooks()
+	if e != nil || len(books) != 1 {
+		t.Fatal(books, e)
+	}
+	actor = books[0].Owner
+	ledger := &billing.Ledger{State: s.State}
+	s.Management.UseMeter(ledger)
+	if e := ledger.SetPlan(ctx, actor.ID, billing.Plus); e != nil {
+		t.Fatal(e)
+	}
+	app, e := s.Management.Resolve(actor, k.App.Project)
+	if e != nil {
+		t.Fatal(e)
+	}
+	chapters, e := app.Projection()
+	if e != nil {
+		t.Fatal(e)
+	}
+	sources, e := application.Sources(chapters)
+	if e != nil || len(sources) == 0 {
+		t.Fatal(sources, e)
+	}
+	chapter := sources[0]
+	revision, e := app.ReviewRevision(ctx, chapter)
+	if e != nil {
+		t.Fatal(e)
+	}
+	r := review.New(app, s.Config, nil)
+	defer r.Close()
+	r.DisableLocalExecution = true
+	plan, e := r.Preview(ctx, actor, chapter.ID, review.Input{RevisionID: revision.ID, ContentHash: revision.Hash, ReviewTypes: []string{"character_consistency"}})
+	if e != nil {
+		t.Fatal(e)
+	}
+	in := review.CreateInput{Input: plan.Input}
+	in.Consent.Confirmed = true
+	in.Consent.PlanHash = plan.PlanHash
+	if _, e := r.Start(ctx, actor, chapter.ID, "review", in); e != nil {
+		t.Fatal(e)
+	}
+	controller := executorpolicy.Controller{State: s.State}
+	if e := controller.Drain(ctx, "review"); e != nil {
+		t.Fatal(e)
+	}
+	if e := controller.Switch(ctx, "review", "pi"); e != nil {
+		t.Fatal(e)
+	}
+	task, e := s.Claim(ctx, "fixture", s.Config.Fingerprint(), "review")
+	if e != nil || task == nil {
+		t.Fatal(task, e)
+	}
+	if e := ledger.SetPlan(ctx, actor.ID, billing.Free); e != nil {
+		t.Fatal(e)
+	}
+	if e := s.Action(ctx, task.ID, "started", envelope(task)); application.AsError(e).Code != "PLAN_FEATURE_REQUIRED" {
+		t.Fatal("downgraded task started", e)
+	}
+	u, e := ledger.View(ctx, actor.ID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if u.Day.Reserved != 0 || u.Day.Used != 0 {
+		t.Fatal("unused reservation charged", u.Day)
+	}
+	st, e := s.load()
+	if e != nil {
+		t.Fatal(e)
+	}
+	if !st.Tasks[task.ID].Finished || st.Tasks[task.ID].Started {
+		t.Fatal("denied task not terminated")
 	}
 }

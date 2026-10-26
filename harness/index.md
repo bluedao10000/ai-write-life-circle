@@ -18,3 +18,5 @@
 | 会话交接 | [handoff](workflows/handoff.md) | state/current.md |
 
 规则：默认只读 1 个工作流、相关索引和至多 5 个相关文件。上下文不足时按需扩大并说明。
+
+- 作者体验 P0（恢复、历史正文、审查与注记、Free 审查额度）：[设计与一致性](architecture/author-experience-p0.md)

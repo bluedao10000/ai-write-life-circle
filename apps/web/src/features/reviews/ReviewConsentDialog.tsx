@@ -29,15 +29,16 @@ function ReviewConsentContent({ review, onStarted }: Props) {
       </fieldset>
       <ConsentFacts rows={[
         ['模型', plan.model.model],
-        ['端点', plan.model.endpoint],
+        ['接收方', new URL(plan.model.endpoint).hostname],
         ['执行', plan.model.execution === 'local' ? '服务器本机模型服务' : '外部模型服务'],
         ['规模', `约 ${(plan.contextBytes / 1024).toFixed(1)} KB 文本与审查指令`],
       ]} />
+      {plan.cost && <p className="rounded border border-line p-3 text-ui-sm">本次将预留最多 {plan.cost.reservedPoints} AI 点数，完成后按实际用量结算，并占用 1 次免费审查。模型调用前取消会释放；模型开始后取消、失败或超时仍计次。同一任务重试不重复计次。若今日剩余点数不足，请明日再试。</p>}
       <section><h3 className="text-ui-sm font-medium text-ink-3">将发送的资料</h3><p className="mt-1 text-ui-sm text-ink-3">仅审查以下实际范围，不代表已覆盖整本书。</p>
         <ul className="mt-2 divide-y divide-line-soft rounded-lg border border-line text-ui-sm">{plan.sources.map((source) => <li key={source.sourceId} className="flex items-start gap-2 px-3.5 py-2"><Icon name="check" className="mt-0.5 text-ok" /><div className="min-w-0"><div className="text-ink">{source.kind === 'target' ? '本章已保存全文' : source.kind === 'historical_chapter' ? '历史章节片段' : '已确认知识片段'}：{source.title}</div><div className="break-all text-micro text-ink-3">{source.path}</div></div></li>)}</ul>
         {(plan.excludedKnowledgeCount > 0 || plan.skippedSourceCount > 0) && <p className="mt-2 text-micro text-ink-3">{plan.excludedKnowledgeCount > 0 ? `${plan.excludedKnowledgeCount} 份状态或来源不足的知识未作为确认事实。` : ''}{plan.skippedSourceCount > 0 ? '部分历史资料超出本次范围，未覆盖整本书。' : ''}</p>}
       </section>
-      <ConsentList title="不会做" kind="never" items={['修改正文、已确认的设定或发布内容', '在你不知情时更换模型或端点']} />
+      <ConsentList title="不会做" kind="never" items={['修改正文、已确认的设定或发布内容', '在你不知情时更换 AI 服务']} />
       <p className="text-ui-sm">每次确认将创建新的审查记录，已有记录与反馈会保留。仅用于本次连续性审查。原文和设定由作者控制；后续正文或来源变化会使结果过期。</p>
       <label className="flex cursor-pointer items-start gap-2 rounded-lg bg-surface-2 px-3.5 py-2.5 text-ink"><input className="mt-1 accent-current" type="checkbox" checked={acceptedHash === plan.planHash} disabled={waiting} onChange={(event) => setAcceptedHash(event.target.checked ? plan.planHash : '')} /><span>我同意将上述范围的数据发送给此模型服务进行本次审查。</span></label>
       {review.error && <p role="alert" className="text-warn">{review.error}</p>}

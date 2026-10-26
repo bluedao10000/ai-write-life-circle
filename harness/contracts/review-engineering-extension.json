@@ -64,6 +64,16 @@
               }
             }
           },
+          "402": {
+            "description": "Request refused, unavailable model or application storage failure",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "403": {
             "description": "Request refused, unavailable model or application storage failure",
             "content": {
@@ -171,6 +181,16 @@
             }
           },
           "401": {
+            "description": "Request refused, unavailable model or application storage failure",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "402": {
             "description": "Request refused, unavailable model or application storage failure",
             "content": {
               "application/problem+json": {
@@ -314,6 +334,16 @@
               }
             }
           },
+          "402": {
+            "description": "Request refused, unavailable model or application storage failure",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "403": {
             "description": "Request refused, unavailable model or application storage failure",
             "content": {
@@ -421,6 +451,16 @@
             }
           },
           "401": {
+            "description": "Request refused, unavailable model or application storage failure",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "402": {
             "description": "Request refused, unavailable model or application storage failure",
             "content": {
               "application/problem+json": {
@@ -547,6 +587,16 @@
             }
           },
           "401": {
+            "description": "Request refused, unavailable model or application storage failure",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "402": {
             "description": "Request refused, unavailable model or application storage failure",
             "content": {
               "application/problem+json": {
@@ -692,6 +742,16 @@
             }
           },
           "401": {
+            "description": "Request refused, unavailable model or application storage failure",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "402": {
             "description": "Request refused, unavailable model or application storage failure",
             "content": {
               "application/problem+json": {
@@ -875,6 +935,31 @@
               "timeline_consistency"
             ]
           }
+        },
+        "cost": {
+          "type": "object",
+          "properties": {
+            "policy": {
+              "type": "string",
+              "const": "free-review-v1"
+            },
+            "maxOutputTokens": {
+              "type": "integer",
+              "minimum": 128,
+              "maximum": 32768
+            },
+            "reservedPoints": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 217
+            }
+          },
+          "required": [
+            "policy",
+            "maxOutputTokens",
+            "reservedPoints"
+          ],
+          "additionalProperties": false
         },
         "configFingerprint": {
           "type": "string"
@@ -1088,6 +1173,31 @@
               "timeline_consistency"
             ]
           }
+        },
+        "cost": {
+          "type": "object",
+          "properties": {
+            "policy": {
+              "type": "string",
+              "const": "free-review-v1"
+            },
+            "maxOutputTokens": {
+              "type": "integer",
+              "minimum": 128,
+              "maximum": 32768
+            },
+            "reservedPoints": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 217
+            }
+          },
+          "required": [
+            "policy",
+            "maxOutputTokens",
+            "reservedPoints"
+          ],
+          "additionalProperties": false
         },
         "configFingerprint": {
           "type": "string"
@@ -1555,6 +1665,11 @@
             {
               "type": "object",
               "properties": {
+                "cachedInputTokens": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
                 "inputTokens": {
                   "type": "integer",
                   "minimum": 0,
@@ -2050,6 +2165,31 @@
                   ]
                 }
               },
+              "cost": {
+                "type": "object",
+                "properties": {
+                  "policy": {
+                    "type": "string",
+                    "const": "free-review-v1"
+                  },
+                  "maxOutputTokens": {
+                    "type": "integer",
+                    "minimum": 128,
+                    "maximum": 32768
+                  },
+                  "reservedPoints": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 217
+                  }
+                },
+                "required": [
+                  "policy",
+                  "maxOutputTokens",
+                  "reservedPoints"
+                ],
+                "additionalProperties": false
+              },
               "configFingerprint": {
                 "type": "string"
               },
@@ -2516,6 +2656,11 @@
                   {
                     "type": "object",
                     "properties": {
+                      "cachedInputTokens": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
                       "inputTokens": {
                         "type": "integer",
                         "minimum": 0,

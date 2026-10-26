@@ -153,3 +153,50 @@ func TestIdleRuntimeKeepsHeartbeatsWithoutRepeatedInspection(t *testing.T) {
 		t.Fatalf("idle inspection was not throttled: reports=%d inspections=%d checks=%d", reports, e.inspections, e.checks)
 	}
 }
+
+type priorityBooks struct {
+	staticBooks
+	first map[string]bool
+}
+
+func (p priorityBooks) PriorityBooks(context.Context, []string) map[string]bool { return p.first }
+
+type orderExecutor struct {
+	mu    *sync.Mutex
+	order *[]string
+}
+
+func (e orderExecutor) Kind() string { return "order" }
+func (e orderExecutor) Process(ctx context.Context, book string) (bool, error) {
+	e.mu.Lock()
+	*e.order = append(*e.order, book)
+	e.mu.Unlock()
+	time.Sleep(2 * time.Millisecond)
+	return true, nil
+}
+
+func TestRuntimeGivesPriorityBooksTheFirstFreeSlot(t *testing.T) {
+	var mu sync.Mutex
+	order := []string{}
+	discover := priorityBooks{staticBooks{[]string{"a", "b", "c", "d"}}, map[string]bool{"c": true}}
+	r := New("test", discover, []Executor{orderExecutor{&mu, &order}}, 1, nil)
+	r.Poll = time.Millisecond
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Millisecond)
+	defer cancel()
+	if e := r.Run(ctx); e != nil {
+		t.Fatal(e)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(order) < 4 || order[0] != "c" {
+		t.Fatalf("priority book must be claimed first: %v", order)
+	}
+	// Priority books go first whenever a slot frees, yet others still run.
+	seen := map[string]bool{}
+	for _, b := range order {
+		seen[b] = true
+	}
+	if !seen["a"] || !seen["b"] || !seen["d"] {
+		t.Fatalf("normal books starved: %v", order)
+	}
+}

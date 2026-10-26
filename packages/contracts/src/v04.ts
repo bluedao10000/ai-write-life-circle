@@ -1,3 +1,4 @@
+import { workspaceResumeSchema } from './resume.js'
 import { z } from 'zod'
 import { capabilitiesSchema } from './notes.js'
 
@@ -10,6 +11,7 @@ export const actorV04Schema = z.object({
 export type ActorV04 = z.infer<typeof actorV04Schema>
 
 export const userWorkspaceStateV04Schema = z.object({
+  resume: workspaceResumeSchema.optional(),
   lastView: z.enum(['write', 'kb', 'reasoning']).optional(),
   lastChapterId: z.string().optional(),
   layout: z.object({
@@ -78,6 +80,13 @@ export const chapterRevisionSummaryV04Schema = z.object({
   commitRef: z.string().nullable().optional(),
 })
 export type ChapterRevisionSummaryV04 = z.infer<typeof chapterRevisionSummaryV04Schema>
+
+export const chapterRevisionContentV04Schema = z.object({
+  chapterId: z.string().min(1),
+  revision: chapterRevisionSummaryV04Schema.extend({
+    revisionId: z.string().min(1), contentHash: z.string().min(1), markdown: z.string(),
+  }),
+})
 
 export const chapterRevisionCreateV04Schema = z.object({
   baseRevisionId: z.string().nullable(),

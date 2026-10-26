@@ -74,9 +74,24 @@ func (s *Service) claim(ctx context.Context) (*ClaimedRun, error) {
 			if r.Status != "queued" && !(s.claimID != "" && r.Status == "running" && r.Lease == "") {
 				continue
 			}
+			free, e := s.freeAuthor(ctx)
+			if e != nil {
+				return false, e
+			}
+			if free && r.Cost == nil {
+				// A formerly paid scope requires renewed consent, not an endless queue.
+				at := compat.Now()
+				code := "REVIEW_CONFIG_CHANGED"
+				r.Status = "failed"
+				r.CompletedAt = &at
+				r.FailureCode = &code
+				r.Version++
+				st.Runs[i] = r
+				return true, nil
+			}
 			// AI points: a run whose owner has no allowance waits in the queue.
 			op := meterOp(r.RunID, r.Attempts+1)
-			if s.App.MeterReserve(ctx, op, "review", s.reservePoints()) != nil {
+			if s.App.MeterReserve(ctx, op, "review", s.planReserve(r.Plan)) != nil {
 				continue
 			}
 			reserved = op
@@ -131,6 +146,7 @@ func (s *Service) Process(ctx context.Context, claimed *ClaimedRun) error {
 	current := st.Runs[run.RunID]
 	deadline, err := time.Parse(time.RFC3339Nano, current.DeadlineAt)
 	if err != nil || current.Status != "running" || current.Lease != run.Lease || time.Now().After(deadline) {
+		s.App.MeterSettle(context.Background(), meterOp(run.RunID, run.Attempts), -1)
 		return nil
 	}
 	done := make(chan struct{})
@@ -158,6 +174,9 @@ func (s *Service) Process(ctx context.Context, claimed *ClaimedRun) error {
 	e := (executorpolicy.Controller{State: s.App.State}).Guard(callCtx, "review", run.ExecutorOwner, run.ExecutorEpoch, run.Lease, false, func() error { return nil })
 	var response llm.Response
 	if e == nil {
+		e = s.App.MeterAuthorize(callCtx, meterOp(run.RunID, run.Attempts), "review")
+	}
+	if e == nil {
 		response, e = s.Client.Generate(callCtx, request)
 	}
 	if callCtx.Err() != nil {
@@ -173,13 +192,17 @@ func (s *Service) Process(ctx context.Context, claimed *ClaimedRun) error {
 // Prepare returns exactly the author-confirmed source snapshot; no model call occurs here.
 func (s *Service) Prepare(ctx context.Context, claimed *ClaimedRun) (llm.Request, error) {
 	run := claimed.Run
-	if (run.ConfigFingerprint != "" && run.ConfigFingerprint != s.Config.Fingerprint()) || (s.ExecutorOwner == "pi" && run.ConfigFingerprint == "") || run.Model != s.Config.Info() || run.StrategyVersion != StrategyVersion || run.ContextBytes > s.Config.MaxContextBytes {
+	if !s.validateCost(run.Plan) || (run.ConfigFingerprint != "" && run.ConfigFingerprint != s.Config.Fingerprint()) || (s.ExecutorOwner == "pi" && run.ConfigFingerprint == "") || run.Model != s.Config.Info() || run.StrategyVersion != StrategyVersion || run.ContextBytes > s.Config.MaxContextBytes {
 		return llm.Request{}, failure(409, "REVIEW_CONFIG_CHANGED", "Preview and confirm the current model again.")
 	}
 	if s.freshen(ctx, run).Stale {
 		return llm.Request{}, failure(409, "REVIEW_CONTEXT_CHANGED", "The approved source snapshot changed.")
 	}
-	return llm.Request{System: prompt(), Input: promptInput(run.Plan), Schema: CandidateSchema()}, nil
+	request := llm.Request{System: prompt(), Input: promptInput(run.Plan), Schema: CandidateSchema()}
+	if run.Cost != nil {
+		request.OutputLimit = run.Cost.MaxOutputTokens
+	}
+	return request, nil
 }
 
 // Complete independently validates model candidates and source freshness before the fenced commit.
@@ -337,7 +360,7 @@ func (s *Service) reservePoints() int {
 // otherwise charges the reservation.
 func settlePoints(response llm.Response, e error) int {
 	if response.Usage != nil {
-		return billing.PointsFor(response.Usage.InputTokens, response.Usage.OutputTokens)
+		return billing.PointsFor(response.Usage.InputTokens, response.Usage.OutputTokens, response.Usage.CachedInputTokens)
 	}
 	var appError *application.Error
 	if e != nil && errors.As(e, &appError) {

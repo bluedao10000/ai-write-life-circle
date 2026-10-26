@@ -295,6 +295,11 @@ func (s *ImportService) Stage(ctx context.Context, a Actor, key, filename string
 	if len(filename) > 255 || !utf8.ValidString(filename) || strings.ContainsAny(filename, "\r\n\x00/\\") {
 		return ImportStageResult{}, Fail(422, "VALIDATION_FAILED", "Invalid EPUB filename.")
 	}
+	// Early plan check so an author over a limit is told before uploading
+	// work is parsed; Commit enforces the same limits authoritatively.
+	if err := s.planLimits(ctx, a); err != nil {
+		return ImportStageResult{}, err
+	}
 	id := importKey(a.ID, key)
 	owner, dir, _, err := s.paths(a, id)
 	if err != nil {
@@ -599,6 +604,21 @@ func (s *ImportService) writeInitialRevision(ctx context.Context, bookID string,
 	})
 }
 
+func (s *ImportService) planLimits(ctx context.Context, a Actor) error {
+	plan, err := s.Management.entitlements(ctx, a)
+	if err != nil || (plan.Books == 0 && plan.ImportsPerMonth == 0) {
+		return err
+	}
+	st, err := s.Management.load()
+	if err != nil {
+		return err
+	}
+	if err := bookLimit(plan, st, a.ID); err != nil {
+		return err
+	}
+	return importLimit(plan, st, a.ID)
+}
+
 func (s *ImportService) Commit(ctx context.Context, a Actor, id, key string, input ImportCommitInput) (ImportCommitResult, error) {
 	if err := author(a); err != nil {
 		return ImportCommitResult{}, err
@@ -640,6 +660,10 @@ func (s *ImportService) commitLocked(ctx context.Context, a Actor, id, key strin
 	if err := s.Management.safe(); err != nil {
 		return result, err
 	}
+	plan, err := s.Management.entitlements(ctx, a)
+	if err != nil {
+		return result, err
+	}
 	lookup := func(st managedState) (bool, error) {
 		if _, deleted := st.Requests["delete:tombstone:"+compat.Key(state.BookID)]; deleted {
 			return true, bookMissing()
@@ -670,8 +694,15 @@ func (s *ImportService) commitLocked(ctx context.Context, a Actor, id, key strin
 		if err != nil {
 			return err
 		}
-		done, err = lookup(st)
-		return err
+		if done, err = lookup(st); done || err != nil {
+			return err
+		}
+		// Checked again at the commit point below; refusing here avoids
+		// writing drafts for a book that cannot be committed.
+		if err := bookLimit(plan, st, a.ID); err != nil {
+			return err
+		}
+		return importLimit(plan, st, a.ID)
 	})
 	if err != nil || done {
 		return result, err
@@ -710,6 +741,12 @@ func (s *ImportService) commitLocked(ctx context.Context, a Actor, id, key strin
 			return err
 		}
 		if done, err := lookup(st); done || err != nil {
+			return err
+		}
+		if err := bookLimit(plan, st, a.ID); err != nil {
+			return err
+		}
+		if err := importLimit(plan, st, a.ID); err != nil {
 			return err
 		}
 

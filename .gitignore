@@ -46,3 +46,5 @@ apps/web/test-results-thinking/
 
 # 本地 agent 工作数据（记忆与产出，含个人信息，不入库）
 .workbuddy-ai/
+
+apps/web/test-results-author-experience/

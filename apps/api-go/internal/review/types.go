@@ -53,6 +53,7 @@ type Source struct {
 	Freshness     string  `json:"freshness"`
 }
 type Plan struct {
+	Cost              *Cost  `json:"cost,omitempty"`
 	ConfigFingerprint string `json:"configFingerprint,omitempty"`
 	StrategyVersion   string `json:"strategyVersion"`
 	Input

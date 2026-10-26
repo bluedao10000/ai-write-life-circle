@@ -66,6 +66,7 @@ export const thinkingSourceSchema = z
 export const thinkingUsageSchema = z
   .object({
     input: z.number().nonnegative(),
+ cachedInput: z.number().nonnegative().optional(),
     output: z.number().nonnegative(),
     charged: z.number().nonnegative(),
     incomplete: z.boolean(),

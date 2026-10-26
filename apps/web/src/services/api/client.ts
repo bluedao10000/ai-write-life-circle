@@ -40,8 +40,8 @@ export async function requestApi(path: string, init: RequestInit = {}): Promise<
   return { body, response }
 }
 
-export async function getJson(path: string): Promise<unknown> {
-  return (await requestApi(path)).body
+export async function getJson(path: string, signal?: AbortSignal): Promise<unknown> {
+  return (await requestApi(path, { signal })).body
 }
 
 export async function patchJson(path: string, body: unknown): Promise<unknown> {

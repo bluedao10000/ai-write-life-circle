@@ -4,6 +4,7 @@ package agentruntime
 
 import (
 	"context"
+	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/compat"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/llm"
 	"log/slog"
 	"sync"
@@ -22,6 +23,13 @@ type Executor interface {
 
 type Readiness interface {
 	Ready(context.Context, string) (bool, error)
+}
+
+// Prioritizer is optionally implemented by a Discoverer.
+type Prioritizer interface {
+	// PriorityBooks returns the books whose owners' plans get first claim on
+	// free slots (Pro). Missing entries mean normal priority.
+	PriorityBooks(ctx context.Context, books []string) map[string]bool
 }
 
 // Discoverer lists book IDs eligible for work. It is read-only with respect
@@ -146,6 +154,7 @@ func (r *Runtime) Run(ctx context.Context) error {
 		report(nil, false)
 	}()
 	cursor := 0
+	claimingScans := 0
 	for {
 		select {
 		case <-ctx.Done():
@@ -160,13 +169,20 @@ func (r *Runtime) Run(ctx context.Context) error {
 			report(books, true)
 			// Review is first in each book's initial visit. A rotating cursor
 			// over book/kind pairs gives backfill a bounded scheduling turn.
+			// Books on a priority plan get the first claim on free slots.
 			total := len(books) * len(r.Executors)
-			start := cursor
-			for n := 0; n < total; n++ {
+			// Every third claiming scan ignores priority so a busy priority
+			// author cannot starve everyone else.
+			var priority map[string]bool
+			if p, ok := r.Discover.(Prioritizer); ok && total > 0 && claimingScans%3 != 2 {
+				priority = p.PriorityBooks(ctx, books)
+			}
+			order := compat.PriorityOrder(total, cursor, func(i int) bool { return priority[books[i/len(r.Executors)]] })
+			claimed := false
+			for _, i := range order {
 				if ctx.Err() != nil {
 					return nil
 				}
-				i := (start + n) % total
 				book := books[i/len(r.Executors)]
 				ex := r.Executors[i%len(r.Executors)]
 				mu.Lock()
@@ -189,7 +205,12 @@ func (r *Runtime) Run(ctx context.Context) error {
 				active++
 				busy[book] = true
 				mu.Unlock()
-				cursor = (i + 1) % total
+				claimed = true
+				// Priority claims leave the rotation cursor alone, so the
+				// normal rotation keeps advancing through everyone else.
+				if !priority[book] {
+					cursor = (i + 1) % total
+				}
 				// Fix this scan's starting position while preserving next tick's cursor.
 				wg.Add(1)
 				go func(ex Executor, id string) {
@@ -203,6 +224,9 @@ func (r *Runtime) Run(ctx context.Context) error {
 						r.Logger.Warn("agent task failed", "kind", ex.Kind())
 					}
 				}(ex, book)
+			}
+			if claimed {
+				claimingScans++
 			}
 		}
 	}

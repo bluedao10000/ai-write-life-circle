@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { AuthorNote, WorkspaceSnapshot } from '@writer-agent/contracts'
+import type { Editor } from '@tiptap/react'
+import { studioEntry, rememberResume, readResume } from '../../services/workspaceResume'
+import type { AuthorNote, WorkspaceSnapshot, WorkspaceResume } from '@writer-agent/contracts'
 import type { WriterAgentAdapter } from '../../services/writerAgent'
 import {
   useWorkspaceController,
@@ -27,23 +29,12 @@ export function readCompose(search = window.location.search) {
   const params = new URLSearchParams(search)
   return params.get('compose') === '1' && readView(search) === 'read'
 }
-const composeKey = 'writer-agent:compose'
-function initialComposeIntent() {
-  try {
-    // An explicit reading/compose link wins and becomes this tab's intent.
-    if (readView() === 'read') {
-      sessionStorage.setItem(composeKey, readCompose() ? '1' : '0')
-      return readCompose()
-    }
-    return sessionStorage.getItem(composeKey) === '1'
-  } catch {
-    return readCompose()
-  }
-}
-function writeLocation(view: StudioView, compose: boolean) {
+function writeLocation(view: StudioView, compose: boolean, book: string, chapter: string) {
   const url = new URL(window.location.href)
   const before = url.search
   url.searchParams.set('view', view)
+  url.searchParams.set('book', book)
+  if (chapter) url.searchParams.set('chapter', chapter)
   if (compose) url.searchParams.set('compose', '1')
   else url.searchParams.delete('compose')
   if (url.search !== before) window.history.pushState(window.history.state, '', url)
@@ -55,24 +46,25 @@ export function useStudioController(
 ) {
   // The space lives in the URL so reload and browser back/forward keep it.
   // Compose intent survives switching to 灵感/书 and back within this tab.
-  const [view, setViewState] = useState<StudioView>(() => readView())
-  const [intent, setIntent] = useState(() => initialComposeIntent())
+  const [entry] = useState(() => studioEntry(initialWorkspace, window.location.search))
+  const [view, setViewState] = useState<StudioView>(entry.view)
+  const [intent, setIntent] = useState(entry.compose)
+  const chapterRef = useRef(entry.chapterId)
   const intentRef = useRef(intent)
   const compose = view === 'read' && intent
   const rememberIntent = useCallback((next: boolean) => {
     intentRef.current = next
     setIntent(next)
-    try { sessionStorage.setItem(composeKey, next ? '1' : '0') } catch { /* optional */ }
   }, [])
   const setView = useCallback((next: StudioView) => {
     setViewState(next)
-    writeLocation(next, next === 'read' && intentRef.current)
-  }, [])
+    writeLocation(next, next === 'read' && intentRef.current, initialWorkspace.projectId, chapterRef.current)
+  }, [initialWorkspace.projectId])
   const setCompose = useCallback((next: boolean) => {
     rememberIntent(next)
     setViewState('read')
-    writeLocation('read', next)
-  }, [rememberIntent])
+    writeLocation('read', next, initialWorkspace.projectId, chapterRef.current)
+  }, [rememberIntent, initialWorkspace.projectId])
   useEffect(() => {
     const sync = () => {
       const next = readView()
@@ -108,15 +100,93 @@ export function useStudioController(
     setToasts((all) => [...all, { id, text }])
     window.setTimeout(() => setToasts((all) => all.filter((t) => t.id !== id)), 4000)
   }, [])
+  const resumeWorkspace = useMemo(() => ({ ...initialWorkspace, currentChapterId: entry.chapterId }), [initialWorkspace, entry.chapterId])
   const workspace = useWorkspaceController({
     adapter,
-    initialWorkspace,
+    initialWorkspace: resumeWorkspace,
     toast,
     requestConfirm: setConfirm,
   })
   const { current, doc, layout, setLayout, dark, setDark, saveState } = workspace
+  const navigateChapter = workspace.switchChapter
+  useEffect(() => {
+    const syncChapter = () => {
+      const params = new URLSearchParams(window.location.search)
+      if (!params.has('book') || params.get('book') === initialWorkspace.projectId) {
+        const chapter = params.get('chapter')
+        if (chapter) navigateChapter(chapter)
+      }
+    }
+    window.addEventListener('popstate', syncChapter)
+    return () => window.removeEventListener('popstate', syncChapter)
+  }, [navigateChapter, initialWorkspace.projectId])
   const bridge = useManuscriptBridge(current)
-  const { editor, onReady: ready } = bridge
+  const { editor } = bridge
+  const versionsRef = useRef(workspace.chapterVersions)
+  versionsRef.current = workspace.chapterVersions
+  chapterRef.current = current
+  const navigationRef = useRef({ view, intent })
+  navigationRef.current = { view, intent }
+  const restored = useRef(new WeakSet<Editor>())
+  const bridgeReady = bridge.onReady
+  const ready = useCallback((next: Editor | null) => {
+    bridgeReady(next)
+    if (!next) return
+    const saved = [readResume(initialWorkspace.projectId), entry.position]
+      .filter((value): value is WorkspaceResume => !!value && value.chapterId === current)
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0]
+    const chapterId = current
+    const sameVersion = saved?.chapterId === chapterId && saved.revisionId === (versionsRef.current[chapterId]?.mode === 'api' ? versionsRef.current[chapterId].revisionId : undefined)
+    requestAnimationFrame(() => {
+      if (editor.current !== next || next.isDestroyed || restored.current.has(next)) return
+      restored.current.add(next)
+      if (sameVersion && saved) {
+        const end = next.state.doc.content.size
+        next.commands.setTextSelection({ from: Math.max(1, Math.min(saved.from, end)), to: Math.max(1, Math.min(saved.to, end)) })
+        if (scroll.current) scroll.current.scrollTop = saved.scroll
+      }
+      if (navigationRef.current.view === 'read' && navigationRef.current.intent && !document.activeElement?.matches('input,textarea,select')) next.view.focus()
+    })
+  }, [bridgeReady, current, editor, initialWorkspace.projectId, entry.position])
+  const choseDefault = useRef(false)
+  useEffect(() => {
+    if (!entry.automatic || choseDefault.current || workspace.chapterLoadState.status !== 'loaded') return
+    choseDefault.current = true
+    if ((workspace.markdownByChapter[current] ?? '').trim()) { setViewState('read'); rememberIntent(true) }
+  }, [entry.automatic, current, workspace.chapterLoadState.status, workspace.markdownByChapter, rememberIntent])
+  const updateResume = workspace.updateResume
+  const loaded = workspace.chapterLoadState.status === 'loaded' && !workspace.recoveryDraft
+  useEffect(() => {
+    if (!current || !loaded) return
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const mounted = editor.current
+    const container = scroll.current
+    const persist = (server = true) => {
+      const version = versionsRef.current[current]
+      const metadata: WorkspaceResume = {
+        schema: 1, chapterId: current, view, compose: intent,
+        scroll: Math.max(0, Math.round(container?.scrollTop ?? 0)),
+        from: mounted && !mounted.isDestroyed ? mounted.state.selection.from : 0,
+        to: mounted && !mounted.isDestroyed ? mounted.state.selection.to : 0,
+        ...(version?.mode === 'api' ? { revisionId: version.revisionId } : {}), updatedAt: new Date().toISOString(),
+      }
+      rememberResume(initialWorkspace.projectId, metadata)
+      if (server) updateResume(metadata)
+    }
+    const queue = () => { clearTimeout(timer); timer = setTimeout(() => persist(), 500) }
+    const leaving = () => persist(false)
+    container?.addEventListener('scroll', queue, { passive: true })
+    mounted?.on('selectionUpdate', queue)
+    window.addEventListener('pagehide', leaving)
+    queue()
+    return () => {
+      clearTimeout(timer)
+      persist()
+      container?.removeEventListener('scroll', queue)
+      mounted?.off('selectionUpdate', queue)
+      window.removeEventListener('pagehide', leaving)
+    }
+  }, [current, loaded, view, intent, editor, initialWorkspace.projectId, updateResume])
   const { chapters } = initialWorkspace
   const chapter = chapters.find((c) => c.id === current) ?? {
     id: '',
@@ -148,7 +218,7 @@ export function useStudioController(
   })
   /** Opens a right-drawer tab (本章设定 / 注记 / 审查). */
   const openRight = (tab: 'margin' | 'think' | 'context' | 'review') => {
-    setRightTab(tab)
+    setRightTab(tab === 'review' ? 'margin' : tab)
     setLayout((l) => ({ ...l, rightOpen: true, focus: false, leftOpen: window.innerWidth < 1280 ? false : l.leftOpen }))
   }
   // Words written since entering 写作 for this chapter.
@@ -163,7 +233,7 @@ export function useStudioController(
     setLayout((l) => (l.focus ? { ...l, focus: false } : l))
     setResume(false)
     setSelection('')
-    window.setTimeout(() => editor.current?.commands.focus('end'), 60)
+    window.setTimeout(() => { const current = editor.current; if (current && !current.isDestroyed) current.commands.focus() }, 60)
   }
   const leaveCompose = () => {
     void workspace.flushSave().finally(() => {
@@ -232,6 +302,7 @@ export function useStudioController(
   }
   const switchChapter = (id: string) => {
     workspace.switchChapter(id)
+    chapterRef.current = id
     setResume(false)
     setView('read')
     setSelection('')

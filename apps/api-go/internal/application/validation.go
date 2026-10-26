@@ -4,6 +4,7 @@ import (
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/compat"
 	"regexp"
 	"strconv"
+	"time"
 )
 
 func member(v any, values ...string) bool {
@@ -26,6 +27,53 @@ func workspaceInput(input any) (map[string]any, bool) {
 	out := map[string]any{}
 	for k, v := range m {
 		switch k {
+		case "resume":
+			r, ok := v.(map[string]any)
+			if !ok || len(r) < 8 || len(r) > 9 || !compat.Integer(r["schema"], 1, 1) || !member(r["view"], "inspire", "read", "book") {
+				return nil, false
+			}
+			for name, value := range r {
+				switch name {
+				case "schema", "view":
+				case "chapterId":
+					text, ok := value.(string)
+					if !ok || len(text) == 0 || len(text) > 128 {
+						return nil, false
+					}
+				case "compose":
+					if _, ok := value.(bool); !ok {
+						return nil, false
+					}
+				case "scroll":
+					if !compat.Integer(value, 0, 10000000) {
+						return nil, false
+					}
+				case "from", "to":
+					if !compat.Integer(value, 0, 5000000) {
+						return nil, false
+					}
+				case "revisionId":
+					text, ok := value.(string)
+					if !ok || len(text) > 512 {
+						return nil, false
+					}
+				case "updatedAt":
+					text, ok := value.(string)
+					if !ok {
+						return nil, false
+					}
+					if _, err := time.Parse(time.RFC3339Nano, text); err != nil {
+						return nil, false
+					}
+				default:
+					return nil, false
+				}
+			}
+			for _, name := range []string{"chapterId", "compose", "scroll", "from", "to", "updatedAt"} {
+				if _, ok := r[name]; !ok {
+					return nil, false
+				}
+			}
 		case "lastView":
 			if !member(v, "write", "kb", "reasoning") {
 				return nil, false

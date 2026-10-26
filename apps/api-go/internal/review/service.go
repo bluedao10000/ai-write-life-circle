@@ -60,7 +60,7 @@ func (s *Service) Preview(ctx context.Context, a application.Actor, id string, i
 	if e := author(a); e != nil {
 		return Plan{}, e
 	}
-	// Tell Free accounts before they review the consent scope.
+	// Check account quota before building the explicit sending scope.
 	if e := s.App.MeterAllow(ctx, "review"); e != nil {
 		return Plan{}, e
 	}
@@ -102,7 +102,7 @@ func (s *Service) Start(ctx context.Context, a application.Actor, chapterID, key
 	if e != nil {
 		return Run{}, e
 	}
-	// Review is a paid-plan feature; a replay of an accepted request still succeeds.
+	// A replay of an accepted request succeeds even after account quota changes.
 	if existing == nil {
 		if e := s.App.MeterAllow(ctx, "review"); e != nil {
 			return Run{}, e
@@ -119,6 +119,7 @@ func (s *Service) Start(ctx context.Context, a application.Actor, chapterID, key
 		return Run{}, failure(409, "REVIEW_CONTEXT_CHANGED", "The model or source scope changed. Preview and confirm the scope again.")
 	}
 	var created bool
+	reserved := ""
 	var run Run
 	e = s.transaction(ctx, func(st *state) (bool, error) {
 		if rec, ok := st.Requests[key]; ok {
@@ -149,12 +150,22 @@ func (s *Service) Start(ctx context.Context, a application.Actor, chapterID, key
 		now := compat.Now()
 		deadline := time.Now().UTC().Add(s.Config.Timeout + 10*time.Second).Format(time.RFC3339Nano)
 		run = Run{Plan: plan, RunID: compat.UUID(), CreatedBy: a.ID, Version: 1, Status: "queued", StartedAt: now, DeadlineAt: deadline, Findings: []Finding{}, RejectionReasons: []string{}, StaleReasons: []string{}}
+		if plan.Cost != nil {
+			op := meterOp(run.RunID, 1)
+			if e := s.App.MeterReserve(ctx, op, "review", s.planReserve(plan)); e != nil {
+				return false, e
+			}
+			reserved = op
+		}
 		st.Runs[run.RunID] = run
 		st.Requests[key] = requestRecord{fp, run.RunID, "create"}
 		created = true
 		return true, nil
 	})
 	if e != nil {
+		if reserved != "" {
+			s.App.MeterSettle(context.Background(), reserved, 0)
+		}
 		return Run{}, e
 	}
 	if created {
@@ -287,6 +298,14 @@ func (s *Service) Cancel(ctx context.Context, a application.Actor, id, key strin
 	if e != nil {
 		return Run{}, e
 	}
+	if meter, ok := s.App.Meter.(interface {
+		ReleaseUnstartedReview(context.Context, string, string) error
+	}); ok {
+		if e := meter.ReleaseUnstartedReview(ctx, s.App.Owner, meterOp(run.RunID, max(1, run.Attempts))); e != nil {
+			return Run{}, e
+		}
+	}
+
 	s.mu.Lock()
 	cancel := s.jobs[id]
 	s.mu.Unlock()

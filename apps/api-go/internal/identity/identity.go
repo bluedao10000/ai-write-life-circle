@@ -146,7 +146,11 @@ func New(c config.Config) (transport.Resolver, error) {
 			slog.Warn("legacy owner binding unavailable", "error", err)
 			return nil
 		}
-		return &application.Actor{ID: id, Role: "author"}
+		actor := &application.Actor{ID: id, Role: "author"}
+		if claims.EmailVerified {
+			actor.Email = strings.ToLower(strings.TrimSpace(claims.Email))
+		}
+		return actor
 	}, nil
 }
 

@@ -71,3 +71,60 @@ func TestManagedTransportOwnershipAndRoutes(t *testing.T) {
 		t.Fatal(w.Code, w.Body.String())
 	}
 }
+
+func TestHistoricalBodyAuthorScopeAndImmutableReceipts(t *testing.T) {
+	ctx := context.Background()
+	app := &application.Service{Root: t.TempDir(), State: t.TempDir(), Project: "legacy"}
+	m := application.NewManagement(app, "owner")
+	actor := application.Actor{ID: "owner", Role: "author"}
+	book, e := m.Mutate(ctx, actor, "", "create", application.StructureInput{Operation: "create"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	scoped, e := m.Resolve(actor, book.ID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	_, rev, e := scoped.Detail(ctx, "CH-000001")
+	if e != nil {
+		t.Fatal(e)
+	}
+	key := "save-one"
+	saved, e := scoped.Save(ctx, actor, "CH-000001", "", map[string]any{"baseRevisionId": rev, "markdown": "昨日原文。"}, &key)
+	if e != nil {
+		t.Fatal(e)
+	}
+	path := "/v1/projects/" + book.ID + "/chapters/CH-000001/revisions/" + saved.Revision.ID
+	h := Handler(Options{Service: app, Management: m, ResolveActor: func(r *http.Request) *application.Actor {
+		switch r.Header.Get("X-Fixture") {
+		case "anonymous":
+			return nil
+		case "other":
+			return &application.Actor{ID: "other", Role: "author"}
+		case "agent":
+			return &application.Actor{ID: "agent", Role: "agent"}
+		}
+		return &actor
+	}})
+	for _, tc := range []struct {
+		identity string
+		status   int
+	}{{"", 200}, {"anonymous", 401}, {"other", 404}, {"agent", 403}} {
+		r := httptest.NewRequest("GET", path, nil)
+		r.Header.Set("X-Fixture", tc.identity)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if w.Code != tc.status {
+			t.Fatal(tc.identity, w.Code, w.Body.String())
+		}
+		if tc.status == 200 && (!strings.Contains(w.Body.String(), "昨日原文。") || strings.Contains(w.Body.String(), "requestHash") || strings.Contains(w.Body.String(), "idempotencyKey")) {
+			t.Fatal(w.Body.String())
+		}
+	}
+	r := httptest.NewRequest("GET", path+"-missing", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != 404 {
+		t.Fatal(w.Code)
+	}
+}

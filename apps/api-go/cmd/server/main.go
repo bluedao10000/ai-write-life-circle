@@ -107,7 +107,7 @@ func run() error {
 		return publication.Book{App: app, OwnerID: actor.ID}, e
 	}
 	management.GuardDelete = publications.CheckDelete
-	tasks := &agenttasks.Service{Management: management, State: c.State, Config: modelConfig}
+	tasks := &agenttasks.Service{Management: management, State: c.State, Config: modelConfig, Priority: (&billing.PriorityCache{Ledger: ledger}).Priority}
 	thought := &thinking.Service{Management: management, State: c.State, ResolveActor: resolver, Meter: ledger}
 	privateAddress, piErr := thought.Configure()
 	if piErr != nil {
@@ -192,7 +192,11 @@ func run() error {
 		reviewServices[app.Project] = r
 		return r
 	}
-	h := transport.Handler(transport.Options{CreativeFor: creativeFor, SessionOwned: thought.Owned, WorkerStatus: func() any { return agentruntime.ReadUnifiedStatus(c.State, modelConfig) }, KnowledgeFor: func(app *application.Service) *knowledge.Service { return knowledgeFor(app) }, Imports: imports, Management: management, ReviewFor: reviewFor, Account: func(ctx context.Context, a application.Actor) (any, error) { return ledger.View(ctx, a.ID) }, Service: s, Environment: c.Environment, ResolveActor: resolver, Reviews: reviews, Publications: publications})
+	h := transport.Handler(transport.Options{CreativeFor: creativeFor, SessionOwned: thought.Owned, WorkerStatus: func() any { return agentruntime.ReadUnifiedStatus(c.State, modelConfig) }, KnowledgeFor: func(app *application.Service) *knowledge.Service { return knowledgeFor(app) }, Imports: imports, Management: management, ReviewFor: reviewFor, Account: func(ctx context.Context, a application.Actor) (any, error) {
+		return accountView(ctx, ledger, management, a)
+	}, Redeem: func(ctx context.Context, a application.Actor, code string) (any, error) {
+		return redeem(ctx, ledger, management, a, code)
+	}, Service: s, Environment: c.Environment, ResolveActor: resolver, Reviews: reviews, Publications: publications})
 	baseHandler := h
 	thinkingHandler := thought.PublicHandler()
 	perUser := c.IdentityPublicKey != ""
@@ -241,7 +245,10 @@ func run() error {
 	fmt.Printf("Writer Agent API listening on http://%s\nHarness root: %s\n", listener.Addr().String(), c.Root)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	var background sync.WaitGroup
+	background.Add(2)
 	go func() {
+		defer background.Done()
 		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
 		for {
@@ -261,6 +268,7 @@ func run() error {
 		}
 	}()
 	go func() {
+		defer background.Done()
 		ticker := time.NewTicker(2 * time.Second)
 		defer ticker.Stop()
 		for {
@@ -280,23 +288,31 @@ func run() error {
 	go func() { done <- server.Serve(listener) }()
 	select {
 	case e = <-done:
-		if e == http.ErrServerClosed {
-			return nil
-		}
-		return e
 	case <-ctx.Done():
 		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
+		// Drain in-flight handlers on every listener before exiting. A handler
+		// cut off inside a file lock (e.g. a Pi task completion settling AI
+		// points) would leave the lock file behind and block that state.
+		if taskServer != nil {
+			_ = taskServer.Shutdown(shutdown)
+		}
+		if private != nil {
+			_ = private.Shutdown(shutdown)
+		}
 		if e = server.Shutdown(shutdown); e != nil {
 			_ = server.Close()
-			return e
+		} else {
+			e = <-done
 		}
-		e = <-done
-		if e == http.ErrServerClosed {
-			return nil
-		}
-		return e
 	}
+	// The sweeps stop at their next check of ctx; wait so none exits mid-lock.
+	stop()
+	background.Wait()
+	if e == http.ErrServerClosed {
+		return nil
+	}
+	return e
 }
 func main() {
 	if e := run(); e != nil {
@@ -316,4 +332,37 @@ func cleanupOwnedBook(ctx context.Context, a application.Actor, book string, p *
 		errs = append(errs, service.CleanupBook(ctx, book))
 	}
 	return errors.Join(errs...)
+}
+
+// accountView is GET /v1/account: the author's plan, AI points and the
+// non-AI counts the plan limits. The verified email is recorded so an
+// operator can find the account (writer-agent-control billing … --email).
+func accountView(ctx context.Context, ledger *billing.Ledger, management *application.Management, a application.Actor) (any, error) {
+	if e := ledger.RecordEmail(ctx, a.ID, a.Email); e != nil {
+		slog.Warn("billing email not recorded", "error", e)
+	}
+	u, e := ledger.View(ctx, a.ID)
+	if e != nil {
+		return nil, e
+	}
+	return withCounts(u, management, a), nil
+}
+
+func redeem(ctx context.Context, ledger *billing.Ledger, management *application.Management, a application.Actor, code string) (any, error) {
+	if e := ledger.RecordEmail(ctx, a.ID, a.Email); e != nil {
+		slog.Warn("billing email not recorded", "error", e)
+	}
+	u, e := ledger.Redeem(ctx, a.ID, code)
+	if e != nil {
+		return nil, e
+	}
+	slog.Info("redeem code applied", "plan", u.Plan)
+	return withCounts(u, management, a), nil
+}
+
+func withCounts(u billing.Usage, management *application.Management, a application.Actor) billing.Usage {
+	if books, imports, e := management.Counts(a); e == nil {
+		u.Counts = &billing.Counts{Books: books, ImportsThisMonth: imports}
+	}
+	return u
 }

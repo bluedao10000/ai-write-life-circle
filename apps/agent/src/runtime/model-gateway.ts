@@ -32,25 +32,40 @@ export function boundedModelFetch(endpoint:string,maxBytes:number,signal:AbortSi
 }
 export const executionConfigSchema=z.object({Provider:z.literal("openai-compatible"),BaseURL:z.string().url(),APIKey:z.literal(""),Model:z.string().min(1),ResponseFormat:z.enum(["none","json_object","json_schema"]),TokenParameter:z.enum(["max_tokens","max_completion_tokens"]),Timeout:z.number().int().positive().max(180_000_000_000),MaxContextBytes:z.number().int().min(2048).max(256*1024),MaxOutputTokens:z.number().int().min(128).max(131072),MaxResponseBytes:z.number().int().min(1024).max(2*1024*1024)}).strict();
 export type ExecutionConfig=z.infer<typeof executionConfigSchema>;
+
+// prompt_tokens includes cached input. Optional inconsistent cache details never
+// earn a discount; missing/invalid total usage remains unknown.
+export function completionUsage(value:unknown,maxOutput:number):AgentModelResponse['usage'] {
+  const raw=(value as {usage?:{prompt_tokens?:number;completion_tokens?:number;prompt_cache_hit_tokens?:number;prompt_tokens_details?:{cached_tokens?:number}}})?.usage;
+  if(!raw||!Number.isInteger(raw.prompt_tokens)||!Number.isInteger(raw.completion_tokens)||raw.prompt_tokens!<0||raw.prompt_tokens!>1000000||raw.completion_tokens!<0||raw.completion_tokens!>maxOutput)return null;
+  const hit=raw.prompt_cache_hit_tokens,details=raw.prompt_tokens_details?.cached_tokens;
+  const cached=hit??details??0;
+  const valid=Number.isInteger(cached)&&cached>=0&&cached<=raw.prompt_tokens!&&(hit===undefined||details===undefined||hit===details);
+  return {inputTokens:raw.prompt_tokens!,outputTokens:raw.completion_tokens!,cachedInputTokens:valid?cached:0};
+}
 export class ModelGateway {
   constructor(readonly config:ExecutionConfig,readonly key:string){}
   validate(task:AgentTask){
+    const limit=task.request.outputLimit;
+    if(limit!==undefined && (task.kind!=='review.execute'||!Number.isInteger(limit)||limit<128||limit>Math.min(32768,this.config.MaxOutputTokens)))throw new GatewayError('AGENT_CONFIG_CHANGED');
     const received=executionConfigSchema.parse(JSON.parse(task.configFingerprint));
     if(JSON.stringify(received)!==JSON.stringify(this.config)||task.model.provider!==this.config.Provider||task.model.model!==this.config.Model||task.model.endpoint!==this.config.BaseURL)throw new GatewayError("AGENT_CONFIG_CHANGED");
   }
   async execute(task:AgentTask,signal:AbortSignal):Promise<AgentModelResponse>{
     this.validate(task);
+    const output=task.request.outputLimit??this.config.MaxOutputTokens;
+    if(output>this.config.MaxOutputTokens|| (task.request.outputLimit!==undefined && task.kind!=='review.execute'))throw new GatewayError('AGENT_CONFIG_CHANGED');
     const cfg=this.config,deadline=AbortSignal.timeout(Math.max(1,Math.min(cfg.Timeout/1e6,Date.parse(task.deadline)-Date.now()))),abort=AbortSignal.any([signal,deadline]);
-    const {runtime,model}=await configuredModel(cfg.BaseURL,cfg.Model,this.key,cfg.MaxContextBytes+20000,cfg.MaxOutputTokens);
+    const {runtime,model}=await configuredModel(cfg.BaseURL,cfg.Model,this.key,cfg.MaxContextBytes+20000,output);
     let usage:AgentModelResponse['usage']=null,transportError="";
     try {
       const result=await runtime.completeSimple(model,{systemPrompt:task.request.system,messages:[{role:"user",content:task.request.input,timestamp:Date.now()}]},{
-        headers:{'X-Client-Request-Id':task.taskId},maxTokens:cfg.MaxOutputTokens,signal:abort,maxRetries:0,timeoutMs:cfg.Timeout/1e6,
+        headers:{'X-Client-Request-Id':task.taskId},maxTokens:output,signal:abort,maxRetries:0,timeoutMs:cfg.Timeout/1e6,
         fetch:boundedModelFetch(cfg.BaseURL,cfg.MaxResponseBytes,abort,code=>{transportError=code}),
         onPayload(value){
           const payload=value as Record<string,unknown>;
           // Preserve the author-approved structured format and exact Token parameter.
-          delete payload.max_tokens;delete payload.max_completion_tokens;payload[cfg.TokenParameter]=cfg.MaxOutputTokens;
+          delete payload.max_tokens;delete payload.max_completion_tokens;payload[cfg.TokenParameter]=output;
           delete payload.response_format;
           if(cfg.ResponseFormat==="json_object")payload.response_format={type:"json_object"};
           if(cfg.ResponseFormat==="json_schema")payload.response_format={type:"json_schema",json_schema:{name:task.request.schemaName||"writing_review",strict:true,schema:task.request.schema}};
@@ -58,8 +73,8 @@ export class ModelGateway {
           return payload;
         },
         onProviderStreamEvent(value){
-          const raw=(value as {usage?:{prompt_tokens?:number;completion_tokens?:number}}).usage;
-          if(raw&&Number.isInteger(raw.prompt_tokens)&&Number.isInteger(raw.completion_tokens)&&raw.prompt_tokens!>=0&&raw.prompt_tokens!<=1000000&&raw.completion_tokens!>=0&&raw.completion_tokens!<=cfg.MaxOutputTokens)usage={inputTokens:raw.prompt_tokens!,outputTokens:raw.completion_tokens!};
+          const reported=completionUsage(value,output);
+          if(reported)usage=reported;
         },
       });
       const text=result.content.filter(b=>b.type==="text").map(b=>b.text).join("");

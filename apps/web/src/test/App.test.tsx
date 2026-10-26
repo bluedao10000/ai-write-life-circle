@@ -7,6 +7,7 @@ import { createDemoWriterAgentAdapter } from '../mocks/demoWriterAgent'
 import type { WriterAgentAdapter } from '../services/writerAgent'
 
 async function renderStudio(adapter?: WriterAgentAdapter, view: 'read' | 'compose' | 'inspire' = 'compose') {
+  if (!new URLSearchParams(window.location.search).has('view')) window.history.replaceState(null, '', '/?view=inspire')
   const result = render(<App adapter={adapter} />)
   await screen.findByRole('tab', { name: '灵感' })
   if (view === 'inspire') return result
@@ -24,15 +25,22 @@ describe('Writer Agent studio', () => {
     window.history.replaceState(null, '', '/')
   })
 
-  it('opens 灵感 by default and keeps the space in the URL', async () => {
+  it('opens an existing manuscript ready to continue writing', async () => {
+    render(<App />)
+    const editor = await screen.findByRole('textbox', { name: '正文编辑器' })
+    await waitFor(() => expect(editor).toHaveAttribute('contenteditable', 'true'))
+    expect(screen.getByRole('tab', { name: '阅读' })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('honors an explicit 灵感 link and keeps the space in the URL', async () => {
     const user = userEvent.setup()
     await renderStudio(undefined, 'inspire')
     expect(screen.getByRole('tab', { name: '灵感' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.queryByRole('tab', { name: '写作' })).not.toBeInTheDocument()
     await user.click(screen.getByRole('tab', { name: '阅读' }))
-    expect(window.location.search).toBe('?view=read')
+    expect(new URLSearchParams(window.location.search).get('view')).toBe('read')
     await user.click(screen.getByRole('tab', { name: '书' }))
-    expect(window.location.search).toBe('?view=book')
+    expect(new URLSearchParams(window.location.search).get('view')).toBe('book')
     await act(async () => {
       window.history.back()
       await new Promise((resolve) => window.setTimeout(resolve, 50))
@@ -48,7 +56,7 @@ describe('Writer Agent studio', () => {
     const editor = await screen.findByRole('textbox', { name: '正文编辑器' })
     expect(editor).toHaveAttribute('contenteditable', 'false')
     await user.click(screen.getByRole('button', { name: '写作' }))
-    expect(window.location.search).toBe('?view=read&compose=1')
+    expect(new URLSearchParams(window.location.search).get('compose')).toBe('1')
     expect(screen.getByRole('textbox', { name: '正文编辑器' })).toHaveAttribute('contenteditable', 'true')
     expect(screen.getAllByText(/\d+ 字/).length).toBeGreaterThan(0)
     await user.click(screen.getByRole('button', { name: '打字机模式' }))

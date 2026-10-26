@@ -1,3 +1,4 @@
+import { workspaceResumeSchema } from './resume.js'
 import { capabilitiesSchema } from './notes.js'
 import { z } from 'zod'
 import { chapterRevisionSummaryV04Schema } from './v04.js'
@@ -33,6 +34,7 @@ export type DemoChapterVersion = z.infer<typeof demoChapterVersionSchema>
 export type ApiChapterVersion = z.infer<typeof apiChapterVersionSchema>
 
 export const workspacePreferencesSchema = z.object({
+  resume: workspaceResumeSchema.optional(),
   lastView: z.enum(['write', 'kb', 'reasoning']).optional(),
   lastChapterId: z.string().optional(),
   layout: z.object({
@@ -185,3 +187,7 @@ export * from "./thinking.js"
 export * from "./creative.js"
 
 export * from "./agent-tasks.js"
+
+export * from './resume.js'
+
+export * from './billing-review.js'

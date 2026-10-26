@@ -26,6 +26,16 @@ func Read(path string, v any) (bool, error) {
 	return true, nil
 }
 func Lock(ctx context.Context, path string, fn func() error) error {
+	return lock(ctx, path, fn)
+}
+
+// LockShort preserves the legacy exclusive-file protocol. File age cannot
+// establish that a holder has exited; orphan locks require operator recovery.
+func LockShort(ctx context.Context, _ time.Duration, path string, fn func() error) error {
+	return Lock(ctx, path, fn)
+}
+
+func lock(ctx context.Context, path string, fn func() error) error {
 	if e := os.MkdirAll(filepath.Dir(path), 0700); e != nil {
 		return e
 	}

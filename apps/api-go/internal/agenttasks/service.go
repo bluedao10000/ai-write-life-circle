@@ -13,6 +13,7 @@ import (
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/review"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/storage"
 	"path/filepath"
+	"strconv"
 	"time"
 )
 
@@ -54,6 +55,8 @@ type Registry struct {
 	Schema int               `json:"schema"`
 	Tasks  map[string]Record `json:"tasks"`
 	Cursor int               `json:"cursor"`
+	// Claims counts claimed tasks; every third claim ignores plan priority.
+	Claims int `json:"claims,omitempty"`
 }
 type Service struct {
 	Management *application.Management
@@ -62,6 +65,9 @@ type Service struct {
 	State  string
 	Config llm.Config
 	Token  string
+	// Priority reports whether an owner's plan gets the first claim on
+	// background work (Pro); nil means normal priority for everyone.
+	Priority func(ctx context.Context, owner string) bool
 }
 
 // resolveTask opens a task's book as the author recorded at claim time, and
@@ -147,13 +153,22 @@ func (s *Service) Claim(ctx context.Context, instance, config string, kinds ...s
 		if active >= 2 {
 			return nil
 		}
-		start := st.Cursor % total
 		policy, e := (executorpolicy.Controller{State: s.State}).Read()
 		if e != nil {
 			return e
 		}
-		for n := 0; n < total; n++ {
-			i := (start + n) % total
+		// Pro books get the first claim, except on every third claim, so a
+		// busy priority author cannot starve everyone else. Priority claims
+		// leave the rotation cursor alone.
+		priority := map[string]bool{}
+		if s.Priority != nil && st.Claims%3 != 2 {
+			for _, b := range books {
+				if _, seen := priority[b.Owner.ID]; !seen {
+					priority[b.Owner.ID] = s.Priority(ctx, b.Owner.ID)
+				}
+			}
+		}
+		for _, i := range compat.PriorityOrder(total, st.Cursor, func(i int) bool { return priority[books[i/2].Owner.ID] }) {
 			kind := []string{"review", "knowledge"}[i%2]
 			if len(kinds) > 0 {
 				supported := false
@@ -200,7 +215,10 @@ func (s *Service) Claim(ctx context.Context, instance, config string, kinds ...s
 				task.Strategy = run.StrategyVersion
 				task.Revision = run.RevisionID
 				task.ContentHash = run.ContentHash
-				task.Reserved = s.Config.MaxContextBytes + 20000 + s.Config.MaxOutputTokens
+				task.Reserved = run.BudgetBytes + 20000 + s.Config.MaxOutputTokens
+				if request.OutputLimit > 0 {
+					task.Reserved = run.BudgetBytes + 20000 + request.OutputLimit
+				}
 				task.Consent = run.Plan
 				task.Request = request
 				rec.Review = claim
@@ -236,7 +254,10 @@ func (s *Service) Claim(ctx context.Context, instance, config string, kinds ...s
 			task.InputHash = compat.Hash(string(raw))
 			rec.Task = task
 			st.Tasks[task.ID] = rec
-			st.Cursor = (i + 1) % total
+			if !priority[owner.ID] {
+				st.Cursor = (i + 1) % total
+			}
+			st.Claims = (st.Claims + 1) % 3000
 			out = &task
 			return nil
 		}
@@ -274,7 +295,8 @@ func (s *Service) check(ctx context.Context, rec Record) error {
 	return r.Check(ctx, rec.Review)
 }
 func (s *Service) Action(ctx context.Context, id, action string, in Envelope) error {
-	return s.transaction(ctx, func(st *Registry) error {
+	var denied error
+	err := s.transaction(ctx, func(st *Registry) error {
 		rec, ok := st.Tasks[id]
 		t := rec.Task
 		if !ok || in.Lease != t.Lease || in.Epoch != t.Epoch || in.Attempt != t.Attempt || in.Kind != t.Kind || in.InputHash != t.InputHash || in.Instance != rec.Instance {
@@ -327,6 +349,30 @@ func (s *Service) Action(ctx context.Context, id, action string, in Envelope) er
 		}
 		switch action {
 		case "started":
+			if rec.Review != nil {
+				app, err := s.resolveTask(t)
+				if err != nil {
+					return err
+				}
+				op := "review:" + rec.Review.Run.RunID + ":" + strconv.Itoa(rec.Review.Run.Attempts)
+				if err := app.MeterAuthorize(ctx, op, "review"); err != nil {
+					if rec.Started {
+						return err
+					}
+					r := s.review(app)
+					completeErr := r.Complete(rec.Review, llm.Response{}, err)
+					r.Close()
+					if completeErr != nil {
+						return completeErr
+					}
+					s.recordOutcome(&rec, app)
+					rec.scrub()
+					rec.Finished, rec.ResultHash = true, fp
+					st.Tasks[id] = rec
+					denied = err
+					return nil
+				}
+			}
 			if rec.Started {
 				return nil
 			}
@@ -347,7 +393,7 @@ func (s *Service) Action(ctx context.Context, id, action string, in Envelope) er
 			if len(in.Response.Text) > limit {
 				return llm.Fail("LLM_RESPONSE_TOO_LARGE")
 			}
-			if in.Response.Usage != nil && (in.Response.Usage.InputTokens < 0 || in.Response.Usage.InputTokens > 1000000 || in.Response.Usage.OutputTokens < 0 || in.Response.Usage.OutputTokens > s.Config.MaxOutputTokens) {
+			if in.Response.Usage != nil && (in.Response.Usage.CachedInputTokens < 0 || in.Response.Usage.CachedInputTokens > in.Response.Usage.InputTokens || in.Response.Usage.InputTokens < 0 || in.Response.Usage.InputTokens > 1000000 || in.Response.Usage.OutputTokens < 0 || in.Response.Usage.OutputTokens > s.Config.MaxOutputTokens) {
 				return llm.Fail("LLM_INVALID_USAGE")
 			}
 			var modelErr error
@@ -381,6 +427,10 @@ func (s *Service) Action(ctx context.Context, id, action string, in Envelope) er
 		st.Tasks[id] = rec
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+	return denied
 }
 func failureAllowed(code string) bool {
 	switch code {

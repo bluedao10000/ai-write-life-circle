@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/application"
+	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/billing"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/compat"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/harness"
 	"sort"
@@ -158,6 +159,16 @@ func (s *Service) BuildPlan(ctx context.Context, chapterID string, input Input) 
 		return Plan{}, failure(422, "REVIEW_EMPTY_CHAPTER", "There is no saved chapter text to review.")
 	}
 	plan := Plan{ConfigFingerprint: s.Config.Fingerprint(), StrategyVersion: StrategyVersion, Input: in, ProjectID: s.App.Project, ChapterID: chapterID, Model: s.Config.Info(), Sources: []Source{source(s.App.Project, target, revision, "target")}, BudgetBytes: s.Config.MaxContextBytes}
+	free, e := s.freeAuthor(ctx)
+	if e != nil {
+		return Plan{}, e
+	}
+	if free {
+		plan.BudgetBytes = min(plan.BudgetBytes, freeContextBytes)
+		output := min(s.Config.MaxOutputTokens, freeOutputTokens)
+		plan.Cost = &Cost{Policy: FreeReviewPolicy, MaxOutputTokens: output, ReservedPoints: billing.PointsFor(plan.BudgetBytes+20000, output)}
+	}
+
 	if s.contextSize(plan) > plan.BudgetBytes {
 		return Plan{}, failure(422, "REVIEW_CONTEXT_TOO_LARGE", "The complete target chapter exceeds the configured review budget. It was not truncated or sent.")
 	}
