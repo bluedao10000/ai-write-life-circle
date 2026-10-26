@@ -46,22 +46,26 @@ export function completionUsage(value:unknown,maxOutput:number):AgentModelRespon
 export class ModelGateway {
   constructor(readonly config:ExecutionConfig,readonly key:string){}
   validate(task:AgentTask){
+    const limit=task.request.outputLimit;
+    if(limit!==undefined && (task.kind!=='review.execute'||!Number.isInteger(limit)||limit<128||limit>Math.min(32768,this.config.MaxOutputTokens)))throw new GatewayError('AGENT_CONFIG_CHANGED');
     const received=executionConfigSchema.parse(JSON.parse(task.configFingerprint));
     if(JSON.stringify(received)!==JSON.stringify(this.config)||task.model.provider!==this.config.Provider||task.model.model!==this.config.Model||task.model.endpoint!==this.config.BaseURL)throw new GatewayError("AGENT_CONFIG_CHANGED");
   }
   async execute(task:AgentTask,signal:AbortSignal):Promise<AgentModelResponse>{
     this.validate(task);
+    const output=task.request.outputLimit??this.config.MaxOutputTokens;
+    if(output>this.config.MaxOutputTokens|| (task.request.outputLimit!==undefined && task.kind!=='review.execute'))throw new GatewayError('AGENT_CONFIG_CHANGED');
     const cfg=this.config,deadline=AbortSignal.timeout(Math.max(1,Math.min(cfg.Timeout/1e6,Date.parse(task.deadline)-Date.now()))),abort=AbortSignal.any([signal,deadline]);
-    const {runtime,model}=await configuredModel(cfg.BaseURL,cfg.Model,this.key,cfg.MaxContextBytes+20000,cfg.MaxOutputTokens);
+    const {runtime,model}=await configuredModel(cfg.BaseURL,cfg.Model,this.key,cfg.MaxContextBytes+20000,output);
     let usage:AgentModelResponse['usage']=null,transportError="";
     try {
       const result=await runtime.completeSimple(model,{systemPrompt:task.request.system,messages:[{role:"user",content:task.request.input,timestamp:Date.now()}]},{
-        headers:{'X-Client-Request-Id':task.taskId},maxTokens:cfg.MaxOutputTokens,signal:abort,maxRetries:0,timeoutMs:cfg.Timeout/1e6,
+        headers:{'X-Client-Request-Id':task.taskId},maxTokens:output,signal:abort,maxRetries:0,timeoutMs:cfg.Timeout/1e6,
         fetch:boundedModelFetch(cfg.BaseURL,cfg.MaxResponseBytes,abort,code=>{transportError=code}),
         onPayload(value){
           const payload=value as Record<string,unknown>;
           // Preserve the author-approved structured format and exact Token parameter.
-          delete payload.max_tokens;delete payload.max_completion_tokens;payload[cfg.TokenParameter]=cfg.MaxOutputTokens;
+          delete payload.max_tokens;delete payload.max_completion_tokens;payload[cfg.TokenParameter]=output;
           delete payload.response_format;
           if(cfg.ResponseFormat==="json_object")payload.response_format={type:"json_object"};
           if(cfg.ResponseFormat==="json_schema")payload.response_format={type:"json_schema",json_schema:{name:task.request.schemaName||"writing_review",strict:true,schema:task.request.schema}};
@@ -69,7 +73,7 @@ export class ModelGateway {
           return payload;
         },
         onProviderStreamEvent(value){
-          const reported=completionUsage(value,cfg.MaxOutputTokens);
+          const reported=completionUsage(value,output);
           if(reported)usage=reported;
         },
       });

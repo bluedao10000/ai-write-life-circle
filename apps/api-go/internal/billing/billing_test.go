@@ -122,8 +122,8 @@ func TestReserveSettleIdempotentAndExpiry(t *testing.T) {
 func TestPlansFeaturesLegacyOwnerAndIsolation(t *testing.T) {
 	l, _ := ledger(t)
 	ctx := context.Background()
-	if code(l.Allow(ctx, "free-user", "review")) != "PLAN_FEATURE_REQUIRED" {
-		t.Fatal("Free account allowed review")
+	if e := l.Allow(ctx, "free-user", "review"); e != nil {
+		t.Fatal("Free trial unavailable", e)
 	}
 	if e := l.Allow(ctx, "free-user", "thinking"); e != nil {
 		t.Fatal(e)

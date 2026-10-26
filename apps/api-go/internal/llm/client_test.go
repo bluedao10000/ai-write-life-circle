@@ -272,3 +272,25 @@ func TestProviderCacheUsageIsValidated(t *testing.T) {
 		})
 	}
 }
+
+func TestConsentedOutputLimitBoundsActualProviderRequest(t *testing.T) {
+	var output int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		output = int(body["max_completion_tokens"].(float64))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{}"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":8}}`))
+	}))
+	defer server.Close()
+	c, e := New(testConfig(server.URL))
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = c.Generate(context.Background(), Request{System: "fixture", Input: "synthetic", OutputLimit: 512}); e != nil || output != 512 {
+		t.Fatal(output, e)
+	}
+	if _, e = c.Generate(context.Background(), Request{OutputLimit: 2048}); errorCode(e) != "LLM_INVALID_REQUEST" {
+		t.Fatal("request may not raise configured ceiling", e)
+	}
+}

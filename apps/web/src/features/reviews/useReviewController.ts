@@ -1,3 +1,5 @@
+import { useAccount } from '../account/AccountMeter'
+import { emitAuthorMetric } from '../../observability/authorExperience'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReviewFinding, ReviewPlan, ReviewRun, ReviewType, ReviewFeedbackInput } from '@writer-agent/contracts'
 import type { WriterAgentAdapter } from '../../services/writerAgent'
@@ -11,6 +13,9 @@ export function useReviewController({ adapter, workspace, available, paneOpen, t
   paneOpen: boolean; toast: (text: string) => void;
 }) {
   const client = adapter.mode === 'api' ? adapter.reviews : undefined
+  const [account] = useAccount(available && !!client)
+  const allowance=account?.review
+  const quotaExhausted=!!allowance && !allowance.unlimited && allowance.remaining===0
   const { projectId, current, markdownByChapter, chapterVersions, prepareReview } = workspace
   const generation = useRef(0)
   const scopeRef = useRef<Scope>({ projectId, chapterId: current, epoch: 0 })
@@ -30,6 +35,8 @@ export function useReviewController({ adapter, workspace, available, paneOpen, t
   const [refresh, setRefresh] = useState(0)
   const [active, setActiveId] = useState<string | null>(null)
   const mounted = useRef(true)
+  const activated = useRef(new Set<string>())
+  const completed = useRef(new Set<string>())
   const notified = useRef(new Set<string>())
   useEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
   const run = selected?.epoch === scope.epoch ? selected.value : null
@@ -45,6 +52,7 @@ export function useReviewController({ adapter, workspace, available, paneOpen, t
   latest.current = { current, markdown: markdownByChapter[current], version }
   const runId = run?.runId
   const runStatus = run?.status
+  useEffect(() => { if (runStatus) window.dispatchEvent(new Event('writer-agent:account-refresh')) }, [runStatus])
   const stale = !!run && (run.stale || target?.excerpt !== markdownByChapter[current]
     || version?.mode !== 'api' || version.revisionId !== run.revisionId || version.contentHash !== run.contentHash)
   const isScope = useCallback((captured: Scope) => mounted.current && captured.epoch === scopeRef.current.epoch
@@ -68,6 +76,9 @@ export function useReviewController({ adapter, workspace, available, paneOpen, t
   }
   const accept = useCallback((value: ReviewRun, captured: Scope) => {
     if (!isScope(captured) || value.projectId !== captured.projectId || value.chapterId !== captured.chapterId) return
+    if (value.status === 'completed' && activated.current.has(value.runId) && !completed.current.has(value.runId)) {
+      completed.current.add(value.runId); emitAuthorMetric({event:'free_review',bucket:'completed'})
+    }
     setSelected((prior) => prior?.epoch === captured.epoch && prior.value.runId === value.runId && prior.value.version > value.version
       ? prior : { epoch: captured.epoch, value })
     setHistory((prior) => {
@@ -119,6 +130,7 @@ export function useReviewController({ adapter, workspace, available, paneOpen, t
 
   const prepare = async (nextTypes = types) => {
     if (!client || !available) { toast('服务端尚未配置可用模型，真实审查不可用。'); return }
+    if (quotaExhausted) { toast('本月免费审查次数已用完，已有结果仍可查看。可下月继续，或在账号方案中升级。'); return }
     if (nextTypes.length === 0) { toast('至少选择一种审查类型。'); return }
     const operation = begin('preview')
     if (!operation) return
@@ -148,7 +160,8 @@ export function useReviewController({ adapter, workspace, available, paneOpen, t
         consent: { confirmed: true, planHash: plan.planHash },
       }, consentKey)
       if (!isRequest(scope, request, selectedRun)) return false
-      accept(value, scope); setPlanned(null); setActiveId(null)
+      if (plan.cost && !activated.current.has(value.runId)) { activated.current.add(value.runId); emitAuthorMetric({event:'free_review',bucket:'started'}) }
+      accept(value, scope); setPlanned(null); setActiveId(null); window.dispatchEvent(new Event('writer-agent:account-refresh'))
       return true
     } catch (e) {
       if (isRequest(scope, request, selectedRun)) { setFailure({ epoch: scope.epoch, text: message(e) }); toast(message(e)) }
@@ -173,7 +186,7 @@ export function useReviewController({ adapter, workspace, available, paneOpen, t
     const request = ++generation.current
     try {
       const value = await client.feedback(projectId, run.runId, findingId, { choice, baseVersion: run.version }, crypto.randomUUID())
-      if (isRequest(scope, request, run.runId)) { accept(value, scope); toast('作者反馈已保存。') }
+      if (isRequest(scope, request, run.runId)) { accept(value, scope); if (run.findings.find((item) => item.findingId === findingId)?.feedback?.choice !== choice) emitAuthorMetric({event:'review_feedback',bucket:choice==='useful'?'useful':'other'}); toast('作者反馈已保存。') }
     } catch (e) {
       if (isRequest(scope, request, run.runId)) { setFailure({ epoch: scope.epoch, text: `${message(e)} 请刷新后核对反馈状态。` }); setRefresh((value) => value + 1) }
     } finally { end(operation) }
@@ -205,7 +218,7 @@ export function useReviewController({ adapter, workspace, available, paneOpen, t
     } catch (e) { if (isRequest(scope, request, run.runId)) setFailure({ epoch: scope.epoch, text: message(e) }); return null }
   }
   const finding = (id: string): ReviewFinding | undefined => run?.findings.find((item) => item.findingId === id)
-  return { available: available && !!client, runs, run, plan, consentSessionId: plan ? planned?.key : null,
+  return { allowance, quotaExhausted, available: available && !!client, runs, run, plan, consentSessionId: plan ? planned?.key : null,
     closePlan: () => { if (busy !== 'start') { generation.current++; setPlanned(null) } }, types, busy, error, stale, prepare, start, cancel, feedback,
     activeId: run?.findings.some((item) => item.findingId === active) ? active : null, setActiveId, choose, finding, revalidate,
     refresh: () => setRefresh((value) => value + 1),

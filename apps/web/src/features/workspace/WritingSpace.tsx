@@ -1,3 +1,4 @@
+import { recordTimeToWriting } from '../../observability/authorExperience'
 import ManagedDirectory from '../management/ManagedDirectory'
 import { useManagement } from '../management/ManagedStudio'
 import type { useStudioController } from '../vnext/useStudioController'
@@ -12,7 +13,7 @@ import { Btn, Dot, IconBtn, Icon, Seg, Kbd } from '../../components/vnext/ui'
 import type { WriterAgentAdapter } from '../../services/writerAgent'
 import ThinkingSpace from '../vnext/ThinkingSpace'
 import WritingContextPanel from '../creative/WritingContextPanel'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 export default function WritingSpace({
   studio,
   adapter,
@@ -21,6 +22,7 @@ export default function WritingSpace({
   adapter: WriterAgentAdapter
 }) {
   const management = useManagement()
+  const writingMetric = useRef({ openedAt: performance.now(), sent: false })
   const {
     reviews,
     reviewAnnotations,
@@ -149,6 +151,12 @@ export default function WritingSpace({
         )}
         <main
           className="flex min-w-0 flex-1 flex-col"
+          onInputCapture={(event) => {
+            if (compose && !writingMetric.current.sent && (event.target as HTMLElement).closest('.manuscript')) {
+              writingMetric.current.sent = true
+              recordTimeToWriting(performance.now() - writingMetric.current.openedAt)
+            }
+          }}
           onKeyDownCapture={(event) => {
             if ((event.target as HTMLElement).closest('.manuscript') && event.key.length === 1)
               setTyping(true)
@@ -418,7 +426,7 @@ export default function WritingSpace({
                   <Icon name="think" />
                   去灵感
                 </Btn>
-                {api && <Btn size="sm" variant="outline" disabled={!reviews.available || !!reviews.busy || !(workspace.markdownByChapter[current] ?? '').trim()} onClick={() => { openRight('margin'); void reviews.prepare() }}>审查本章</Btn>}
+                {api && <Btn size="sm" variant="outline" disabled={reviews.quotaExhausted || !reviews.available || !!reviews.busy || !(workspace.markdownByChapter[current] ?? '').trim()} onClick={() => { openRight('margin'); void reviews.prepare() }}>审查本章</Btn>}
                 {api && (
                   <Btn size="sm" onClick={() => openRight('context')} title="本章的构想、相关设定与计划核对">
                     <Icon name="book" />
@@ -447,4 +455,3 @@ export default function WritingSpace({
     </>
   )
 }
-

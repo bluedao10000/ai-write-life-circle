@@ -22,10 +22,12 @@ export function useAccount(enabled: boolean): [AccountUsage | null, (a: AccountU
     load()
     const timer = window.setInterval(load, 60_000)
     window.addEventListener('focus', load)
+    window.addEventListener('writer-agent:account-refresh', load)
     return () => {
       alive = false
       window.clearInterval(timer)
       window.removeEventListener('focus', load)
+      window.removeEventListener('writer-agent:account-refresh', load)
     }
   }, [enabled])
   return [account, setAccount]
@@ -165,7 +167,7 @@ export default function AccountMeter({ enabled }: { enabled: boolean }) {
                   </>
                 )}
                 <dt className="text-ink-3">连续性审查</dt>
-                <dd>{account.features.review ? '可用' : '需要 Plus 或 Pro'}</dd>
+                <dd>{account.review && !account.review.unlimited ? `本月剩余 ${account.review.remaining} / ${account.review.limit} 次` : account.features.review ? '可用' : '当前方案不可用'}</dd>
               </dl>
             </Section>
 

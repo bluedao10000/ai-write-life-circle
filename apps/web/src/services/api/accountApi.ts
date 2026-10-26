@@ -1,9 +1,11 @@
+import { reviewAllowanceSchema, type ReviewAllowance } from '@writer-agent/contracts'
 import { getJson, postJson } from './client'
 
 export type PlanId = 'free' | 'plus' | 'pro'
 
 /** Plan, AI points and plan limits of the signed-in author (GET /v1/account). */
 export type AccountUsage = {
+  review?: ReviewAllowance
   plan: PlanId
   /** Set for a granted plan; empty for the default plan. */
   interval?: 'month' | 'year'
@@ -103,6 +105,7 @@ export function parseAccount(value: unknown): AccountUsage | null {
     })
     : []
   return {
+    review: reviewAllowanceSchema.safeParse(v.review).success ? reviewAllowanceSchema.parse(v.review) : undefined,
     plan: v.plan,
     interval: v.interval === 'month' || v.interval === 'year' ? v.interval : undefined,
     source: typeof v.source === 'string' && v.source ? v.source : undefined,

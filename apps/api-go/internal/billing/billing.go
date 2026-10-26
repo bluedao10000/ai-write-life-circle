@@ -7,13 +7,15 @@
 //   - Reserve before the call. An operation is admitted while the account's
 //     open reservations are below what is left of its monthly allowance plus
 //     active top-ups, and settled + open usage is below the daily limit (and,
-//     for Free, the site-wide Free pool). An account can therefore overrun by
+//     for Free, the site-wide Free pool). Bounded Free reviews must fit the
+//     entire hold; other operations can therefore overrun by
 //     at most one operation.
 //   - Settle with the actual usage afterwards (or release with 0 when no model
 //     call happened). Settling is idempotent per operation ID. Settled points
 //     use the monthly allowance first, then top-ups (earliest expiry first).
 //   - A reservation that is never settled is charged in full once its lease
-//     expires: unknown usage is never refunded.
+//     expires: unknown usage is never refunded. New Free review holds with a
+//     durable marker proving the model never started are released instead.
 //
 // Plans are granted by an operator or a redeem code until payments exist
 // (Phase 2). A granted plan carries an expiry; afterwards the account falls
@@ -66,7 +68,7 @@ type Limits struct {
 // Plans mirrors the confirmed pricing table (§3). Pro's 300 books is the
 // fair-use cap of "unlimited".
 var Plans = map[Plan]Limits{
-	Free: {Monthly: 1500, Daily: 300, Books: 3, Sessions: 1, ImportsPerMonth: 2},
+	Free: {Monthly: 1500, Daily: 300, Review: true, Books: 3, Sessions: 1, ImportsPerMonth: 2},
 	Plus: {Monthly: 6000, Daily: 1500, Review: true, Topups: true, Books: 30, Sessions: 2, MonthlyUSDCents: 499, YearlyUSDCents: 4900},
 	Pro:  {Monthly: 18000, Daily: 4000, Review: true, Topups: true, Books: 300, Sessions: 4, Priority: true, MonthlyUSDCents: 1299, YearlyUSDCents: 12900},
 }
@@ -122,7 +124,52 @@ type Ledger struct {
 
 var _ application.Meter = (*Ledger)(nil)
 
+type reviewUse struct {
+	Month string `json:"month"`
+	Used  bool   `json:"used"`
+}
+
+type ReviewWindow struct {
+	Limit     int    `json:"limit"`
+	Used      int    `json:"used"`
+	Reserved  int    `json:"reserved"`
+	Remaining int    `json:"remaining"`
+	ResetsAt  string `json:"resetsAt"`
+	Unlimited bool   `json:"unlimited"`
+}
+
+func trialRun(op string) string {
+	if !strings.HasPrefix(op, "review:") {
+		return ""
+	}
+	parts := strings.Split(op, ":")
+	if len(parts) != 3 || parts[1] == "" {
+		return ""
+	}
+	return parts[1]
+}
+func trialWindow(a account, now time.Time, unlimited bool) ReviewWindow {
+	first := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+	out := ReviewWindow{Limit: 2, ResetsAt: first.AddDate(0, 1, 0).Format(time.RFC3339), Unlimited: unlimited}
+	for _, use := range a.ReviewUses {
+		if use.Month == now.Format("2006-01") {
+			if use.Used {
+				out.Used++
+			} else {
+				out.Reserved++
+			}
+		}
+	}
+	out.Remaining = max(0, out.Limit-out.Used-out.Reserved)
+	return out
+}
+func trialError() error {
+	return application.Fail(402, "REVIEW_TRIAL_EXHAUSTED", "本月的 2 次免费审查已用完或正在进行。已有结果、写作和保存仍可使用；可下月继续或升级方案。")
+}
+
 type hold struct {
+	TrialRun       string `json:"trialRun,omitempty"`
+	Started        bool   `json:"started,omitempty"`
 	PricingVersion string `json:"pricingVersion,omitempty"`
 	Kind           string `json:"kind"`
 	Points         int    `json:"points"`
@@ -149,7 +196,8 @@ type entry struct {
 }
 
 type account struct {
-	tx *transaction
+	ReviewUses map[string]reviewUse `json:"reviewUses,omitempty"`
+	tx         *transaction
 
 	Schema int    `json:"schema"`
 	Actor  string `json:"actorId"`
@@ -278,6 +326,9 @@ func (l *Ledger) load(actor string) (account, error) {
 	if found && (a.Schema != 1 || a.Actor != actor) {
 		return a, fmt.Errorf("invalid billing account")
 	}
+	if a.ReviewUses == nil {
+		a.ReviewUses = map[string]reviewUse{}
+	}
 	if a.Open == nil {
 		a.Open = map[string]hold{}
 	}
@@ -314,8 +365,11 @@ func (l *Ledger) accountTransaction(ctx context.Context, tx *transaction, actor 
 		if before(now, h.Expires) {
 			continue
 		}
-		if e := l.finish(ctx, &a, op, h, h.Points, now); e != nil {
+		if e := l.finish(ctx, &a, op, h, unknownCharge(h), now); e != nil {
 			return e
+		}
+		if h.TrialRun != "" && !h.Started {
+			delete(a.Done, op)
 		}
 	}
 	if e := fn(&a, now); e != nil {
@@ -347,6 +401,29 @@ func topupLeft(a account, now time.Time) int {
 
 func (l *Ledger) finish(ctx context.Context, a *account, op string, h hold, charge int, now time.Time) error {
 	charge = max(charge, 0)
+	if h.TrialRun != "" {
+		use := a.ReviewUses[h.TrialRun]
+		if h.Started || charge > 0 {
+			if !use.Used && use.Month != a.Month {
+				if trialWindow(*a, now, false).Remaining == 0 {
+					return trialError()
+				}
+				use.Month = a.Month
+			}
+			use.Used = true
+			a.ReviewUses[h.TrialRun] = use
+		} else if !use.Used {
+			other := false
+			for id, hold := range a.Open {
+				if id != op && hold.TrialRun == h.TrialRun {
+					other = true
+				}
+			}
+			if !other {
+				delete(a.ReviewUses, h.TrialRun)
+			}
+		}
+	}
 	if h.Month == a.Month {
 		limits := Plans[l.planOf(*a, now)]
 		rest := charge - min(charge, max(limits.Monthly-a.MonthUsed, 0))
@@ -392,6 +469,19 @@ func (l *Ledger) finish(ctx context.Context, a *account, op string, h hold, char
 
 func (l *Ledger) prune(a *account, now time.Time) {
 	cutoff := now.AddDate(0, 0, -40).Format("2006-01-02")
+	for run, use := range a.ReviewUses {
+		if use.Month < now.AddDate(0, -2, 0).Format("2006-01") {
+			active := false
+			for _, h := range a.Open {
+				if h.TrialRun == run {
+					active = true
+				}
+			}
+			if !active {
+				delete(a.ReviewUses, run)
+			}
+		}
+	}
 	for op, day := range a.Done {
 		if day < cutoff {
 			delete(a.Done, op)
@@ -494,6 +584,14 @@ func (l *Ledger) admit(a account, plan Plan, c Control, now time.Time) error {
 	return nil
 }
 
+func unknownCharge(h hold) int {
+	// Only new trial holds have a durable start marker; legacy unknown usage stays charged.
+	if h.TrialRun != "" && !h.Started {
+		return 0
+	}
+	return h.Points
+}
+
 // Allow reports whether the owner may start an author-initiated AI feature now.
 func (l *Ledger) Allow(ctx context.Context, owner, feature string) error {
 	if owner == "" {
@@ -506,8 +604,8 @@ func (l *Ledger) Allow(ctx context.Context, owner, feature string) error {
 			return err
 		}
 		plan := l.planOf(*a, now)
-		if feature == "review" && !Plans[plan].Review {
-			out = application.Fail(402, "PLAN_FEATURE_REQUIRED", "连续性审查需要 Plus 或 Pro 方案。写作和其他功能不受影响。")
+		if feature == "review" && plan == Free && trialWindow(*a, now, false).Remaining == 0 {
+			out = trialError()
 			return nil
 		}
 		out = l.admit(*a, plan, c, now)
@@ -534,14 +632,14 @@ func (l *Ledger) Reserve(ctx context.Context, owner, op, kind string, points int
 			return err
 		}
 		plan := l.planOf(*a, now)
-		if kind == "review" && !Plans[plan].Review {
-			out = application.Fail(402, "PLAN_FEATURE_REQUIRED", "连续性审查需要 Plus 或 Pro 方案。")
-			return nil
-		}
 		if _, ok := a.Done[op]; ok {
 			return nil
 		}
 		if h, ok := a.Open[op]; ok {
+			if kind == "review" && plan == Free && h.TrialRun == "" {
+				out = application.Fail(402, "PLAN_FEATURE_REQUIRED", "套餐已变化，请重新预览免费审查范围。")
+				return nil
+			}
 			if h.Kind != kind {
 				return fmt.Errorf("billing operation kind mismatch")
 			}
@@ -551,6 +649,26 @@ func (l *Ledger) Reserve(ctx context.Context, owner, op, kind string, points int
 			return nil
 		}
 		h := hold{PricingVersion: PricingVersion, Kind: kind, Points: max(points, 1), Month: a.Month, Day: a.Day, Expires: now.Add(l.ttl()).Format(time.RFC3339Nano), Free: plan == Free}
+		if kind == "review" && plan == Free {
+			id := trialRun(op)
+			if id == "" {
+				return fmt.Errorf("invalid review billing operation")
+			}
+			if _, ok := a.ReviewUses[id]; !ok && trialWindow(*a, now, false).Remaining == 0 {
+				out = trialError()
+				return nil
+			}
+			month, day := outstanding(*a)
+			if a.MonthUsed+month+h.Points > Plans[Free].Monthly {
+				out = quotaError("month")
+				return nil
+			}
+			if a.DayUsed+day+h.Points > Plans[Free].Daily {
+				out = quotaError("day")
+				return nil
+			}
+			h.TrialRun = id
+		}
 		if h.Free {
 			cap := c.FreeDailyPoints
 			if cap <= 0 {
@@ -561,7 +679,7 @@ func (l *Ledger) Reserve(ctx context.Context, owner, op, kind string, points int
 				for _, v := range p.Open {
 					open += v
 				}
-				if p.Used+open >= cap {
+				if p.Used+open >= cap || (h.TrialRun != "" && p.Used+open+h.Points > cap) {
 					out = quotaError("pool")
 					return
 				}
@@ -571,6 +689,11 @@ func (l *Ledger) Reserve(ctx context.Context, owner, op, kind string, points int
 			}
 			if out != nil {
 				return nil
+			}
+		}
+		if h.TrialRun != "" {
+			if _, ok := a.ReviewUses[h.TrialRun]; !ok {
+				a.ReviewUses[h.TrialRun] = reviewUse{Month: a.Month}
 			}
 		}
 		a.Open[op] = h
@@ -590,9 +713,6 @@ func (l *Ledger) Authorize(ctx context.Context, owner, op, kind string) error {
 	}
 	return l.withAccount(ctx, owner, func(a *account, now time.Time) error {
 		plan := l.planOf(*a, now)
-		if kind == "review" && !Plans[plan].Review {
-			return application.Fail(402, "PLAN_FEATURE_REQUIRED", "连续性审查需要 Plus 或 Pro 方案。")
-		}
 		control, err := readControl(l.State)
 		if err != nil {
 			return err
@@ -601,10 +721,43 @@ func (l *Ledger) Authorize(ctx context.Context, owner, op, kind string) error {
 			return pausedError()
 		}
 		h, ok := a.Open[op]
+		if ok && kind == "review" && plan == Free && h.TrialRun == "" {
+			return application.Fail(402, "PLAN_FEATURE_REQUIRED", "套餐已变化，请重新预览免费审查范围。")
+		}
 		if !ok || h.Kind != kind || !before(now, h.Expires) {
 			return application.Fail(409, "BILLING_RESERVATION_EXPIRED", "AI 点数预留已失效，请重新发起。")
 		}
+		if h.TrialRun != "" {
+			use, ok := a.ReviewUses[h.TrialRun]
+			if !ok {
+				return trialError()
+			}
+			if !use.Used && use.Month != a.Month {
+				if trialWindow(*a, now, false).Remaining == 0 {
+					return trialError()
+				}
+				use.Month = a.Month
+			}
+			use.Used = true
+			a.ReviewUses[h.TrialRun] = use
+			h.Started = true
+			a.Open[op] = h
+		}
 		return nil
+	})
+}
+
+// ReleaseUnstartedReview is a cancellation fence, not a refund of unknown model usage.
+func (l *Ledger) ReleaseUnstartedReview(ctx context.Context, owner, op string) error {
+	if owner == "" {
+		return nil
+	}
+	return l.withAccount(ctx, owner, func(a *account, now time.Time) error {
+		h, ok := a.Open[op]
+		if !ok || h.TrialRun == "" || h.Started {
+			return nil
+		}
+		return l.finish(ctx, a, op, h, 0, now)
 	})
 }
 
@@ -621,7 +774,7 @@ func (l *Ledger) Settle(ctx context.Context, owner, op string, points int) error
 			return nil
 		}
 		if points < 0 {
-			points = h.Points
+			points = unknownCharge(h)
 		}
 		return l.finish(ctx, a, op, h, points, now)
 	})
@@ -649,7 +802,8 @@ func (l *Ledger) Entitlements(ctx context.Context, owner string) (application.En
 
 // Usage is the author-facing view of an account.
 type Usage struct {
-	Plan Plan `json:"plan"`
+	Review ReviewWindow `json:"review"`
+	Plan   Plan         `json:"plan"`
 	// Interval, Source and ExpiresAt describe a granted plan; empty for the
 	// default plan.
 	Interval  string          `json:"interval,omitempty"`
@@ -727,6 +881,7 @@ func (l *Ledger) view(a account, now time.Time, c Control) Usage {
 	tomorrow := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC).AddDate(0, 0, 1)
 	u := Usage{
 		Plan:     plan,
+		Review:   trialWindow(a, now, plan != Free),
 		Month:    Window{Limit: limits.Monthly, Used: a.MonthUsed, Reserved: month, ResetsAt: first.AddDate(0, 1, 0).Format(time.RFC3339)},
 		Day:      Window{Limit: limits.Daily, Used: a.DayUsed, Reserved: day, ResetsAt: tomorrow.Format(time.RFC3339)},
 		Topups:   TopupView{Left: topupLeft(a, now), Frozen: !limits.Topups, UsedThisMonth: a.TopupUsed, Items: []TopupItem{}},

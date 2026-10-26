@@ -342,6 +342,11 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
         "properties": {
+          "outputLimit": {
+            "type": "integer",
+            "minimum": 128,
+            "maximum": 32768
+          },
           "system": {
             "type": "string",
             "maxLength": 40000
@@ -553,6 +558,11 @@
                   "request": {
                     "type": "object",
                     "properties": {
+                      "outputLimit": {
+                        "type": "integer",
+                        "minimum": 128,
+                        "maximum": 32768
+                      },
                       "system": {
                         "type": "string",
                         "maxLength": 40000
@@ -903,6 +913,11 @@
           "request": {
             "type": "object",
             "properties": {
+              "outputLimit": {
+                "type": "integer",
+                "minimum": 128,
+                "maximum": 32768
+              },
               "system": {
                 "type": "string",
                 "maxLength": 40000

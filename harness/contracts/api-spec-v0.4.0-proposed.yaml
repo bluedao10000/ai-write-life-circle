@@ -1470,6 +1470,33 @@ paths:
                           $ref: "#/components/schemas/AuditRecord"
       x-implementation-status: proposed
       summary: List audit records
+  /account:
+    get:
+      operationId: getAuthorAccount
+      summary: Read current author point balances and account-level review quota
+      tags:
+        - Account
+      responses:
+        "200":
+          description: Current author account; review allowance resets on UTC calendar months
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - plan
+                  - review
+                properties:
+                  plan:
+                    type: string
+                    enum:
+                      - free
+                      - plus
+                      - pro
+                  review:
+                    $ref: "#/components/schemas/ReviewAllowance"
+        "401":
+          description: Author login required
   /projects/{projectId}/chapters/{chapterId}/revisions/{revisionId}:
     get:
       operationId: getChapterRevisionContent
@@ -4045,6 +4072,40 @@ components:
             - permission
             - storage
             - not_found
+    ReviewAllowance:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      properties:
+        limit:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        used:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        reserved:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        remaining:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        resetsAt:
+          type: string
+          format: date-time
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+        unlimited:
+          type: boolean
+      required:
+        - limit
+        - used
+        - reserved
+        - remaining
+        - resetsAt
+        - unlimited
+      additionalProperties: false
     ChapterRevisionContent:
       $schema: https://json-schema.org/draft/2020-12/schema
       type: object
@@ -4427,6 +4488,25 @@ components:
             enum:
               - character_consistency
               - timeline_consistency
+        cost:
+          type: object
+          properties:
+            policy:
+              type: string
+              const: free-review-v1
+            maxOutputTokens:
+              type: integer
+              minimum: 128
+              maximum: 32768
+            reservedPoints:
+              type: integer
+              exclusiveMinimum: 0
+              maximum: 217
+          required:
+            - policy
+            - maxOutputTokens
+            - reservedPoints
+          additionalProperties: false
         configFingerprint:
           type: string
         strategyVersion:
@@ -4590,6 +4670,25 @@ components:
             enum:
               - character_consistency
               - timeline_consistency
+        cost:
+          type: object
+          properties:
+            policy:
+              type: string
+              const: free-review-v1
+            maxOutputTokens:
+              type: integer
+              minimum: 128
+              maximum: 32768
+            reservedPoints:
+              type: integer
+              exclusiveMinimum: 0
+              maximum: 217
+          required:
+            - policy
+            - maxOutputTokens
+            - reservedPoints
+          additionalProperties: false
         configFingerprint:
           type: string
         strategyVersion:
@@ -5235,6 +5334,25 @@ components:
                   enum:
                     - character_consistency
                     - timeline_consistency
+              cost:
+                type: object
+                properties:
+                  policy:
+                    type: string
+                    const: free-review-v1
+                  maxOutputTokens:
+                    type: integer
+                    minimum: 128
+                    maximum: 32768
+                  reservedPoints:
+                    type: integer
+                    exclusiveMinimum: 0
+                    maximum: 217
+                required:
+                  - policy
+                  - maxOutputTokens
+                  - reservedPoints
+                additionalProperties: false
               configFingerprint:
                 type: string
               strategyVersion:

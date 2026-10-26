@@ -876,6 +876,31 @@
             ]
           }
         },
+        "cost": {
+          "type": "object",
+          "properties": {
+            "policy": {
+              "type": "string",
+              "const": "free-review-v1"
+            },
+            "maxOutputTokens": {
+              "type": "integer",
+              "minimum": 128,
+              "maximum": 32768
+            },
+            "reservedPoints": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 217
+            }
+          },
+          "required": [
+            "policy",
+            "maxOutputTokens",
+            "reservedPoints"
+          ],
+          "additionalProperties": false
+        },
         "configFingerprint": {
           "type": "string"
         },
@@ -1088,6 +1113,31 @@
               "timeline_consistency"
             ]
           }
+        },
+        "cost": {
+          "type": "object",
+          "properties": {
+            "policy": {
+              "type": "string",
+              "const": "free-review-v1"
+            },
+            "maxOutputTokens": {
+              "type": "integer",
+              "minimum": 128,
+              "maximum": 32768
+            },
+            "reservedPoints": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 217
+            }
+          },
+          "required": [
+            "policy",
+            "maxOutputTokens",
+            "reservedPoints"
+          ],
+          "additionalProperties": false
         },
         "configFingerprint": {
           "type": "string"
@@ -2054,6 +2104,31 @@
                     "timeline_consistency"
                   ]
                 }
+              },
+              "cost": {
+                "type": "object",
+                "properties": {
+                  "policy": {
+                    "type": "string",
+                    "const": "free-review-v1"
+                  },
+                  "maxOutputTokens": {
+                    "type": "integer",
+                    "minimum": 128,
+                    "maximum": 32768
+                  },
+                  "reservedPoints": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 217
+                  }
+                },
+                "required": [
+                  "policy",
+                  "maxOutputTokens",
+                  "reservedPoints"
+                ],
+                "additionalProperties": false
               },
               "configFingerprint": {
                 "type": "string"

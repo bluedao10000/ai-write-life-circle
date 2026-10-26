@@ -94,8 +94,8 @@ func TestGrantExtendsSamePlanReplacesOtherAndExpires(t *testing.T) {
 	if u, _ = l.View(ctx, "g"); u.Plan != Free || u.ExpiresAt != "" || u.Month.Limit != 1500 {
 		t.Fatalf("expired plan must fall back to Free: %+v", u)
 	}
-	if code(l.Allow(ctx, "g", "review")) != "PLAN_FEATURE_REQUIRED" {
-		t.Fatal("expired plan kept review")
+	if e := l.Allow(ctx, "g", "review"); e != nil {
+		t.Fatal("expired plan should fall back to Free trials", e)
 	}
 	// The legacy owner falls back to Pro, not Free.
 	_, _ = l.Grant(ctx, "owner", Grant{Plan: Plus, Interval: "month", Periods: 1, Source: "manual"})

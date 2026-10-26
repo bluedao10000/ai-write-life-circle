@@ -215,7 +215,10 @@ func (s *Service) Claim(ctx context.Context, instance, config string, kinds ...s
 				task.Strategy = run.StrategyVersion
 				task.Revision = run.RevisionID
 				task.ContentHash = run.ContentHash
-				task.Reserved = s.Config.MaxContextBytes + 20000 + s.Config.MaxOutputTokens
+				task.Reserved = run.BudgetBytes + 20000 + s.Config.MaxOutputTokens
+				if request.OutputLimit > 0 {
+					task.Reserved = run.BudgetBytes + 20000 + request.OutputLimit
+				}
 				task.Consent = run.Plan
 				task.Request = request
 				rec.Review = claim

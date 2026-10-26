@@ -9,10 +9,11 @@ type Usage struct {
 	OutputTokens      int `json:"outputTokens"`
 }
 type Request struct {
-	System     string         `json:"system"`
-	Input      string         `json:"input"`
-	SchemaName string         `json:"schemaName"`
-	Schema     map[string]any `json:"schema"`
+	OutputLimit int            `json:"outputLimit,omitempty"`
+	System      string         `json:"system"`
+	Input       string         `json:"input"`
+	SchemaName  string         `json:"schemaName"`
+	Schema      map[string]any `json:"schema"`
 }
 type Response struct {
 	Text  string `json:"text"`

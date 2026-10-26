@@ -1,7 +1,7 @@
 import { z } from "zod";
 export const agentTaskProtocol = "agent-tasks-v1" as const;
 export const agentTaskModelSchema = z.object({provider:z.string(),model:z.string(),endpoint:z.string().url(),execution:z.enum(["local","external"])}).strict();
-export const agentModelRequestSchema=z.object({system:z.string().max(40000),input:z.string().max(256*1024),schemaName:z.string().max(80),schema:z.record(z.string(),z.unknown())}).strict();
+export const agentModelRequestSchema=z.object({outputLimit:z.number().int().min(128).max(32768).optional(),system:z.string().max(40000),input:z.string().max(256*1024),schemaName:z.string().max(80),schema:z.record(z.string(),z.unknown())}).strict();
 export const agentModelResponseSchema=z.object({text:z.string().max(512*1024),usage:z.object({cachedInputTokens: z.number().int().nonnegative().optional(), inputTokens:z.number().int().min(0).max(1000000),outputTokens:z.number().int().min(0).max(131072)}).strict().nullable()}).strict();
 export const agentTaskSchema=z.object({
  taskId:z.string().uuid(),kind:z.enum(["review.execute","knowledge.extract"]),bookId:z.string().min(1).max(128),authorId:z.string().min(1).max(128),leaseToken:z.string().uuid(),executorEpoch:z.number().int().positive(),attempt:z.number().int().min(1).max(3),deadline:z.string().datetime({offset:true}),strategyVersion:z.string(),revisionId:z.string(),contentHash:z.string(),inputHash:z.string().regex(/^sha256:[a-f0-9]{64}$/),model:agentTaskModelSchema,configFingerprint:z.string().max(5000),outputSchemaVersion:z.enum(["review-candidates-v1","knowledge-candidates-v1"]),reservedTokens:z.number().int().nonnegative(),budgetDay:z.string(),consent:z.record(z.string(),z.unknown()),request:agentModelRequestSchema

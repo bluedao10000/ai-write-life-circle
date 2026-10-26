@@ -194,14 +194,13 @@ func TestReviewAuthorizationAfterDowngradeAndExpiry(t *testing.T) {
 			} else if err := l.SetPlan(ctx, "alice", Free); err != nil {
 				t.Fatal(err)
 			}
-			for _, op := range []string{"claimed", "new"} {
-				if code(l.Reserve(ctx, "alice", op, "review", 50)) != "PLAN_FEATURE_REQUIRED" {
-					t.Fatal("queued review admitted")
-				}
+			if err := l.Authorize(ctx, "alice", "claimed", "review"); err == nil {
+				t.Fatal("old paid hold must not authorize a free trial")
 			}
-			if code(l.Authorize(ctx, "alice", "claimed", "review")) != "PLAN_FEATURE_REQUIRED" {
-				t.Fatal("claimed review executed")
+			if err := l.Reserve(ctx, "alice", "review:new:1", "review", 50); err != nil {
+				t.Fatal("new bounded free trial should be admitted", err)
 			}
+
 		})
 	}
 }

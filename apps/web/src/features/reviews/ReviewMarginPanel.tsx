@@ -13,6 +13,8 @@ export function ReviewMarginPanel({ review, locate, select, saveNote, marksHidde
 }) {
   const [sourceId, setSourceId] = useState<string | null>(null)
   const [noteError, setNoteError] = useState('')
+  const quota = review.allowance
+  const exhausted = review.quotaExhausted
   const run = review.run
   const source = run?.sources.find((item) => item.sourceId === sourceId)
   const feedback: Record<string, ReviewFeedback['choice'] | undefined> = {}
@@ -36,7 +38,8 @@ export function ReviewMarginPanel({ review, locate, select, saveNote, marksHidde
     <section className="space-y-3 border-b border-line px-5 pb-4">
       <div className="flex items-center gap-2"><h2 className="flex-1 text-ui font-medium">本章连续性审查</h2><Btn size="sm" disabled={!!review.busy} onClick={review.refresh}>刷新记录</Btn></div>
       {!review.available && <p className="text-ui-sm text-ink-3">真实审查不可用：服务端尚未配置可用模型，或此后端不支持审查。历史记录仍可查看。</p>}
-      <Btn size="sm" variant="outline" disabled={!review.available || !!review.busy || emptyChapter || (run?.status === 'running' || run?.status === 'queued')} onClick={() => void review.prepare()}>{run?.status === 'completed' ? '重新审查' : '审查本章'}</Btn>
+      <Btn size="sm" variant="outline" disabled={exhausted || !review.available || !!review.busy || emptyChapter || (run?.status === 'running' || run?.status === 'queued')} onClick={() => void review.prepare()}>{run?.status === 'completed' ? '重新审查' : '审查本章'}</Btn>
+      {quota && !quota.unlimited && <p className="text-ui-sm text-ink-3">本月免费审查剩余 {quota.remaining} / {quota.limit} 次{quota.reserved > 0 ? `（${quota.reserved} 次已预留）` : ''}，{new Date(quota.resetsAt).toLocaleDateString('zh-CN', { timeZone: 'UTC' })}重置。{exhausted ? '可下月继续，或在账号方案中升级；已有结果仍可查看。' : '写作、阅读和保存不消耗 AI 点数。'}</p>}
       {review.runs.length > 0 && <label className="block text-ui-sm text-ink-3">审查记录<select aria-label="审查记录" className="mt-1 w-full rounded-md bg-surface-2 px-2 py-1.5 text-ui text-ink" value={run?.runId ?? ''} disabled={!!review.busy} onChange={(event) => void review.choose(event.target.value)}>{review.runs.map((item) => <option key={item.runId} value={item.runId}>{new Date(item.startedAt).toLocaleString('zh-CN')} · {statuses[item.status]}</option>)}</select></label>}
       {run && <p role="status" className="text-ui-sm text-ink-3">{statuses[run.status]}</p>}
       {(run?.status === 'running' || run?.status === 'queued') && <div className="rounded-lg border border-line p-3.5" aria-live="polite">

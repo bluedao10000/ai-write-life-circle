@@ -20,7 +20,8 @@ test('Pi bounded Review keeps prompt, dialect, usage and zero tools/retries',asy
  cached=34;const invalidCache=await executeReview(task,gateway,new AbortController().signal);assert.equal(invalidCache.usage?.cachedInputTokens,0);
  missing=true;const unknown=await executeReview(task,gateway,new AbortController().signal);assert.equal(unknown.usage,null,'missing usage must remain unknown, not free');
  invalid=true;await assert.rejects(executeReview(task,gateway,new AbortController().signal),(e:unknown)=>e instanceof GatewayError&&e.code==='LLM_INVALID_OUTPUT');assert.equal(requests.length,5,'no automatic model retries');
- const wrong={...task,configFingerprint:task.configFingerprint.replace('"MaxOutputTokens":2048','"MaxOutputTokens":4096')};assert.throws(()=>validateReview(wrong,gateway));assert.equal(requests.length,5);
+ const capped=await executeReview({...task,request:{...task.request,outputLimit:512}},gateway,new AbortController().signal).catch(e=>e);assert.ok(capped instanceof GatewayError);assert.equal(requests.at(-1)?.max_tokens,512);
+ const wrong={...task,configFingerprint:task.configFingerprint.replace('"MaxOutputTokens":2048','"MaxOutputTokens":4096')};assert.throws(()=>validateReview(wrong,gateway));assert.equal(requests.length,6);
  }finally{server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()))}
  const go=await readFile(new URL('../../api-go/internal/review/context.go',import.meta.url),'utf8');const prefix=go.match(/const systemPrompt = `([^`]+)`/)![1];const schema=await readFile(new URL('../../api-go/internal/review/candidate.schema.json',import.meta.url),'utf8');assert.equal(systemPrompt,prefix+schema,'migration must not silently rewrite Go prompt');
 });
