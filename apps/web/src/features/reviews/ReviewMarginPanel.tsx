@@ -1,12 +1,13 @@
 import { useState } from 'react'
-import type { ReviewFeedback, ReviewFinding } from '@writer-agent/contracts'
+import type { AuthorNote, ReviewFeedback, ReviewFinding } from '@writer-agent/contracts'
 import MarginPanel from '../../components/vnext/MarginPanel'
 import { Btn, Dialog, Icon } from '../../components/vnext/ui'
 import type { Margin, Source } from '../vnext/model'
 import type { useReviewController } from './useReviewController'
 
 const statuses = { queued: '排队中', running: '审查中', completed: '已完成', failed: '审查失败', cancelled: '已取消' }
-export function ReviewMarginPanel({ review, locate, select, saveNote, marksHidden, setMarksHidden, emptyChapter }: {
+export function ReviewMarginPanel({ review, locate, select, saveNote, marksHidden, setMarksHidden, emptyChapter, authorNotes = [], notesError, onAddNote, notesEnabled }: {
+  authorNotes?: AuthorNote[]; notesError?: string; onAddNote?: () => void; notesEnabled?: boolean;
   review: ReturnType<typeof useReviewController>; locate: (id: string) => void; select: (id: string | null) => void;
   saveNote: (content: string) => Promise<string>; marksHidden: boolean; setMarksHidden: (value: boolean) => void; emptyChapter: boolean;
 }) {
@@ -37,10 +38,10 @@ export function ReviewMarginPanel({ review, locate, select, saveNote, marksHidde
       {!review.available && <p className="text-ui-sm text-ink-3">真实审查不可用：服务端尚未配置可用模型，或此后端不支持审查。历史记录仍可查看。</p>}
       <Btn size="sm" variant="outline" disabled={!review.available || !!review.busy || emptyChapter || (run?.status === 'running' || run?.status === 'queued')} onClick={() => void review.prepare()}>{run?.status === 'completed' ? '重新审查' : '审查本章'}</Btn>
       {review.runs.length > 0 && <label className="block text-ui-sm text-ink-3">审查记录<select aria-label="审查记录" className="mt-1 w-full rounded-md bg-surface-2 px-2 py-1.5 text-ui text-ink" value={run?.runId ?? ''} disabled={!!review.busy} onChange={(event) => void review.choose(event.target.value)}>{review.runs.map((item) => <option key={item.runId} value={item.runId}>{new Date(item.startedAt).toLocaleString('zh-CN')} · {statuses[item.status]}</option>)}</select></label>}
-      {run && <p role="status" className="text-ui-sm text-ink-3">{statuses[run.status]} · {run.model.model} · {run.strategyVersion}{run.usage ? ` · 输入 ${run.usage.inputTokens} / 输出 ${run.usage.outputTokens} tokens` : ''}</p>}
+      {run && <p role="status" className="text-ui-sm text-ink-3">{statuses[run.status]}</p>}
       {(run?.status === 'running' || run?.status === 'queued') && <div className="rounded-lg border border-line p-3.5" aria-live="polite">
         <div className="flex items-center gap-2 text-ui text-ink"><span className="dot h-1.5 w-1.5 rounded-full bg-ai" aria-hidden />{statuses[run.status]}</div>
-        <p className="mt-2 text-ui-sm text-ink-3">{run.status === 'queued' ? '正在等待 Worker 领取；服务离线时仍可写作，也可取消排队。' : '正在核对固定版本。你可以继续写作，结果完成后按需查看。'}</p>
+        <p className="mt-2 text-ui-sm text-ink-3">{run.status === 'queued' ? '正在等待后台审查。你可以继续写作，也可取消排队。' : '正在核对固定版本。你可以继续写作，结果完成后按需查看。'}</p>
         <Btn size="sm" variant="outline" className="mt-3" disabled={!!review.busy} onClick={() => void review.cancel()}>取消审查</Btn>
       </div>}
       {run?.status === 'failed' && <p role="alert" className="flex items-start gap-2 rounded-lg border border-danger bg-danger-soft px-3.5 py-2.5 text-ui-sm text-ink"><Icon name="alert" className="mt-0.5 text-danger" /><span>审查未完成：{run.failureCode ?? '未知错误'}。正文和正式资料保持不变。</span></p>}
@@ -48,6 +49,12 @@ export function ReviewMarginPanel({ review, locate, select, saveNote, marksHidde
       {run?.status === 'completed' && run.findings.length === 0 && <p className="text-ui-sm text-ink-2">没有发现可证实的冲突。{run.rejectedCount ? '部分模型候选未通过引用核验，没有作为注记展示。' : '本次仅覆盖已确认的发送范围。'}</p>}
       {run && run.rejectedCount > 0 && <p className="text-micro text-ink-3">有 {run.rejectedCount} 项候选引用未通过核验。</p>}
       {(review.error || noteError) && <p role="alert" className="text-ui-sm text-warn">{review.error || noteError}</p>}
+    </section>
+    <section aria-label="作者注记" className="space-y-2 border-b border-line px-5 py-4">
+      <div className="flex items-center justify-between"><h3>作者注记</h3><Btn size="sm" disabled={!notesEnabled} onClick={onAddNote}>添加注记</Btn></div>
+      {notesError && <p role="alert" className="text-ui-sm text-warn">{notesError}</p>}
+      {!authorNotes.length && <p className="text-ui-sm text-ink-3">本章还没有作者注记。</p>}
+      {authorNotes.map((note) => <article key={note.noteId} className="rounded border border-line p-3 text-ui-sm"><p className="whitespace-pre-wrap break-words">{note.content}</p></article>)}
     </section>
     <MarginPanel margins={live} ignored={ignored} activeId={review.activeId} onSelect={select}
       onSource={(ref) => setSourceId(ref.reviewSourceId ?? null)} onIgnore={(id) => void review.feedback(id, 'ignored')} onRestore={() => {}}

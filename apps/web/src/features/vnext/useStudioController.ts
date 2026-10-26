@@ -215,7 +215,7 @@ export function useStudioController(
   })
   /** Opens a right-drawer tab (本章设定 / 注记 / 审查). */
   const openRight = (tab: 'margin' | 'think' | 'context' | 'review') => {
-    setRightTab(tab)
+    setRightTab(tab === 'review' ? 'margin' : tab)
     setLayout((l) => ({ ...l, rightOpen: true, focus: false, leftOpen: window.innerWidth < 1280 ? false : l.leftOpen }))
   }
   // Words written since entering 写作 for this chapter.

@@ -295,8 +295,7 @@ export default function WritingSpace({
                     api
                       ? [
                           ['context', '本章设定'],
-                          ['margin', '注记'],
-                          ['review', '审查'],
+                          ['margin', '审查与注记'],
                         ]
                       : [
                           ['margin', '注记'],
@@ -335,8 +334,6 @@ export default function WritingSpace({
                   ) : (
                     <p className="px-5 text-ui-sm text-ink-3">先打开一章。</p>
                   )
-                ) : api && rightTab === 'review' ? (
-                  <ReviewTab studio={studio} />
                 ) : api ? (
                   <ReviewMarginPanel
                     review={reviews}
@@ -345,6 +342,10 @@ export default function WritingSpace({
                     saveNote={saveNote}
                     marksHidden={marksHidden}
                     setMarksHidden={setMarksHidden}
+                    authorNotes={studio.notes.items.filter((note) => note.status === 'active' && note.chapterId === current)}
+                    notesError={studio.notes.error}
+                    onAddNote={() => setQuick(true)}
+                    notesEnabled={notesEnabled}
                     emptyChapter={!(workspace.markdownByChapter[current] ?? '').trim()}
                   />
                 ) : (
@@ -417,6 +418,7 @@ export default function WritingSpace({
                   <Icon name="think" />
                   去灵感
                 </Btn>
+                {api && <Btn size="sm" variant="outline" disabled={!reviews.available || !!reviews.busy || !(workspace.markdownByChapter[current] ?? '').trim()} onClick={() => { openRight('margin'); void reviews.prepare() }}>审查本章</Btn>}
                 {api && (
                   <Btn size="sm" onClick={() => openRight('context')} title="本章的构想、相关设定与计划核对">
                     <Icon name="book" />
@@ -425,7 +427,7 @@ export default function WritingSpace({
                 )}
                 <Btn size="sm" onClick={() => openRight('margin')} title="注记 ⌘\">
                   {(api ? reviewAnnotations : liveMargins).length > 0 && <Dot tone="quiet" />}
-                  注记
+                  {api ? '审查与注记' : '注记'}
                 </Btn>
               </div>
             )}
@@ -446,33 +448,3 @@ export default function WritingSpace({
   )
 }
 
-/** 审查 tab: starts the existing consented, evidence-validated review flow. */
-function ReviewTab({ studio }: { studio: ReturnType<typeof useStudioController> }) {
-  const { reviews, workspace, current, openRight } = studio
-  const empty = !(workspace.markdownByChapter[current] ?? '').trim()
-  const run = reviews.run
-  const findings = run?.status === 'completed' ? run.findings.length : 0
-  return (
-    <div className="space-y-4 px-5 pb-6">
-      <p className="text-ui-sm text-ink-2">检查本章与已保存的前文在人物和时间上是否一致。只发送你确认范围内的已保存正文；结果是需要你判断的注记，不会修改正文。</p>
-      {empty && <p className="text-ui-sm text-ink-3">这一章还没有已保存的正文。</p>}
-      {!reviews.available && <p className="text-ui-sm text-ink-3">审查服务暂不可用。写作与保存不受影响。</p>}
-      <Btn variant="outline" disabled={!reviews.available || !!reviews.busy || empty || run?.status === 'running'} onClick={() => void reviews.prepare()}>
-        {reviews.busy === 'preview' ? '准备审查…' : run?.status === 'completed' ? '重新审查' : '审查本章'}
-      </Btn>
-      {run && (
-        <div className="rounded-lg border border-line-soft bg-surface px-3.5 py-3 text-ui-sm">
-          <div className="text-ink">
-            {run.status === 'completed' ? (findings ? `审查完成：${findings} 处需要留意` : '审查完成：没有发现不一致') : run.status === 'running' || run.status === 'queued' ? '正在审查…' : `审查未完成（${run.status}）`}
-          </div>
-          {reviews.stale && <p className="mt-1 text-micro text-warn">正文已在审查后修改，结果可能过期。</p>}
-          {findings > 0 && (
-            <Btn variant="link" className="mt-1 text-ui-sm" onClick={() => openRight('margin')}>
-              在注记中查看
-            </Btn>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
