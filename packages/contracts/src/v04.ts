@@ -1,3 +1,4 @@
+import { workspaceResumeSchema } from './resume.js'
 import { z } from 'zod'
 import { capabilitiesSchema } from './notes.js'
 
@@ -10,6 +11,7 @@ export const actorV04Schema = z.object({
 export type ActorV04 = z.infer<typeof actorV04Schema>
 
 export const userWorkspaceStateV04Schema = z.object({
+  resume: workspaceResumeSchema.optional(),
   lastView: z.enum(['write', 'kb', 'reasoning']).optional(),
   lastChapterId: z.string().optional(),
   layout: z.object({

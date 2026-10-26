@@ -82,6 +82,11 @@ source['x-source-provenance'] = {
   note: 'The Figma MCP resource response was truncated; the complete source copy was supplied in the author reply in this task and preserved under harness/contracts/source/.',
 }
 
+const authorExtension = JSON.parse(await readFile(new URL('../harness/contracts/author-workspace-extension.json', import.meta.url), 'utf8'))
+Object.assign(source.paths, authorExtension.paths)
+Object.assign(source.components.schemas, authorExtension.schemas)
+source.components.schemas.UserWorkspaceState.properties.resume = { $ref: '#/components/schemas/WorkspaceResume' }
+
 const notesExtension = JSON.parse(await readFile(new URL('../harness/contracts/notes-engineering-extension.json', import.meta.url), 'utf8'))
 Object.assign(source.paths, notesExtension.paths)
 Object.assign(source.components.schemas, notesExtension.schemas)

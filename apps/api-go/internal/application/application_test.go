@@ -285,3 +285,31 @@ func TestCrossProcessOptimisticWrites(t *testing.T) {
 		})
 	}
 }
+
+func TestWorkspaceResumeIsMetadataAndPartitionedByActorAndBook(t *testing.T) {
+	s := fixture(t)
+	ctx := context.Background()
+	resume := map[string]any{"schema": 1, "chapterId": "CH-003", "view": "read", "compose": true, "scroll": 800, "from": 30, "to": 30, "revisionId": "draft:fixture", "updatedAt": "2026-10-26T10:00:00Z"}
+	actor := Actor{ID: "alice", Role: "author"}
+	if _, err := s.PatchWorkspace(ctx, actor, map[string]any{"resume": resume}); err != nil {
+		t.Fatal(err)
+	}
+	saved, e := s.loadWorkspace("alice")
+	if e != nil || saved["resume"] == nil {
+		t.Fatal(saved, e)
+	}
+	other, e := s.loadWorkspace("bob")
+	if e != nil || other["resume"] != nil {
+		t.Fatal(other, e)
+	}
+	copy := *s
+	copy.Project = "another-book"
+	other, e = copy.loadWorkspace("alice")
+	if e != nil || other["resume"] != nil {
+		t.Fatal(other, e)
+	}
+	resume["markdown"] = "not navigation metadata"
+	if _, err := s.PatchWorkspace(ctx, actor, map[string]any{"resume": resume}); err == nil {
+		t.Fatal("resume accepted prose")
+	}
+}

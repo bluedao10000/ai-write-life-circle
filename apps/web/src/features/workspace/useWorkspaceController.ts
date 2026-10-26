@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { ApiChapterVersion, ChallengeRound, ChatMessage, ChapterVersion, Decision, DecisionAction, Document, Proposal, UserWorkspaceStateV04, WorkspaceSnapshot, WorkspacePreferences } from '@writer-agent/contracts'
+import type { ApiChapterVersion, ChallengeRound, ChatMessage, ChapterVersion, Decision, DecisionAction, Document, Proposal, UserWorkspaceStateV04, WorkspaceSnapshot, WorkspacePreferences, WorkspaceResume } from '@writer-agent/contracts'
 import type { AgentTask, Layout } from '../../types'
 import { ChapterRevisionConflictError, type WriterAgentAdapter } from '../../services/writerAgent'
 import { useWorkspaceActions } from './useWorkspaceActions'
@@ -265,6 +265,13 @@ export function useWorkspaceController({ adapter, initialWorkspace, toast, reque
     }, 250)
     return () => window.clearTimeout(timer)
   }, [adapter, adapter.mode, current, dark, initialWorkspace.projectId, layout, toast])
+
+  const updateResume = useCallback((resume: WorkspaceResume) => {
+    if (adapter.mode !== 'api') return
+    workspacePatchQueueRef.current = workspacePatchQueueRef.current.catch(() => undefined)
+      .then(() => adapter.updateWorkspaceState(initialWorkspace.projectId, { resume, lastChapterId: resume.chapterId }))
+      .then(() => undefined).catch(() => { /* Navigation preferences never block prose saving. */ })
+  }, [adapter, initialWorkspace.projectId])
 
   const enqueueSave = useCallback((chapterId: string, paragraphs: string[], markdown: string, editVersion: number): Promise<boolean> => {
     const attemptKey = `${chapterId}:${editVersion}`
@@ -803,7 +810,7 @@ export function useWorkspaceController({ adapter, initialWorkspace, toast, reque
     editorGeneration,
     recoveryDraft: recoveryDrafts[current],
     restoreLocalDraft, reloadServerVersion, retryLoadChapter, exportLocalDraft,
-    flushSave, prepareReview, prepareStructure, retrySave, onChange, switchChapter, runReview, cancelReview, decide,
+    updateResume, flushSave, prepareReview, prepareStructure, retrySave, onChange, switchChapter, runReview, cancelReview, decide,
     createProposal, sendChat, markChatSaved, requestChallenge,
   }
 }

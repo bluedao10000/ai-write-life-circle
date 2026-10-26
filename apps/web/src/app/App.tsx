@@ -110,7 +110,7 @@ function WriterStudio({
 }) {
   const studio = useStudioController(adapter, initialWorkspace)
   const management = useManagement()
-  const { workspace: managedWorkspace, editor: managedEditor } = studio
+  const { workspace: managedWorkspace } = studio
   useEffect(() => {
     if (!management) return
     management.activeChapter.current = managedWorkspace.current
@@ -125,14 +125,6 @@ function WriterStudio({
       management.guard.current = null
     }
   }, [management, managedWorkspace])
-  const isManaged = management !== null
-  const composing = studio.compose
-  useEffect(() => {
-    if (!isManaged || !composing || managedWorkspace.chapterLoadState.status !== 'loaded') return
-    // Inline names and note fields keep their own focus while the body loads.
-    if (document.activeElement?.matches('input, textarea, select')) return
-    managedEditor.current?.commands.focus('end')
-  }, [isManaged, composing, managedWorkspace.current, managedWorkspace.chapterLoadState.status, managedEditor])
   const {
     view,
     setView,

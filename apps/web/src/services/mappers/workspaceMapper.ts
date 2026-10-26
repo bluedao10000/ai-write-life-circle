@@ -37,6 +37,7 @@ export function mapWorkspaceToStudio(workspace: WorkspaceV04, chapterList: Chapt
     document: {},
     markdownByChapter: {},
     preferences: {
+      ...(workspace.userState.resume ? { resume: workspace.userState.resume } : {}),
       ...(workspace.userState.lastView ? { lastView: workspace.userState.lastView } : {}),
       ...(savedChapter ? { lastChapterId: savedChapter } : {}),
       ...(storedLayout ? { layout: { ...defaultLayout, ...storedLayout } } : {}),

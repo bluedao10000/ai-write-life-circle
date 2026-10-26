@@ -3,6 +3,7 @@ import type { ManagedBook, StructureInput, WorkspaceSnapshot } from '@writer-age
 import type { WriterAgentAdapter } from '../../services/writerAgent'
 import { clearLocalChapterDrafts } from '../../services/localChapterDraft'
 import { readScopedSession, writeScopedSession } from '../../services/storageScope'
+import { lastBook, readResume, forgetResume } from '../../services/workspaceResume'
 import EPUBImportDialog from './EPUBImportDialog'
 
 type ManagementUI = {
@@ -53,7 +54,7 @@ export default function ManagedStudio({
   const [editing, setEditing] = useState<string | null>(null)
   const [books, setBooks] = useState(initialBooks)
   const [book, setBook] = useState<ManagedBook | null>(
-    initialBooks.find((b) => b.bookId === stored(selectedKey)) ?? initialBooks[0] ?? null,
+    initialBooks.find((b) => b.bookId === new URLSearchParams(window.location.search).get('book')) ?? initialBooks.find((b) => b.bookId === (lastBook() ?? stored(selectedKey))) ?? initialBooks[0] ?? null,
   )
   const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null)
   const [generation, setGeneration] = useState(0)
@@ -97,7 +98,26 @@ export default function ManagedStudio({
       active = false
     }
   }, [adapter])
-  const open = async (next: ManagedBook, focus?: string) => {
+  const open = async (next: ManagedBook, focus?: string, keepURL = false) => {
+    if (!keepURL && next.bookId !== book?.bookId) {
+      const url = new URL(window.location.href)
+      url.searchParams.set('book', next.bookId)
+      url.searchParams.delete('chapter')
+      url.searchParams.delete('view')
+      url.searchParams.delete('compose')
+      if (focus) url.searchParams.set('chapter', focus)
+      const saved = readResume(next.bookId)
+      if (saved && !focus) {
+        url.searchParams.set('view', saved.view)
+        if (saved.compose) url.searchParams.set('compose', '1')
+      }
+      window.history.replaceState(window.history.state, '', url)
+    }
+    if (focus) {
+      const url = new URL(window.location.href)
+      url.searchParams.set('chapter', focus)
+      window.history.replaceState(window.history.state, '', url)
+    }
     const value = await adapter.loadWorkspace(next.bookId)
     const current = focus ?? (next.bookId === book?.bookId ? activeChapter.current : undefined)
     setSnapshot({
@@ -146,6 +166,17 @@ export default function ManagedStudio({
       setBusy(false)
     }
   }
+  const navigateRef = useRef(() => {})
+  navigateRef.current = () => {
+    const id = new URLSearchParams(window.location.search).get('book')
+    const target = books.find((item) => item.bookId === id)
+    if (target && target.bookId !== book?.bookId) void run(() => open(target, undefined, true))
+  }
+  useEffect(() => {
+    const navigate = () => navigateRef.current()
+    window.addEventListener('popstate', navigate)
+    return () => window.removeEventListener('popstate', navigate)
+  }, [])
   const changeBook = async (
     target: ManagedBook,
     input: Omit<StructureInput, 'baseVersion'>,
@@ -192,10 +223,13 @@ export default function ManagedStudio({
       )
       // 「开始写作」 opens the first chapter for writing, not the default 灵感 space.
       const url = new URL(window.location.href)
-      url.searchParams.set('view', 'read')
-      url.searchParams.set('compose', '1')
+      url.searchParams.set('book', next.bookId)
+      url.searchParams.delete('chapter')
+      url.searchParams.delete('view')
+      url.searchParams.delete('compose')
+      if (!book) { url.searchParams.set('view', 'read'); url.searchParams.set('compose', '1') }
       window.history.replaceState(window.history.state, '', url)
-      await open(next, next.chapters[0]?.chapterId)
+      await open(next, next.chapters[0]?.chapterId, true)
       remember(createKey, null)
       setBooks((all) => (all.some((b) => b.bookId === next.bookId) ? all : [...all, next]))
     })
@@ -212,6 +246,7 @@ export default function ManagedStudio({
         crypto.randomUUID(),
       )
       clearLocalChapterDrafts(currentID)
+      forgetResume(currentID)
       if (deletingCurrent) {
         setBook(null)
         setSnapshot(null)

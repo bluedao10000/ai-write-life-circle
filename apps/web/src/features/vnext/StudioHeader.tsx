@@ -77,6 +77,7 @@ export default function StudioHeader({ studio, demo }: { studio: ReturnType<type
             </span>
           )}
           <div className={`chrome flex items-center gap-1 ${hide}`}>
+            {view === 'inspire' && loaded && <Btn size="sm" variant="primary" disabled={readonly} onClick={() => studio.enterCompose()}>开始写作</Btn>}
             {view === 'read' && loaded &&
               (compose ? (
                 <Btn size="sm" variant="quiet" title="回到阅读 ⌘E" onClick={() => studio.leaveCompose()}>
