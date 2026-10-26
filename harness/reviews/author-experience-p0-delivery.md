@@ -42,7 +42,7 @@
 - 大章节超出 Diff 计算上限时保留完整双栏原文，暂不生成逐字 Diff；片段恢复只支持安全追加章末，作者可复制后在任意位置自行粘贴。
 - 指标默认不上传；当前页面内的 Free 启动/完成可建立激活率基础，跨刷新完整转化统计需要后续经过隐私审查的聚合实现。尚无真实运营数据。
 - 上线需同版本升级 API 与 Go/Pi Worker，避免旧执行器不识别输出限制；保留所有 Revision 和计费日志。具体停机/排空和回滚步骤见设计，生产操作需另行授权。
-- GitHub CLI 当前返回 `403: Sorry. Your account was suspended`。仍会尝试 Git SSH 推送和连接器创建 PR；不能把本地成功冒充 GitHub CI 成功。
+- 开发分支已通过 Git SSH 推送至 `origin/codex/author-experience-p0`。GitHub CLI 返回 `403: Sorry. Your account was suspended`；连接器创建 PR 返回 `403: Resource not accessible by integration`，因此当前没有创建 PR，也未核验远端 CI。已保存 [PR 说明](author-experience-p0-pr.md)；可在权限恢复后以 `codex/pricing-phase1-review-fixes` 为 base 创建，不要以包含上一轮改动的大 diff 冒充本轮独立审查。
 
 ## 修改文件清单
 
@@ -111,6 +111,7 @@
 - `harness/design/pricing-plans.md`
 - `harness/index.md`
 - `harness/reviews/author-experience-p0-delivery.md`
+- `harness/reviews/author-experience-p0-pr.md`
 - `package.json`
 - `packages/contracts/src/agent-tasks.ts`
 - `packages/contracts/src/billing-review.ts`
