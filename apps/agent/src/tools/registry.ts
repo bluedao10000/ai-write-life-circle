@@ -1,3 +1,4 @@
+import { canonicalJSON } from "../runtime/fingerprint.js";
 import { Type } from "typebox";
 import { readFileSync } from "node:fs";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
@@ -101,7 +102,7 @@ export function tools(
           parameters: creativeNames.has(name) ? (narrow[name] ?? empty) : parameters,
           async execute(_id, args) {
             onCall();
-            const fingerprint = JSON.stringify([name, args]);
+            const fingerprint = canonicalJSON([name, args]);
             if (seen.has(fingerprint)) return {content: [{type: "text" as const, text: "This exact lookup was already attempted. Do not repeat it. Answer using available information and explain any gaps."}], details: {duplicate: true}};
             seen.add(fingerprint);
             const res = await fetch(

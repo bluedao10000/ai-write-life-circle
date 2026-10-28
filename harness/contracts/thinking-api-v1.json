@@ -1424,6 +1424,10 @@
           "modelLabel": {
             "type": "string"
           },
+          "requestKey": {
+            "type": "string",
+            "maxLength": 128
+          },
           "role": {
             "type": "string",
             "enum": [
@@ -2178,6 +2182,10 @@
                 },
                 "modelLabel": {
                   "type": "string"
+                },
+                "requestKey": {
+                  "type": "string",
+                  "maxLength": 128
                 },
                 "role": {
                   "type": "string",

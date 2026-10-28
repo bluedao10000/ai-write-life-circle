@@ -11,6 +11,7 @@ export type Config = {
   token: string;
   key: string;
   version: string;
+  maxConcurrentSessions?: number;
   model: ThinkingModel;
   models?: { model: ThinkingModel; key: string; enabled: boolean; description: string }[];
 };
@@ -88,6 +89,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const models = loadModels(env, model, key);
   return {
     models,
+    maxConcurrentSessions: n("GLOBAL_MAX_CONCURRENT", 8, 32),
     state: resolve(env.WRITER_AGENT_PI_STATE_DIR ?? ".writer-agent-pi"),
     port: n("PORT", 8790, 65535),
     storyOrigin: privateOrigin(

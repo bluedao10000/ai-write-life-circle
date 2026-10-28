@@ -111,6 +111,7 @@ export const thinkingMessageSchema = z
     id: z.string(),
     modelId: z.string().optional(),
     modelLabel: z.string().optional(),
+    requestKey: z.string().max(128).optional(),
     role: z.enum(["user", "assistant"]),
     text: z.string(),
     status: z.enum([

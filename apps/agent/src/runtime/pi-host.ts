@@ -1,3 +1,4 @@
+import { canonicalJSON } from "./fingerprint.js";
 import {configuredModel,boundedModelFetch,completionUsage} from "./model-gateway.js";
 import {
   createAgentSession,
@@ -22,11 +23,8 @@ import { modelEntries, modelId, type Config } from "../config.js";
 import { Store, type Saved } from "../sessions/store.js";
 import { tools, authorize } from "../tools/registry.js";
 import { systemPrompt } from "../agents/thinking/prompt.js";
-const limitConcurrent = (c: Config) => c.model.limits.maxConcurrentSessions;
-const digest = (v: unknown): string => {
-  const canonical = (value: unknown): unknown => Array.isArray(value) ? value.map(canonical) : value && typeof value === "object" ? Object.fromEntries(Object.entries(value).filter(([,v]) => v !== undefined).sort(([a],[b]) => a.localeCompare(b)).map(([k,v]) => [k,canonical(v)])) : value;
-  return createHash("sha256").update(JSON.stringify(canonical(v))).digest("hex");
-};
+const limitConcurrent = (c: Config) => c.maxConcurrentSessions ?? Math.min(8, modelEntries(c).filter(v => v.enabled).reduce((n,v) => n + v.model.limits.maxConcurrentSessions, 0));
+const digest = (v: unknown) => createHash("sha256").update(canonicalJSON(v)).digest("hex");
 export class AgentError extends Error {
   constructor(
     readonly code: string,
@@ -78,6 +76,10 @@ export class PiHost {
     const s = this.store.read(id);
     if (!s || s.deleted || this.store.isDeleted(id))
       throw new AgentError("NOT_FOUND", 404);
+    // Older accepted messages predate the public correlation field. The durable
+    // request receipt proves their identity without comparing or resending prose.
+    const keys = new Map(Object.entries(s.requests).map(([key, value]) => [value.messageId,key]));
+    for (const message of s.view.messages) if (message.role === "user" && !message.requestKey) message.requestKey = keys.get(message.id);
     return s;
   }
   async create(input: {
@@ -151,7 +153,7 @@ export class PiHost {
     }
     if (s.view.status === "running" || this.active.has(id))
       throw new AgentError("SESSION_BUSY", 409);
-    if (this.active.size >= this.config.model.limits.maxConcurrentSessions)
+    if (this.active.size >= limitConcurrent(this.config))
       throw new AgentError("AGENT_BUSY", 429);
     if (s.view.messages.length >= 200 || s.events.length >= 20000)
       throw new AgentError("SESSION_HISTORY_LIMIT", 429);
@@ -186,6 +188,7 @@ export class PiHost {
       {
         id: mid,
         role: "user",
+        requestKey: key,
         modelId: modelId(selected.model),
         modelLabel: selected.model.displayName ?? selected.model.model,
         text: input.text,
@@ -261,8 +264,8 @@ export class PiHost {
       sources = new Map<string, ThinkingSource>();
     // A chat with no allowed tools is a single completion, not a six-turn agent reservation.
     if ((!s.view.scopes.length || s.view.model.toolCalling === false) && !input.compact) limit.maxTurnsPerRequest = 1;
-    for (const previous of s.view.messages)
-      for (const src of previous.sources) sources.set(src.sourceId, src);
+    // Historical cards remain on their original messages. A new answer can only
+    // attach sources fetched through this turn's currently authorized Story Tools.
     let calls = 0,
       turns = 0,
       errorCode: string | undefined;
