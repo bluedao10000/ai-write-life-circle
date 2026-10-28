@@ -30,7 +30,7 @@ Fixture 覆盖普通创意问题（张居正、平行宇宙、好人品）、多
 
 ## 配置与验证入口
 
-- Registry 示例：`scripts/deploy/pi-models.example.json`。运营者设置 `WRITER_AGENT_PI_MODELS_FILE` 指向受保护本地 JSON 文件；凭据只由 `keyEnv` 引用，不写入文件、不经健康接口返回。示例 Bedrock REGION、模型 ID 和区域可用性必须替换/验证，不能原样上线。实际托管方始终显示 Amazon Bedrock，不能显示为 OpenAI 官方托管。
+- Registry 示例：`scripts/deploy/pi-models.example.json`。运营者设置 `WRITER_AGENT_PI_MODELS_FILE` 指向受保护本地 JSON 文件；凭据只由 `keyEnv` 引用，不写入文件、不经健康接口返回。示例 Bedrock 已更新为本轮验证的 Stockholm Mantle 端点与模型 ID；部署时仍须验证目标账号权限并配置凭据，不能把 Runtime 的模型标识混用于 Mantle。实际托管方始终显示 Amazon Bedrock，不能显示为 OpenAI 官方托管。
 - 未配置 Registry 时兼容旧单模型配置，仅有 `default`；不会捏造第二个可用模型。两模型各自显式 enabled；关闭或无凭据时不会回退。
 - Registry 示例的轻量对话只预留一轮；开启工具后最多四轮。DeepSeek 输出 4096；GPT-OSS 输出 8192；输入保守上界 24000；所有值须结合真实 Smoke 与用量调整。四轮均满足现有 Free 300 点日额度的单次保守预留（DeepSeek 164 点，GPT-OSS 228 点），但账号已使用额度及全站上限仍可能阻止执行。没有扩大 Free 总预算。
 - 资料设置按作者和作品持久化。切换模型或缩小资料范围会清除内部原始检索历史，仅以用户可见对话继续；已展示讨论不会被删除。
@@ -39,3 +39,11 @@ Fixture 覆盖普通创意问题（张居正、平行宇宙、好人品）、多
 - `pnpm --filter @writer-agent/web exec playwright test --config playwright.inspiration.config.ts`：桌面 Chromium + iPhone WebKit，自动建会话、切模型、刷新草稿、可撤销资料范围。
 - `pnpm build:agent && node scripts/smoke-inspiration-live.mjs --confirm-synthetic`：只发合成讨论，每个已配置模型最多一次付费调用；显式提供 `WRITER_AGENT_CHAT_DEEPSEEK_KEY/URL/MODEL` 与 `WRITER_AGENT_CHAT_OPENAI_KEY/URL/MODEL`。没有凭据输出 UNVERIFIED，不是通过。
 - Browser outbox 与草稿保存在按账号/作品隔离的 sessionStorage；服务端已接受消息的幂等回执继续由 Go/Pi 持久化。浏览器存储不可用时仍可聊天，但关闭页面后无法保留尚未确认交付的本地意图。
+
+## 2026-10-28 复审修订
+
+模型选择和 Outbox 按会话分区。历史会话默认恢复其实际模型；下架模型必须由作者显式替换，新话题可迁移过期默认偏好。每轮来源只接受本轮授权工具返回的证据，历史 source ID 不自动获得新轮次的有效来源身份。
+用户消息的可选 requestKey 关联幂等回执，用于先确认送达、再决定是否原键重试；旧记录从 Pi requests 映射派生回执。全局并发与模型并发分别受控；工具去重使用规范化 JSON。
+示例 Registry 已由占位 Runtime URL 更新为实测的 Stockholm Mantle URL + `openai.gpt-oss-120b`；不同 Bedrock API 的模型标识不可混用。
+真实验证、费用依据、回归结果与剩余风险见[复审修复报告](../reviews/inspiration-agent-usability-review-fixes.md)。这份补充报告取代初次交付中「两个真实模型均未验证」的状态：Bedrock 已验证，DeepSeek 仍待测试凭据。
+Smoke 脚本增加 `--tools`，只用合成资料、每个配置模型最多 3 次付费请求。常规 CI 仍不运行付费模型。

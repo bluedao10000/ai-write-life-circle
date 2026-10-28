@@ -1,0 +1,50 @@
+{
+  "date": "2026-10-28",
+  "runtime": "Pi SDK 1.3.0 / PiHost",
+  "provider": "Amazon Bedrock Mantle",
+  "endpoint": "https://bedrock-mantle.eu-north-1.api.aws/v1",
+  "model": "openai.gpt-oss-120b",
+  "tokenParameter": "max_completion_tokens",
+  "data": "isolated synthetic content; synthetic Story Tool for tools case",
+  "qualityValidated": false,
+  "productionDeployed": false,
+  "smokes": [
+    {
+      "mode": "chat",
+      "status": "completed",
+      "replyCharacters": 1078,
+      "inputTokens": 487,
+      "outputTokens": 924,
+      "cachedInputTokens": 0,
+      "usageIncomplete": false,
+      "expectedPoints": 5,
+      "standardTokenCostEstimateUSD": 0.00062745
+    },
+    {
+      "mode": "tools",
+      "status": "completed",
+      "replyCharacters": 232,
+      "storyToolCalls": 1,
+      "maxModelCalls": 3,
+      "inputTokens": 1802,
+      "outputTokens": 340,
+      "cachedInputTokens": 0,
+      "usageIncomplete": false,
+      "expectedPoints": 4,
+      "standardTokenCostEstimateUSD": 0.0004743
+    }
+  ],
+  "ledgerValidation": "reported counters replayed through isolated Go Billing Ledger: 9 points used, 0 reserved; no production credits touched",
+  "pricing": {
+    "source": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonBedrock/current/eu-north-1/index.json",
+    "publicationDate": "2026-10-16T21:08:06Z",
+    "tier": "Standard",
+    "inputUSDPer1000": 0.00015,
+    "outputUSDPer1000": 0.0006,
+    "isInvoice": false
+  },
+  "deepseek": {
+    "status": "UNVERIFIED",
+    "reason": "no explicit synthetic smoke credentials available"
+  }
+}

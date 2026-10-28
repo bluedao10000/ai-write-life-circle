@@ -8,6 +8,7 @@ import (
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/compat"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -592,5 +593,38 @@ func TestMessageModelSwitchReservesSelectedModelAndReplaysOnce(t *testing.T) {
 	}
 	if code := send("disabled", "missing"); code != 409 {
 		t.Fatal("unknown model silently substituted", code)
+	}
+}
+
+// Real Mantle smoke reported these non-cached Usage values on 2026-10-28.
+// Replay ONLY counters through the isolated ledger; never touch production credits.
+func TestReportedBedrockSmokeUsageSettlesExpectedPoints(t *testing.T) {
+	s, rec, _ := fixture(t)
+	ctx := context.Background()
+	ledger := &billing.Ledger{State: s.State}
+	s.Meter = ledger
+	for i, tc := range []struct{ input, output, points int }{{487, 924, 5}, {1802, 340, 4}} {
+		op := "synthetic-live-usage-" + strconv.Itoa(i)
+		if e := ledger.Reserve(ctx, rec.Owner, op, "thinking", 57); e != nil {
+			t.Fatal(e)
+		}
+		r := rec
+		r.BillOp = op
+		r.Billed = 0
+		var u sessionUsage
+		u.Status = "idle"
+		u.Usage.Input = tc.input
+		u.Usage.Output = tc.output
+		if u.points() != tc.points {
+			t.Fatal("usage mapping mismatch", u.points())
+		}
+		settled := s.settle(ctx, r, &u)
+		if settled.BillOp != "" || settled.Billed != tc.points {
+			t.Fatal("settlement failed", settled)
+		}
+	}
+	view, e := ledger.View(ctx, rec.Owner)
+	if e != nil || view.Day.Used != 9 || view.Day.Reserved != 0 {
+		t.Fatal("actual usage counters did not settle once", view.Day, e)
 	}
 }

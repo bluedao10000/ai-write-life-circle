@@ -55,3 +55,7 @@ Go：`apps/api-go/internal/thinking/{model,http,service_test}.go`。
 4. 回滚程序不回滚作者状态，不删除新增消息/权限记录；部署前备份原配置和状态。
 5. 浏览器禁用 sessionStorage 时无法跨刷新恢复尚未确认交付的本地意图，服务端已接受消息和幂等回执仍持久存在。
 6. 暂无跨标签页草稿同步；超过上下文/会话硬上限时提示新话题，不自动丢弃作者历史，也不在后台付费压缩。
+
+## 最新复审
+
+四项 P1、两项 P2 和 Bedrock 真实 Smoke 的后续结果，见[复审修复报告](inspiration-agent-usability-review-fixes.md)。初次报告的验证状态保留为历史记录，以该补充报告为最新状态。
