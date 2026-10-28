@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { thinkingCreateSchema, thinkingMessageInputSchema } from "@writer-agent/contracts";
 import type {
   ThinkingCreate,
   ThinkingMessageInput,
   ThinkingModel,
+  ThinkingModelOption,
   ThinkingSession,
 } from "@writer-agent/contracts";
 import { thinkingApi as api } from "../../services/api/thinkingApi";
+import { thinkingError } from "./errors";
 import { scopedKey } from "../../services/storageScope";
 import { applyToolEvents, type ToolStep } from "./toolActivity";
 type Summary = Pick<
@@ -13,8 +16,16 @@ type Summary = Pick<
   "sessionId" | "bookId" | "title" | "createdAt" | "model" | "scopes" | "status"
 >;
 const errorText = (e: unknown) =>
-  e instanceof Error ? e.message : "思考服务暂不可用，请保留输入后重试。";
+  e instanceof Error ? ((e as Error & {code?: string}).code ? thinkingError((e as Error & {code?: string}).code) : e.message) : "思考服务暂不可用，请保留输入后重试。";
 export function useThinking(book: string, enabled: boolean) {
+  const storagePartition = scopedKey(book);
+  const readChoice = useCallback(() => {try {return sessionStorage.getItem("thinking-model:" + storagePartition) ?? ""} catch {return ""}}, [storagePartition]);
+  const [outgoing, setOutgoing] = useState("");
+  const [models, setModels] = useState<ThinkingModelOption[]>([]);
+  const [modelChoice, setModelChoice] = useState<string>(readChoice);
+  const [scopes, setScopes] = useState<("chapters" | "knowledge" | "creative" | "notes")[]>([]);
+  const sending = useRef(false);
+  const readDraft = useCallback(() => { try {return sessionStorage.getItem("thinking-draft:" + storagePartition) ?? ""} catch {return ""} }, [storagePartition]);
   const [sessions, setSessions] = useState<Summary[]>([]),
     [model, setModel] = useState<ThinkingModel | null>(null),
     [selected, setSelected] = useState<string | null>(() => {
@@ -29,7 +40,11 @@ export function useThinking(book: string, enabled: boolean) {
     [busy, setBusy] = useState(false),
     [tool, setTool] = useState(""),
     [steps, setSteps] = useState<ToolStep[]>([]),
-    [draft, setDraft] = useState("");
+    [draft, setDraftRaw] = useState(readDraft);
+  const setDraft = (value: string) => {
+    setDraftRaw(value);
+    try {sessionStorage.setItem(scopedKey("thinking-draft:" + book), value)} catch { /* optional */ }
+  };
   const stepId = useRef(0),
     epoch = useRef(0),
     request = useRef(0),
@@ -40,12 +55,25 @@ export function useThinking(book: string, enabled: boolean) {
       input: ThinkingMessageInput;
     } | null>(null),
     creating = useRef<{ key: string; input: ThinkingCreate } | null>(null);
+  const persistOutbox = () => {
+    try {sessionStorage.setItem(scopedKey("thinking-outbox:" + book), JSON.stringify({pending: pending.current, creating: creating.current}))} catch { /* optional */ }
+  };
   useEffect(() => {
     const generation = ++epoch.current;
+    setSession(null); setSessions([]); setModels([]); setModelChoice(readChoice()); setScopes([]); setOutgoing("");
+    setDraftRaw(readDraft());
+    try {setSelected(sessionStorage.getItem(scopedKey("thinking-v1:" + book)))} catch {setSelected(null)}
+    pending.current = null; creating.current = null; sending.current = false;
+    try {
+      const raw = JSON.parse(sessionStorage.getItem(scopedKey("thinking-outbox:" + book)) ?? "null");
+      if (raw?.pending && typeof raw.pending.key === "string" && typeof raw.pending.id === "string") pending.current = {...raw.pending, input: thinkingMessageInputSchema.parse(raw.pending.input)};
+      if (raw?.creating && typeof raw.creating.key === "string") creating.current = {...raw.creating, input: thinkingCreateSchema.parse(raw.creating.input)};
+    } catch { /* malformed optional browser state must not block the author */ }
+    // Storage is partitioned by the authenticated account and book.
     return () => {
       epoch.current = generation + 1;
     };
-  }, [book]);
+  }, [book, storagePartition, readDraft, readChoice]);
   const select = useCallback(
     (id: string | null) => {
       request.current++;
@@ -70,6 +98,8 @@ export function useThinking(book: string, enabled: boolean) {
       const e = epoch.current;
       const current = () => e === epoch.current && !signal?.aborted;
       const results = await Promise.allSettled([
+        api.models(book, signal).then(items => {if(current()) {setModels(items);setModelChoice(old => old || items.find(m => m.enabled)?.modelId || "")}}),
+        api.preferences(book, signal).then(value => {if(current()) setScopes(value.scopes)}),
         api.list(book, signal).then((items) => {
           if (current()) setSessions(items);
         }),
@@ -99,7 +129,7 @@ export function useThinking(book: string, enabled: boolean) {
     return () => c.abort();
   }, [enabled, reload]);
   useEffect(() => {
-    if (!enabled || !selected) return;
+    if (!enabled || !selected || busy) return;
     const c = new AbortController(),
       e = epoch.current,
       r = request.current;
@@ -188,24 +218,57 @@ export function useThinking(book: string, enabled: boolean) {
     );
   };
   const send = (input: ThinkingMessageInput) => {
-    if (!selected) return;
-    const id = selected;
-    if (
-      !pending.current ||
-      pending.current.id !== id ||
-      JSON.stringify(pending.current.input) !== JSON.stringify(input)
-    )
-      pending.current = { key: crypto.randomUUID(), id, input };
-    const p = pending.current;
-    void action(
-      () => api.send(book, id, p.input, p.key),
-      () => {
-        pending.current = null;
-        setDraft("");
-        // A new turn starts from an empty timeline; steps from the last turn are history.
-        setSteps([]);
-      },
-    );
+    if (sending.current || session?.status === "running") return;
+    sending.current = true;
+    setOutgoing(input.text);
+    const e = epoch.current, r = request.current;
+    const value = {...input, ...(modelChoice ? {modelId: modelChoice} : {})};
+    void action(async () => {
+      let id = selected;
+      if (!id) {
+        if (!creating.current) creating.current = {key: crypto.randomUUID(), input: {modelId: modelChoice || undefined}};
+        persistOutbox();
+        const created = await api.create(book, creating.current.input, creating.current.key);
+        if (e !== epoch.current || r !== request.current) return null;
+        id = created.sessionId;
+        setSelected(id); setSession(created);
+        setSessions(old => [created, ...old.filter(s => s.sessionId !== id)]);
+        try {sessionStorage.setItem(scopedKey("thinking-v1:" + book), id)} catch { /* optional */ }
+        creating.current = null;
+      }
+      if (!pending.current || pending.current.id !== id || JSON.stringify(pending.current.input) !== JSON.stringify(value))
+        pending.current = {key: crypto.randomUUID(), id, input: value};
+      const p = pending.current;
+      persistOutbox();
+      try {await api.send(book, id, p.input, p.key)} catch (err) {
+        if ((err as {code?: string})?.code === "MODEL_UNAVAILABLE" && session && e === epoch.current) {
+          const previous = session.model.modelId ?? "default";
+          setModelChoice(previous);
+          try {sessionStorage.setItem(scopedKey("thinking-model:" + book),previous)} catch { /* optional */ }
+        }
+        throw err;
+      }
+      return api.get(book, id);
+    }, result => {
+      if (!result) return;
+      pending.current = null;
+      persistOutbox();
+      setSession(result);
+      // Do not erase text the author typed while the request was in flight.
+      setDraftRaw(old => {if(old.trim() !== input.text.trim()) return old; try {sessionStorage.removeItem(scopedKey("thinking-draft:" + book))} catch { /* optional */ } return ""});
+      setSteps([]);
+    }).finally(() => {if (e === epoch.current) {sending.current = false;setOutgoing("")}});
+  };
+  const chooseModel = (id: string) => {
+    if (!busy && !sending.current && session?.status !== "running" && models.some(m => m.modelId === id && m.enabled)) {
+      setModelChoice(id);
+      try {sessionStorage.setItem(scopedKey("thinking-model:" + book),id)} catch { /* optional */ }
+    }
+  };
+  const saveScopes = async (value: typeof scopes) => {
+    const e = epoch.current;
+    try {const result = await api.setPreferences(book, value);if(e === epoch.current) {setScopes(result.scopes);setError("")};return true}
+    catch(err) {if(e === epoch.current) setError(errorText(err));return false}
   };
   const cancel = () => {
     if (selected) void action(() => api.cancel(book, selected), setSession);
@@ -221,6 +284,7 @@ export function useThinking(book: string, enabled: boolean) {
       );
   };
   return {
+    outgoing, models, modelChoice, chooseModel, scopes, saveScopes,
     sessions,
     model,
     selected,

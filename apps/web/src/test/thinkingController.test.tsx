@@ -44,6 +44,8 @@ afterEach(() => {
   sessionStorage.clear();
 });
 function setup() {
+  vi.spyOn(api, "models").mockResolvedValue([{modelId:"deepseek",displayName:"DeepSeek",provider:"deepseek",hostedBy:"DeepSeek",description:"创作讨论",enabled:true,toolCalling:true,pointMultiplier:1}, {modelId:"oss",displayName:"GPT-OSS",provider:"bedrock",hostedBy:"Amazon Bedrock",description:"创作讨论",enabled:true,toolCalling:true,pointMultiplier:1}]);
+  vi.spyOn(api, "preferences").mockResolvedValue({scopes:[]});
   vi.spyOn(api, "capabilities").mockResolvedValue(model);
   vi.spyOn(api, "list").mockResolvedValue([session("A"), session("B")]);
   vi.spyOn(api, "get").mockImplementation(async (_b, id) => session(id));
@@ -114,4 +116,48 @@ it("offline capabilities do not hide Go history or block durable deletion", asyn
   await waitFor(() => expect(remove).toHaveBeenCalledWith("book-a", "A"));
   await waitFor(() => expect(result.current.selected).toBeNull());
   expect(result.current.sessions.map((s) => s.sessionId)).toEqual(["B"]);
+});
+
+it("first send creates automatically, preserves draft after a lost response, and replays the same message key", async () => {
+  const create=vi.spyOn(api,"create").mockResolvedValue(session("new"));
+  const send=vi.spyOn(api,"send").mockRejectedValueOnce(Error("network interrupted")).mockResolvedValue({messageId:"m"});
+  const {result}=setup();
+  await waitFor(()=>expect(result.current.modelChoice).toBe("deepseek"));
+  act(()=>{result.current.setDraft("张居正与平行宇宙");result.current.send({text:"张居正与平行宇宙"})});
+  await waitFor(()=>expect(result.current.error).toContain("network"));
+  expect(result.current.draft).toContain("张居正");
+  expect(create.mock.calls[0][1]).toEqual({modelId:"deepseek"});
+  act(()=>result.current.send({text:"张居正与平行宇宙"}));
+  await waitFor(()=>expect(result.current.busy).toBe(false));
+  expect(create).toHaveBeenCalledTimes(1);
+  expect(send.mock.calls[0][3]).toBe(send.mock.calls[1][3]);
+  expect(result.current.draft).toBe("");
+});
+it("model selection changes only next message; persisted draft survives remount", async () => {
+  const send=vi.spyOn(api,"send").mockResolvedValue({messageId:"m"});
+  const one=setup();await waitFor(()=>expect(one.result.current.models).toHaveLength(2));
+  act(()=>{one.result.current.select("A");one.result.current.setDraft("没有发送的想法")});
+  one.unmount();
+  const two=renderHook(()=>useThinking("book-a",true));
+  await waitFor(()=>expect(two.result.current.session?.sessionId).toBe("A"));
+  expect(two.result.current.draft).toBe("没有发送的想法");
+  act(()=>two.result.current.chooseModel("oss"));
+  act(()=>two.result.current.send({text:"继续"}));
+  await waitFor(()=>expect(send).toHaveBeenCalled());
+  expect(send.mock.calls[0][2].modelId).toBe("oss");
+});
+
+it("reload after ambiguous delivery preserves the outbox key instead of charging a second intent", async () => {
+  const send=vi.spyOn(api,"send").mockRejectedValueOnce(Error("lost response")).mockResolvedValue({messageId:"accepted"});
+  const first=setup();await waitFor(()=>expect(first.result.current.modelChoice).toBe("deepseek"));
+  act(()=>first.result.current.select("A"));await waitFor(()=>expect(first.result.current.session?.sessionId).toBe("A"));
+  act(()=>{first.result.current.setDraft("same intent");first.result.current.send({text:"same intent"})});
+  await waitFor(()=>expect(first.result.current.error).toContain("lost response"));
+  const key=send.mock.calls[0][3];first.unmount();
+  const next=renderHook(()=>useThinking("book-a",true));
+  await waitFor(()=>expect(next.result.current.modelChoice).toBe("deepseek"));
+  await waitFor(()=>expect(next.result.current.session?.sessionId).toBe("A"));
+  act(()=>next.result.current.send({text:"same intent"}));
+  await waitFor(()=>expect(send).toHaveBeenCalledTimes(2));
+  expect(send.mock.calls[1][3]).toBe(key);
 });

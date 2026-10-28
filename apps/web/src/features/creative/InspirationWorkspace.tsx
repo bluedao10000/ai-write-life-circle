@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CreativeProposal, CreativeTurn, ThinkingMessage, ThinkingSource } from '@writer-agent/contracts'
 import { Btn, Choice, Dialog, Heading, Icon, IconBtn, Quote, Row, Seg, TextArea, TextInput, ago, type IconName } from '../../components/vnext/ui'
-import { ConsentFacts, ConsentList, ConsentTitle } from '../../components/vnext/ConsentFacts'
+import { thinkingError } from '../thinking/errors'
 import { creativeApi } from '../../services/api/creativeApi'
 import ToolTimeline from '../thinking/ToolTimeline'
 import type { useStudioController } from '../vnext/useStudioController'
@@ -37,11 +37,10 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
   const [left, setLeft] = useState(false)
   const [right, setRight] = useState(() => typeof window !== 'undefined' && window.innerWidth >= 1280)
   const [q, setQ] = useState('')
-  const [consent, setConsent] = useState(false)
-  const [notesScope, setNotesScope] = useState(false)
+  const [access, setAccess] = useState(false)
+  const [accessScopes, setAccessScopes] = useState<typeof t.scopes>([])
   const [organizeConsent, setOrganizeConsent] = useState(false)
   const [include, setInclude] = useState(true)
-  const [compact, setCompact] = useState(false)
   const [localError, setLocalError] = useState('')
   const [turns, setTurns] = useState<CreativeTurn[]>([])
   const [mine, setMine] = useState<CreativeProposal[]>([])
@@ -49,7 +48,6 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
   const [tick, setTick] = useState(0)
   const [lit, setLit] = useState<string | null>(null)
   const [drawer, setDrawer] = useState<CreativeProposal | null>(null)
-  const autoSend = useRef(false)
   const input = useRef<HTMLTextAreaElement>(null)
   const end = useRef<HTMLDivElement>(null)
   const session = t.session
@@ -112,33 +110,19 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [studio.ideaFocus])
 
-  // A send typed before any session exists continues once consent created it.
-  useEffect(() => {
-    if (autoSend.current && t.selected && session && !t.busy && t.draft.trim()) {
-      autoSend.current = false
-      void send()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [t.selected, session, t.busy])
-
   const send = async () => {
     setLocalError('')
     const text = t.draft.trim()
     if (!text || t.busy || running) return
-    if (!t.selected) {
-      autoSend.current = true
-      setConsent(true)
-      return
-    }
     try {
       let selection
       if (seed && include) {
+        if (!t.scopes.includes('chapters')) throw Error('请先在「AI 资料范围」中允许读取本作品章节，再附上选中原文。')
         const saved = await studio.workspace.prepareReview()
         selection = { chapterId: saved.chapterId, revisionId: saved.revisionId, contentHash: saved.contentHash, quote: seed }
       }
-      t.send({ text, selection, compact })
+      t.send({ text, selection })
       studio.setThinkingSeed('')
-      setCompact(false)
     } catch (e) {
       setLocalError(e instanceof Error ? e.message : '原文尚未保存。')
     }
@@ -234,10 +218,7 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
           {session ? (
             <>
               <span className="min-w-0 truncate text-ui font-medium text-ink">{session.title}</span>
-              <span className="hidden shrink-0 text-micro text-ink-3 sm:inline">
-                {session.model.model} · Token 预留 {session.usage.charged}
-                {session.usage.incomplete ? '（含保守预留）' : ''}
-              </span>
+
               <IconBtn
                 size="sm"
                 icon="trash"
@@ -334,12 +315,13 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
                       停止
                     </Btn>
                   </div>
-                  <ToolTimeline steps={t.steps} activeTool={t.tool} />
+                  <details className="text-ui-sm text-ink-3"><summary className="cursor-pointer">查看执行详情</summary><ToolTimeline steps={t.steps} activeTool={t.tool} /></details>
                 </div>
               )}
               <div ref={end} />
             </div>
           )}
+          {t.outgoing && <div role="status" className="mx-auto w-full max-w-read px-5 py-3"><p className="ml-8 rounded-xl bg-surface-2 px-4 py-3 font-prose whitespace-pre-wrap">{t.outgoing}</p><p className="text-right text-micro text-ink-3">正在发送…</p></div>}
         </div>
 
         {/* Composer */}
@@ -371,11 +353,12 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
                 prose
                 rows={session ? 2 : 3}
                 maxLength={12000}
+                disabled={t.busy}
                 value={t.draft}
                 onChange={t.setDraft}
                 placeholder={session ? '说说你的想法，零散的也可以……' : '比如：我想写一个欲望很强、却渴望自由的精神生命……'}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                  if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && (e.metaKey || e.ctrlKey || !window.matchMedia('(pointer: coarse)').matches)) {
                     e.preventDefault()
                     void send()
                   }
@@ -383,13 +366,14 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
                 className={`scroll field-sizing-content max-h-60 px-4 pt-3 ${session ? 'min-h-14' : 'min-h-20'}`}
               />
               <div className="flex items-center gap-2 px-3 pb-2.5">
-                <span className="hidden text-micro text-ink-3 sm:inline">Enter 或 ⌘ Enter 发送 · Shift + Enter 换行</span>
-                {session && session.messages.length > 2 && (
-                  <Btn size="sm" variant="quiet" pressed={compact} onClick={() => setCompact(!compact)} title="先压缩此前讨论，计入本次模型预算">
-                    <Icon name="compress" className="h-3 w-3" />
-                    <span className="hidden sm:inline">压缩此前讨论</span>
-                  </Btn>
-                )}
+                <label className="min-w-0 max-w-[65%] text-micro text-ink-3">
+                  <span className="sr-only">选择对话模型</span>
+                  <select aria-label="选择对话模型" className="max-w-full rounded-md border border-line bg-surface px-2 py-1 text-ui-sm text-ink" value={t.modelChoice} disabled={running || t.busy} onChange={e => t.chooseModel(e.target.value)}>
+                    {!t.models.length && <option value="">模型暂不可用</option>}
+                    {t.models.map(m => <option key={m.modelId} value={m.modelId} disabled={!m.enabled}>{m.displayName} · {m.hostedBy}{!m.enabled ? '（暂不可用）' : ''}</option>)}
+                  </select>
+                </label>
+                <Btn size="sm" variant="quiet" disabled={t.busy || running} onClick={() => {setAccessScopes(t.scopes);setAccess(true)}}>AI 资料范围</Btn>
                 <Btn size="sm" variant="primary" className="ml-auto" disabled={!t.draft.trim() || t.busy || running || offline} onClick={() => void send()}>
                   <Icon name="send" className="h-3 w-3" />
                   发送
@@ -442,41 +426,13 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
         />
       )}
 
-      {consent && t.model && (
-        <Dialog
-          title={<ConsentTitle>确认这次灵感讨论的数据范围</ConsentTitle>}
-          label="确认这次灵感讨论的数据范围"
-          size="lg"
-          onClose={() => {
-            autoSend.current = false
-            setConsent(false)
-          }}
-          actions={
-            <>
-              <Btn onClick={() => { autoSend.current = false; setConsent(false) }}>取消</Btn>
-              <Btn
-                variant="primary"
-                disabled={t.busy}
-                onClick={() => {
-                  t.create(notesScope ? ['chapters', 'knowledge', 'notes', 'creative'] : ['chapters', 'knowledge', 'creative'])
-                  setConsent(false)
-                }}
-              >
-                同意以上范围并创建会话
-              </Btn>
-            </>
-          }
-        >
-          <div className="space-y-3 text-ui-sm">
-            <ConsentFacts rows={[['服务', t.model.provider], ['模型', t.model.model], ['端点', t.model.endpoint]]} />
-            <ConsentList title="会读取" kind="reads" items={['本作品已保存章节与知识检索结果', '本作品的创作设定与未确认候选（只读）', '你的问题和本会话历史', '作者笔记（仅在下方勾选后）']} />
-            <p className="text-micro text-ink-3">
-              每次最多 {t.model.limits.maxTurnsPerRequest} 轮、{t.model.limits.maxToolCalls} 次工具调用，输入 {t.model.limits.maxInputTokens} / 输出 {t.model.limits.maxOutputTokens} Token；会话上限 {t.model.limits.maxSessionTokens} Token，时限 {Math.round(t.model.limits.maxDurationMs / 1000)} 秒。用量缺失时保守计费；金额按服务商账单。
-            </p>
-            <Choice checked={notesScope} onChange={setNotesScope}>
-              允许读取本作品的作者笔记
-            </Choice>
-          </div>
+      {access && (
+        <Dialog title="本作品的 AI 资料范围" label="本作品的 AI 资料范围" onClose={() => setAccess(false)} actions={<><Btn onClick={() => setAccess(false)}>取消</Btn><Btn variant="primary" onClick={async () => {if(await t.saveScopes(accessScopes)) setAccess(false)}}>保存范围</Btn></>}>
+          <p className="mb-4 text-ui-sm text-ink-2">发送消息会将你的问题及本次讨论历史交给所选外部模型。默认只讨论你发送的内容；开启下列范围后，AI 可按需检索本作品资料。不会读取其他作品，不会修改正文或正式设定。你可以随时关闭。</p>
+          {([['chapters', '本作品已保存章节'], ['knowledge', '本作品知识库'], ['creative', '创作设定与待确认候选'], ['notes', '私人作者笔记（额外授权）']] as const).map(([key,label]) => (
+            <Choice key={key} checked={accessScopes.includes(key)} onChange={on => setAccessScopes(old => on ? [...old, key] : old.filter(s => s !== key))}>{label}</Choice>
+          ))}
+          <p className="mt-4 text-micro text-ink-3">范围保存在本作品设置中，适用于后续讨论。关闭权限会停止仍在读取资料的回复。</p>
         </Dialog>
       )}
       {organizeConsent && settings && (
@@ -593,10 +549,11 @@ function AiMessage({
           </div>
         </details>
       )}
+      {m.modelLabel && <p className="mt-2 text-micro text-ink-3">{m.modelLabel}</p>}
       {m.errorCode && m.status !== 'cancelled' && (
         <div role="alert" className="mt-4 flex flex-wrap items-center gap-2 rounded-md bg-surface-2 px-3 py-2 text-ui-sm text-ink-2">
           <Icon name="info" className="text-warn" />
-          这一轮没有完整回复（{m.errorCode}）。你的想法已经保存在对话里。
+          {thinkingError(m.errorCode)}
           <Btn variant="link" className="text-ui-sm" disabled={busy} onClick={onRetry}>
             用此问题重试
           </Btn>
