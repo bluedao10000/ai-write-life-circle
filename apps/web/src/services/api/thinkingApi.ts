@@ -1,6 +1,8 @@
 import { z } from "zod";
 import {
   thinkingEventsSchema,
+  thinkingModelsSchema,
+  thinkingPreferencesSchema,
   thinkingModelSchema,
   thinkingSessionSchema,
   thinkingSummarySchema,
@@ -11,6 +13,15 @@ import { requestApi, postJson } from "./client";
 const root = (book: string) =>
   `/v1/studio/books/${encodeURIComponent(book)}/thinking`;
 export const thinkingApi = {
+  async models(book: string, signal?: AbortSignal) {
+    return thinkingModelsSchema.parse((await requestApi(root(book) + "/models", {signal})).body).items;
+  },
+  async preferences(book: string, signal?: AbortSignal) {
+    return thinkingPreferencesSchema.parse((await requestApi(root(book) + "/preferences", {signal})).body);
+  },
+  async setPreferences(book: string, scopes: ("chapters" | "knowledge" | "creative" | "notes")[]) {
+    return thinkingPreferencesSchema.parse(await postJson(root(book) + "/preferences", {scopes}, crypto.randomUUID()));
+  },
   async capabilities(book: string, signal?: AbortSignal) {
     return thinkingModelSchema.parse(
       (await requestApi(root(book) + "/capabilities", { signal })).body,

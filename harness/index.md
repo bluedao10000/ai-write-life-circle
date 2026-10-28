@@ -20,3 +20,4 @@
 规则：默认只读 1 个工作流、相关索引和至多 5 个相关文件。上下文不足时按需扩大并说明。
 
 - 作者体验 P0（恢复、历史正文、审查与注记、Free 审查额度）：[设计与一致性](architecture/author-experience-p0.md)
+- 灵感对话可用性与多模型：[设计](architecture/inspiration-agent-usability.md)、[实现与验证](reviews/inspiration-agent-usability-report.md)

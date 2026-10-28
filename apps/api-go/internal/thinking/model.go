@@ -32,11 +32,19 @@ type Limits struct {
 	ResultBytes int `json:"maxToolResultBytes"`
 }
 type Model struct {
-	Provider string `json:"provider"`
-	Model    string `json:"model"`
-	Endpoint string `json:"endpoint"`
-	Protocol string `json:"protocol"`
-	Limits   Limits `json:"limits"`
+	ContextWindow   int    `json:"contextWindow,omitempty"`
+	BillingPolicy   string `json:"billingPolicy,omitempty"`
+	ID              string `json:"modelId,omitempty"`
+	DisplayName     string `json:"displayName,omitempty"`
+	HostedBy        string `json:"hostedBy,omitempty"`
+	ToolCalling     *bool  `json:"toolCalling,omitempty"`
+	TokenParameter  string `json:"tokenParameter,omitempty"`
+	ProviderOptions string `json:"providerOptions,omitempty"`
+	Provider        string `json:"provider"`
+	Model           string `json:"model"`
+	Endpoint        string `json:"endpoint"`
+	Protocol        string `json:"protocol"`
+	Limits          Limits `json:"limits"`
 }
 type Record struct {
 	ID      string   `json:"sessionId"`
@@ -67,9 +75,10 @@ type receipt struct {
 	ID   string `json:"id"`
 }
 type registry struct {
-	Schema   int                `json:"schema"`
-	Sessions map[string]Record  `json:"sessions"`
-	Requests map[string]receipt `json:"requests"`
+	Schema      int                 `json:"schema"`
+	Sessions    map[string]Record   `json:"sessions"`
+	Requests    map[string]receipt  `json:"requests"`
+	Preferences map[string][]string `json:"preferences,omitempty"`
 }
 type Service struct {
 	Management                  *application.Management
@@ -87,6 +96,7 @@ type Service struct {
 	Meter application.Meter
 }
 type Create struct {
+	ID      string   `json:"modelId,omitempty"`
 	Consent bool     `json:"consent"`
 	Model   Model    `json:"model"`
 	Scopes  []string `json:"scopes"`
@@ -98,6 +108,7 @@ type Selection struct {
 	Quote    string `json:"quote"`
 }
 type Message struct {
+	ModelID   string     `json:"modelId,omitempty"`
 	Text      string     `json:"text"`
 	Selection *Selection `json:"selection,omitempty"`
 	Compact   bool       `json:"compact,omitempty"`
@@ -130,7 +141,7 @@ func fail(status int, code string) error {
 }
 func (s *Service) path() string { return filepath.Join(s.State, "thinking", "sessions-v1.json") }
 func (s *Service) load() (registry, error) {
-	st := registry{1, map[string]Record{}, map[string]receipt{}}
+	st := registry{Schema: 1, Sessions: map[string]Record{}, Requests: map[string]receipt{}}
 	found, e := storage.Read(s.path(), &st)
 	if e != nil {
 		return st, e

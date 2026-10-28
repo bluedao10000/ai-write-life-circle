@@ -10,6 +10,7 @@ import {
   thinkingPrivateMessageSchema as messageSchema,
 } from "@writer-agent/contracts";
 import { PiHost, AgentError, safeCode } from "../runtime/pi-host.js";
+import { modelEntries } from "../config.js";
 import { idPattern } from "../sessions/store.js";
 const json = (res: ServerResponse, status: number, value: unknown) => {
   res.writeHead(status, {
@@ -50,6 +51,7 @@ export function server(host: PiHost) {
             protocol: "thinking-v1",
             version: host.config.version,
             model: host.config.model,
+            models: modelEntries(host.config).map(({model, enabled, description}) => ({model, enabled, description})),
           });
           return;
         }

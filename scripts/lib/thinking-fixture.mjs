@@ -17,7 +17,7 @@ const free = async () => {
   await new Promise((r) => s.close(r));
   return p;
 };
-export async function startThinkingFixture({ live = false, taskProtocol = false } = {}) {
+export async function startThinkingFixture({ live = false, taskProtocol = false, chatModels = false } = {}) {
   // Go runs in production mode, so every author call carries a signed user.
   const identity = identityFixture();
   if (live && !process.env.WRITER_AGENT_LLM_API_KEY)
@@ -69,6 +69,7 @@ export async function startThinkingFixture({ live = false, taskProtocol = false 
           },
         ],
       };
+    else if (chatModels || !(body.tools ?? []).length || body.tool_choice === "none") delta = {content: "可以从权力、责任和代价讨论人物的选择。这些只是创作建议，不是正式设定。"};
     else if (!related)
       delta = {
         tool_calls: [
@@ -192,6 +193,17 @@ export async function startThinkingFixture({ live = false, taskProtocol = false 
     WRITER_AGENT_PI_MAX_OUTPUT_TOKENS: "1024",
     WRITER_AGENT_PI_VERSION: "fixture",
   };
+  // Optional synthetic registry exercises the real Go/Pi routing without external calls.
+  if(chatModels) {
+    const limits={maxTurnsPerRequest:4,maxToolCalls:8,maxInputTokens:32000,maxOutputTokens:2048,maxSessionTokens:1000000,maxConcurrentSessions:2,maxDurationMs:10000,maxToolResultBytes:24000};
+    const model={provider:"fixture",model:"synthetic-thinking",endpoint:`http://127.0.0.1:${providerPort}`,protocol:"thinking-v1",limits};
+    const path=join(root,"models.json");
+    await writeFile(path,JSON.stringify([
+      {model:{...model,modelId:"deepseek",displayName:"DeepSeek",hostedBy:"DeepSeek",toolCalling:true},keyEnv:"WRITER_AGENT_PI_LLM_API_KEY"},
+      {model:{...model,modelId:"gpt-oss",displayName:"OpenAI · GPT-OSS 120B",hostedBy:"Amazon Bedrock",toolCalling:true,tokenParameter:"max_completion_tokens"},keyEnv:"WRITER_AGENT_PI_LLM_API_KEY"},
+    ]),{mode:0o600});
+    env.WRITER_AGENT_PI_MODELS_FILE=path;
+  } else env.WRITER_AGENT_PI_MODELS_FILE="";
   env.WRITER_AGENT_TASK_SERVICE_TOKEN_FILE=taskProtocol?join(root,"taskToken"):"";
   if(taskProtocol)Object.assign(env,{
     WRITER_AGENT_TASK_INTERNAL_PORT:String(taskPort),

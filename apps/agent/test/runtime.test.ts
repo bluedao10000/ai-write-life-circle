@@ -26,6 +26,7 @@ test("real Pi SDK tool loop, durable multi-turn context, replay, cancellation an
     mode = "normal",
     revoked = false;
   let cacheHit = 80;
+  let grantScopes = ["chapters"];
   const prompts: unknown[] = [];
   const source = {
     sourceId: "src-fixture",
@@ -54,7 +55,7 @@ test("real Pi SDK tool loop, durable multi-turn context, replay, cancellation an
           authorId: owner,
           bookId: book,
           model: config.model,
-          scopes: ["chapters"],
+          scopes: grantScopes,
         }),
       );
     else {
@@ -71,7 +72,7 @@ test("real Pi SDK tool loop, durable multi-turn context, replay, cancellation an
     prompts.push(v);
     requests++;
     assert(
-      v.tools.every(
+      (v.tools ?? []).every(
         (t: { function: { name: string } }) =>
           !["bash", "read", "write", "edit", "ls", "grep", "find"].includes(
             t.function.name,
@@ -90,7 +91,7 @@ test("real Pi SDK tool loop, durable multi-turn context, replay, cancellation an
         m.role === "tool" && m.content?.includes("src-fixture"),
     );
     const delta =
-      mode === "injection"
+      mode === "oldsource" ? {content:"仍然提到历史依据 [[source:src-fixture]]，但未重新取得授权。"} : mode === "injection"
         ? {
             tool_calls: [
               {
@@ -142,7 +143,7 @@ test("real Pi SDK tool loop, durable multi-turn context, replay, cancellation an
               index: 0,
               delta: {},
               finish_reason:
-                readCalled && mode !== "injection" ? "stop" : "tool_calls",
+                mode === "oldsource" || (readCalled && mode !== "injection") ? "stop" : "tool_calls",
             },
           ],
           usage: {
@@ -235,6 +236,18 @@ test("real Pi SDK tool loop, durable multi-turn context, replay, cancellation an
     assert(
       JSON.stringify(prompts.at(-1)).includes("林舟与父亲的关系变化是否合理"),
     );
+    mode = "oldsource";
+    grantScopes = ["knowledge"];
+    await host.accept(id,{text:"章节权限已撤销，不能复用历史卡片"},"revoked-chapters","fixture");
+    await host.active.get(id)?.done;
+    assert.equal(host.get(id).view.messages.at(-1)?.status,"completed");
+    assert.deepEqual(host.get(id).view.messages.at(-1)?.sources,[]);
+    assert.equal(host.get(id).view.messages[1].sources.length,1,"original historical source card remains visible");
+    grantScopes = [];
+    await host.accept(id,{text:"知识权限也已撤销"},"revoked-all","fixture");
+    await host.active.get(id)?.done;
+    assert.deepEqual(host.get(id).view.messages.at(-1)?.sources,[]);
+    grantScopes = ["chapters"];
     mode = "hang";
     await host.accept(id, { text: "取消测试" }, "third", "fixture");
     await new Promise((r) => setTimeout(r, 200));

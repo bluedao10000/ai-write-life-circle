@@ -4,6 +4,7 @@ import type { ThinkingSession } from "@writer-agent/contracts";
 import { useThinking } from "../features/thinking/useThinking";
 import { thinkingApi as api } from "../services/api/thinkingApi";
 const model: ThinkingSession["model"] = {
+  modelId: "deepseek",
   provider: "fixture",
   model: "fixture",
   endpoint: "https://model.example",
@@ -44,6 +45,8 @@ afterEach(() => {
   sessionStorage.clear();
 });
 function setup() {
+  vi.spyOn(api, "models").mockResolvedValue([{modelId:"deepseek",displayName:"DeepSeek",provider:"deepseek",hostedBy:"DeepSeek",description:"创作讨论",enabled:true,toolCalling:true,pointMultiplier:1}, {modelId:"oss",displayName:"GPT-OSS",provider:"bedrock",hostedBy:"Amazon Bedrock",description:"创作讨论",enabled:true,toolCalling:true,pointMultiplier:1}]);
+  vi.spyOn(api, "preferences").mockResolvedValue({scopes:[]});
   vi.spyOn(api, "capabilities").mockResolvedValue(model);
   vi.spyOn(api, "list").mockResolvedValue([session("A"), session("B")]);
   vi.spyOn(api, "get").mockImplementation(async (_b, id) => session(id));
@@ -114,4 +117,105 @@ it("offline capabilities do not hide Go history or block durable deletion", asyn
   await waitFor(() => expect(remove).toHaveBeenCalledWith("book-a", "A"));
   await waitFor(() => expect(result.current.selected).toBeNull());
   expect(result.current.sessions.map((s) => s.sessionId)).toEqual(["B"]);
+});
+
+it("first send creates automatically, preserves draft after a lost response, and replays the same message key", async () => {
+  const create=vi.spyOn(api,"create").mockResolvedValue(session("new"));
+  const send=vi.spyOn(api,"send").mockRejectedValueOnce(Error("network interrupted")).mockResolvedValue({messageId:"m"});
+  const {result}=setup();
+  await waitFor(()=>expect(result.current.modelChoice).toBe("deepseek"));
+  act(()=>{result.current.setDraft("张居正与平行宇宙");result.current.send({text:"张居正与平行宇宙"})});
+  await waitFor(()=>expect(result.current.error).toContain("network"));
+  expect(result.current.draft).toContain("张居正");
+  expect(create.mock.calls[0][1]).toEqual({modelId:"deepseek"});
+  act(()=>result.current.send({text:"张居正与平行宇宙"}));
+  await waitFor(()=>expect(result.current.busy).toBe(false));
+  expect(create).toHaveBeenCalledTimes(1);
+  expect(send.mock.calls[0][3]).toBe(send.mock.calls[1][3]);
+  expect(result.current.draft).toBe("");
+});
+it("model selection changes only next message; persisted draft survives remount", async () => {
+  const send=vi.spyOn(api,"send").mockResolvedValue({messageId:"m"});
+  const one=setup();await waitFor(()=>expect(one.result.current.models).toHaveLength(2));
+  act(()=>{one.result.current.select("A");one.result.current.setDraft("没有发送的想法")});
+  one.unmount();
+  const two=renderHook(()=>useThinking("book-a",true));
+  await waitFor(()=>expect(two.result.current.session?.sessionId).toBe("A"));
+  expect(two.result.current.draft).toBe("没有发送的想法");
+  act(()=>two.result.current.chooseModel("oss"));
+  act(()=>two.result.current.send({text:"继续"}));
+  await waitFor(()=>expect(send).toHaveBeenCalled());
+  expect(send.mock.calls[0][2].modelId).toBe("oss");
+});
+
+it("reload after ambiguous delivery preserves the outbox key instead of charging a second intent", async () => {
+  const send=vi.spyOn(api,"send").mockRejectedValueOnce(Error("lost response")).mockResolvedValue({messageId:"accepted"});
+  const first=setup();await waitFor(()=>expect(first.result.current.modelChoice).toBe("deepseek"));
+  act(()=>first.result.current.select("A"));await waitFor(()=>expect(first.result.current.session?.sessionId).toBe("A"));
+  act(()=>{first.result.current.setDraft("same intent");first.result.current.send({text:"same intent"})});
+  await waitFor(()=>expect(first.result.current.error).toContain("lost response"));
+  const key=send.mock.calls[0][3];first.unmount();
+  const next=renderHook(()=>useThinking("book-a",true));
+  await waitFor(()=>expect(next.result.current.modelChoice).toBe("deepseek"));
+  await waitFor(()=>expect(next.result.current.session?.sessionId).toBe("A"));
+  act(()=>next.result.current.send({text:"same intent"}));
+  await waitFor(()=>expect(send).toHaveBeenCalledTimes(2));
+  expect(send.mock.calls[1][3]).toBe(key);
+});
+
+it("a rejected model switch restores the previous model and keeps the draft", async () => {
+ vi.spyOn(api,"send").mockRejectedValue(Object.assign(Error("unavailable"),{code:"MODEL_UNAVAILABLE"}));
+ const {result}=setup();await waitFor(()=>expect(result.current.modelChoice).toBe("deepseek"));
+ act(()=>result.current.select("A"));await waitFor(()=>expect(result.current.session?.sessionId).toBe("A"));
+ act(()=>result.current.chooseModel("oss"));
+ act(()=>{result.current.setDraft("保留的想法");result.current.send({text:"保留的想法"})});
+ await waitFor(()=>expect(result.current.modelChoice).toBe("deepseek"));expect(result.current.draft).toBe("保留的想法");
+});
+
+it("A → B → A preserves each session model and the actual modelId sent", async () => {
+ const send=vi.spyOn(api,"send").mockResolvedValue({messageId:"m"});
+ const {result}=setup();
+ vi.mocked(api.get).mockImplementation(async(_book,id)=>({...session(id),model:{...model,modelId:id==='B'?'oss':'deepseek'}}));
+ act(()=>result.current.select("A"));await waitFor(()=>expect(result.current.session?.sessionId).toBe("A"));
+ expect(result.current.modelChoice).toBe("deepseek");
+ act(()=>result.current.select("B"));await waitFor(()=>expect(result.current.modelChoice).toBe("oss"));
+ act(()=>result.current.send({text:"B first"}));await waitFor(()=>expect(result.current.busy).toBe(false));
+ act(()=>result.current.select("A"));await waitFor(()=>expect(result.current.modelChoice).toBe("deepseek"));
+ act(()=>result.current.send({text:"A again"}));await waitFor(()=>expect(send).toHaveBeenCalledTimes(2));
+ expect(send.mock.calls.map(c=>[c[1],c[2].modelId])).toEqual([["B","oss"],["A","deepseek"]]);
+});
+it("uncertain A delivery survives a successful B send, reload, and A retry", async () => {
+ const send=vi.spyOn(api,"send").mockRejectedValueOnce(Error("A lost acknowledgement")).mockResolvedValue({messageId:"m"});
+ const first=setup();
+ act(()=>first.result.current.select("A"));await waitFor(()=>expect(first.result.current.session?.sessionId).toBe("A"));
+ act(()=>{first.result.current.setDraft("A original");first.result.current.send({text:"A original"})});
+ await waitFor(()=>expect(first.result.current.error).toContain("lost acknowledgement"));
+ const key=send.mock.calls[0][3];
+ act(()=>first.result.current.select("B"));await waitFor(()=>expect(first.result.current.session?.sessionId).toBe("B"));
+ act(()=>first.result.current.send({text:"B independent"}));await waitFor(()=>expect(first.result.current.busy).toBe(false));
+ first.unmount();const next=renderHook(()=>useThinking("book-a",true));
+ act(()=>next.result.current.select("A"));await waitFor(()=>expect(next.result.current.session?.sessionId).toBe("A"));
+ act(()=>next.result.current.send({text:"A original"}));await waitFor(()=>expect(send).toHaveBeenCalledTimes(3));
+ expect(send.mock.calls[2][3]).toBe(key);
+});
+it("an exact receipt in server history confirms A without resending or matching prose", async () => {
+ const send=vi.spyOn(api,"send").mockRejectedValueOnce(Error("lost acknowledgement"));
+ const {result}=setup();act(()=>result.current.select("A"));await waitFor(()=>expect(result.current.session?.sessionId).toBe("A"));
+ act(()=>result.current.send({text:"duplicate-looking text"}));await waitFor(()=>expect(result.current.error).toContain("lost acknowledgement"));
+ const key=send.mock.calls[0][3];
+ vi.mocked(api.get).mockResolvedValue({...session("A"),messages:[{id:"accepted",role:"user",requestKey:key,text:"duplicate-looking text",status:"completed",createdAt:"now",sources:[]}]});
+ act(()=>result.current.send({text:"duplicate-looking text"}));await waitFor(()=>expect(result.current.busy).toBe(false));
+ expect(send).toHaveBeenCalledTimes(1);
+});
+it("obsolete defaults migrate for new topics, but missing historical models require explicit selection", async () => {
+ sessionStorage.setItem("thinking-model:book-a","default");
+ const send=vi.spyOn(api,"send").mockResolvedValue({messageId:"m"});
+ const {result}=setup();await waitFor(()=>expect(result.current.modelChoice).toBe("deepseek"));
+ vi.mocked(api.get).mockResolvedValue({...session("retired"),model:{...model,modelId:"removed-provider"}});
+ act(()=>result.current.select("retired"));await waitFor(()=>expect(result.current.modelChoice).toBe("removed-provider"));
+ expect(result.current.modelAvailable).toBe(false);expect(result.current.modelNotice).toContain("主动选择");
+ act(()=>result.current.send({text:"must not switch silently"}));expect(send).not.toHaveBeenCalled();
+ act(()=>result.current.chooseModel("oss"));expect(result.current.modelAvailable).toBe(true);
+ act(()=>result.current.send({text:"explicitly switched"}));await waitFor(()=>expect(send).toHaveBeenCalledTimes(1));
+ expect(send.mock.calls[0][2].modelId).toBe("oss");
 });

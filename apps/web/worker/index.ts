@@ -12,7 +12,8 @@ function problem(status: number, code: string, detail: string) {
 function allowedRoute(path: string, method: string, project: string) {
   if(publicationRoute(path,method,project))return true
   const thinking = `/v1/studio/books/${encodeURIComponent(project)}/thinking`
-  if(path===thinking+'/capabilities')return method==='GET'
+  if(path===thinking+'/capabilities'||path===thinking+'/models')return method==='GET'
+  if(path===thinking+'/preferences')return ['GET','POST'].includes(method)
   if(path===thinking+'/sessions')return ['GET','POST'].includes(method)
   const thinkMatch=new RegExp(`^${thinking}/sessions/th-[a-f0-9-]{36}(/messages|/events|/cancel)?$`).exec(path)
   if(thinkMatch){return thinkMatch[1]==='/events'?method==='GET':thinkMatch[1]?method==='POST':['GET','DELETE'].includes(method)}

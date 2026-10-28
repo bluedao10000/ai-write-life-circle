@@ -11,6 +11,176 @@
     }
   ],
   "paths": {
+    "/studio/books/{bookId}/thinking/models": {
+      "parameters": [
+        {
+          "name": "bookId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "listThinkingModels",
+        "summary": "listThinkingModels",
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "tags": [
+          "Private thinking"
+        ],
+        "responses": {
+          "200": {
+            "description": "Author-scoped response; no model credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/thinkingModels"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Author session required"
+          },
+          "403": {
+            "description": "Grant revoked or wrong scope"
+          },
+          "404": {
+            "description": "Unknown or unowned resource"
+          },
+          "409": {
+            "description": "Busy or model consent changed"
+          },
+          "422": {
+            "description": "Invalid input, selection or budget"
+          },
+          "429": {
+            "description": "Budget or capacity exhausted"
+          },
+          "503": {
+            "description": "Thinking unavailable; writing remains independent"
+          }
+        }
+      }
+    },
+    "/studio/books/{bookId}/thinking/preferences": {
+      "parameters": [
+        {
+          "name": "bookId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getThinkingPreferences",
+        "summary": "getThinkingPreferences",
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "tags": [
+          "Private thinking"
+        ],
+        "responses": {
+          "200": {
+            "description": "Author-scoped response; no model credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/thinkingPreferences"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Author session required"
+          },
+          "403": {
+            "description": "Grant revoked or wrong scope"
+          },
+          "404": {
+            "description": "Unknown or unowned resource"
+          },
+          "409": {
+            "description": "Busy or model consent changed"
+          },
+          "422": {
+            "description": "Invalid input, selection or budget"
+          },
+          "429": {
+            "description": "Budget or capacity exhausted"
+          },
+          "503": {
+            "description": "Thinking unavailable; writing remains independent"
+          }
+        }
+      },
+      "post": {
+        "operationId": "setThinkingPreferences",
+        "summary": "setThinkingPreferences",
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "tags": [
+          "Private thinking"
+        ],
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/thinkingPreferences"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Author-scoped response; no model credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/thinkingPreferences"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Author session required"
+          },
+          "403": {
+            "description": "Grant revoked or wrong scope"
+          },
+          "404": {
+            "description": "Unknown or unowned resource"
+          },
+          "409": {
+            "description": "Busy or model consent changed"
+          },
+          "422": {
+            "description": "Invalid input, selection or budget"
+          },
+          "429": {
+            "description": "Budget or capacity exhausted"
+          },
+          "503": {
+            "description": "Thinking unavailable; writing remains independent"
+          }
+        }
+      }
+    },
     "/studio/books/{bookId}/thinking/capabilities": {
       "parameters": [
         {
@@ -529,6 +699,45 @@
           "model": {
             "type": "object",
             "properties": {
+              "modelId": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9_-]{1,80}$"
+              },
+              "displayName": {
+                "type": "string",
+                "maxLength": 120
+              },
+              "hostedBy": {
+                "type": "string",
+                "maxLength": 120
+              },
+              "contextWindow": {
+                "type": "integer",
+                "minimum": 1024,
+                "maximum": 1000000
+              },
+              "billingPolicy": {
+                "type": "string",
+                "const": "standard-points-v1"
+              },
+              "toolCalling": {
+                "type": "boolean"
+              },
+              "tokenParameter": {
+                "type": "string",
+                "enum": [
+                  "max_tokens",
+                  "max_completion_tokens"
+                ]
+              },
+              "providerOptions": {
+                "type": "string",
+                "enum": [
+                  "default",
+                  "deepseek",
+                  "bedrock"
+                ]
+              },
               "provider": {
                 "type": "string",
                 "minLength": 1
@@ -611,8 +820,11 @@
             ],
             "additionalProperties": false
           },
+          "modelId": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]{1,80}$"
+          },
           "scopes": {
-            "minItems": 1,
             "maxItems": 4,
             "type": "array",
             "items": {
@@ -626,11 +838,6 @@
             }
           }
         },
-        "required": [
-          "consent",
-          "model",
-          "scopes"
-        ],
         "additionalProperties": false
       },
       "thinkingEvent": {
@@ -957,6 +1164,45 @@
           "model": {
             "type": "object",
             "properties": {
+              "modelId": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9_-]{1,80}$"
+              },
+              "displayName": {
+                "type": "string",
+                "maxLength": 120
+              },
+              "hostedBy": {
+                "type": "string",
+                "maxLength": 120
+              },
+              "contextWindow": {
+                "type": "integer",
+                "minimum": 1024,
+                "maximum": 1000000
+              },
+              "billingPolicy": {
+                "type": "string",
+                "const": "standard-points-v1"
+              },
+              "toolCalling": {
+                "type": "boolean"
+              },
+              "tokenParameter": {
+                "type": "string",
+                "enum": [
+                  "max_tokens",
+                  "max_completion_tokens"
+                ]
+              },
+              "providerOptions": {
+                "type": "string",
+                "enum": [
+                  "default",
+                  "deepseek",
+                  "bedrock"
+                ]
+              },
               "provider": {
                 "type": "string",
                 "minLength": 1
@@ -1127,6 +1373,10 @@
             "minLength": 1,
             "maxLength": 12000
           },
+          "modelId": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]{1,80}$"
+          },
           "selection": {
             "type": "object",
             "properties": {
@@ -1167,6 +1417,16 @@
         "properties": {
           "id": {
             "type": "string"
+          },
+          "modelId": {
+            "type": "string"
+          },
+          "modelLabel": {
+            "type": "string"
+          },
+          "requestKey": {
+            "type": "string",
+            "maxLength": 128
           },
           "role": {
             "type": "string",
@@ -1306,6 +1566,45 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
         "properties": {
+          "modelId": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]{1,80}$"
+          },
+          "displayName": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "hostedBy": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "contextWindow": {
+            "type": "integer",
+            "minimum": 1024,
+            "maximum": 1000000
+          },
+          "billingPolicy": {
+            "type": "string",
+            "const": "standard-points-v1"
+          },
+          "toolCalling": {
+            "type": "boolean"
+          },
+          "tokenParameter": {
+            "type": "string",
+            "enum": [
+              "max_tokens",
+              "max_completion_tokens"
+            ]
+          },
+          "providerOptions": {
+            "type": "string",
+            "enum": [
+              "default",
+              "deepseek",
+              "bedrock"
+            ]
+          },
           "provider": {
             "type": "string",
             "minLength": 1
@@ -1388,6 +1687,83 @@
         ],
         "additionalProperties": false
       },
+      "thinkingModels": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "modelId": {
+                  "type": "string"
+                },
+                "displayName": {
+                  "type": "string"
+                },
+                "provider": {
+                  "type": "string"
+                },
+                "hostedBy": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "enabled": {
+                  "type": "boolean"
+                },
+                "toolCalling": {
+                  "type": "boolean"
+                },
+                "pointMultiplier": {
+                  "type": "number",
+                  "const": 1
+                }
+              },
+              "required": [
+                "modelId",
+                "displayName",
+                "provider",
+                "hostedBy",
+                "description",
+                "enabled",
+                "toolCalling",
+                "pointMultiplier"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false
+      },
+      "thinkingPreferences": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "scopes": {
+            "maxItems": 4,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "chapters",
+                "knowledge",
+                "notes",
+                "creative"
+              ]
+            }
+          }
+        },
+        "required": [
+          "scopes"
+        ],
+        "additionalProperties": false
+      },
       "thinkingPrivateCreate": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -1405,6 +1781,45 @@
           "model": {
             "type": "object",
             "properties": {
+              "modelId": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9_-]{1,80}$"
+              },
+              "displayName": {
+                "type": "string",
+                "maxLength": 120
+              },
+              "hostedBy": {
+                "type": "string",
+                "maxLength": 120
+              },
+              "contextWindow": {
+                "type": "integer",
+                "minimum": 1024,
+                "maximum": 1000000
+              },
+              "billingPolicy": {
+                "type": "string",
+                "const": "standard-points-v1"
+              },
+              "toolCalling": {
+                "type": "boolean"
+              },
+              "tokenParameter": {
+                "type": "string",
+                "enum": [
+                  "max_tokens",
+                  "max_completion_tokens"
+                ]
+              },
+              "providerOptions": {
+                "type": "string",
+                "enum": [
+                  "default",
+                  "deepseek",
+                  "bedrock"
+                ]
+              },
               "provider": {
                 "type": "string",
                 "minLength": 1
@@ -1530,6 +1945,10 @@
                 "minLength": 1,
                 "maxLength": 12000
               },
+              "modelId": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9_-]{1,80}$"
+              },
               "selection": {
                 "type": "object",
                 "properties": {
@@ -1609,6 +2028,45 @@
           "model": {
             "type": "object",
             "properties": {
+              "modelId": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9_-]{1,80}$"
+              },
+              "displayName": {
+                "type": "string",
+                "maxLength": 120
+              },
+              "hostedBy": {
+                "type": "string",
+                "maxLength": 120
+              },
+              "contextWindow": {
+                "type": "integer",
+                "minimum": 1024,
+                "maximum": 1000000
+              },
+              "billingPolicy": {
+                "type": "string",
+                "const": "standard-points-v1"
+              },
+              "toolCalling": {
+                "type": "boolean"
+              },
+              "tokenParameter": {
+                "type": "string",
+                "enum": [
+                  "max_tokens",
+                  "max_completion_tokens"
+                ]
+              },
+              "providerOptions": {
+                "type": "string",
+                "enum": [
+                  "default",
+                  "deepseek",
+                  "bedrock"
+                ]
+              },
               "provider": {
                 "type": "string",
                 "minLength": 1
@@ -1718,6 +2176,16 @@
               "properties": {
                 "id": {
                   "type": "string"
+                },
+                "modelId": {
+                  "type": "string"
+                },
+                "modelLabel": {
+                  "type": "string"
+                },
+                "requestKey": {
+                  "type": "string",
+                  "maxLength": 128
                 },
                 "role": {
                   "type": "string",
@@ -1987,6 +2455,45 @@
           "model": {
             "type": "object",
             "properties": {
+              "modelId": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9_-]{1,80}$"
+              },
+              "displayName": {
+                "type": "string",
+                "maxLength": 120
+              },
+              "hostedBy": {
+                "type": "string",
+                "maxLength": 120
+              },
+              "contextWindow": {
+                "type": "integer",
+                "minimum": 1024,
+                "maximum": 1000000
+              },
+              "billingPolicy": {
+                "type": "string",
+                "const": "standard-points-v1"
+              },
+              "toolCalling": {
+                "type": "boolean"
+              },
+              "tokenParameter": {
+                "type": "string",
+                "enum": [
+                  "max_tokens",
+                  "max_completion_tokens"
+                ]
+              },
+              "providerOptions": {
+                "type": "string",
+                "enum": [
+                  "default",
+                  "deepseek",
+                  "bedrock"
+                ]
+              },
               "provider": {
                 "type": "string",
                 "minLength": 1

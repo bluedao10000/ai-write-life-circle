@@ -20,6 +20,14 @@ export const thinkingLimitsSchema = z
   .strict();
 export const thinkingModelSchema = z
   .object({
+    modelId: z.string().regex(/^[a-zA-Z0-9_-]{1,80}$/).optional(),
+    displayName: z.string().max(120).optional(),
+    hostedBy: z.string().max(120).optional(),
+    contextWindow: z.number().int().min(1024).max(1000000).optional(),
+    billingPolicy: z.literal("standard-points-v1").optional(),
+    toolCalling: z.boolean().optional(),
+    tokenParameter: z.enum(["max_tokens", "max_completion_tokens"]).optional(),
+    providerOptions: z.enum(["default", "deepseek", "bedrock"]).optional(),
     provider: z.string().min(1),
     model: z.string().min(1),
     endpoint: z.string().url(),
@@ -29,14 +37,16 @@ export const thinkingModelSchema = z
   .strict();
 export const thinkingCreateSchema = z
   .object({
-    consent: z.literal(true),
-    model: thinkingModelSchema,
-    scopes: z.array(thinkingScopeSchema).min(1).max(4),
+    consent: z.literal(true).optional(),
+    model: thinkingModelSchema.optional(),
+    modelId: z.string().regex(/^[a-zA-Z0-9_-]{1,80}$/).optional(),
+    scopes: z.array(thinkingScopeSchema).max(4).optional(),
   })
   .strict();
 export const thinkingMessageInputSchema = z
   .object({
     text: z.string().trim().min(1).max(12000),
+    modelId: z.string().regex(/^[a-zA-Z0-9_-]{1,80}$/).optional(),
     selection: z
       .object({
         chapterId: z.string(),
@@ -99,6 +109,9 @@ export const thinkingEventSchema = z
 export const thinkingMessageSchema = z
   .object({
     id: z.string(),
+    modelId: z.string().optional(),
+    modelLabel: z.string().optional(),
+    requestKey: z.string().max(128).optional(),
     role: z.enum(["user", "assistant"]),
     text: z.string(),
     status: z.enum([
@@ -212,3 +225,10 @@ export const thinkingPrivateMessageSchema = z
     capability: z.string().max(4096),
   })
   .strict();
+
+export const thinkingModelsSchema = z.object({items: z.array(z.object({
+  modelId: z.string(), displayName: z.string(), provider: z.string(), hostedBy: z.string(),
+  description: z.string(), enabled: z.boolean(), toolCalling: z.boolean(), pointMultiplier: z.literal(1),
+}).strict())}).strict();
+export const thinkingPreferencesSchema = z.object({scopes: z.array(thinkingScopeSchema).max(4)}).strict();
+export type ThinkingModelOption = z.infer<typeof thinkingModelsSchema>["items"][number];

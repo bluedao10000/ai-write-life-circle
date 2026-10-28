@@ -1,0 +1,20 @@
+const messages: Record<string, string> = {
+  TURN_BUDGET_EXCEEDED: '这次讨论检索了较多资料，尚未完成。可以缩小问题范围后继续。',
+  TOOL_BUDGET_EXCEEDED: '本轮资料查找已达上限，请根据已有信息继续提问。',
+  INPUT_BUDGET_EXCEEDED: '这次讨论的内容较长，请新开话题并带上需要继续讨论的要点。',
+  SESSION_BUDGET_EXCEEDED: '这次讨论已很长，请新开话题继续。历史仍然保留。',
+  SESSION_HISTORY_LIMIT: '这次讨论已很长，请新开话题继续。',
+  MODEL_OUTPUT_INCOMPLETE: '回复较长，尚未完整生成。已收到的内容已保留，可以继续追问。',
+  MODEL_EMPTY_RESPONSE: '模型没有返回可显示的回复，请稍后再次提问。',
+  DURATION_EXCEEDED: '模型回复超时，已收到的内容已保留。',
+  MODEL_REQUEST_FAILED: '模型服务暂时无法完成回复，请稍后再次提问。',
+  MODEL_UNAVAILABLE: '所选模型暂不可用，请重新选择。不会自动替换成其他模型。',
+  MODEL_REAUTHORIZATION_REQUIRED: '模型配置已更新，请重新选择模型。',
+  AUTHORIZATION_REVOKED: '本作品的 AI 资料范围已变化，本轮已停止。请确认范围后继续。',
+  SCOPE_FORBIDDEN: '请先在「AI 资料范围」中允许读取对应的作品资料。',
+  AGENT_BUSY: '当前回复较多，请稍等片刻再发送。',
+  SESSION_BUSY: '这次讨论仍在回复，请等待完成或先停止。',
+  CANCELLED: '已停止生成，收到的内容已保留。',
+  AGENT_RESTARTED: '服务重启中断了本次回复，对话已保留。',
+};
+export const thinkingError = (code?: string) => messages[code ?? ''] ?? '这轮回复未能完成，对话已保留，请稍后再次提问。';
