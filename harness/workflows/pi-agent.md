@@ -18,7 +18,9 @@ Node >=22.19.0，pnpm 10.15.1。`pnpm install && pnpm build:agent`。
 
 `pnpm eval:style` 生成 `.local/evals/agent-reply-style/offline-report.json`。离线样本由人工编写，只证明规范、生成代码和评测器协同工作，不证明真实模型风格已经改善；`manualPracticalityPassRate=null` 时必须人工标注，不能将自动门槛通过视为文学质量通过。
 
-真实模型检查需显式运行 `pnpm eval:style:live`。它固定使用已提交的合成样本与隔离的三章合成作品，不允许用 `--input` 替换，不读取或上传真实用户作品；每条样本使用独立会话，避免长会话预算截断，输出上限为 4096 Token 以容纳明确要求的长分析。只有该模式会将 `realLLMCalled` 标为 `true`，且报告仍要求人工复核证据、创作价值和长回答完整性。不要用固定 HTTP Mock 回复替代此检查。
+真实模型检查需显式运行 `pnpm eval:style:live`。它默认只运行 10 条固定代表样本（四类普通讨论各两条、两类深入分析各一条），完整 75 条语料必须在直接调用脚本时加 `--full`。它固定使用已提交的合成样本与隔离的三章合成作品，不允许用 `--input` 替换，不读取或上传真实用户作品；每条样本使用独立会话，输出上限默认为 4096 Token 以容纳明确要求的长分析。
+
+真实 Eval 默认最多接受 10 次样本请求、计入 60,000 Token（完整语料分别为 75 和 450,000）。可用 `--max-calls`、`--max-total-tokens` 和 `--max-output-tokens` 收紧预算；普通回答与深入分析分别报告平均长度，后者不受 150 字门槛限制。已报告 Token 用于计费，统计不完整时使用预留上限而非按零成本处理。每条结果原子写入 `live-report.checkpoint.json`；失败后加 `--resume` 跳过已成功样本，失败请求也占预算，用量未知时拒绝继续扣费。只有该模式会将 `realLLMCalled` 标为 `true`，且报告仍要求人工复核证据、创作价值、长回答完整性，以及结论先行和套话近似指标。不要用固定 HTTP Mock 回复替代此检查。
 
 ## 首次手动安装（授权部署时执行）
 

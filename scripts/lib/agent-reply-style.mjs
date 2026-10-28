@@ -29,6 +29,12 @@ export async function loadReplyStylePolicy() {
   return policy;
 }
 
+export function buildReplyStyleInstruction(policy) {
+  const limits = policy.default_reply;
+  const questions = policy.max_questions;
+  return `Reply style ${policy.policy_id} v${policy.policy_version}: ${policy.runtime_instruction.trim()} For ordinary discussion, normally ${limits.min_sentences}-${limits.max_sentences} sentences and at most ${limits.max_visible_characters} visible characters. Ask at most ${questions} focused question${questions === 1 ? "" : "s"}.\nNever use these canned phrases or close variants: ${policy.forbidden_phrases.join(" / ")}.`;
+}
+
 export function visibleText(text) {
   return String(text)
     .replace(/\[\[source:[^\]]+\]\]/g, "")
@@ -109,7 +115,14 @@ export function evaluateSamples(samples, policy) {
   const targets = policy.metric_targets;
   const metrics = {
     forbiddenPhraseHitRate: ratio(results.map((result) => result.forbiddenPhrases.length > 0)),
-    averageVisibleCharacters: average(results.map((result) => result.visibleCharacters)),
+    defaultAverageVisibleCharacters: average(
+      defaults.map((result) => result.visibleCharacters),
+    ),
+    extendedAverageVisibleCharacters: average(
+      results
+        .filter((result) => result.kind === "extended")
+        .map((result) => result.visibleCharacters),
+    ),
     defaultLengthPassRate: ratio(defaults.map((result) => result.lengthPass)),
     defaultSentencePassRate: ratio(defaults.map((result) => result.sentencePass)),
     conclusionFirstRate: ratio(results.map((result) => result.conclusionFirst)),
@@ -121,8 +134,10 @@ export function evaluateSamples(samples, policy) {
   const automaticTargetPass = {
     forbiddenPhraseHitRate:
       metrics.forbiddenPhraseHitRate <= targets.forbidden_phrase_hit_rate,
-    averageVisibleCharacters:
-      metrics.averageVisibleCharacters <= targets.average_visible_characters,
+    defaultAverageVisibleCharacters:
+      metrics.defaultAverageVisibleCharacters !== null &&
+      metrics.defaultAverageVisibleCharacters <=
+        targets.default_average_visible_characters,
     defaultLengthPassRate:
       metrics.defaultLengthPassRate >= targets.default_length_pass_rate,
   };

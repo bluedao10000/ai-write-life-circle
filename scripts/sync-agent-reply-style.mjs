@@ -1,6 +1,9 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { loadReplyStylePolicy } from "./lib/agent-reply-style.mjs";
+import {
+  buildReplyStyleInstruction,
+  loadReplyStylePolicy,
+} from "./lib/agent-reply-style.mjs";
 
 const generatedPath = fileURLToPath(
   new URL(
@@ -9,7 +12,7 @@ const generatedPath = fileURLToPath(
   ),
 );
 const policy = await loadReplyStylePolicy();
-const instruction = `Reply style ${policy.policy_id} v${policy.policy_version}: ${policy.runtime_instruction.trim()}\nNever use these canned phrases or close variants: ${policy.forbidden_phrases.join(" / ")}.`;
+const instruction = buildReplyStyleInstruction(policy);
 const literal = (value) => JSON.stringify(value, null, 2);
 const generated = `// Generated from harness/architecture/agent-reply-style.md by scripts/sync-agent-reply-style.mjs.\n// Do not edit manually; run pnpm style:sync.\nexport const replyStylePolicy = ${literal({
   id: policy.policy_id,

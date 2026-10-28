@@ -17,11 +17,19 @@ const free = async () => {
   await new Promise((r) => s.close(r));
   return p;
 };
-export async function startThinkingFixture({ live = false, taskProtocol = false, chatModels = false, maxOutputTokens = "1024" } = {}) {
+export async function startThinkingFixture({ live = false, taskProtocol = false, chatModels = false, maxOutputTokens = "1024", allowLocalLiveTransport = false } = {}) {
   // Go runs in production mode, so every author call carries a signed user.
   const identity = identityFixture();
   if (live && !process.env.WRITER_AGENT_LLM_API_KEY)
     throw Error("MODEL_KEY_REQUIRED_FOR_SYNTHETIC_EVAL");
+  if (live && allowLocalLiveTransport) {
+    const endpoint = new URL(process.env.WRITER_AGENT_LLM_BASE_URL || "https://api.deepseek.com");
+    if (
+      process.env.WRITER_AGENT_LLM_API_KEY !== "synthetic-fixture-only" ||
+      !["127.0.0.1", "localhost", "::1"].includes(endpoint.hostname)
+    )
+      throw Error("LOCAL_LIVE_TRANSPORT_REQUIRES_LOOPBACK_AND_SYNTHETIC_KEY");
+  }
   const root = await mkdtemp(join(tmpdir(), "story2u-thinking-")),
     bearer = randomBytes(32).toString("hex"),
     token = randomBytes(32).toString("hex"),
@@ -185,7 +193,7 @@ export async function startThinkingFixture({ live = false, taskProtocol = false,
     WRITER_AGENT_PI_LLM_MODEL: live
       ? process.env.WRITER_AGENT_LLM_MODEL || "deepseek-flash"
       : "synthetic-thinking",
-    WRITER_AGENT_PI_FIXTURE: live ? "" : "1",
+    WRITER_AGENT_PI_FIXTURE: live && !allowLocalLiveTransport ? "" : "1",
     WRITER_AGENT_PI_MAX_DURATION_MS: live ? "120000" : "10000",
     WRITER_AGENT_PI_MAX_TURNS: "4",
     // Fixture-only: V3 creative tools add ~2 KiB to each conservative reservation.
