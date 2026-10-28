@@ -69,7 +69,7 @@ export async function startThinkingFixture({ live = false, taskProtocol = false,
           },
         ],
       };
-    else if (!(body.tools ?? []).length || body.tool_choice === "none") delta = {content: "可以从权力、责任和代价讨论人物的选择。这些只是创作建议，不是正式设定。"};
+    else if (chatModels || !(body.tools ?? []).length || body.tool_choice === "none") delta = {content: "可以从权力、责任和代价讨论人物的选择。这些只是创作建议，不是正式设定。"};
     else if (!related)
       delta = {
         tool_calls: [

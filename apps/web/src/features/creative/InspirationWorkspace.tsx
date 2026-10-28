@@ -327,12 +327,13 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
         {/* Composer */}
         <div className="shrink-0 px-3 pb-4 sm:px-5">
           <div className="mx-auto max-w-read">
-            {(t.error || localError || offline) && (
+            {(t.error || localError || offline || t.modelNotice) && (
               <p role="alert" className="mb-2 flex items-start gap-2 rounded-md bg-warn-soft px-3 py-1.5 text-ui-sm text-ink-2">
                 <Icon name="offline" className="mt-0.5 shrink-0 text-warn" />
-                <span>{localError || t.error || '灵感服务暂不可用。'} 输入已保留；写作与保存不受影响，可以稍后重试。</span>
+                <span>{localError || t.error || t.modelNotice || '灵感服务暂不可用。'} 输入已保留；写作与保存不受影响，可以稍后重试。</span>
               </p>
             )}
+            {t.pendingDelivery && !t.busy && <div role="status" className="mb-2 text-ui-sm text-ink-2">上一条消息的送达情况尚未确认，原问题和重试记录已保留。<Btn size="sm" onClick={t.retryPending}>恢复待确认问题</Btn></div>}
             <div className="rounded-xl border border-line bg-surface shadow-soft focus-within:border-accent/50">
               {seed && (
                 <div className="flex items-start gap-2 border-b border-line-soft px-3 py-2">
@@ -370,11 +371,12 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
                   <span className="sr-only">选择对话模型</span>
                   <select aria-label="选择对话模型" className="max-w-full rounded-md border border-line bg-surface px-2 py-1 text-ui-sm text-ink" value={t.modelChoice} disabled={running || t.busy} onChange={e => t.chooseModel(e.target.value)}>
                     {!t.models.length && <option value="">模型暂不可用</option>}
+                    {t.modelChoice && !t.models.some(m => m.modelId === t.modelChoice) && <option value={t.modelChoice} disabled>原模型已不可用 · 请主动选择</option>}
                     {t.models.map(m => <option key={m.modelId} value={m.modelId} disabled={!m.enabled}>{m.displayName} · {m.hostedBy}{!m.enabled ? '（暂不可用）' : ''}</option>)}
                   </select>
                 </label>
                 <Btn size="sm" variant="quiet" disabled={t.busy || running} onClick={() => {setAccessScopes(t.scopes);setAccess(true)}}>AI 资料范围</Btn>
-                <Btn size="sm" variant="primary" className="ml-auto" disabled={!t.draft.trim() || t.busy || running || offline} onClick={() => void send()}>
+                <Btn size="sm" variant="primary" className="ml-auto" disabled={!t.draft.trim() || t.busy || running || offline || !t.modelAvailable || (!!t.selected && !t.session)} onClick={() => void send()}>
                   <Icon name="send" className="h-3 w-3" />
                   发送
                 </Btn>
