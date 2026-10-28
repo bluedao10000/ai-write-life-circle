@@ -220,6 +220,9 @@ func (s *Service) PublicHandler() http.Handler {
 					if st.Preferences == nil {
 						st.Preferences = map[string][]string{}
 					}
+					if existing, ok := st.Preferences[key]; ok && hash(existing) == hash(in.Scopes) {
+						return nil
+					}
 					st.Preferences[key] = in.Scopes
 					for id, v := range st.Sessions {
 						if v.Owner == a.ID && v.Book == book && !v.Deleted {
@@ -270,6 +273,7 @@ func (s *Service) PublicHandler() http.Handler {
 				reply(w, nil, e, 0)
 				return
 			}
+			requestHash := hash(in)
 			model, e := s.chooseModel(r.Context(), in.ID)
 			if e != nil {
 				reply(w, nil, e, 0)
@@ -315,7 +319,7 @@ func (s *Service) PublicHandler() http.Handler {
 			var record Record
 			e = s.tx(r.Context(), func(st *registry) error {
 				rk := hash([]string{a.ID, book, "create", key})
-				fp := hash(in)
+				fp := requestHash
 				if old, ok := st.Requests[rk]; ok {
 					if old.Hash != fp {
 						return fail(422, "IDEMPOTENCY_KEY_REUSED")
@@ -328,6 +332,14 @@ func (s *Service) PublicHandler() http.Handler {
 				}
 				if _, e := s.Management.Resolve(*a, book); e != nil {
 					return e
+				}
+				if in.Model.Model == "" {
+					allowed := st.Preferences[prefKey(a.ID, book)]
+					for _, scope := range in.Scopes {
+						if !contains(allowed, scope) {
+							return fail(403, "SCOPE_FORBIDDEN")
+						}
+					}
 				}
 				active := 0
 				for _, candidate := range st.Sessions {
@@ -437,6 +449,16 @@ func (s *Service) PublicHandler() http.Handler {
 					return err
 				}
 				record = latest
+				if in.ModelID != "" {
+					st, err := s.load()
+					if err != nil {
+						return err
+					}
+					record.Scopes = st.Preferences[prefKey(a.ID, book)]
+					if record.Scopes == nil {
+						record.Scopes = []string{}
+					}
+				}
 				selectedID := in.ModelID
 				if selectedID == "" {
 					selectedID = modelID(record.Model)
@@ -513,6 +535,15 @@ func (s *Service) PublicHandler() http.Handler {
 						if s.Meter != nil {
 							if err := s.Meter.Reserve(r.Context(), current.Owner, op, "thinking", messagePoints(turnLimits(model, record.Scopes, in.Compact))); err != nil {
 								return err
+							}
+						}
+						if in.ModelID != "" {
+							v.Scopes = st.Preferences[prefKey(a.ID, book)]
+							if v.Scopes == nil {
+								v.Scopes = []string{}
+							}
+							if in.Selection != nil && !contains(v.Scopes, "chapters") {
+								return fail(403, "SCOPE_FORBIDDEN")
 							}
 						}
 						v.Model = model

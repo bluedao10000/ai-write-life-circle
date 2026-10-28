@@ -135,17 +135,7 @@
         "tags": [
           "Private thinking"
         ],
-        "parameters": [
-          {
-            "name": "Idempotency-Key",
-            "in": "header",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "maxLength": 128
-            }
-          }
-        ],
+        "parameters": [],
         "requestBody": {
           "required": true,
           "content": {
@@ -721,6 +711,15 @@
                 "type": "string",
                 "maxLength": 120
               },
+              "contextWindow": {
+                "type": "integer",
+                "minimum": 1024,
+                "maximum": 1000000
+              },
+              "billingPolicy": {
+                "type": "string",
+                "const": "standard-points-v1"
+              },
               "toolCalling": {
                 "type": "boolean"
               },
@@ -1177,6 +1176,15 @@
                 "type": "string",
                 "maxLength": 120
               },
+              "contextWindow": {
+                "type": "integer",
+                "minimum": 1024,
+                "maximum": 1000000
+              },
+              "billingPolicy": {
+                "type": "string",
+                "const": "standard-points-v1"
+              },
               "toolCalling": {
                 "type": "boolean"
               },
@@ -1566,6 +1574,15 @@
             "type": "string",
             "maxLength": 120
           },
+          "contextWindow": {
+            "type": "integer",
+            "minimum": 1024,
+            "maximum": 1000000
+          },
+          "billingPolicy": {
+            "type": "string",
+            "const": "standard-points-v1"
+          },
           "toolCalling": {
             "type": "boolean"
           },
@@ -1771,6 +1788,15 @@
               "hostedBy": {
                 "type": "string",
                 "maxLength": 120
+              },
+              "contextWindow": {
+                "type": "integer",
+                "minimum": 1024,
+                "maximum": 1000000
+              },
+              "billingPolicy": {
+                "type": "string",
+                "const": "standard-points-v1"
               },
               "toolCalling": {
                 "type": "boolean"
@@ -2009,6 +2035,15 @@
               "hostedBy": {
                 "type": "string",
                 "maxLength": 120
+              },
+              "contextWindow": {
+                "type": "integer",
+                "minimum": 1024,
+                "maximum": 1000000
+              },
+              "billingPolicy": {
+                "type": "string",
+                "const": "standard-points-v1"
               },
               "toolCalling": {
                 "type": "boolean"
@@ -2423,6 +2458,15 @@
               "hostedBy": {
                 "type": "string",
                 "maxLength": 120
+              },
+              "contextWindow": {
+                "type": "integer",
+                "minimum": 1024,
+                "maximum": 1000000
+              },
+              "billingPolicy": {
+                "type": "string",
+                "const": "standard-points-v1"
               },
               "toolCalling": {
                 "type": "boolean"

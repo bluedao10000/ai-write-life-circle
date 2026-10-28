@@ -18,6 +18,7 @@ test('ordinary creativity uses one call; ten messages, model switch, replay and 
   const provider = createServer(async (req,res) => {
     let raw='';for await(const p of req) raw+=p;
     const body=JSON.parse(raw);payloads.push(body);count++;
+    assert.equal(req.headers.authorization, body.model === "gpt-oss-fixture" ? "Bearer second-fixture" : "Bearer first-fixture");
     if(mode==='limited') {res.writeHead(429);res.end('{}');return}
     if(mode==='empty') {res.writeHead(200,{'Content-Type':'text/event-stream'});res.end('data: [DONE]\n\n');return}
     const tool = mode==='loop' && body.tool_choice!=='none';

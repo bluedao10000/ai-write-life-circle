@@ -53,7 +53,7 @@ export async function authorize(
   const res = await fetch(config.storyOrigin + "/internal/v1/agent/authorize", {
     method: "POST",
     headers: { Authorization: "Bearer " + capability },
-    signal,
+    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(5000)]) : AbortSignal.timeout(5000),
     redirect: "error",
   });
   if (!res.ok) throw Error("AUTHORIZATION_REVOKED");

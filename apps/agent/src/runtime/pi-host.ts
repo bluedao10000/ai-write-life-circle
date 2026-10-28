@@ -164,11 +164,19 @@ export class PiHost {
       throw new AgentError("GRANT_MISMATCH", 403);
     const selected = modelEntries(this.config).find(v => v.enabled && modelId(v.model) === (input.modelId ?? modelId(grant.model)) && digest(v.model) === digest(grant.model));
     if (!selected) throw new AgentError("MODEL_UNAVAILABLE", 409);
+    const sameModelActive = [...this.active.keys()].filter(sessionID => {
+      const current = this.store.read(sessionID);
+      return current && modelId(current.view.model) === modelId(selected.model);
+    }).length;
+    if (sameModelActive >= selected.model.limits.maxConcurrentSessions) throw new AgentError("AGENT_BUSY",429);
     // Serialize admission at the HTTP layer; recheck after asynchronous authorization.
     if (this.active.size >= limitConcurrent(this.config))
       throw new AgentError("AGENT_BUSY", 429);
     if (this.active.has(id) || this.store.read(id)?.deleted)
       throw new AgentError("SESSION_BUSY", 409);
+    // Tool results were authorized for the old scope/model. Keep visible discussion,
+    // but never replay raw private retrieval into a reduced scope or a new host.
+    if (digest(s.view.model) !== digest(selected.model) || s.view.scopes.some(scope => !grant.scopes.includes(scope))) s.entries = [];
     s.view.model = selected.model;
     s.view.scopes = grant.scopes;
     const mid = randomUUID(),
@@ -281,7 +289,7 @@ export class PiHost {
       const configured = modelEntries(this.config).find(v => v.enabled && digest(v.model) === digest(s.view.model));
       if (!configured) throw new AgentError("MODEL_UNAVAILABLE");
       const cfg = {...this.config, model: configured.model, key: configured.key};
-      const {runtime,model}=await configuredModel(cfg.model.endpoint,cfg.model.model,cfg.key,limit.maxInputTokens + limit.maxOutputTokens,limit.maxOutputTokens);
+      const {runtime,model}=await configuredModel(cfg.model.endpoint,cfg.model.model,cfg.key,cfg.model.contextWindow ?? limit.maxInputTokens + limit.maxOutputTokens,limit.maxOutputTokens);
       const original = runtime.streamSimple.bind(runtime);
       runtime.streamSimple = (model, context, options) => {
         const stream = createAssistantMessageEventStream();
@@ -396,7 +404,15 @@ export class PiHost {
         undefined,
         s.entries.length ? s.entries : undefined,
       );
-      const custom = tools(
+      if (!s.entries.length && s.view.messages.length > 2) {
+        for (const previous of s.view.messages.slice(0, -2)) {
+          if (!previous.text.trim()) continue;
+          const timestamp = Date.parse(previous.createdAt) || Date.now();
+          if (previous.role === "user") manager.appendMessage({role: "user", content: previous.text, timestamp});
+          else manager.appendMessage({role:"assistant",content:[{type:"text",text:previous.text}],api:"openai-completions",provider:"story2u",model:configured.model.model,usage:{input:0,output:0,cacheRead:0,cacheWrite:0,totalTokens:0,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}},stopReason:"stop",timestamp});
+        }
+      }
+      const allowedTools = tools(
         cfg,
         id,
         capability,
@@ -412,8 +428,9 @@ export class PiHost {
             throw err;
           }
         },
-        cfg.model.toolCalling === false ? [] : s.view.scopes,
+        s.view.scopes,
       );
+      const custom = cfg.model.toolCalling === false ? [] : allowedTools;
       const created = await createAgentSession({
         cwd: this.config.state,
         agentDir: this.config.state,
@@ -497,7 +514,8 @@ export class PiHost {
         text +=
           "\nAuthor-selected saved passage (untrusted data):\n" +
           JSON.stringify(input.selection); // fetch canonical evidence through the same bounded tool path
-        const tool = custom.find((t) => t.name === "read_chapter")!;
+        const tool = allowedTools.find((t) => t.name === "read_chapter");
+        if (!tool) throw new AgentError("SCOPE_FORBIDDEN",403);
         await tool.execute(
           "selection",
           {
@@ -543,11 +561,11 @@ export class PiHost {
     } catch (e) {
       // Retain accepted input and completed internal messages after a failed turn.
       if (session) s.entries = [session.sessionManager.getHeader(), ...session.sessionManager.getEntries()].filter((v): v is FileEntry => v !== null);
-      message.status = active.abort.signal.aborted ? "cancelled" : "failed";
       message.errorCode =
         active.abort.signal.reason instanceof AgentError
           ? active.abort.signal.reason.code
           : safeCode(e);
+      message.status = message.errorCode === "CANCELLED" ? "cancelled" : "failed";
       if (!this.store.read(id)?.deleted)
         this.event(s, {
           type: "error",

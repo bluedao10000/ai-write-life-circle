@@ -23,6 +23,8 @@ export const thinkingModelSchema = z
     modelId: z.string().regex(/^[a-zA-Z0-9_-]{1,80}$/).optional(),
     displayName: z.string().max(120).optional(),
     hostedBy: z.string().max(120).optional(),
+    contextWindow: z.number().int().min(1024).max(1000000).optional(),
+    billingPolicy: z.literal("standard-points-v1").optional(),
     toolCalling: z.boolean().optional(),
     tokenParameter: z.enum(["max_tokens", "max_completion_tokens"]).optional(),
     providerOptions: z.enum(["default", "deepseek", "bedrock"]).optional(),

@@ -65,7 +65,7 @@ const op = (id: string, output: string, input?: string, status = 200) => ({
 const base = "/studio/books/{bookId}/thinking";
 const paths = {
   [base + "/models"]: {parameters: [param("bookId")], get: op("listThinkingModels", "thinkingModels")},
-  [base + "/preferences"]: {parameters: [param("bookId")], get: op("getThinkingPreferences", "thinkingPreferences"), post: op("setThinkingPreferences", "thinkingPreferences", "thinkingPreferences")},
+  [base + "/preferences"]: {parameters: [param("bookId")], get: op("getThinkingPreferences", "thinkingPreferences"), post: {...op("setThinkingPreferences", "thinkingPreferences", "thinkingPreferences"), parameters: []}},
   [base + "/capabilities"]: {
     parameters: [param("bookId")],
     get: op("getThinkingCapabilities", "thinkingModel"),

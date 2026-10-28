@@ -32,6 +32,8 @@ type Limits struct {
 	ResultBytes int `json:"maxToolResultBytes"`
 }
 type Model struct {
+	ContextWindow   int    `json:"contextWindow,omitempty"`
+	BillingPolicy   string `json:"billingPolicy,omitempty"`
 	ID              string `json:"modelId,omitempty"`
 	DisplayName     string `json:"displayName,omitempty"`
 	HostedBy        string `json:"hostedBy,omitempty"`

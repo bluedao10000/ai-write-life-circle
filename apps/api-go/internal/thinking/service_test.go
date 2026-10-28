@@ -532,3 +532,65 @@ func TestChatModelDirectoryAndRevocableWorkPreferences(t *testing.T) {
 		t.Fatal("reservation and runtime turn policy diverged")
 	}
 }
+
+func TestMessageModelSwitchReservesSelectedModelAndReplaysOnce(t *testing.T) {
+	s, rec, _ := fixture(t)
+	ctx := context.Background()
+	a := Model{ID: "deepseek", Provider: "fixture", Model: "deepseek", Endpoint: "http://127.0.0.1", Protocol: Protocol, Limits: Limits{Turns: 4, Input: 24000, Output: 4096, Tools: 6, Duration: 10000}}
+	b := a
+	b.ID = "oss"
+	b.Model = "gpt-oss"
+	b.Limits.Output = 8192
+	rec.Model = a
+	rec.Scopes = []string{"notes", "chapters"}
+	_ = s.tx(ctx, func(st *registry) error { st.Sessions[rec.ID] = rec; return nil })
+	ledger := &billing.Ledger{State: s.State}
+	s.Meter = ledger
+	node := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/internal/v1/health":
+			_ = json.NewEncoder(w).Encode(map[string]any{"protocol": Protocol, "models": []modelEntry{{Model: a, Enabled: true}, {Model: b, Enabled: true}}})
+		case r.Method == "GET":
+			_, _ = w.Write([]byte(`{"status":"idle","usage":{"input":0,"output":0,"charged":0,"incomplete":false}}`))
+		default:
+			_, _ = w.Write([]byte(`{"messageId":"same"}`))
+		}
+	}))
+	defer node.Close()
+	s.Origin, s.ServiceToken = node.URL, strings.Repeat("t", 64)
+	s.ResolveActor = func(*http.Request) *application.Actor { return &application.Actor{ID: rec.Owner, Role: "author"} }
+	send := func(key, model string) int {
+		r := httptest.NewRequest("POST", "/v1/studio/books/"+rec.Book+"/thinking/sessions/"+rec.ID+"/messages", strings.NewReader(`{"text":"synthetic question","modelId":"`+model+`"}`))
+		r.Header.Set("Idempotency-Key", key)
+		w := httptest.NewRecorder()
+		s.PublicHandler().ServeHTTP(w, r)
+		return w.Code
+	}
+	if code := send("first", "oss"); code != 202 {
+		t.Fatal(code)
+	}
+	view, _ := ledger.View(ctx, rec.Owner)
+	if view.Day.Reserved != 57 {
+		t.Fatalf("wrong selected model ceiling: %+v", view.Day)
+	}
+	if code := send("first", "oss"); code != 202 {
+		t.Fatal(code)
+	}
+	again, _ := ledger.View(ctx, rec.Owner)
+	if again.Day.Reserved != 57 {
+		t.Fatal("replay reserved twice", again.Day)
+	}
+	st, _ := s.load()
+	if st.Sessions[rec.ID].Model.ID != "oss" {
+		t.Fatal("selected model not durable")
+	}
+	if len(st.Sessions[rec.ID].Scopes) != 0 {
+		t.Fatal("new chat silently inherited legacy private grants")
+	}
+	if code := send("first", "deepseek"); code != 422 {
+		t.Fatal("changed retry intent accepted", code)
+	}
+	if code := send("disabled", "missing"); code != 409 {
+		t.Fatal("unknown model silently substituted", code)
+	}
+}
