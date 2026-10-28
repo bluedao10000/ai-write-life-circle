@@ -474,3 +474,61 @@ func TestConcurrentMessagesCannotExceedPlanSessions(t *testing.T) {
 		})
 	}
 }
+
+func TestChatModelDirectoryAndRevocableWorkPreferences(t *testing.T) {
+	s, rec, _ := fixture(t)
+	model := Model{ID: "deepseek", DisplayName: "DeepSeek", HostedBy: "DeepSeek", Provider: "deepseek", Model: "fixture", Endpoint: "https://example.invalid", Protocol: Protocol, Limits: Limits{Turns: 3, Tools: 4, Input: 32000, Output: 2048, Duration: 10000}}
+	node := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/internal/v1/health" {
+			_ = json.NewEncoder(w).Encode(map[string]any{"protocol": Protocol, "model": model, "models": []modelEntry{{Model: model, Enabled: true}}})
+		} else {
+			_, _ = w.Write([]byte(`{}`))
+		}
+	}))
+	defer node.Close()
+	s.Origin, s.ServiceToken = node.URL, strings.Repeat("t", 64)
+	s.ResolveActor = func(*http.Request) *application.Actor { return &application.Actor{ID: rec.Owner, Role: "author"} }
+	base := "/v1/studio/books/" + rec.Book + "/thinking/"
+	request := func(method, path, body, key string, status int) string {
+		t.Helper()
+		r := httptest.NewRequest(method, base+path, strings.NewReader(body))
+		r.Header.Set("Idempotency-Key", key)
+		w := httptest.NewRecorder()
+		s.PublicHandler().ServeHTTP(w, r)
+		if w.Code != status {
+			t.Fatalf("%s: %d %s", path, w.Code, w.Body.String())
+		}
+		return w.Body.String()
+	}
+	directory := request("GET", "models", "", "", 200)
+	if strings.Contains(directory, "endpoint") || strings.Contains(directory, "limits") {
+		t.Fatal("technical model details leaked in picker")
+	}
+	request("POST", "sessions", `{"modelId":"deepseek","scopes":["notes"]}`, "forged", 403)
+	request("POST", "sessions", `{"modelId":"unknown"}`, "unknown", 409)
+	request("POST", "sessions", `{"modelId":"deepseek"}`, "automatic", 201)
+	st, _ := s.load()
+	id := st.Requests[hash([]string{rec.Owner, rec.Book, "create", "automatic"})].ID
+	if len(st.Sessions[id].Scopes) != 0 {
+		t.Fatal("automatic creation granted manuscript access")
+	}
+	request("POST", "sessions", `{"modelId":"deepseek"}`, "automatic", 201)
+	request("POST", "preferences", `{"scopes":["chapters","notes"]}`, "", 200)
+	old := st.Sessions[id]
+	st, _ = s.load()
+	if len(st.Sessions[id].Scopes) != 2 {
+		t.Fatal("permissions not persisted")
+	}
+	if _, e := s.authorize(s.capability(old)); e == nil {
+		t.Fatal("stale capability survived scope change")
+	}
+	request("POST", "preferences", `{"scopes":[]}`, "", 200)
+	if got := request("GET", "preferences", "", "", 200); !strings.Contains(got, `"scopes":[]`) {
+		t.Fatal(got)
+	}
+	s.ResolveActor = func(*http.Request) *application.Actor { return &application.Actor{ID: "other", Role: "author"} }
+	request("GET", "preferences", "", "", 404)
+	if turnLimits(model, nil, false).Turns != 1 || turnLimits(model, []string{"knowledge"}, false).Turns != 3 || turnLimits(model, nil, true).Turns != 3 {
+		t.Fatal("reservation and runtime turn policy diverged")
+	}
+}

@@ -19,7 +19,7 @@ import (
 	"time"
 )
 
-var route = regexp.MustCompile(`^/v1/studio/books/([A-Za-z0-9_-]+)/thinking/(capabilities|sessions)(?:/(th-[a-f0-9-]{36}))?(?:/(messages|events|cancel))?$`)
+var route = regexp.MustCompile(`^/v1/studio/books/([A-Za-z0-9_-]+)/thinking/(capabilities|models|preferences|sessions)(?:/(th-[a-f0-9-]{36}))?(?:/(messages|events|cancel))?$`)
 
 func IsPublicPath(path string) bool { return strings.Contains(path, "/thinking/") }
 func reply(w http.ResponseWriter, v any, e error, status int) {
@@ -88,20 +88,56 @@ func (s *Service) agent(ctx context.Context, method, path string, v any) (json.R
 	}
 	return data, nil
 }
-func (s *Service) model(ctx context.Context) (Model, error) {
+
+type modelEntry struct {
+	Model       Model  `json:"model"`
+	Enabled     bool   `json:"enabled"`
+	Description string `json:"description"`
+}
+
+func modelID(m Model) string {
+	if m.ID == "" {
+		return "default"
+	}
+	return m.ID
+}
+func (s *Service) models(ctx context.Context) ([]modelEntry, error) {
 	var out struct {
-		Protocol string `json:"protocol"`
-		Model    Model  `json:"model"`
+		Protocol string       `json:"protocol"`
+		Model    Model        `json:"model"`
+		Models   []modelEntry `json:"models"`
 	}
 	raw, e := s.agent(ctx, "GET", "/internal/v1/health", nil)
 	if e != nil {
-		return out.Model, e
+		return nil, e
 	}
-	if json.Unmarshal(raw, &out) != nil || out.Protocol != Protocol || out.Model.Protocol != Protocol || out.Model.Provider == "" || out.Model.Model == "" || out.Model.Limits.Tools < 1 || out.Model.Limits.Duration > 300000 {
-		return out.Model, fail(503, "AGENT_PROTOCOL_MISMATCH")
+	if json.Unmarshal(raw, &out) != nil || out.Protocol != Protocol {
+		return nil, fail(503, "AGENT_PROTOCOL_MISMATCH")
 	}
-	return out.Model, nil
+	if len(out.Models) == 0 {
+		out.Models = []modelEntry{{Model: out.Model, Enabled: true}}
+	}
+	for _, v := range out.Models {
+		if v.Model.Protocol != Protocol || v.Model.Provider == "" || v.Model.Model == "" || v.Model.Limits.Tools < 1 || v.Model.Limits.Duration > 300000 {
+			return nil, fail(503, "AGENT_PROTOCOL_MISMATCH")
+		}
+	}
+	return out.Models, nil
 }
+func (s *Service) model(ctx context.Context) (Model, error) { return s.chooseModel(ctx, "") }
+func (s *Service) chooseModel(ctx context.Context, id string) (Model, error) {
+	rows, e := s.models(ctx)
+	if e != nil {
+		return Model{}, e
+	}
+	for _, v := range rows {
+		if v.Enabled && (id == "" || modelID(v.Model) == id) {
+			return v.Model, nil
+		}
+	}
+	return Model{}, fail(409, "MODEL_UNAVAILABLE")
+}
+func prefKey(owner, book string) string { return hash([]string{owner, book}) }
 func summary(r Record) map[string]any {
 	return map[string]any{"sessionId": r.ID, "bookId": r.Book, "title": r.Title, "createdAt": r.Created, "model": r.Model, "scopes": r.Scopes, "status": "idle"}
 }
@@ -126,6 +162,79 @@ func (s *Service) PublicHandler() http.Handler {
 		book, op, id, action := m[1], m[2], m[3], m[4]
 		if _, e := s.Management.Resolve(*a, book); e != nil {
 			reply(w, nil, e, 0)
+			return
+		}
+		if op == "models" {
+			if r.Method != "GET" {
+				reply(w, nil, fail(405, "METHOD_NOT_ALLOWED"), 0)
+				return
+			}
+			rows, e := s.models(ctx)
+			items := []map[string]any{}
+			for _, v := range rows {
+				m := v.Model
+				name := m.DisplayName
+				if name == "" {
+					name = m.Model
+				}
+				host := m.HostedBy
+				if host == "" {
+					host = m.Provider
+				}
+				items = append(items, map[string]any{"modelId": modelID(m), "displayName": name, "hostedBy": host, "provider": m.Provider, "description": v.Description, "enabled": v.Enabled, "toolCalling": m.ToolCalling == nil || *m.ToolCalling, "pointMultiplier": 1})
+			}
+			reply(w, map[string]any{"items": items}, e, 200)
+			return
+		}
+		if op == "preferences" {
+			key := prefKey(a.ID, book)
+			if r.Method == "GET" {
+				st, e := s.load()
+				scopes := st.Preferences[key]
+				if scopes == nil {
+					scopes = []string{}
+				}
+				reply(w, map[string]any{"scopes": scopes}, e, 200)
+				return
+			}
+			if r.Method != "POST" {
+				reply(w, nil, fail(405, "METHOD_NOT_ALLOWED"), 0)
+				return
+			}
+			var in struct {
+				Scopes []string `json:"scopes"`
+			}
+			e := decode(w, r, &in)
+			if e == nil {
+				for _, v := range in.Scopes {
+					if !contains([]string{"chapters", "knowledge", "creative", "notes"}, v) {
+						e = fail(422, "INVALID_SCOPE")
+					}
+				}
+				if len(in.Scopes) > 4 {
+					e = fail(422, "INVALID_SCOPE")
+				}
+			}
+			if e == nil {
+				e = s.tx(ctx, func(st *registry) error {
+					if st.Preferences == nil {
+						st.Preferences = map[string][]string{}
+					}
+					st.Preferences[key] = in.Scopes
+					for id, v := range st.Sessions {
+						if v.Owner == a.ID && v.Book == book && !v.Deleted {
+							v.Scopes = in.Scopes
+							v.Nonce = compat.UUID()
+							st.Sessions[id] = v
+						}
+					}
+					return nil
+				})
+			}
+			if in.Scopes == nil {
+				in.Scopes = []string{}
+			}
+			reply(w, in, e, 200)
 			return
 		}
 		if op == "capabilities" {
@@ -161,12 +270,13 @@ func (s *Service) PublicHandler() http.Handler {
 				reply(w, nil, e, 0)
 				return
 			}
-			model, e := s.model(r.Context())
+			model, e := s.chooseModel(r.Context(), in.ID)
 			if e != nil {
 				reply(w, nil, e, 0)
 				return
 			}
-			if !in.Consent || hash(model) != hash(in.Model) || len(in.Scopes) == 0 || len(in.Scopes) > 4 {
+			// Legacy clients explicitly disclose a full model. New clients select only a registry ID.
+			if (in.Model.Model != "" && (!in.Consent || hash(model) != hash(in.Model))) || len(in.Scopes) > 4 {
 				reply(w, nil, fail(422, "THINKING_CONSENT_REQUIRED"), 0)
 				return
 			}
@@ -175,6 +285,27 @@ func (s *Service) PublicHandler() http.Handler {
 					reply(w, nil, fail(422, "INVALID_SCOPE"), 0)
 					return
 				}
+			}
+			if in.Model.Model == "" {
+				st, err := s.load()
+				if err != nil {
+					reply(w, nil, err, 0)
+					return
+				}
+				allowed := st.Preferences[prefKey(a.ID, book)]
+				if len(in.Scopes) > 0 {
+					for _, scope := range in.Scopes {
+						if !contains(allowed, scope) {
+							reply(w, nil, fail(403, "SCOPE_FORBIDDEN"), 0)
+							return
+						}
+					}
+				} else {
+					in.Scopes = allowed
+				}
+			}
+			if in.Scopes == nil {
+				in.Scopes = []string{}
 			}
 			key := r.Header.Get("Idempotency-Key")
 			if !application.SafeKey(key) {
@@ -216,7 +347,7 @@ func (s *Service) PublicHandler() http.Handler {
 				reply(w, nil, e, 0)
 				return
 			}
-			v, e := s.agent(r.Context(), "POST", "/internal/v1/sessions", map[string]any{"sessionId": record.ID, "authorId": record.Owner, "bookId": book, "model": model, "scopes": record.Scopes, "createdAt": record.Created, "capability": s.capability(record)})
+			v, e := s.agent(r.Context(), "POST", "/internal/v1/sessions", map[string]any{"sessionId": record.ID, "authorId": record.Owner, "bookId": book, "model": record.Model, "scopes": record.Scopes, "createdAt": record.Created, "capability": s.capability(record)})
 			if e == nil {
 				_, e = s.owned(*a, book, record.ID)
 			}
@@ -301,13 +432,20 @@ func (s *Service) PublicHandler() http.Handler {
 				return
 			}
 			e = storage.Lock(r.Context(), s.path()+"."+compat.Key(id)+".lock", func() error {
-				model, e := s.model(r.Context())
+				latest, err := s.owned(*a, book, id)
+				if err != nil {
+					return err
+				}
+				record = latest
+				selectedID := in.ModelID
+				if selectedID == "" {
+					selectedID = modelID(record.Model)
+				}
+				model, e := s.chooseModel(r.Context(), selectedID)
 				if e != nil {
 					return e
 				}
-				if hash(model) != hash(record.Model) {
-					return fail(409, "MODEL_REAUTHORIZATION_REQUIRED")
-				}
+
 				// Only explicit saved-version selections enter model context.
 				if in.Selection != nil {
 					if !contains(record.Scopes, "chapters") {
@@ -373,10 +511,11 @@ func (s *Service) PublicHandler() http.Handler {
 							}
 						}
 						if s.Meter != nil {
-							if err := s.Meter.Reserve(r.Context(), current.Owner, op, "thinking", messagePoints(current.Model.Limits)); err != nil {
+							if err := s.Meter.Reserve(r.Context(), current.Owner, op, "thinking", messagePoints(turnLimits(model, record.Scopes, in.Compact))); err != nil {
 								return err
 							}
 						}
+						v.Model = model
 						v.Billed = current.Billed
 						v.BillOp = op
 						v.Nonce = compat.UUID()
@@ -461,4 +600,14 @@ func ValidateOrigin(raw string) error {
 		return fail(500, "INVALID_AGENT_ORIGIN")
 	}
 	return nil
+}
+
+// Mirrors Pi admission: no authorized tools means one completion. Explicit legacy
+// compaction keeps the full reservation and cannot obtain a free second call.
+func turnLimits(model Model, scopes []string, compact bool) Limits {
+	l := model.Limits
+	if (len(scopes) == 0 || (model.ToolCalling != nil && !*model.ToolCalling)) && !compact {
+		l.Turns = 1
+	}
+	return l
 }

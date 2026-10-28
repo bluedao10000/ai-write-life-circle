@@ -71,7 +71,7 @@ test("real Pi SDK tool loop, durable multi-turn context, replay, cancellation an
     prompts.push(v);
     requests++;
     assert(
-      v.tools.every(
+      (v.tools ?? []).every(
         (t: { function: { name: string } }) =>
           !["bash", "read", "write", "edit", "ls", "grep", "find"].includes(
             t.function.name,

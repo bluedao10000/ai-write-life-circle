@@ -18,13 +18,15 @@ import type {
   ThinkingMessageInput,
   ThinkingSource,
 } from "@writer-agent/contracts";
-import type { Config } from "../config.js";
+import { modelEntries, modelId, type Config } from "../config.js";
 import { Store, type Saved } from "../sessions/store.js";
 import { tools, authorize } from "../tools/registry.js";
 import { systemPrompt } from "../agents/thinking/prompt.js";
 const limitConcurrent = (c: Config) => c.model.limits.maxConcurrentSessions;
-const digest = (v: unknown) =>
-  createHash("sha256").update(JSON.stringify(v)).digest("hex");
+const digest = (v: unknown): string => {
+  const canonical = (value: unknown): unknown => Array.isArray(value) ? value.map(canonical) : value && typeof value === "object" ? Object.fromEntries(Object.entries(value).filter(([,v]) => v !== undefined).sort(([a],[b]) => a.localeCompare(b)).map(([k,v]) => [k,canonical(v)])) : value;
+  return createHash("sha256").update(JSON.stringify(canonical(v))).digest("hex");
+};
 export class AgentError extends Error {
   constructor(
     readonly code: string,
@@ -92,7 +94,7 @@ export class PiHost {
       grant.sessionId !== input.sessionId ||
       grant.authorId !== input.authorId ||
       grant.bookId !== input.bookId ||
-      digest(input.model) !== digest(this.config.model) ||
+      !modelEntries(this.config).some(v => v.enabled && digest(input.model) === digest(v.model)) ||
       digest(input.model) !== digest(grant.model) ||
       digest(input.scopes) !== digest(grant.scopes)
     )
@@ -153,8 +155,6 @@ export class PiHost {
       throw new AgentError("AGENT_BUSY", 429);
     if (s.view.messages.length >= 200 || s.events.length >= 20000)
       throw new AgentError("SESSION_HISTORY_LIMIT", 429);
-    if (digest(s.view.model) !== digest(this.config.model))
-      throw new AgentError("MODEL_REAUTHORIZATION_REQUIRED", 409);
     const grant = await authorize(this.config, capability);
     if (
       grant.sessionId !== id ||
@@ -162,11 +162,15 @@ export class PiHost {
       grant.bookId !== s.view.bookId
     )
       throw new AgentError("GRANT_MISMATCH", 403);
+    const selected = modelEntries(this.config).find(v => v.enabled && modelId(v.model) === (input.modelId ?? modelId(grant.model)) && digest(v.model) === digest(grant.model));
+    if (!selected) throw new AgentError("MODEL_UNAVAILABLE", 409);
     // Serialize admission at the HTTP layer; recheck after asynchronous authorization.
     if (this.active.size >= limitConcurrent(this.config))
       throw new AgentError("AGENT_BUSY", 429);
     if (this.active.has(id) || this.store.read(id)?.deleted)
       throw new AgentError("SESSION_BUSY", 409);
+    s.view.model = selected.model;
+    s.view.scopes = grant.scopes;
     const mid = randomUUID(),
       at = new Date().toISOString();
     s.requests = { ...s.requests, [key]: { fingerprint, messageId: mid } };
@@ -174,6 +178,8 @@ export class PiHost {
       {
         id: mid,
         role: "user",
+        modelId: modelId(selected.model),
+        modelLabel: selected.model.displayName ?? selected.model.model,
         text: input.text,
         status: "completed",
         sources: [],
@@ -182,6 +188,8 @@ export class PiHost {
       {
         id: mid + "-answer",
         role: "assistant",
+        modelId: modelId(selected.model),
+        modelLabel: selected.model.displayName ?? selected.model.model,
         text: "",
         status: "accepted",
         sources: [],
@@ -240,9 +248,11 @@ export class PiHost {
     active: Active,
   ) {
     const id = s.view.sessionId,
-      limit = this.config.model.limits,
+      limit = {...s.view.model.limits},
       message = s.view.messages.at(-1)!,
       sources = new Map<string, ThinkingSource>();
+    // A chat with no allowed tools is a single completion, not a six-turn agent reservation.
+    if ((!s.view.scopes.length || s.view.model.toolCalling === false) && !input.compact) limit.maxTurnsPerRequest = 1;
     for (const previous of s.view.messages)
       for (const src of previous.sources) sources.set(src.sourceId, src);
     let calls = 0,
@@ -268,7 +278,10 @@ export class PiHost {
     }, 1000);
     let session: AgentSession | undefined;
     try {
-      const {runtime,model}=await configuredModel(this.config.model.endpoint,this.config.model.model,this.config.key,limit.maxInputTokens,limit.maxOutputTokens);
+      const configured = modelEntries(this.config).find(v => v.enabled && digest(v.model) === digest(s.view.model));
+      if (!configured) throw new AgentError("MODEL_UNAVAILABLE");
+      const cfg = {...this.config, model: configured.model, key: configured.key};
+      const {runtime,model}=await configuredModel(cfg.model.endpoint,cfg.model.model,cfg.key,limit.maxInputTokens + limit.maxOutputTokens,limit.maxOutputTokens);
       const original = runtime.streamSimple.bind(runtime);
       runtime.streamSimple = (model, context, options) => {
         const stream = createAssistantMessageEventStream();
@@ -298,7 +311,20 @@ export class PiHost {
               maxTokens: limit.maxOutputTokens,
               maxRetries: 0,
               signal: active.abort.signal,
-              fetch:boundedModelFetch(this.config.model.endpoint,limit.maxOutputTokens*32+65536,active.abort.signal),
+              fetch:boundedModelFetch(cfg.model.endpoint,limit.maxOutputTokens*32+65536,active.abort.signal),
+              onPayload(value) {
+                const payload = value as Record<string, unknown>;
+                delete payload.max_tokens; delete payload.max_completion_tokens;
+                payload[cfg.model.tokenParameter ?? "max_tokens"] = limit.maxOutputTokens;
+                if (cfg.model.providerOptions === "deepseek") payload.thinking = {type: "disabled"};
+                const finish = s.view.scopes.length > 0 && (turns >= limit.maxTurnsPerRequest || calls >= limit.maxToolCalls);
+                if (finish) {
+                  delete payload.tools;
+                  payload.tool_choice = "none";
+                  if (Array.isArray(payload.messages)) payload.messages.push({role: "system", content: "Stop retrieving. Answer the author's question now from available information, clearly state gaps, and offer a concise useful conclusion. Do not call tools."});
+                }
+                return payload;
+              },
               onProviderStreamEvent(value, eventModel) {
                 const raw=(value as {usage?:Record<string,unknown>})?.usage;
                 if(raw && 'prompt_tokens' in raw) {
@@ -325,6 +351,7 @@ export class PiHost {
                     s.view.usage.incomplete = hadIncomplete;
                   }
                 }
+                if (m.stopReason === "length") errorCode = "MODEL_OUTPUT_INCOMPLETE";
                 if (m.stopReason === "error" || m.stopReason === "aborted")
                   errorCode = "MODEL_REQUEST_FAILED";
                 persist({ type: "usage", usage: { ...s.view.usage } });
@@ -370,7 +397,7 @@ export class PiHost {
         s.entries.length ? s.entries : undefined,
       );
       const custom = tools(
-        this.config,
+        cfg,
         id,
         capability,
         active.abort.signal,
@@ -385,7 +412,7 @@ export class PiHost {
             throw err;
           }
         },
-        s.view.scopes,
+        cfg.model.toolCalling === false ? [] : s.view.scopes,
       );
       const created = await createAgentSession({
         cwd: this.config.state,
@@ -498,6 +525,7 @@ export class PiHost {
       await authorize(this.config, capability, active.abort.signal);
       alive();
       if (errorCode) throw new AgentError(errorCode);
+      if (!message.text.trim()) throw new AgentError("MODEL_EMPTY_RESPONSE");
       message.sources = [...sources.values()].filter((src) =>
         message.text.includes(`[[source:${src.sourceId}]]`),
       );
@@ -513,6 +541,8 @@ export class PiHost {
       });
       persist({ type: "message_completed", messageId: message.id });
     } catch (e) {
+      // Retain accepted input and completed internal messages after a failed turn.
+      if (session) s.entries = [session.sessionManager.getHeader(), ...session.sessionManager.getEntries()].filter((v): v is FileEntry => v !== null);
       message.status = active.abort.signal.aborted ? "cancelled" : "failed";
       message.errorCode =
         active.abort.signal.reason instanceof AgentError

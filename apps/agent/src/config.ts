@@ -12,6 +12,7 @@ export type Config = {
   key: string;
   version: string;
   model: ThinkingModel;
+  models?: { model: ThinkingModel; key: string; enabled: boolean; description: string }[];
 };
 export function privateOrigin(raw: string) {
   const u = new URL(raw);
@@ -63,7 +64,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     throw Error("INVALID_MODEL_ENDPOINT");
   const key =
     env.WRITER_AGENT_PI_LLM_API_KEY ?? env.WRITER_AGENT_LLM_API_KEY ?? "";
-  if (!key) throw Error("MODEL_KEY_REQUIRED");
+  if (!key && !env.WRITER_AGENT_PI_MODELS_FILE) throw Error("MODEL_KEY_REQUIRED");
   const model = thinkingModelSchema.parse({
     provider: env.WRITER_AGENT_PI_LLM_PROVIDER ?? "deepseek",
     model:
@@ -83,7 +84,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       maxToolResultBytes: n("MAX_RESULT_BYTES", 24000, 64000),
     },
   });
+  const models = loadModels(env, model, key);
   return {
+    models,
     state: resolve(env.WRITER_AGENT_PI_STATE_DIR ?? ".writer-agent-pi"),
     port: n("PORT", 8790, 65535),
     storyOrigin: privateOrigin(
@@ -107,3 +110,31 @@ function releaseVersion(fallback?: string) {
     return fallback ?? "development";
   }
 }
+
+// Only operator-owned configuration can select URLs and credential references.
+function loadModels(env: NodeJS.ProcessEnv, fallback: ThinkingModel, key: string): NonNullable<Config["models"]> {
+  if (!env.WRITER_AGENT_PI_MODELS_FILE) return [{model: fallback, key, enabled: true, description: "创作讨论与作品资料分析"}];
+  const file = env.WRITER_AGENT_PI_MODELS_FILE;
+  const st = lstatSync(file);
+  if (!st.isFile() || (st.mode & 0o022) !== 0 || st.size > 65536) throw Error("UNSAFE_MODELS_FILE");
+  const rows: unknown = JSON.parse(readFileSync(file, "utf8"));
+  if (!Array.isArray(rows) || !rows.length || rows.length > 16) throw Error("INVALID_MODELS");
+  const seen = new Set<string>();
+  return rows.map((row: {model: unknown; keyEnv: string; enabled?: boolean; description?: string}) => {
+    const m = thinkingModelSchema.parse(row.model);
+    if (!m.modelId || seen.has(m.modelId)) throw Error("INVALID_MODEL_ID");
+    seen.add(m.modelId);
+    const u = new URL(m.endpoint);
+    if (u.username || u.password || u.search || u.hash || (u.protocol !== "https:" && !(env.WRITER_AGENT_PI_FIXTURE === "1" && u.origin.startsWith("http://127.0.0.1:")))) throw Error("INVALID_MODEL_ENDPOINT");
+    const l = m.limits;
+    if (l.maxTurnsPerRequest < 2 || l.maxTurnsPerRequest > 8 || l.maxToolCalls > 12 || l.maxInputTokens > 128000 || l.maxOutputTokens > 16384 || l.maxSessionTokens > 2000000 || l.maxDurationMs > 300000 || l.maxToolResultBytes > 64000 || l.maxConcurrentSessions > 8) throw Error("INVALID_MODEL_LIMITS");
+    if (!/^[A-Z][A-Z0-9_]+$/.test(row.keyEnv)) throw Error("INVALID_MODEL_KEY_REF");
+    const credential = env[row.keyEnv] ?? "";
+    if (row.enabled !== false && !credential) throw Error("MODEL_KEY_REQUIRED");
+    return {model: m, key: credential, enabled: row.enabled !== false, description: (row.description ?? "创作讨论与作品资料分析").slice(0, 160)};
+  });
+}
+export function modelEntries(config: Config) {
+  return config.models ?? [{model: config.model, key: config.key, enabled: true, description: "创作讨论与作品资料分析"}];
+}
+export const modelId = (model: ThinkingModel) => model.modelId ?? "default";

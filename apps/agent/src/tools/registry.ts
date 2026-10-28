@@ -68,6 +68,7 @@ export function tools(
   onCall: () => void,
   scopes: readonly string[] = [],
 ): ToolDefinition[] {
+  const seen = new Set<string>();
   const id128 = Type.String({ maxLength: 128 });
   const narrow: Record<string, ReturnType<typeof Type.Object>> = {
     list_creative_assets: Type.Object({ query: Type.Optional(Type.String({ maxLength: 256 })), kind: Type.Optional(Type.String({ maxLength: 40 })) }, { additionalProperties: false }),
@@ -87,7 +88,7 @@ export function tools(
     },
     { additionalProperties: false },
   );
-  const granted = storyNames.filter((name) => !creativeNames.has(name) || scopes.includes("creative"));
+  const granted = storyNames.filter((name) => scopes.includes(creativeNames.has(name) ? "creative" : name === "get_author_notes" ? "notes" : ["read_chapter", "find_related_chapters"].includes(name) ? "chapters" : "knowledge"));
   return [
     ...granted.map(
       (name) =>
@@ -100,6 +101,9 @@ export function tools(
           parameters: creativeNames.has(name) ? (narrow[name] ?? empty) : parameters,
           async execute(_id, args) {
             onCall();
+            const fingerprint = JSON.stringify([name, args]);
+            if (seen.has(fingerprint)) return {content: [{type: "text" as const, text: "This exact lookup was already attempted. Do not repeat it. Answer using available information and explain any gaps."}], details: {duplicate: true}};
+            seen.add(fingerprint);
             const res = await fetch(
               config.storyOrigin + "/internal/v1/agent/tools/execute",
               {
@@ -135,7 +139,7 @@ export function tools(
           },
         }) satisfies ToolDefinition,
     ),
-    {
+    ...(!scopes.length ? [] : [{
       name: "load_analysis_skill",
       label: "分析方法",
       description:
@@ -161,7 +165,7 @@ export function tools(
           details: { method: name },
         };
       },
-    } satisfies ToolDefinition,
+    } satisfies ToolDefinition]),
   ];
 }
 export async function boundedText(res: Response, max: number) {
