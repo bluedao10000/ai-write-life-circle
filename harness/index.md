@@ -10,7 +10,8 @@
 | 写后同步 | [ingest](workflows/ingest.md) | 目标正文、notes/、proposals/ |
 | 连续性审查 | [review](workflows/review.md) | 正文、风格基线、审查范围 |
 | 灵感整理 / 创作资产（V3） | [ADR](architecture/writer-agent-v3-creative-assets.md) | apps/api-go/internal/creative/、apps/web/src/features/creative/、[交付报告](reviews/writer-agent-v3-report.md) |
-| Pi Thinking Agent | [pi-agent](workflows/pi-agent.md) | [ADR](architecture/pi-agent-runtime.md)、[私有协议](contracts/thinking-internal-v1.md)、apps/agent/ |
+| Pi Thinking Agent | [pi-agent](workflows/pi-agent.md) | [ADR](architecture/pi-agent-runtime.md)、[回复风格 RAS-001](architecture/agent-reply-style.md)、[私有协议](contracts/thinking-internal-v1.md)、apps/agent/ |
+| Agent 回复风格 / Eval | [RAS-001](architecture/agent-reply-style.md) | scripts/sync-agent-reply-style.mjs、scripts/eval-agent-reply-style.mjs、harness/evals/agent-reply-style/ |
 | Pi 后台 Review / Knowledge | [pi-worker](workflows/pi-worker.md) | [统一 Runtime ADR](architecture/pi-unified-agent-runtime.md)、[迁移报告](reviews/pi-worker-migration-report.md)、私有任务协议 |
 | EPUB 导入 | [epub-import](architecture/epub-import.md) | 导入 ADR、管理 API、相关 Go/Web 测试 |
 | 表达研究 | [inspire](workflows/inspire.md) | references/、notes/ |

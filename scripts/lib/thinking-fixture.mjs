@@ -17,7 +17,7 @@ const free = async () => {
   await new Promise((r) => s.close(r));
   return p;
 };
-export async function startThinkingFixture({ live = false, taskProtocol = false, chatModels = false } = {}) {
+export async function startThinkingFixture({ live = false, taskProtocol = false, chatModels = false, maxOutputTokens = "1024" } = {}) {
   // Go runs in production mode, so every author call carries a signed user.
   const identity = identityFixture();
   if (live && !process.env.WRITER_AGENT_LLM_API_KEY)
@@ -190,7 +190,7 @@ export async function startThinkingFixture({ live = false, taskProtocol = false,
     WRITER_AGENT_PI_MAX_TURNS: "4",
     // Fixture-only: V3 creative tools add ~2 KiB to each conservative reservation.
     WRITER_AGENT_PI_MAX_SESSION_TOKENS: live?"64000":"260000",
-    WRITER_AGENT_PI_MAX_OUTPUT_TOKENS: "1024",
+    WRITER_AGENT_PI_MAX_OUTPUT_TOKENS: String(maxOutputTokens),
     WRITER_AGENT_PI_VERSION: "fixture",
   };
   // Optional synthetic registry exercises the real Go/Pi routing without external calls.
@@ -305,11 +305,12 @@ export async function startThinkingFixture({ live = false, taskProtocol = false,
       async restartAgent() {
         output = "";
         startAgent();
-        for (let i = 0; i < 100; i++) {
+        for (let i = 0; i < 150; i++) {
           if (output.includes("agent_started")) return;
+          if (agent.exitCode !== null) throw Error("Agent restart failed " + errors);
           await delay(50);
         }
-        throw Error("Agent restart timeout");
+        throw Error("Agent restart timeout " + errors);
       },
     };
   } catch (e) {

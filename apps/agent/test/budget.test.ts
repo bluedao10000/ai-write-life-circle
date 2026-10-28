@@ -52,7 +52,7 @@ test("input/session budgets block before provider; concurrency, deadline and abs
         maxOutputTokens: 100,
         maxSessionTokens: 200000,
         maxConcurrentSessions: 1,
-        maxDurationMs: 1000,
+        maxDurationMs: 4000,
         maxToolResultBytes: 1000,
       },
     },

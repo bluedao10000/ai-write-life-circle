@@ -38,6 +38,8 @@ jobs:
         run: pnpm --filter @writer-agent/contracts build
       - name: OpenAPI reproducibility
         run: pnpm openapi:check
+      - name: Reply style reproducibility and offline eval
+        run: pnpm style:check && pnpm test:style
       - name: Typecheck
         run: pnpm typecheck
       - name: Lint

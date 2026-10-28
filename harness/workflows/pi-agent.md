@@ -12,6 +12,14 @@ Node >=22.19.0，pnpm 10.15.1。`pnpm install && pnpm build:agent`。
 
 `pnpm test:agent` 使用实际 SDK 和隔离 HTTP 模型，`pnpm test:thinking` 启动两个真实进程。`pnpm --filter @writer-agent/web test:thinking` 运行真实 Worker/D1 的浏览器闭环。均不发送真实作品、不读取模型 Secret。
 
+### 回复风格 RAS-001
+
+修改 Thinking 回复风格时只编辑 `harness/architecture/agent-reply-style.md` 的 YAML frontmatter 与人类可读说明，再运行 `pnpm style:sync`。不要直接修改 `reply-style.generated.ts`，也不要在 Prompt 或 Eval 中复制另一套长度和套话规则。`pnpm style:check` 只检查漂移、不写文件；`pnpm test:style` 运行字符/句数/禁用短语单测及 60 条普通、15 条深入分析例外的离线 Eval，CI 会执行这两项门禁。
+
+`pnpm eval:style` 生成 `.local/evals/agent-reply-style/offline-report.json`。离线样本由人工编写，只证明规范、生成代码和评测器协同工作，不证明真实模型风格已经改善；`manualPracticalityPassRate=null` 时必须人工标注，不能将自动门槛通过视为文学质量通过。
+
+真实模型检查需显式运行 `pnpm eval:style:live`。它固定使用已提交的合成样本与隔离的三章合成作品，不允许用 `--input` 替换，不读取或上传真实用户作品；每条样本使用独立会话，避免长会话预算截断，输出上限为 4096 Token 以容纳明确要求的长分析。只有该模式会将 `realLLMCalled` 标为 `true`，且报告仍要求人工复核证据、创作价值和长回答完整性。不要用固定 HTTP Mock 回复替代此检查。
+
 ## 首次手动安装（授权部署时执行）
 
 1. 使用与 Go 相同协议的发布提交，在构建机运行 `pnpm package:agent -- /path/to/new-release`，生成含依赖、dist、两个受控 skills、release.json 的独立目录。发布清单记录 Git revision、主入口 SHA256、协议；若本地未提交修改，先提交，再打包。不要把 Go StateDirectory、作者 Harness 或 `.env` 打进包。
