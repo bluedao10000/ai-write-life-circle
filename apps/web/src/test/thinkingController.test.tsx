@@ -161,3 +161,12 @@ it("reload after ambiguous delivery preserves the outbox key instead of charging
   await waitFor(()=>expect(send).toHaveBeenCalledTimes(2));
   expect(send.mock.calls[1][3]).toBe(key);
 });
+
+it("a rejected model switch restores the previous model and keeps the draft", async () => {
+ vi.spyOn(api,"send").mockRejectedValue(Object.assign(Error("unavailable"),{code:"MODEL_UNAVAILABLE"}));
+ const {result}=setup();await waitFor(()=>expect(result.current.modelChoice).toBe("deepseek"));
+ act(()=>result.current.select("A"));await waitFor(()=>expect(result.current.session?.sessionId).toBe("A"));
+ act(()=>result.current.chooseModel("oss"));
+ act(()=>{result.current.setDraft("保留的想法");result.current.send({text:"保留的想法"})});
+ await waitFor(()=>expect(result.current.modelChoice).toBe("deepseek"));expect(result.current.draft).toBe("保留的想法");
+});

@@ -25,6 +25,7 @@ export function useThinking(book: string, enabled: boolean) {
   const [modelChoice, setModelChoice] = useState<string>(readChoice);
   const [scopes, setScopes] = useState<("chapters" | "knowledge" | "creative" | "notes")[]>([]);
   const sending = useRef(false);
+  const priorModelChoice = useRef("");
   const readDraft = useCallback(() => { try {return sessionStorage.getItem("thinking-draft:" + storagePartition) ?? ""} catch {return ""} }, [storagePartition]);
   const [sessions, setSessions] = useState<Summary[]>([]),
     [model, setModel] = useState<ThinkingModel | null>(null),
@@ -63,7 +64,7 @@ export function useThinking(book: string, enabled: boolean) {
     setSession(null); setSessions([]); setModels([]); setModelChoice(readChoice()); setScopes([]); setOutgoing("");
     setDraftRaw(readDraft());
     try {setSelected(sessionStorage.getItem(scopedKey("thinking-v1:" + book)))} catch {setSelected(null)}
-    pending.current = null; creating.current = null; sending.current = false;
+    pending.current = null; creating.current = null; sending.current = false; priorModelChoice.current = "";
     try {
       const raw = JSON.parse(sessionStorage.getItem(scopedKey("thinking-outbox:" + book)) ?? "null");
       if (raw?.pending && typeof raw.pending.key === "string" && typeof raw.pending.id === "string") pending.current = {...raw.pending, input: thinkingMessageInputSchema.parse(raw.pending.input)};
@@ -242,7 +243,7 @@ export function useThinking(book: string, enabled: boolean) {
       persistOutbox();
       try {await api.send(book, id, p.input, p.key)} catch (err) {
         if ((err as {code?: string})?.code === "MODEL_UNAVAILABLE" && session && e === epoch.current) {
-          const previous = session.model.modelId ?? "default";
+          const previous = priorModelChoice.current || session.model.modelId || "default";
           setModelChoice(previous);
           try {sessionStorage.setItem(scopedKey("thinking-model:" + book),previous)} catch { /* optional */ }
         }
@@ -261,6 +262,7 @@ export function useThinking(book: string, enabled: boolean) {
   };
   const chooseModel = (id: string) => {
     if (!busy && !sending.current && session?.status !== "running" && models.some(m => m.modelId === id && m.enabled)) {
+      priorModelChoice.current = modelChoice;
       setModelChoice(id);
       try {sessionStorage.setItem(scopedKey("thinking-model:" + book),id)} catch { /* optional */ }
     }

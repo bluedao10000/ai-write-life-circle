@@ -27,3 +27,15 @@ Browser InspirationWorkspace → useThinking → 同源 Worker → Go thinking �
 
 Fixture 覆盖普通创意问题（张居正、平行宇宙、好人品）、多轮、切模、幂等、取消、超时、预算和工具循环；Go 覆盖资料授权和隔离；Web 覆盖自动创建、草稿、模型选择及错误。真实 Smoke 仅显式运行合成输入，缺凭据标记未验证。
 回滚程序版本不回滚作者文件；旧模型/消息字段兼容；新建会话仍可使用旧部署支持的 consent/model 路径。回滚时停灵感服务，保留新增设置文件与消息历史。
+
+## 配置与验证入口
+
+- Registry 示例：`scripts/deploy/pi-models.example.json`。运营者设置 `WRITER_AGENT_PI_MODELS_FILE` 指向受保护本地 JSON 文件；凭据只由 `keyEnv` 引用，不写入文件、不经健康接口返回。示例 Bedrock REGION、模型 ID 和区域可用性必须替换/验证，不能原样上线。实际托管方始终显示 Amazon Bedrock，不能显示为 OpenAI 官方托管。
+- 未配置 Registry 时兼容旧单模型配置，仅有 `default`；不会捏造第二个可用模型。两模型各自显式 enabled；关闭或无凭据时不会回退。
+- Registry 示例的轻量对话只预留一轮；开启工具后最多四轮。DeepSeek 输出 4096；GPT-OSS 输出 8192；输入保守上界 24000；所有值须结合真实 Smoke 与用量调整。四轮均满足现有 Free 300 点日额度的单次保守预留（DeepSeek 164 点，GPT-OSS 228 点），但账号已使用额度及全站上限仍可能阻止执行。没有扩大 Free 总预算。
+- 资料设置按作者和作品持久化。切换模型或缩小资料范围会清除内部原始检索历史，仅以用户可见对话继续；已展示讨论不会被删除。
+- `pnpm test:agent`：真实 Pi SDK + 合成 HTTP，测试十轮、同键回放、模型切换、循环收尾、限流和空回复。
+- `pnpm test:thinking`：真实 Go/Pi 进程、来源核验、恢复、取消、删除与作用域边界。
+- `pnpm --filter @writer-agent/web exec playwright test --config playwright.inspiration.config.ts`：桌面 Chromium + iPhone WebKit，自动建会话、切模型、刷新草稿、可撤销资料范围。
+- `pnpm build:agent && node scripts/smoke-inspiration-live.mjs --confirm-synthetic`：只发合成讨论，每个已配置模型最多一次付费调用；显式提供 `WRITER_AGENT_CHAT_DEEPSEEK_KEY/URL/MODEL` 与 `WRITER_AGENT_CHAT_OPENAI_KEY/URL/MODEL`。没有凭据输出 UNVERIFIED，不是通过。
+- Browser outbox 与草稿保存在按账号/作品隔离的 sessionStorage；服务端已接受消息的幂等回执继续由 Go/Pi 持久化。浏览器存储不可用时仍可聊天，但关闭页面后无法保留尚未确认交付的本地意图。

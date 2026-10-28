@@ -380,6 +380,7 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
                 </Btn>
               </div>
             </div>
+            {t.models.find(m => m.modelId === t.modelChoice)?.description && <p className="mt-2 text-center text-micro text-ink-3">{t.models.find(m => m.modelId === t.modelChoice)?.description}</p>}
             <p className="mt-2 text-center text-micro text-ink-3">AI 只倾听、追问和整理，不会替你决定，也不会自动改写设定或正文。</p>
           </div>
         </div>

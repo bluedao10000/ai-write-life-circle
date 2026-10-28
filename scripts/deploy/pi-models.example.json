@@ -1,0 +1,60 @@
+[
+  {
+    "model": {
+      "modelId": "deepseek",
+      "displayName": "DeepSeek",
+      "hostedBy": "DeepSeek",
+      "provider": "deepseek",
+      "model": "deepseek-flash",
+      "endpoint": "https://api.deepseek.com",
+      "protocol": "thinking-v1",
+      "toolCalling": true,
+      "tokenParameter": "max_tokens",
+      "providerOptions": "deepseek",
+      "limits": {
+        "maxTurnsPerRequest": 4,
+        "maxToolCalls": 6,
+        "maxInputTokens": 24000,
+        "maxOutputTokens": 4096,
+        "maxSessionTokens": 1000000,
+        "maxConcurrentSessions": 2,
+        "maxDurationMs": 180000,
+        "maxToolResultBytes": 24000
+      },
+      "contextWindow": 65536,
+      "billingPolicy": "standard-points-v1"
+    },
+    "keyEnv": "WRITER_AGENT_CHAT_DEEPSEEK_KEY",
+    "enabled": true,
+    "description": "开放式创意讨论与按需作品资料分析"
+  },
+  {
+    "model": {
+      "modelId": "gpt-oss",
+      "displayName": "OpenAI · GPT-OSS 120B",
+      "hostedBy": "Amazon Bedrock",
+      "provider": "bedrock",
+      "model": "openai.gpt-oss-120b-1:0",
+      "endpoint": "https://bedrock-runtime.REGION.amazonaws.com/openai/v1",
+      "protocol": "thinking-v1",
+      "toolCalling": true,
+      "tokenParameter": "max_completion_tokens",
+      "providerOptions": "bedrock",
+      "limits": {
+        "maxTurnsPerRequest": 4,
+        "maxToolCalls": 6,
+        "maxInputTokens": 24000,
+        "maxOutputTokens": 8192,
+        "maxSessionTokens": 1000000,
+        "maxConcurrentSessions": 2,
+        "maxDurationMs": 180000,
+        "maxToolResultBytes": 24000
+      },
+      "contextWindow": 65536,
+      "billingPolicy": "standard-points-v1"
+    },
+    "keyEnv": "WRITER_AGENT_CHAT_OPENAI_KEY",
+    "enabled": true,
+    "description": "开放式创意讨论与按需作品资料分析"
+  }
+]
