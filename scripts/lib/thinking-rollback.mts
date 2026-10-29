@@ -17,6 +17,7 @@ import { join, resolve } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { thinkingSessionSchema, thinkingRunSchema } from "../../packages/contracts/src/thinking.js";
+import {readEventArchive,type ArchiveManifest} from "../../apps/agent/src/sessions/event-archive.js";
 
 const idPattern = /^th-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 const currentSavedSchema = z.object({
@@ -32,12 +33,13 @@ const currentSavedSchema = z.object({
   entries: z.array(z.unknown()),
   events: z.array(z.unknown()),
   requests: z.record(z.string(),z.object({fingerprint:z.string(),messageId:z.string()}).strict()),
+  archive:z.object({archivedThrough:z.number().int().nonnegative(),segments:z.array(z.object({firstId:z.number().int().positive(),lastId:z.number().int().positive()}).strict())}).strict().optional(),
 }).strict();
 
 // These are exactly the public and Saved fields parsed at 4dfdca1. Unknown
 // fields fail closed so a future schema cannot silently lose durable evidence.
-const legacyViewSchema = thinkingSessionSchema.omit({run:true,cancellationPending:true}).strict();
-const legacySavedSchema = currentSavedSchema.omit({accountingVersion:true,epoch:true,executionLease:true,checkpoint:true,runs:true}).extend({view:legacyViewSchema,events:z.array(z.unknown())}).strict();
+const legacyViewWithHistorySchema=thinkingSessionSchema.omit({run:true,cancellationPending:true,history:true}).strict();
+const legacySavedSchema = currentSavedSchema.omit({accountingVersion:true,epoch:true,executionLease:true,checkpoint:true,runs:true,archive:true}).extend({view:legacyViewWithHistorySchema,events:z.array(z.unknown())}).strict();
 
 type CurrentSaved = z.infer<typeof currentSavedSchema>;
 export type RollbackPiResult = {sessionId:string;terminalized:boolean;deleted:boolean;sha256:string};
@@ -111,6 +113,8 @@ export function rollbackPiSession(input:unknown, expectedId:string):{value:unkno
   delete value.runs;
   delete value.view.run;
   delete value.view.cancellationPending;
+  delete value.view.history;
+  delete value.archive;
   const legacy = legacySavedSchema.parse(value);
   return {value:legacy,result:{sessionId:expectedId,terminalized,deleted:legacy.deleted===true,sha256:createHash("sha256").update(JSON.stringify(legacy)).digest("hex")}};
 }
@@ -126,13 +130,29 @@ export function rollbackPiDirectory(source:string, output:string) {
   chmodSync(dest,0o700);
   const results:RollbackPiResult[] = [];
   const sessions = new Set<string>(), tombstones = new Set<string>();
+  const segmentPattern=/^(th-[a-f0-9-]{36})\.(\d+)-(\d+)\.events\.json$/;
+  const archived=new Map<string,string>();
+  for(const name of readdirSync(src)) {
+    const match=segmentPattern.exec(name);
+    if(match) {
+      durableObject(src,name);
+      archived.set(name,match[1]!);
+    }
+  }
   try {
     for (const name of readdirSync(src).sort()) {
       if (name === ".process-lock" || name === ".process-lock-admission") continue;
+      if(name==="rollback-manifest.json")continue;
       if (idPattern.test(name) && existsSync(join(src,`${name}.json`))) throw Error(`ROLLBACK_UNEXPECTED_SESSION_FILE:${name}`);
       if (name.endsWith(".json") && idPattern.test(name.slice(0,-5))) {
         const id = name.slice(0,-5);
-        const converted = rollbackPiSession(JSON.parse(readFileSync(durableObject(src,name),"utf8")),id);
+        const source = JSON.parse(readFileSync(durableObject(src,name),"utf8"));
+        if(source.archive) {
+          const manifest=source.archive as ArchiveManifest;
+          source.events=[...readEventArchive(src,id,manifest),...source.events];
+          for(const segment of manifest.segments)archived.delete(`${id}.${segment.firstId}-${segment.lastId}.events.json`);
+        }
+        const converted = rollbackPiSession(source,id);
         writeDurable(join(dest,name),converted.value);
         // Reparse the actual output before reporting success.
         legacySavedSchema.parse(JSON.parse(readFileSync(join(dest,name),"utf8")));
@@ -142,8 +162,9 @@ export function rollbackPiDirectory(source:string, output:string) {
         copyFileSync(durableObject(src,name),join(dest,name));
         chmodSync(join(dest,name),0o600);
         tombstones.add(name.slice(0,-13));
-      } else throw Error(`ROLLBACK_UNEXPECTED_STATE_ENTRY:${name}`);
+      } else if (!segmentPattern.test(name)) throw Error(`ROLLBACK_UNEXPECTED_STATE_ENTRY:${name}`);
     }
+    if(archived.size)throw Error(`ROLLBACK_ORPHANED_ARCHIVE:${[...archived.keys()].sort()[0]}`);
     if (!results.length) throw Error("ROLLBACK_NO_SESSIONS");
     for (const id of tombstones) {
       if (!sessions.has(id)) throw Error("ROLLBACK_TOMBSTONE_WITHOUT_SESSION");

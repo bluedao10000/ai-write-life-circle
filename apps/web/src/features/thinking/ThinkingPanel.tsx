@@ -15,6 +15,8 @@ export default function ThinkingPanel({studio}: {studio: ReturnType<typeof useSt
       <option value="">新的讨论</option>{t.sessions.map(s => <option key={s.sessionId} value={s.sessionId}>{s.title}</option>)}
     </select>
     {(t.error || t.modelNotice) && <p role="alert">{t.error || t.modelNotice}</p>}
+    {t.session?.history?.hasMore && <Btn size="sm" variant="quiet" disabled={t.historyBusy} onClick={t.loadHistory}>{t.historyBusy ? "正在读取…" : "加载更早的讨论"}</Btn>}
+    {t.historyError && <p role="alert">{t.historyError}</p>}
     <div aria-live="polite" className="space-y-4">{t.session?.messages.map(m => <article key={m.id}>
       <p className="text-micro text-ink-3">{m.role === "user" ? "你" : m.modelLabel ?? "创作伙伴"}</p>
       <p className="whitespace-pre-wrap break-words font-prose">{m.text || (running ? "正在回复…" : "")}</p>

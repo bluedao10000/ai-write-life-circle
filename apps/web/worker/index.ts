@@ -15,8 +15,8 @@ function allowedRoute(path: string, method: string, project: string) {
   if(path===thinking+'/capabilities'||path===thinking+'/models')return method==='GET'
   if(path===thinking+'/preferences')return ['GET','POST'].includes(method)
   if(path===thinking+'/sessions')return ['GET','POST'].includes(method)
-  const thinkMatch=new RegExp(`^${thinking}/sessions/th-[a-f0-9-]{36}(/messages|/events|/cancel|/resume)?$`).exec(path)
-  if(thinkMatch){return thinkMatch[1]==='/events'?method==='GET':thinkMatch[1]?method==='POST':['GET','DELETE'].includes(method)}
+  const thinkMatch=new RegExp(`^${thinking}/sessions/th-[a-f0-9-]{36}(/messages|/events|/history|/cancel|/resume)?$`).exec(path)
+  if(thinkMatch){return ['/events','/history'].includes(thinkMatch[1]??'')?method==='GET':thinkMatch[1]?method==='POST':['GET','DELETE'].includes(method)}
   // Creative assets: author-owned settings and AI proposals. Only explicit routes are forwarded.
   const creative = `/v1/studio/books/${encodeURIComponent(project)}/creative`
   if (path === creative) return method === 'GET'

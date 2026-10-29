@@ -22,7 +22,13 @@ import {
   type ThinkingRun,
 } from "@writer-agent/contracts";
 import { failureFor } from "../runtime/reliability.js";
+import {archivePlan,readEventArchive,type ArchiveManifest} from "./event-archive.js";
+export type ExecutionFence = {runId:string;owner:string;epoch:number};
+export type ExecutionAuthority = {
+  executionStatus(id:string, fence:ExecutionFence, now?:number): "current" | "expired" | "stale" | "deleted";
+};
 export type Saved = {
+  archive?: ArchiveManifest;
   epoch?: number;
   executionLease?: {owner:string;epoch:number;expiresAt:number};
   runs?: ThinkingRun[];
@@ -38,7 +44,7 @@ export type Saved = {
 };
 export const idPattern =
   /^th-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
-export class Store {
+export class Store implements ExecutionAuthority {
   private lock: string;
   private closed = false;
   constructor(readonly dir: string) {
@@ -101,7 +107,7 @@ export class Store {
       }
     }
   }
-  read(id: string): Saved | undefined {
+  read(id: string, withEvents=true): Saved | undefined {
     const path = this.path(id);
     try {
       const st = lstatSync(path);
@@ -111,6 +117,7 @@ export class Store {
       if (value.schema !== 1 || value.view.sessionId !== id)
         throw Error("SESSION_STORAGE_INVALID");
       thinkingSessionSchema.parse(value.view);
+      if(withEvents&&value.archive)value.events=[...readEventArchive(this.dir,id,value.archive),...value.events];
       // Legacy charged was the sum of reservations, even when every usage report
       // was known. Settle only that provable over-reservation; unknown costs stay held.
       if (value.accountingVersion !== 2) {
@@ -123,14 +130,45 @@ export class Store {
       throw e;
     }
   }
+  readEvents(id:string,after=0) {
+    const value=this.read(id,false);
+    if(!value)return undefined;
+    return {...value,events:[...(value.archive?readEventArchive(this.dir,id,value.archive,after):[]),...value.events.filter(event=>event.id>after)]};
+  }
+  executionStatus(id:string, fence:ExecutionFence, now=Date.now()) {
+    if (this.isDeleted(id)) return "deleted" as const;
+    const current=this.read(id,false);
+    if(current?.deleted)return "deleted" as const;
+    const lease=current?.executionLease;
+    if(!current || current.view.run?.runId!==fence.runId || current.epoch!==fence.epoch || lease?.owner!==fence.owner || lease.epoch!==fence.epoch)return "stale" as const;
+    return lease.expiresAt <= now ? "expired" as const : "current" as const;
+  }
   write(value: Saved) {
     if (this.isDeleted(value.view.sessionId) && !value.deleted)
       throw Error("SESSION_DELETED");
-    const path = this.path(value.view.sessionId),
-      tmp = path + "." + randomUUID() + ".tmp";
+    // read() presents a complete logical history. Persist only the suffix not
+    // already owned by the immutable manifest, otherwise a later read would
+    // append the archived prefix for a second time.
+    if (value.archive)
+      value.events = value.events.filter(event => event.id > value.archive!.archivedThrough);
+    const plan=archivePlan(value);
+    if(plan) {
+      // The immutable segment is durable before the manifest can reference it.
+      // A crash may leave an unreferenced segment; the next terminal commit
+      // overwrites the identical deterministic archive, never skips an event.
+      this.writeAt(join(this.dir,plan.name),plan.value);
+      value.events=plan.remaining;
+      value.archive={archivedThrough:plan.value.lastId,segments:[...(value.archive?.segments??[]),{firstId:plan.value.firstId,lastId:plan.value.lastId}]};
+    }
+    this.writeAt(this.path(value.view.sessionId),value);
+  }
+  private writeAt(path:string,value:unknown) {
+    const tmp = path + "." + randomUUID() + ".tmp";
     const fd = openSync(tmp, "wx", 0o600);
     try {
-      writeFileSync(fd, JSON.stringify(value));
+      const serialized=JSON.stringify(value);
+      if(Buffer.byteLength(serialized)>32*1024*1024)throw Error("SESSION_STORAGE_LIMIT");
+      writeFileSync(fd, serialized);
       fsyncSync(fd);
     } finally {
       closeSync(fd);
@@ -147,23 +185,27 @@ export class Store {
     for (const file of readdirSync(this.dir)) {
       if (!file.endsWith(".json") || !idPattern.test(file.slice(0, -5)))
         continue;
-      const s = this.read(file.slice(0, -5));
-      if (!s || s.deleted) continue;
-      if (this.isDeleted(s.view.sessionId)) {
+      const id = file.slice(0, -5);
+      let s = this.read(id, false);
+      if (!s) continue;
+      if (s.deleted || this.isDeleted(s.view.sessionId)) {
         s.deleted = true;
         s.view.status = "deleted";
         s.view.messages = [];
         s.events = [];
         s.entries = [];
         s.requests = {};
+        delete s.archive;
         delete s.executionLease;
         delete s.runs;
         delete s.checkpoint;
         delete s.view.run;
         this.write(s);
+        this.clearArchive(s.view.sessionId);
         continue;
       }
       if (s.view.status !== "running") continue;
+      s = this.read(id)!;
       const run = s.view.run;
       const answerId = run ? run.messageId + "-answer" + (run.attempt > 1 ? "-" + run.attempt : "") : undefined;
       const answer = answerId ? s.view.messages.find(m=>m.role==="assistant" && m.id===answerId) : [...s.view.messages].reverse().find(m=>m.role==="assistant");
@@ -188,6 +230,16 @@ export class Store {
         s.events.push({id:++s.view.cursor,type:"session_completed",messageId:answer?.id});
 
       this.write(s);
+    }
+  }
+  clearArchive(id:string) {
+    const prefix=id+".";
+    for(const file of readdirSync(this.dir)) {
+      if(file.startsWith(prefix)&&file.endsWith(".events.json")) {
+        const path=join(this.dir,file),stat=lstatSync(path);
+        if(!stat.isFile()||stat.isSymbolicLink())throw Error("SESSION_ARCHIVE_INVALID");
+        rmSync(path);
+      }
     }
   }
   close() {

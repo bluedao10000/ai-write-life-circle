@@ -122,6 +122,13 @@ const paths = {
     ],
     get: op("pollThinkingEvents", "thinkingEvents"),
   },
+  [base + "/sessions/{sessionId}/history"]: {
+    parameters: [
+      param("bookId"),param("sessionId"),
+      {name:"before",in:"query",schema:{type:"string",maxLength:128}},
+    ],
+    get:op("readThinkingHistory","thinkingHistory"),
+  },
   [base + "/sessions/{sessionId}/cancel"]: {
     parameters: [param("bookId"), param("sessionId")],
     post: {...op("cancelThinkingRequest", "thinkingSession"),responses:{

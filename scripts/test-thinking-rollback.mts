@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { rollbackPiDirectory, rollbackPiSession } from "./lib/thinking-rollback.mts";
+import { Store } from "../apps/agent/src/sessions/store.js";
+import { archiveThreshold } from "../apps/agent/src/sessions/event-archive.js";
 
 const root = mkdtempSync(join(tmpdir(),"thinking-rollback-"));
 const source = join(root,"source");
@@ -46,6 +48,16 @@ try {
   assert.equal(readFileSync(join(source,`${id}.json`),"utf8"),original);
   assert.equal(statSync(join(output,`${id}.json`)).mode & 0o777,0o600);
   assert.throws(() => rollbackPiDirectory(source,output),/ALREADY_EXISTS/);
+  const archiveSource=join(root,"archive-source"),archiveOutput=join(root,"archive-output"),archiveId=`th-${randomUUID()}`;
+  mkdirSync(archiveSource,{mode:0o700});
+  const store=new Store(archiveSource),archived=saved("idle","completed");
+  archived.view.sessionId=archiveId;archived.events=Array.from({length:archiveThreshold+25},(_,index)=>({id:index+1,type:"usage" as const}));archived.view.cursor=archived.events.length;
+  store.write(archived);assert.equal(store.read(archiveId)?.events.length,archiveThreshold+25);store.close();
+  rollbackPiDirectory(archiveSource,archiveOutput);
+  const expanded=JSON.parse(readFileSync(join(archiveOutput,`${archiveId}.json`),"utf8"));
+  assert.equal(expanded.events.length,archiveThreshold+25);assert.equal(expanded.archive,undefined);
+  assert.equal(readdirSync(archiveOutput).some(name=>name.endsWith(".events.json")),false);
+  assert.equal(expanded.events[0].id,1);assert.equal(expanded.events.at(-1).id,archiveThreshold+25);
   if (legacyStore) {
     const rows = execFileSync(process.execPath,["--import","tsx","scripts/lib/thinking-rollback-legacy-store.mts",legacyStore,output,id],{encoding:"utf8"}).trim().split("\n").map(line=>JSON.parse(line));
     assert.equal(rows.length,1);assert.equal(rows[0].status,"idle");assert.equal(rows[0].messages,2);assert.equal(rows[0].receipts,1);assert.equal(rows[0].usage.charged,120);

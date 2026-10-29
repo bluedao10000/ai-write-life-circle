@@ -6,6 +6,7 @@ import {
   thinkingPreferencesSchema,
   thinkingModelSchema,
   thinkingSessionSchema,
+  thinkingHistorySchema,
   thinkingSummarySchema,
   type ThinkingCreate,
   type ThinkingRecovery,
@@ -58,6 +59,10 @@ export const thinkingApi = {
         })
       ).body,
     );
+  },
+  async history(book:string,id:string,before?:string,signal?:AbortSignal) {
+    const query=before ? `?before=${encodeURIComponent(before)}` : "";
+    return thinkingHistorySchema.parse((await requestApi(root(book)+`/sessions/${id}/history${query}`,{signal})).body);
   },
   async send(
     book: string,

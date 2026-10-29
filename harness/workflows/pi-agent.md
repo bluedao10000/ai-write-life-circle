@@ -44,3 +44,16 @@ Node >=22.19.0，pnpm 10.15.1。`pnpm install && pnpm build:agent`。
 ## 可选真实合成 Eval
 
 `pnpm eval:thinking` 为 Mock；真实模型必须手动执行 `pnpm eval:thinking:live`，只用 `harness/evals/thinking-agent` 中的三章合成材料。默认仅一个问题、最多四次 provider 调用、最多 64,000 保守预留 Token；无自动重试。未提供模型 Key 会拒绝启动。保留 qualityValidated=false，人工复核引用所支持的推断后另存标注；成功返回不代表文学质量验证。
+
+### 离线回滚准备（只生成待核验副本）
+
+在停用 Thinking、停止 Go/Pi 并保留最新完整备份后，在构建工作区运行：
+
+```sh
+go build -C apps/api-go -o dist/thinking-rollback ./cmd/thinking-rollback
+node scripts/prepare-thinking-rollback.mjs --pi-state /private/stopped-pi --registry /private/stopped-go/thinking/sessions-v1.json --output /private/new-rollback --rollback-bin ./apps/api-go/dist/thinking-rollback --compatible-go
+```
+
+路径须按实际环境替换；输出目录必须不存在。兼容模式保留取消栅栏；`--legacy-go` 遇到无法表达的取消状态会拒绝。归档事件会展开为旧 Pi 格式。转换只准备副本，不安装、不启动服务、不发送模型请求。
+
+安装器仍待实现，当前不得将准备成功视为可直接回退上线。安装前须核验目标版本、文件权限、输出大小、墓碑、计费预留和回执；开放 reservation 必须先由原计费权威结算或核账。不得用旧备份覆盖更新的作者状态。

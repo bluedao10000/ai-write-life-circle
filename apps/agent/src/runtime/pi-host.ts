@@ -75,7 +75,13 @@ export class PiHost {
     store.recover();
   }
   get(id: string) {
-    const s = this.store.read(id);
+    return this.view(id,true);
+  }
+  getRecent(id:string) {
+    return this.view(id,false);
+  }
+  private view(id:string,withEvents:boolean) {
+    const s = this.store.read(id,withEvents);
     if (!s || s.deleted || this.store.isDeleted(id))
       throw new AgentError("NOT_FOUND", 404);
     // Older accepted messages predate the public correlation field. The durable
@@ -283,7 +289,7 @@ export class PiHost {
   }
   async delete(id: string) {
     this.store.markDeleted(id);
-    const s = this.store.read(id);
+    const s = this.store.read(id,false);
     if (s) {
       s.deleted = true;
       s.view.status = "deleted";
@@ -291,6 +297,7 @@ export class PiHost {
       s.entries = [];
       s.events = [];
       s.requests = {};
+      delete s.archive;
       delete s.executionLease;
       delete s.runs;
       delete s.checkpoint;
@@ -301,6 +308,7 @@ export class PiHost {
     a?.abort.abort();
     if (a?.session) await a.session.abort();
     if (a) await a.done; // deletion fence blocks every subsequent write
+    this.store.clearArchive(id);
     if (!s) {
       // A delayed create cannot resurrect a deleted grant. Go authorization is the primary fence.
       return;
@@ -333,11 +341,10 @@ export class PiHost {
       errorCode: string | undefined;
     const alive = () => {
       if (active.abort.signal.aborted) throw active.abort.signal.reason instanceof AgentError ? active.abort.signal.reason : new AgentError("CANCELLED");
-      if (this.store.isDeleted(id) || this.store.read(id)?.deleted)
-        throw new AgentError("SESSION_DELETED", 410);
-      const current = this.store.read(id);
-      if (current?.view.run?.runId !== run.runId || current.executionLease?.owner !== this.instance || current.executionLease.epoch !== run.epoch) throw new AgentError("SESSION_INTERRUPTED",409);
-      if (current.executionLease.expiresAt < Date.now()) throw new AgentError(run.stepType === "tool" ? "TOOL_TIMEOUT" : "DURATION_EXCEEDED");
+      const status=this.store.executionStatus(id,{runId:run.runId,owner:this.instance,epoch:run.epoch});
+      if(status === "deleted")throw new AgentError("SESSION_DELETED",410);
+      if(status === "stale")throw new AgentError("SESSION_INTERRUPTED",409);
+      if(status === "expired")throw new AgentError(run.stepType === "tool" ? "TOOL_TIMEOUT" : "DURATION_EXCEEDED");
     };
     const persist = (event: Omit<ThinkingEvent, "id">) => {
       alive();
@@ -661,7 +668,7 @@ export class PiHost {
       run.status = message.status;
       run.failure = failureFor(message.errorCode,run.modelCalls>0);
       if (message.status === "cancelled") run.resumable = false;
-      if (!this.store.read(id)?.deleted)
+      if (!this.store.isDeleted(id) && this.store.read(id,false)?.view.run?.runId === run.runId)
         this.event(s, {
           type: "error",
           messageId: message.id,
@@ -671,7 +678,7 @@ export class PiHost {
       clearTimeout(deadline);
       clearInterval(revoke);
       session?.dispose();
-      if (!this.store.read(id)?.deleted) {
+      if (!this.store.isDeleted(id) && this.store.read(id,false)?.view.run?.runId === run.runId) {
         delete s.executionLease;
         s.epoch = Math.max(s.epoch ?? 0,this.store.read(id)?.epoch ?? 0);
         run.durationMs = Math.max(0,performance.now()-started); run.updatedAt = new Date().toISOString();

@@ -265,3 +265,16 @@ it("a real 202 cancel receipt reports the recorded stop until backend synchroniz
  recorded=false;act(()=>window.dispatchEvent(new Event("online")));
  await waitFor(()=>expect(result.current.cancellationPending).toBe(false));
 });
+
+it("older history loads once and survives newer recent-page polling",async()=>{
+ const {result}=setup();
+ const messages=Array.from({length:4},(_,i)=>({id:`m${i}`,role:i%2?"assistant" as const:"user" as const,text:`synthetic ${i}`,status:"completed" as const,sources:[],createdAt:"now"}));
+ vi.mocked(api.get).mockResolvedValue({...session("A"),messages:messages.slice(2),history:{hasMore:true,oldestMessageId:"m2",totalMessages:4}});
+ const history=vi.spyOn(api,"history").mockResolvedValue({items:messages.slice(0,2),hasMore:false,totalMessages:4});
+ act(()=>result.current.select("A"));await waitFor(()=>expect(result.current.session?.messages.length).toBe(2));
+ act(()=>{result.current.loadHistory();result.current.loadHistory()});
+ await waitFor(()=>expect(result.current.session?.messages.length).toBe(4));
+ expect(history).toHaveBeenCalledTimes(1);expect(history).toHaveBeenCalledWith("book-a","A","m2");
+ expect(result.current.session?.messages.map(m=>m.id)).toEqual(["m0","m1","m2","m3"]);
+ expect(result.current.session?.history?.hasMore).toBe(false);
+});

@@ -265,6 +265,8 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
             <Welcome title={studio.workspace.projectTitle} hasLast={t.sessions.length > 0} lastTitle={t.sessions[0]?.title} onStart={start} />
           ) : (
             <div className="mx-auto max-w-read px-5 pt-8 pb-10">
+              {session.history?.hasMore && <div className="mb-5 text-center"><Btn size="sm" variant="quiet" disabled={t.historyBusy} onClick={t.loadHistory}>{t.historyBusy ? '正在读取…' : '加载更早的讨论'}</Btn></div>}
+              {t.historyError && <p role="alert" className="mb-4 text-ui-sm text-warn">{t.historyError}</p>}
               <ol className="space-y-8">
                 {session.messages.map((m) => (
                   <li key={m.id} id={`msg-${m.id}`} className={`rounded-lg transition-shadow ${lit === m.id ? 'ring-1 ring-accent/50 ring-offset-8 ring-offset-paper' : ''}`}>

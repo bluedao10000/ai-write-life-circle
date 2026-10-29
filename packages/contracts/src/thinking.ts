@@ -172,6 +172,7 @@ export const thinkingSessionSchema = z
     usage: thinkingUsageSchema,
     run: thinkingRunSchema.optional(),
     cancellationPending: z.boolean().optional(),
+    history: z.object({hasMore:z.boolean(),oldestMessageId:z.string().optional(),totalMessages:z.number().int().nonnegative()}).strict().optional(),
   })
   .strict();
 export const thinkingSummarySchema = thinkingSessionSchema.pick({
@@ -203,6 +204,13 @@ export type ThinkingSession = z.infer<typeof thinkingSessionSchema>;
 export type ThinkingMessage = z.infer<typeof thinkingMessageSchema>;
 export type ThinkingEvent = z.infer<typeof thinkingEventSchema>;
 export type ThinkingUsage = z.infer<typeof thinkingUsageSchema>;
+export const thinkingHistorySchema = z.object({
+  items:z.array(thinkingMessageSchema),
+  nextBefore:z.string().optional(),
+  hasMore:z.boolean(),
+  totalMessages:z.number().int().nonnegative(),
+}).strict();
+export type ThinkingHistory = z.infer<typeof thinkingHistorySchema>;
 
 // Internal protocol: mounted exclusively on separate loopback listeners.
 export const thinkingGrantSchema = z

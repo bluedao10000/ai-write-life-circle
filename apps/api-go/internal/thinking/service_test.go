@@ -756,6 +756,8 @@ func TestOfflineCancelIsAcceptedAndSessionEventsAgree(t *testing.T) {
 				return
 			}
 			_, _ = w.Write([]byte(`{"sessionId":"` + rec.ID + `","status":"idle","run":{"runId":"` + run + `","status":"cancelled"}}`))
+		case strings.Contains(r.URL.Path, "/history"):
+			_, _ = w.Write([]byte(`{"items":[],"hasMore":false,"totalMessages":0}`))
 		case strings.Contains(r.URL.Path, "/events"):
 			_, _ = w.Write([]byte(`{"items":[],"cursor":0,"status":"running"}`))
 		default:
@@ -789,6 +791,10 @@ func TestOfflineCancelIsAcceptedAndSessionEventsAgree(t *testing.T) {
 		if view["status"] != "idle" || view["cancellationPending"] != true {
 			t.Fatalf("contradictory cancellation view: %+v", view)
 		}
+	}
+	history := request("GET", "/history?before=message-1", "", 200)
+	if len(history) != 3 || history["status"] != nil || history["cancellationPending"] != nil {
+		t.Fatalf("history schema polluted: %+v", history)
 	}
 	// Recreate the API service to prove downstream synchronization survives restart.
 	copyService := *s

@@ -699,6 +699,79 @@
         }
       }
     },
+    "/studio/books/{bookId}/thinking/sessions/{sessionId}/history": {
+      "parameters": [
+        {
+          "name": "bookId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "sessionId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "before",
+          "in": "query",
+          "schema": {
+            "type": "string",
+            "maxLength": 128
+          }
+        }
+      ],
+      "get": {
+        "operationId": "readThinkingHistory",
+        "summary": "readThinkingHistory",
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "tags": [
+          "Private thinking"
+        ],
+        "responses": {
+          "200": {
+            "description": "Author-scoped response; no model credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/thinkingHistory"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Author session required"
+          },
+          "403": {
+            "description": "Grant revoked or wrong scope"
+          },
+          "404": {
+            "description": "Unknown or unowned resource"
+          },
+          "409": {
+            "description": "Busy or model consent changed"
+          },
+          "422": {
+            "description": "Invalid input, selection or budget"
+          },
+          "429": {
+            "description": "Budget or capacity exhausted"
+          },
+          "503": {
+            "description": "Thinking unavailable; writing remains independent"
+          }
+        }
+      }
+    },
     "/studio/books/{bookId}/thinking/sessions/{sessionId}/cancel": {
       "parameters": [
         {
@@ -1566,6 +1639,182 @@
           "bookId",
           "model",
           "scopes"
+        ],
+        "additionalProperties": false
+      },
+      "thinkingHistory": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "modelId": {
+                  "type": "string"
+                },
+                "modelLabel": {
+                  "type": "string"
+                },
+                "requestKey": {
+                  "type": "string",
+                  "maxLength": 128
+                },
+                "role": {
+                  "type": "string",
+                  "enum": [
+                    "user",
+                    "assistant"
+                  ]
+                },
+                "text": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "accepted",
+                    "running",
+                    "completed",
+                    "failed",
+                    "cancelled",
+                    "interrupted"
+                  ]
+                },
+                "sources": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "sourceId": {
+                        "type": "string"
+                      },
+                      "chapterId": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      },
+                      "revisionId": {
+                        "type": "string"
+                      },
+                      "contentHash": {
+                        "type": "string"
+                      },
+                      "quote": {
+                        "type": "string",
+                        "maxLength": 16000
+                      },
+                      "startUTF16": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "endUTF16": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "validity": {
+                        "type": "string",
+                        "enum": [
+                          "current",
+                          "stale",
+                          "unavailable"
+                        ]
+                      },
+                      "epistemic": {
+                        "type": "string",
+                        "enum": [
+                          "observation",
+                          "claim",
+                          "inference"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "sourceId",
+                      "chapterId",
+                      "title",
+                      "revisionId",
+                      "contentHash",
+                      "quote",
+                      "startUTF16",
+                      "endUTF16",
+                      "validity"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "errorCode": {
+                  "type": "string"
+                },
+                "usage": {
+                  "type": "object",
+                  "properties": {
+                    "input": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "cachedInput": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "output": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "charged": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "incomplete": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "input",
+                    "output",
+                    "charged",
+                    "incomplete"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "id",
+                "role",
+                "text",
+                "status",
+                "sources",
+                "createdAt"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "nextBefore": {
+            "type": "string"
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "totalMessages": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "items",
+          "hasMore",
+          "totalMessages"
         ],
         "additionalProperties": false
       },
@@ -3019,6 +3268,27 @@
           },
           "cancellationPending": {
             "type": "boolean"
+          },
+          "history": {
+            "type": "object",
+            "properties": {
+              "hasMore": {
+                "type": "boolean"
+              },
+              "oldestMessageId": {
+                "type": "string"
+              },
+              "totalMessages": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "hasMore",
+              "totalMessages"
+            ],
+            "additionalProperties": false
           }
         },
         "required": [

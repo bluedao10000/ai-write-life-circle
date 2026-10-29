@@ -25,10 +25,11 @@ export function useThinking(book: string, enabled: boolean) {
     [reconnecting, setReconnecting] = useState(false),
     [busy, setBusy] = useState(false), [tool, setTool] = useState(""),
     [steps, setSteps] = useState<ToolStep[]>([]), [draft, setDraftRaw] = useState(() => readText(draftKey));
+  const [historyBusy,setHistoryBusy]=useState(false),[historyError,setHistoryError]=useState("");
   const actionFailed = useRef(false);
   const stepId = useRef(0), epoch = useRef(0), request = useRef(0), operation = useRef(0),
     outbox = useRef(emptyOutbox()), choices = useRef<Record<string, string>>({}),
-    sending = useRef(new Set<string>()), selectedRef = useRef(selected), catalogue = useRef(models);
+    sending = useRef(new Set<string>()), selectedRef = useRef(selected), catalogue = useRef(models), historyLoading = useRef(false);
   catalogue.current = models;
   const setDraft = (value: string) => {
     setDraftRaw(value);
@@ -43,13 +44,14 @@ export function useThinking(book: string, enabled: boolean) {
     selectedRef.current = id; setSelected(id); setSession(null); setSessions([]); setModels([]);
     setModelChoice(id ? choices.current[id] ?? "" : choices.current.new ?? "");
     actionFailed.current=false;setCancellationPending(false);setRequestFailure(null);setReconnecting(false);
+    setHistoryError("");
     setDraftRaw(readText(draftKey)); setScopes([]); setOutgoing(""); setBusy(false); setError("");
     sending.current = new Set();
     return () => {epoch.current = generation + 1};
   }, [partition, outboxKey, choicesKey, draftKey]);
   const select = useCallback((id: string | null) => {
     request.current++; operation.current++; selectedRef.current = id;
-    setBusy(false); setSelected(id); setSession(null); setOutgoing(""); setTool(""); setSteps([]); setError("");actionFailed.current=false;setCancellationPending(false);setRequestFailure(null);setReconnecting(false);
+    setBusy(false); setSelected(id); setSession(null); setOutgoing(""); setTool(""); setSteps([]); setError("");setHistoryError("");actionFailed.current=false;setCancellationPending(false);setRequestFailure(null);setReconnecting(false);
     if (id) setModelChoice(choices.current[id] ?? "");
     else {
       const preferred = choices.current.new;
@@ -71,7 +73,9 @@ export function useThinking(book: string, enabled: boolean) {
     }
     setReconnecting(false);
     setCancellationPending(value.cancellationPending ?? false);
-    setSession(value);
+    // A polling response is a bounded recent page. Do not discard older pages
+    // that the author already loaded, or delivery receipts held by that history.
+    setSession(old=>old?.sessionId===value.sessionId && value.history?.hasMore ? {...value,messages:[...old.messages.filter(m=>!value.messages.some(n=>n.id===m.id)),...value.messages],history:old.history ? {...old.history,totalMessages:value.history.totalMessages} : value.history} : value);
     setSessions(old => old.some(s => s.sessionId === value.sessionId) ? old.map(s => s.sessionId === value.sessionId ? {...s,title:value.title,model:value.model,status:value.status} : s) : [value,...old]);
     setModelChoice(choices.current[value.sessionId] ?? modelID(value));
   }, [outboxKey, draftKey]);
@@ -280,6 +284,18 @@ export function useThinking(book: string, enabled: boolean) {
     setSessions(old => old.filter(s => s.sessionId !== selected));select(null);
   })};
   const pendingDelivery = selected ? outbox.current.pending[selected] : undefined;
+  const loadHistory = () => {void (async () => {
+    if(!selected || !session?.history?.hasMore || historyLoading.current)return;
+    const e=epoch.current,r=request.current;
+    historyLoading.current=true;
+    setHistoryBusy(true);setHistoryError("");
+    try {
+      const page=await api.history(book,selected,session.history.oldestMessageId);
+      if(e!==epoch.current || r!==request.current)return;
+      setSession(old=>old?.sessionId===selected ? {...old,messages:[...page.items.filter(m=>!old.messages.some(n=>n.id===m.id)),...old.messages],history:{hasMore:page.hasMore,...(page.nextBefore?{oldestMessageId:page.nextBefore}:{}),totalMessages:page.totalMessages}} : old);
+    } catch(err) {if(e===epoch.current&&r===request.current)setHistoryError(errorText(err))}
+    finally {historyLoading.current=false;if(e===epoch.current&&r===request.current)setHistoryBusy(false)}
+  })()};
   const retryPending = () => {
     if(pendingDelivery && selected) {
       setDraft(pendingDelivery.input.text);
@@ -287,5 +303,5 @@ export function useThinking(book: string, enabled: boolean) {
       choices.current[selected] = choice;saveBrowserState(choicesKey,choices.current);setModelChoice(choice);
     }
   };
-  return {cancellationPending,requestFailure,resume,reconnecting,pendingDelivery,outgoing,models,modelChoice,chooseModel,modelAvailable,modelNotice,retryPending,scopes,saveScopes,sessions,model,selected,session,error:reconnecting ? "连接中断，正在重新连接。已接受的消息会从服务端恢复。" : error,busy,tool,steps,draft,setDraft,select,reload,create,send,cancel,remove};
+  return {historyBusy,historyError,loadHistory,cancellationPending,requestFailure,resume,reconnecting,pendingDelivery,outgoing,models,modelChoice,chooseModel,modelAvailable,modelNotice,retryPending,scopes,saveScopes,sessions,model,selected,session,error:reconnecting ? "连接中断，正在重新连接。已接受的消息会从服务端恢复。" : error,busy,tool,steps,draft,setDraft,select,reload,create,send,cancel,remove};
 }

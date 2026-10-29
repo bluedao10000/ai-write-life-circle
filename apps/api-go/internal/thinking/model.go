@@ -245,7 +245,7 @@ func (s *Service) Snapshot(ctx context.Context, id string) (raw json.RawMessage,
 	if r, ok := st.Sessions[id]; !ok || r.Deleted {
 		return nil, false, nil
 	}
-	raw, e = s.agent(ctx, "GET", "/internal/v1/sessions/"+id, nil)
+	raw, e = s.agent(ctx, "GET", "/internal/v1/sessions/"+id+"?full=1", nil)
 	if e != nil {
 		var p *application.Error
 		if errors.As(e, &p) && (p.Status == 404 || p.Status == 410) {

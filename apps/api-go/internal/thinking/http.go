@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-var route = regexp.MustCompile(`^/v1/studio/books/([A-Za-z0-9_-]+)/thinking/(capabilities|models|preferences|sessions)(?:/(th-[a-f0-9-]{36}))?(?:/(messages|events|cancel|resume))?$`)
+var route = regexp.MustCompile(`^/v1/studio/books/([A-Za-z0-9_-]+)/thinking/(capabilities|models|preferences|sessions)(?:/(th-[a-f0-9-]{36}))?(?:/(messages|events|history|cancel|resume))?$`)
 
 func IsPublicPath(path string) bool { return strings.Contains(path, "/thinking/") }
 func reply(w http.ResponseWriter, v any, e error, status int) {
@@ -53,6 +53,7 @@ func publicSessionView(r *http.Request, raw json.RawMessage) json.RawMessage {
 	}
 	delete(view, "run")
 	delete(view, "cancellationPending")
+	delete(view, "history")
 	projected, err := json.Marshal(view)
 	if err != nil {
 		return raw
@@ -415,7 +416,7 @@ func (s *Service) PublicHandler() http.Handler {
 			reply(w, nil, e, 204)
 			return
 		}
-		if r.Method == "GET" && (action == "" || action == "events") {
+		if r.Method == "GET" && (action == "" || action == "events" || action == "history") {
 			if action == "events" {
 				cursor, e := strconv.Atoi(r.URL.Query().Get("after"))
 				if r.URL.Query().Get("after") == "" {
@@ -428,10 +429,26 @@ func (s *Service) PublicHandler() http.Handler {
 				}
 				target += "/events?after=" + strconv.Itoa(cursor)
 			}
+			if action == "history" {
+				if r.Header.Get("X-Writer-Agent-Thinking") != "reliability-v1" {
+					reply(w, nil, fail(422, "VALIDATION_FAILED"), 0)
+					return
+				}
+				before := r.URL.Query().Get("before")
+				if len(before) > 128 || before != "" && !regexp.MustCompile(`^[A-Za-z0-9_-]+$`).MatchString(before) {
+					reply(w, nil, fail(422, "INVALID_HISTORY_CURSOR"), 0)
+					return
+				}
+				if before != "" {
+					target += "/history?before=" + url.QueryEscape(before)
+				} else {
+					target += "/history"
+				}
+			}
 			v, e := s.agent(r.Context(), "GET", target, nil)
 			if e == nil {
 				record, e = s.owned(*a, book, id)
-				if e == nil && record.ResumeBlocked {
+				if e == nil && action != "history" && record.ResumeBlocked {
 					v = cancelledSessionView(v, record.CancelPending)
 				}
 			}
