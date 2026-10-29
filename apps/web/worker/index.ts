@@ -15,7 +15,7 @@ function allowedRoute(path: string, method: string, project: string) {
   if(path===thinking+'/capabilities'||path===thinking+'/models')return method==='GET'
   if(path===thinking+'/preferences')return ['GET','POST'].includes(method)
   if(path===thinking+'/sessions')return ['GET','POST'].includes(method)
-  const thinkMatch=new RegExp(`^${thinking}/sessions/th-[a-f0-9-]{36}(/messages|/events|/cancel)?$`).exec(path)
+  const thinkMatch=new RegExp(`^${thinking}/sessions/th-[a-f0-9-]{36}(/messages|/events|/cancel|/resume)?$`).exec(path)
   if(thinkMatch){return thinkMatch[1]==='/events'?method==='GET':thinkMatch[1]?method==='POST':['GET','DELETE'].includes(method)}
   // Creative assets: author-owned settings and AI proposals. Only explicit routes are forwarded.
   const creative = `/v1/studio/books/${encodeURIComponent(project)}/creative`
@@ -189,7 +189,7 @@ async function handleRequestInternal(request: Request, env: Env): Promise<Respon
   target.search = url.search
   // The assertion is minted here from the verified session, never copied from the browser.
   const headers = new Headers({ accept: 'application/json, application/problem+json', authorization: `Bearer ${env.WRITER_AGENT_API_TOKEN}`, [IDENTITY_HEADER]: await signIdentity(env.WRITER_AGENT_IDENTITY_PRIVATE_KEY, user, request.method, target.pathname) })
-  for (const name of ['content-type', 'idempotency-key']) {
+  for (const name of ['content-type', 'idempotency-key', 'x-writer-agent-thinking']) {
     const value = request.headers.get(name)
     if (value) headers.set(name, value)
   }
@@ -201,7 +201,9 @@ async function handleRequestInternal(request: Request, env: Env): Promise<Respon
       await upstream.body?.cancel()
       return problem(502, 'API_IDENTITY_UNSUPPORTED', '作品服务版本不兼容，请稍后重试。')
     }
-    if ((upstream.status >= 300 && upstream.status < 400) || upstream.status === 401 || upstream.status === 403) {
+    const thinkingAuthorization = target.pathname.includes('/thinking/') && upstream.status === 403 &&
+      ['AUTHORIZATION_REQUIRED', 'SCOPE_FORBIDDEN'].includes(((await upstream.clone().json().catch(() => null)) as {code?:string} | null)?.code ?? '')
+    if ((upstream.status >= 300 && upstream.status < 400) || upstream.status === 401 || (upstream.status === 403 && !thinkingAuthorization)) {
       await upstream.body?.cancel()
       return problem(502, 'API_CONNECTION_FAILED', '作品服务连接失败，请稍后重试。')
     }

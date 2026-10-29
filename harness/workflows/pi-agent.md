@@ -35,9 +35,9 @@ Node >=22.19.0，pnpm 10.15.1。`pnpm install && pnpm build:agent`。
 
 ## 回滚与恢复
 
-停止 Pi；私有状态目录做权限保持的完整备份。原子切回上一兼容 `thinking-v1` 发布 symlink，验证清单、配置、健康，再启动。不要回滚状态快照覆盖现有删除墓碑或恢复已经删除的讨论。当前 schema=1；未来不兼容升级必须先提供向前/向后兼容验证。Pi 无法启动时保留关闭状态，Go 继续写作。
+停止 Pi；私有状态目录做权限保持的完整备份。原子切回兼容发布 symlink，验证清单、配置、健康，再启动。不要回滚状态快照覆盖现有删除墓碑或恢复已经删除的讨论。当前 schema=1，可靠性增量包含 Run/lease/checkpoint/授权版本；旧 Pi 的严格 Session 校验不能直接读取新增字段。回滚先关闭 Thinking，保留最新状态，使用兼容版本；参见 [可靠性迁移与回滚](../reviews/agent-reliability-review.md)。Pi 无法启动时保留关闭状态，Go 继续写作。
 
-正常退出会取消正在执行的请求，已接受消息/预算已落盘。SIGKILL 后 running 消息变为 interrupted，保留历史，不自动付费重跑。存活 PID 的锁不抢占；未知 PID/权限错误需要运维核验。Go 文件锁异常残留仍遵循现有保守人工恢复流程。
+正常退出会取消正在执行的请求，已接受消息/预算已落盘。SIGKILL 后 running 消息变为 interrupted，保留历史，不自动付费重跑。作者可在 UI 确认潜在额外费用后，从安全业务检查点 Resume；取消、删除、撤销授权及副作用未知的 Run 不可恢复。上下文超限使用作者确认的续谈要点，原讨论仍可读。存活 PID 的锁不抢占；未知 PID/权限错误或遗留 `.process-lock-admission` 需要运维核验，不按文件年龄删除。Go 文件锁异常残留仍遵循保守人工恢复流程。
 
 删除先撤销 Go grant，再持久排队；每五秒重试 Pi 清理。即使 Node 离线也不能再次调用工具。Node 删除持久墓碑，抹除 transcript、Pi entries 与 events，防止迟到结果或创建重放复活。Session 列表中的孤立初始化 grant 可再次用同键创建或删除，不会发送模型请求。
 

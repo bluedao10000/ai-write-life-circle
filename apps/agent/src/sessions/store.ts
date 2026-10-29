@@ -18,9 +18,17 @@ import {
   thinkingSessionSchema,
   type ThinkingSession,
   type ThinkingEvent,
+  type ThinkingExecutionInput,
+  type ThinkingRun,
 } from "@writer-agent/contracts";
+import { failureFor } from "../runtime/reliability.js";
 export type Saved = {
+  epoch?: number;
+  executionLease?: {owner:string;epoch:number;expiresAt:number};
+  runs?: ThinkingRun[];
+  checkpoint?: { input: ThinkingExecutionInput; entries: FileEntry[]; messageId: string };
   schema: 1;
+  accountingVersion?: 2;
   owner: string;
   view: ThinkingSession;
   entries: FileEntry[];
@@ -32,24 +40,42 @@ export const idPattern =
   /^th-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 export class Store {
   private lock: string;
+  private closed = false;
   constructor(readonly dir: string) {
     mkdirSync(dir, { recursive: true, mode: 0o700 });
     if (lstatSync(dir).isSymbolicLink() || (lstatSync(dir).mode & 0o077) !== 0)
       throw Error("UNSAFE_STATE_DIRECTORY");
     this.lock = join(dir, ".process-lock");
+    // Serialize stale-PID takeover as well as initial creation. Two starters must
+    // never both unlink a lock that one has just replaced. A crashed admission
+    // guard requires operator inspection, never age-based lock stealing.
+    const guard = this.lock + "-admission";
+    let admission: number;
     try {
-      const pid = Number(readFileSync(this.lock, "utf8"));
-      try {
-        process.kill(pid, 0);
-        throw Error("AGENT_ALREADY_RUNNING");
-      } catch (e) {
-        if ((e as NodeJS.ErrnoException).code !== "ESRCH") throw e;
-        rmSync(this.lock);
-      }
+      admission = openSync(guard, "wx", 0o600);
     } catch (e) {
-      if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+      if ((e as NodeJS.ErrnoException).code === "EEXIST") throw Error("AGENT_LOCK_ADMISSION_REQUIRED");
+      throw e;
     }
-    writeFileSync(this.lock, String(process.pid), { flag: "wx", mode: 0o600 });
+    try {
+      writeFileSync(admission, String(process.pid));
+      try {
+        const pid = Number(readFileSync(this.lock, "utf8"));
+        try {
+          process.kill(pid, 0);
+          throw Error("AGENT_ALREADY_RUNNING");
+        } catch (e) {
+          if ((e as NodeJS.ErrnoException).code !== "ESRCH") throw e;
+          rmSync(this.lock);
+        }
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+      }
+      writeFileSync(this.lock, String(process.pid), { flag: "wx", mode: 0o600 });
+    } finally {
+      closeSync(admission);
+      rmSync(guard);
+    }
   }
   path(id: string) {
     if (!idPattern.test(id)) throw Error("INVALID_SESSION_ID");
@@ -85,6 +111,12 @@ export class Store {
       if (value.schema !== 1 || value.view.sessionId !== id)
         throw Error("SESSION_STORAGE_INVALID");
       thinkingSessionSchema.parse(value.view);
+      // Legacy charged was the sum of reservations, even when every usage report
+      // was known. Settle only that provable over-reservation; unknown costs stay held.
+      if (value.accountingVersion !== 2) {
+        if (!value.view.usage.incomplete) value.view.usage.charged = value.view.usage.input + value.view.usage.output;
+        value.accountingVersion = 2;
+      }
       return value;
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code === "ENOENT") return;
@@ -124,6 +156,10 @@ export class Store {
         s.events = [];
         s.entries = [];
         s.requests = {};
+        delete s.executionLease;
+        delete s.runs;
+        delete s.checkpoint;
+        delete s.view.run;
         this.write(s);
         continue;
       }
@@ -133,6 +169,13 @@ export class Store {
           m.status = "interrupted";
           m.errorCode = "AGENT_RESTARTED";
         }
+      }
+      delete s.executionLease;
+      s.epoch = (s.epoch ?? 0) + 1;
+      if (s.view.run) {
+        s.view.run.status = "interrupted";
+        s.view.run.failure = failureFor("SESSION_INTERRUPTED", s.view.run.modelCalls > 0);
+        s.view.run.updatedAt = new Date().toISOString();
       }
       s.view.status = "idle";
       s.events.push({
@@ -144,6 +187,8 @@ export class Store {
     }
   }
   close() {
+    if (this.closed) return;
+    this.closed = true;
     rmSync(this.lock, { force: true });
   }
 }

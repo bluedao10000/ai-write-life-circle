@@ -594,6 +594,15 @@ func TestMessageModelSwitchReservesSelectedModelAndReplaysOnce(t *testing.T) {
 	if code := send("disabled", "missing"); code != 409 {
 		t.Fatal("unknown model silently substituted", code)
 	}
+	b.Endpoint = "http://127.0.0.1/changed-provider"
+	if code := send("changed-config", "oss"); code != 409 {
+		t.Fatal("same model id silently changed provider configuration", code)
+	}
+	st, _ = s.load()
+	if st.Sessions[rec.ID].Model.Endpoint != a.Endpoint {
+		t.Fatal("rejected provider configuration mutated grant")
+	}
+
 }
 
 // Real Mantle smoke reported these non-cached Usage values on 2026-10-28.
@@ -626,5 +635,107 @@ func TestReportedBedrockSmokeUsageSettlesExpectedPoints(t *testing.T) {
 	view, e := ledger.View(ctx, rec.Owner)
 	if e != nil || view.Day.Used != 9 || view.Day.Reserved != 0 {
 		t.Fatal("actual usage counters did not settle once", view.Day, e)
+	}
+}
+
+func TestResumeAdmissionPreservesAuthorModelBudgetAndCancellationFences(t *testing.T) {
+	s, rec, _ := fixture(t)
+	model := Model{ID: "deepseek", Provider: "fixture", Model: "synthetic", Endpoint: "http://127.0.0.1", Protocol: Protocol, Limits: Limits{Turns: 1, Input: 12000, Output: 1024, Tools: 2, Duration: 1000}}
+	rec.Model = model
+	rec.Scopes = []string{}
+	_ = s.tx(context.Background(), func(st *registry) error { st.Sessions[rec.ID] = rec; return nil })
+	runID := compat.UUID()
+	posts := 0
+	keys := map[string]bool{}
+	node := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/internal/v1/health":
+			_ = json.NewEncoder(w).Encode(map[string]any{"protocol": Protocol, "models": []modelEntry{{Model: model, Enabled: true}}})
+		case strings.HasSuffix(r.URL.Path, "/cancel"):
+			_, _ = w.Write([]byte(`{}`))
+		case r.Method == "GET":
+			_ = json.NewEncoder(w).Encode(map[string]any{"model": model, "scopes": []string{}, "status": "idle", "run": map[string]any{"runId": runID, "status": "interrupted", "resumable": true, "failure": map[string]any{"retryable": true}}})
+		default:
+			var b struct {
+				Key   string  `json:"key"`
+				Input Message `json:"input"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&b)
+			if b.Input.Recovery == nil || b.Input.Recovery.RunID != runID {
+				t.Error("recovery not passed through")
+			}
+			if !keys[b.Key] {
+				posts++
+				keys[b.Key] = true
+			}
+			_, _ = w.Write([]byte(`{"messageId":"original-user"}`))
+		}
+	}))
+	defer node.Close()
+	s.Origin = node.URL
+	s.ServiceToken = strings.Repeat("s", 64)
+	s.Meter = &billing.Ledger{State: s.State}
+	s.ResolveActor = func(*http.Request) *application.Actor { return &application.Actor{ID: rec.Owner, Role: "author"} }
+	request := func(action, body, key string, status int) {
+		t.Helper()
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("POST", "/v1/studio/books/"+rec.Book+"/thinking/sessions/"+rec.ID+"/"+action, strings.NewReader(body))
+		r.Header.Set("Idempotency-Key", key)
+		s.PublicHandler().ServeHTTP(w, r)
+		if w.Code != status {
+			t.Fatalf("%s: %d %s", action, w.Code, w.Body.String())
+		}
+	}
+	input := `{"runId":"` + runID + `","confirmAdditionalCost":true}`
+	request("resume", `{"runId":"`+runID+`","confirmAdditionalCost":false}`, "no-consent", 422)
+	if posts != 0 {
+		t.Fatal("unconfirmed cost called runtime")
+	}
+	request("resume", input, "resume", 202)
+	if posts != 1 {
+		t.Fatal("resume not delivered")
+	}
+	// New Service simulates an API restart: the persisted receipt and meter remain authoritative.
+	copyService := *s
+	s = &copyService
+	request("resume", input, "resume", 202)
+	if posts != 1 {
+		t.Fatal("duplicate recovery intent")
+	}
+	// An authorization mismatch is rejected before another reservation or RPC.
+	_ = s.tx(context.Background(), func(st *registry) error {
+		v := st.Sessions[rec.ID]
+		v.Scopes = []string{"notes"}
+		st.Sessions[rec.ID] = v
+		return nil
+	})
+	request("resume", input, "unauthorized", 403)
+	_ = s.tx(context.Background(), func(st *registry) error {
+		v := st.Sessions[rec.ID]
+		v.Scopes = []string{}
+		st.Sessions[rec.ID] = v
+		return nil
+	})
+	request("cancel", `{}`, "cancel", 200)
+	request("resume", input, "resume", 409)
+	if posts != 1 {
+		t.Fatal("cancelled receipt resurrected")
+	}
+	request("resume", input, "new-key-after-cancel", 409)
+	if posts != 1 {
+		t.Fatal("new key resumed cancelled run")
+	}
+
+}
+
+func TestLegacyThinkingViewDoesNotExposeStrictSchemaExtension(t *testing.T) {
+	raw := json.RawMessage(`{"status":"idle","messages":[],"run":{"runId":"synthetic"}}`)
+	request := httptest.NewRequest("GET", "/", nil)
+	if strings.Contains(string(publicSessionView(request, raw)), `"run"`) {
+		t.Fatal("old strict client received new field")
+	}
+	request.Header.Set("X-Writer-Agent-Thinking", "reliability-v1")
+	if string(publicSessionView(request, raw)) != string(raw) {
+		t.Fatal("negotiated run missing")
 	}
 }

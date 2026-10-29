@@ -141,7 +141,7 @@ func (s *Service) PrivateHandler() http.Handler {
 			return
 		}
 		if r.URL.Path == "/internal/v1/agent/authorize" {
-			reply(w, map[string]any{"sessionId": rec.ID, "authorId": rec.Owner, "bookId": rec.Book, "model": rec.Model, "scopes": rec.Scopes}, nil, 200)
+			reply(w, map[string]any{"sessionId": rec.ID, "authorizationVersion": rec.AuthorizationVersion, "authorId": rec.Owner, "bookId": rec.Book, "model": rec.Model, "scopes": rec.Scopes}, nil, 200)
 			return
 		}
 		if r.URL.Path != "/internal/v1/agent/tools/execute" {

@@ -12,6 +12,7 @@ async function readJson(response: Response): Promise<unknown> {
 export async function requestApi(path: string, init: RequestInit = {}): Promise<{ body: unknown; response: Response }> {
   const headers = new Headers(init.headers)
   headers.set('accept', 'application/json, application/problem+json')
+  if (path.includes('/thinking/')) headers.set('x-writer-agent-thinking', 'reliability-v1')
   const response = await fetch(path, { ...init, headers })
   const body = await readJson(response)
 

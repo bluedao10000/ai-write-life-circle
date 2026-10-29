@@ -35,9 +35,9 @@ try {
     body: { text: "林舟与父亲的关系变化是否合理？" },
     status: 202,
   });
-  const wait = async () => {
+  const wait = async (target=path) => {
     for (let i = 0; i < 200; i++) {
-      s = await f.call(path);
+      s = await f.call(target);
       if (s.status === "idle") return;
       await delay(40);
     }
@@ -110,29 +110,70 @@ try {
     ),
   );
   f.config.hang = true;
+  let callsBefore=f.calls.length;
   await f.call(path + "/messages", {
     method: "POST",
     key: "cancel",
     body: { text: "取消测试" },
     status: 202,
   });
-  await delay(100);
+  await f.waitForProviderCall(callsBefore);
   await f.call(path + "/cancel", { method: "POST", body: {} });
   s = await f.call(path);
   assert.equal(s.messages.at(-1).status, "cancelled");
+  callsBefore=f.calls.length;
   await f.call(path + "/messages", {
     method: "POST",
     key: "crash",
     body: { text: "崩溃恢复测试" },
     status: 202,
   });
-  await delay(100);
+  await f.waitForProviderCall(callsBefore);
   await f.stopAgent("SIGKILL");
   await f.restartAgent();
   s = await f.call(path);
   assert.equal(s.messages.at(-1).status, "interrupted");
   assert.equal(s.status, "idle");
+  // Recovery is a real backend operation against the accepted user message.
+  const crashedRun = s.run.runId, acceptedUsers = s.messages.filter(m=>m.role==='user').length;
   f.config.hang = false;
+  const resumeInput = {runId:crashedRun,confirmAdditionalCost:true};
+  await f.call(path+'/resume',{method:'POST',key:'resume-crash',body:resumeInput,status:202});
+  await wait();
+  assert.equal(s.run.status,'completed');assert.equal(s.run.attempt,2);
+  assert.equal(s.messages.filter(m=>m.role==='user').length,acceptedUsers);
+  const recoveredCalls=f.calls.length;
+  await f.call(path+'/resume',{method:'POST',key:'resume-crash',body:resumeInput,status:202});
+  assert.equal(f.calls.length,recoveredCalls);
+  await f.restartAPI();
+  s=await f.call(path);assert.equal(s.run.status,'completed');
+  assert.equal(s.messages.filter(m=>m.role==='user').length,acceptedUsers);
+  const cancelledSession=await f.call(base+'/sessions',{method:'POST',key:'offline-cancel-session',body:{consent:true,model,scopes:[]},status:201});
+  const cancelledPath=base+'/sessions/'+cancelledSession.sessionId;
+  f.config.hang=true;callsBefore=f.calls.length;
+  await f.call(cancelledPath+'/messages',{method:'POST',key:'api-restart-active',body:{text:'Synthetic input accepted before API restart'},status:202});
+  await f.waitForProviderCall(callsBefore);await f.restartAPI();f.config.hang=false;f.releaseProviders();
+  await wait(cancelledPath);
+  const interruptedByAPI=s.run.status!=='completed';
+  if(interruptedByAPI) {
+    assert.equal(s.run.failure.code,'SESSION_INTERRUPTED');
+    await f.call(cancelledPath+'/resume',{method:'POST',key:'api-restart-resume',body:{runId:s.run.runId,confirmAdditionalCost:true},status:202});
+    await wait(cancelledPath);
+  }
+  assert.equal(s.run.status,'completed');assert.equal(s.messages.filter(m=>m.role==='user').length,1);
+  assert.equal(f.calls.length-callsBefore,1+Number(interruptedByAPI));
+  f.config.hang=true;callsBefore=f.calls.length;
+  await f.call(cancelledPath+'/messages',{method:'POST',key:'offline-cancel-message',body:{text:'Synthetic offline cancellation'},status:202});
+  await f.waitForProviderCall(callsBefore);
+  await f.stopAgent('SIGKILL');
+  await f.call(cancelledPath+'/cancel',{method:'POST',body:{},status:503});
+  await f.restartAgent();
+  const cancelled=await f.call(cancelledPath);
+  assert.equal(cancelled.run.status,'cancelled');assert.equal(cancelled.messages.at(-1).status,'cancelled');
+  const beforeCancelledResume=f.calls.length;
+  await f.call(cancelledPath+'/resume',{method:'POST',key:'new-key-after-offline-cancel',body:{runId:cancelled.run.runId,confirmAdditionalCost:true},status:409});
+  assert.equal(f.calls.length,beforeCancelledResume);
+  f.config.hang=false;
   await f.stopAgent();
   await f.call(path, { method: "DELETE", status: 204 });
   await f.restartAgent();
@@ -192,7 +233,7 @@ try {
     await delay(50);
   }
   console.log(
-    "PASS: Go + real Pi SDK processes, 3 saved chapter sources, signed grants, short polling/SSE replay, multi-turn restart, stale citations, cancel, SIGKILL recovery, offline deletion. Fixture model only; semantic quality unvalidated.",
+    "PASS: Go + real Pi SDK processes, 3 saved chapter sources, signed grants, short polling/SSE replay, multi-turn restart, stale citations, cancel, SIGKILL + explicit Resume, Go API restart, offline cancellation fence, offline deletion. Fixture model only; semantic quality unvalidated.",
   );
 } finally {
   await f.close();

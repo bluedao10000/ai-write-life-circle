@@ -263,7 +263,7 @@ test("real Pi SDK tool loop, durable multi-turn context, replay, cancellation an
     await host.active.get(id)?.done;
     assert.equal(
       host.get(id).view.messages.at(-1)?.errorCode,
-      "TURN_BUDGET_EXCEEDED",
+      "TOOL_EXECUTION_FAILED",
     );
     assert.equal(toolCalls, 1);
     revoked = true;

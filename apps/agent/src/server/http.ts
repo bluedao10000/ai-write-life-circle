@@ -1,3 +1,4 @@
+import { reliabilityMetrics } from "../runtime/reliability.js";
 import {
   createServer,
   type IncomingMessage,
@@ -50,6 +51,7 @@ export function server(host: PiHost) {
           json(res, 200, {
             protocol: "thinking-v1",
             version: host.config.version,
+            reliability: reliabilityMetrics(),
             model: host.config.model,
             models: modelEntries(host.config).map(({model, enabled, description}) => ({model, enabled, description})),
           });

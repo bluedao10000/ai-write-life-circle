@@ -16,14 +16,21 @@ export async function configuredModel(endpoint: string, id: string, key: string,
 export class GatewayError extends Error {
   constructor(readonly code:string,readonly response:AgentModelResponse={text:"",usage:null}){super(code)}
 }
-export function boundedModelFetch(endpoint:string,maxBytes:number,signal:AbortSignal,onError?:(code:string)=>void):typeof fetch {
+export function boundedModelFetch(endpoint:string,maxBytes:number,signal:AbortSignal,onError?:(code:string,status?:number)=>void):typeof fetch {
   return async(request,init)=>{
     const url=new URL(typeof request==="string"?request:request instanceof URL?request.href:request.url);
     const base=new URL(endpoint);
     if(url.origin!==base.origin||url.pathname!==base.pathname.replace(/\/$/,"")+"/chat/completions")throw new GatewayError("LLM_INVALID_CONFIG");
     let response:Response;
     try{response=await fetch(request,{...init,redirect:"error",signal})}catch(e){onError?.("LLM_NETWORK_ERROR");throw e}
-    if(!response.ok)onError?.("LLM_HTTP_ERROR");
+    if(!response.ok)onError?.("LLM_HTTP_ERROR",response.status);
+    if(response.status===400 && response.body){
+      const reader=response.body.getReader(),chunks:Uint8Array[]=[];let bytes=0;
+      try{while(true){const part=await reader.read();if(part.done)break;bytes+=part.value.byteLength;if(bytes>Math.min(maxBytes,16384))throw new GatewayError("LLM_RESPONSE_TOO_LARGE");chunks.push(part.value)}}finally{await reader.cancel()}
+      const text=Buffer.concat(chunks).toString("utf8");
+      if(/context_length_exceeded|maximum context length|context window exceeded/i.test(text))onError?.("LLM_CONTEXT_OVERFLOW",400);
+      response=new Response(text,{status:response.status,statusText:response.statusText,headers:response.headers});
+    }
     if(!response.body)return response;
     const reader=response.body.getReader();let count=0;
     const body=new ReadableStream<Uint8Array>({async pull(controller){try{const part=await reader.read();if(part.done){controller.close();return}count+=part.value.byteLength;if(count>maxBytes){onError?.("LLM_RESPONSE_TOO_LARGE");await reader.cancel();throw new GatewayError("LLM_RESPONSE_TOO_LARGE")}controller.enqueue(part.value)}catch(e){controller.error(e)}},cancel:()=>reader.cancel()});
@@ -61,7 +68,7 @@ export class ModelGateway {
     try {
       const result=await runtime.completeSimple(model,{systemPrompt:task.request.system,messages:[{role:"user",content:task.request.input,timestamp:Date.now()}]},{
         headers:{'X-Client-Request-Id':task.taskId},maxTokens:output,signal:abort,maxRetries:0,timeoutMs:cfg.Timeout/1e6,
-        fetch:boundedModelFetch(cfg.BaseURL,cfg.MaxResponseBytes,abort,code=>{transportError=code}),
+        fetch:boundedModelFetch(cfg.BaseURL,cfg.MaxResponseBytes,abort,code=>{transportError=code==="LLM_CONTEXT_OVERFLOW"?"LLM_HTTP_ERROR":code}),
         onPayload(value){
           const payload=value as Record<string,unknown>;
           // Preserve the author-approved structured format and exact Token parameter.

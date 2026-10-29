@@ -7,6 +7,7 @@ import type { CreativeProposal, CreativeTurn, ThinkingMessage, ThinkingSource } 
 import { Btn, Choice, Dialog, Heading, Icon, IconBtn, Quote, Row, Seg, TextArea, TextInput, ago, type IconName } from '../../components/vnext/ui'
 import { thinkingError } from '../thinking/errors'
 import { creativeApi } from '../../services/api/creativeApi'
+import RunRecovery from '../thinking/RunRecovery'
 import ToolTimeline from '../thinking/ToolTimeline'
 import type { useStudioController } from '../vnext/useStudioController'
 import AssetEditor from './AssetEditor'
@@ -281,7 +282,7 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
                         enabled={!!settings?.enabled}
                         proposals={mine}
                         busy={t.busy || running}
-                        onRetry={() => {
+                        onCopyQuestion={() => {
                           const index = session.messages.findIndex((v) => v.id === m.id)
                           const prior = session.messages.slice(0, index).reverse().find((v) => v.role === 'user')
                           if (prior) t.setDraft(prior.text)
@@ -333,6 +334,8 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
                 <span>{localError || t.error || t.modelNotice || '灵感服务暂不可用。'} 输入已保留；写作与保存不受影响，可以稍后重试。</span>
               </p>
             )}
+            {t.error && t.requestFailure && <details className="text-micro text-ink-3"><summary>请求故障详情</summary><p>错误码：{t.requestFailure.code}{t.requestFailure.traceId ? ` · 追踪编号：${t.requestFailure.traceId}` : ""}</p></details>}
+            <RunRecovery key={session?.run?.runId} run={session?.run} busy={t.busy || running} onResume={t.resume} onAuthorize={() => {setAccessScopes(t.scopes);setAccess(true)}}/>
             {t.pendingDelivery && !t.busy && <div role="status" className="mb-2 text-ui-sm text-ink-2">上一条消息的送达情况尚未确认，原问题和重试记录已保留。<Btn size="sm" onClick={t.retryPending}>恢复待确认问题</Btn></div>}
             <div className="rounded-xl border border-line bg-surface shadow-soft focus-within:border-accent/50">
               {seed && (
@@ -497,7 +500,7 @@ function AiMessage({
   enabled,
   proposals,
   busy,
-  onRetry,
+  onCopyQuestion,
   onOrganize,
   onDecide,
   onOpen,
@@ -508,7 +511,7 @@ function AiMessage({
   enabled: boolean
   proposals: CreativeProposal[]
   busy: boolean
-  onRetry: () => void
+  onCopyQuestion: () => void
   onOrganize: (messageId: string) => void
   onDecide: (p: CreativeProposal, action: 'accept' | 'reject') => void
   onOpen: (p: CreativeProposal) => void
@@ -557,8 +560,8 @@ function AiMessage({
         <div role="alert" className="mt-4 flex flex-wrap items-center gap-2 rounded-md bg-surface-2 px-3 py-2 text-ui-sm text-ink-2">
           <Icon name="info" className="text-warn" />
           {thinkingError(m.errorCode)}
-          <Btn variant="link" className="text-ui-sm" disabled={busy} onClick={onRetry}>
-            用此问题重试
+          <Btn variant="link" className="text-ui-sm" disabled={busy} onClick={onCopyQuestion}>
+            复制原问题到输入框
           </Btn>
         </div>
       )}

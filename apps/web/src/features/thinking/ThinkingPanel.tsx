@@ -1,6 +1,7 @@
 import { Btn } from "../../components/vnext/ui";
 import type { useStudioController } from "../vnext/useStudioController";
 import { thinkingError } from "./errors";
+import RunRecovery from "./RunRecovery";
 import ToolTimeline from "./ToolTimeline";
 
 // Compact companion to the main Inspiration workspace; uses the same admission path.
@@ -20,6 +21,8 @@ export default function ThinkingPanel({studio}: {studio: ReturnType<typeof useSt
       {m.errorCode && <p role="status">{thinkingError(m.errorCode)}</p>}
       {m.sources.map(src => <details key={src.sourceId}><summary>{src.title} · 原文依据</summary><blockquote>{src.quote}</blockquote><Btn onClick={() => {studio.workspace.switchChapter(src.chapterId);studio.setView("read")}}>打开章节</Btn></details>)}
     </article>)}</div>
+    {t.error && t.requestFailure && <details className="text-micro text-ink-3"><summary>请求故障详情</summary><p>错误码：{t.requestFailure.code}{t.requestFailure.traceId ? ` · 追踪编号：${t.requestFailure.traceId}` : ""}</p></details>}
+    <RunRecovery key={t.session?.run?.runId} run={t.session?.run} busy={t.busy} onResume={t.resume}/>
     {running && <details><summary>查看执行详情</summary><ToolTimeline steps={t.steps} activeTool={t.tool}/></details>}
     {t.pendingDelivery && !t.busy && <Btn onClick={t.retryPending}>恢复待确认问题</Btn>}
     <form onSubmit={e => {e.preventDefault();t.send({text: t.draft.trim()})}} className="space-y-3">

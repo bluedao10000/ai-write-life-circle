@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, 'feat/pricing-phase1', 'codex/pricing-phase1-*', 'codex/author-experience-p0', 'codex/ras-001-*']
+    branches: [main, 'feat/pricing-phase1', 'codex/pricing-phase1-*', 'codex/author-experience-p0', 'codex/ras-001-*', 'codex/agent-reliability-*']
   pull_request:
     branches: [main, 'codex/**']
   workflow_dispatch:
@@ -46,5 +46,9 @@ jobs:
         run: pnpm lint
       - name: Go unit tests
         run: go test -C apps/api-go -timeout 90s ./...
+      - name: Agent reliability unit tests and offline eval
+        run: pnpm test:agent && pnpm eval:reliability
+      - name: Agent recovery process integration
+        run: pnpm test:thinking
       - name: Web unit tests
         run: pnpm --filter @writer-agent/web test

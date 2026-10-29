@@ -94,7 +94,7 @@ it("transport retry preserves accepted intent key; successful admission clears t
     result.current.setDraft("same question");
     result.current.send({ text: "same question" });
   });
-  await waitFor(() => expect(result.current.error).toContain("network"));
+  await waitFor(() => expect(result.current.error).toContain("对话已保留"));
   expect(result.current.draft).toBe("same question");
   act(() => result.current.send({ text: "same question" }));
   await waitFor(() => expect(result.current.busy).toBe(false));
@@ -112,7 +112,7 @@ it("offline capabilities do not hide Go history or block durable deletion", asyn
   await waitFor(() => expect(result.current.sessions).toHaveLength(2));
   expect(result.current.model).toBeNull();
   act(() => result.current.select("A"));
-  await waitFor(() => expect(result.current.error).toContain("offline"));
+  await waitFor(() => expect(result.current.error).toContain("重新连接"));
   act(() => result.current.remove());
   await waitFor(() => expect(remove).toHaveBeenCalledWith("book-a", "A"));
   await waitFor(() => expect(result.current.selected).toBeNull());
@@ -125,7 +125,7 @@ it("first send creates automatically, preserves draft after a lost response, and
   const {result}=setup();
   await waitFor(()=>expect(result.current.modelChoice).toBe("deepseek"));
   act(()=>{result.current.setDraft("张居正与平行宇宙");result.current.send({text:"张居正与平行宇宙"})});
-  await waitFor(()=>expect(result.current.error).toContain("network"));
+  await waitFor(()=>expect(result.current.error).toContain("对话已保留"));
   expect(result.current.draft).toContain("张居正");
   expect(create.mock.calls[0][1]).toEqual({modelId:"deepseek"});
   act(()=>result.current.send({text:"张居正与平行宇宙"}));
@@ -153,7 +153,7 @@ it("reload after ambiguous delivery preserves the outbox key instead of charging
   const first=setup();await waitFor(()=>expect(first.result.current.modelChoice).toBe("deepseek"));
   act(()=>first.result.current.select("A"));await waitFor(()=>expect(first.result.current.session?.sessionId).toBe("A"));
   act(()=>{first.result.current.setDraft("same intent");first.result.current.send({text:"same intent"})});
-  await waitFor(()=>expect(first.result.current.error).toContain("lost response"));
+  await waitFor(()=>expect(first.result.current.error).toContain("对话已保留"));
   const key=send.mock.calls[0][3];first.unmount();
   const next=renderHook(()=>useThinking("book-a",true));
   await waitFor(()=>expect(next.result.current.modelChoice).toBe("deepseek"));
@@ -189,7 +189,7 @@ it("uncertain A delivery survives a successful B send, reload, and A retry", asy
  const first=setup();
  act(()=>first.result.current.select("A"));await waitFor(()=>expect(first.result.current.session?.sessionId).toBe("A"));
  act(()=>{first.result.current.setDraft("A original");first.result.current.send({text:"A original"})});
- await waitFor(()=>expect(first.result.current.error).toContain("lost acknowledgement"));
+ await waitFor(()=>expect(first.result.current.error).toContain("对话已保留"));
  const key=send.mock.calls[0][3];
  act(()=>first.result.current.select("B"));await waitFor(()=>expect(first.result.current.session?.sessionId).toBe("B"));
  act(()=>first.result.current.send({text:"B independent"}));await waitFor(()=>expect(first.result.current.busy).toBe(false));
@@ -201,7 +201,7 @@ it("uncertain A delivery survives a successful B send, reload, and A retry", asy
 it("an exact receipt in server history confirms A without resending or matching prose", async () => {
  const send=vi.spyOn(api,"send").mockRejectedValueOnce(Error("lost acknowledgement"));
  const {result}=setup();act(()=>result.current.select("A"));await waitFor(()=>expect(result.current.session?.sessionId).toBe("A"));
- act(()=>result.current.send({text:"duplicate-looking text"}));await waitFor(()=>expect(result.current.error).toContain("lost acknowledgement"));
+ act(()=>result.current.send({text:"duplicate-looking text"}));await waitFor(()=>expect(result.current.error).toContain("对话已保留"));
  const key=send.mock.calls[0][3];
  vi.mocked(api.get).mockResolvedValue({...session("A"),messages:[{id:"accepted",role:"user",requestKey:key,text:"duplicate-looking text",status:"completed",createdAt:"now",sources:[]}]});
  act(()=>result.current.send({text:"duplicate-looking text"}));await waitFor(()=>expect(result.current.busy).toBe(false));
@@ -218,4 +218,34 @@ it("obsolete defaults migrate for new topics, but missing historical models requ
  act(()=>result.current.chooseModel("oss"));expect(result.current.modelAvailable).toBe(true);
  act(()=>result.current.send({text:"explicitly switched"}));await waitFor(()=>expect(send).toHaveBeenCalledTimes(1));
  expect(send.mock.calls[0][2].modelId).toBe("oss");
+});
+
+it("reconnects after the initial snapshot fails without requiring page refresh", async () => {
+ const {result}=setup();
+ await waitFor(()=>expect(result.current.models).toHaveLength(2));
+ vi.mocked(api.get).mockRejectedValueOnce(Error("offline"));
+ act(()=>result.current.select("A"));
+ await waitFor(()=>expect(result.current.error).toBeTruthy());
+ // Trigger the same wakeup a browser emits when its network returns.
+ act(()=>window.dispatchEvent(new Event("online")));
+ await waitFor(()=>expect(result.current.session?.sessionId).toBe("A"));
+});
+
+it("online recovery reloads model capabilities as well as the session snapshot",async()=>{
+ const {result}=setup();await waitFor(()=>expect(result.current.model).not.toBeNull());
+ vi.mocked(api.capabilities).mockRejectedValueOnce(Error("private stack must not leak"));
+ await act(async()=>{await result.current.reload()});expect(result.current.model).toBeNull();
+ expect(result.current.error).not.toContain("private stack");
+ act(()=>window.dispatchEvent(new Event("online")));
+ await waitFor(()=>expect(result.current.model).not.toBeNull());
+});
+
+it("a definitive cancelled-request fence releases the outbox without losing the author's draft",async()=>{
+ const send=vi.spyOn(api,"send").mockRejectedValueOnce(Object.assign(Error("fenced"),{code:"SESSION_INTERRUPTED"})).mockResolvedValue({messageId:"next"});
+ const {result}=setup();act(()=>result.current.select("A"));await waitFor(()=>expect(result.current.session?.sessionId).toBe("A"));
+ act(()=>{result.current.setDraft("cancelled original");result.current.send({text:"cancelled original"})});
+ await waitFor(()=>expect(result.current.error).toContain("已中断"));
+ expect(result.current.pendingDelivery).toBeUndefined();expect(result.current.draft).toBe("cancelled original");
+ act(()=>result.current.send({text:"new author question"}));await waitFor(()=>expect(send).toHaveBeenCalledTimes(2));
+ expect(send.mock.calls[1][3]).not.toBe(send.mock.calls[0][3]);
 });

@@ -110,6 +110,10 @@ const paths = {
       202,
     ),
   },
+  [base + "/sessions/{sessionId}/resume"]: {
+    parameters: [param("bookId"),param("sessionId")],
+    post: op("resumeThinkingRun", "thinkingReceipt", "thinkingRecovery",202),
+  },
   [base + "/sessions/{sessionId}/events"]: {
     parameters: [
       param("bookId"),

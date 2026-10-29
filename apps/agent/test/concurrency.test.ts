@@ -34,3 +34,21 @@ test('model admission is independent of the default model and still obeys an exp
   await assert.rejects(host.accept(b,{text:'Global ceiling'},'two',b),(e)=>e instanceof AgentError && e.code==='AGENT_BUSY');
  } finally {await host.close();provider.closeAllConnections();story.closeAllConnections();provider.close();story.close();rmSync(state,{recursive:true,force:true})}
 });
+
+test('cancel fences an admission waiting for authorization',async()=>{
+ const state=mkdtempSync(join(tmpdir(),'pi-admission-fence-'));
+ const id='th-'+randomUUID();let calls=0;let waiting=false;
+ let release!:()=>void;let entered!:()=>void;
+ const gate=new Promise<void>(r=>{release=r}),ready=new Promise<void>(r=>{entered=r});
+ const provider=createServer((_req,res)=>{calls++;res.end()});
+ const model={provider:'fixture',model:'fixture',endpoint:await listen(provider),protocol:'thinking-v1' as const,limits:{maxTurnsPerRequest:1,maxToolCalls:1,maxInputTokens:32000,maxOutputTokens:100,maxSessionTokens:100000,maxConcurrentSessions:1,maxDurationMs:1000,maxToolResultBytes:1000}};
+ const story=createServer(async(_req,res)=>{if(waiting){entered();await gate}res.setHeader('content-type','application/json');res.end(JSON.stringify({sessionId:id,authorId:'a',bookId:'b',model,scopes:[]}))});
+ const host=new PiHost({state,port:1,version:'test',key:'fixture',token:'fixture',model,storyOrigin:await listen(story)},new Store(state));
+ try {
+  await host.create({sessionId:id,authorId:'a',bookId:'b',model,scopes:[],createdAt:'now',capability:'fixture'});
+  waiting=true;const accepted=host.accept(id,{text:'synthetic'},'key','fixture');
+  await ready;await host.cancel(id);release();
+  await assert.rejects(accepted,(e)=>e instanceof AgentError && e.code==='SESSION_INTERRUPTED');
+  assert.equal(calls,0);assert.equal(host.get(id).view.messages.length,0);
+ }finally{release();await host.close();provider.closeAllConnections();story.closeAllConnections();provider.close();story.close();rmSync(state,{recursive:true,force:true})}
+});

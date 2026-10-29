@@ -26,6 +26,7 @@ try {
   fixture = await startThinkingFixture();
   const bearer = fixture.bearer,
     book = await seedThinkingBook(fixture);
+  await fixture.call(`/v1/studio/books/${book.bookId}/thinking/preferences`,{method:"POST",body:{scopes:["chapters","knowledge"]}});
   const assets = join(root, "assets");
   run(["exec", "vite", "build", "--outDir", assets], {
     VITE_WRITER_AGENT_MODE: "api",
@@ -183,10 +184,12 @@ try {
       sameSite: "Lax",
     },
   ]);
+  let offlineThinking = false;
   async function route(ctx) {
     await ctx.route("**/*", async (route) => {
       const r = route.request();
       if (!r.url().startsWith(origin + "/")) return route.abort();
+      if (offlineThinking && new URL(r.url()).pathname.includes("/thinking/")) return route.abort("internetdisconnected");
       const response = await mf.dispatchFetch(r.url(), {
         method: r.method(),
         headers: await r.allHeaders(),
@@ -219,7 +222,7 @@ try {
   await page.goto(origin + "/studio?view=read&compose=1");
   await expect(page.getByLabel("正文编辑器")).toBeVisible();
   await page.getByRole("tab", { name: "灵感", exact: true }).click();
-  // 灵感 workspace (Figma V3): the first send asks for consent, then continues.
+  // Synthetic author pre-approved the scopes above; first send uses the real admission path.
   const talk = page.getByRole("main", { name: "灵感对话" });
   const turns = talk.locator("ol > li");
   const send = () => page.getByRole("button", { name: "发送", exact: true }).click();
@@ -227,8 +230,7 @@ try {
   await expect(input).toBeVisible();
   await input.fill("林舟与父亲的关系变化是否合理？");
   await send();
-  await expect(page.getByText("确认这次灵感讨论的数据范围").first()).toBeVisible();
-  await page.getByRole("button", { name: "同意以上范围并创建会话" }).click();
+
   await expect(
     page.getByText("林舟与父亲从争执到理解，可能由信息差与保护动机推动；", {
       exact: false,
@@ -247,16 +249,38 @@ try {
   await page.reload();
   await page.getByRole("tab", { name: "灵感", exact: true }).click();
   await expect(turns).toHaveCount(4);
+  console.log("Browser: running refresh and network reconnect");
   fixture.config.hang = true;
+  let callsBefore=fixture.calls.length;
+  await input.fill("断网与重启恢复的合成问题");await send();await fixture.waitForProviderCall(callsBefore);
+  await expect(talk.getByText("正在想…")).toBeVisible();
+  offlineThinking=true;
+  await page.reload();
+  await page.getByRole("tab", { name: "灵感", exact: true }).click();
+  await expect(page.getByRole("alert").first()).toContainText("连接中断");
+  offlineThinking=false;
+  await page.evaluate(()=>window.dispatchEvent(new Event("online")));
+  await expect(talk.getByText("正在想…")).toBeVisible();
+  console.log("Browser: SIGKILL and explicit Resume");
+  await fixture.stopAgent("SIGKILL");await fixture.restartAgent();fixture.config.hang=false;
+  await expect(page.getByRole("button",{name:"继续执行",exact:true})).toBeDisabled();
+  await page.getByRole("checkbox",{name:/我确认再次调用本轮原模型/}).check();
+  await page.getByRole("button",{name:"继续执行",exact:true}).click();
+  await expect(talk.getByText("正在想…")).toHaveCount(0,{timeout:20000});
+  await expect(turns.last()).not.toContainText(/· (已接受|思考中|未完成|已取消|已中断)/,{timeout:20000});
+  await expect(turns.filter({hasText:"断网与重启恢复的合成问题"})).toHaveCount(1);
+  console.log("Browser: cancel after recovery");
+  fixture.config.hang = true;callsBefore=fixture.calls.length;
   await input.fill("取消这次思考");
   await send();
+  await fixture.waitForProviderCall(callsBefore);
   await page.getByRole("button", { name: "停止", exact: true }).click();
   await expect(turns.last()).toContainText("已取消");
   fixture.config.hang = false;
   await fixture.stopAgent();
   await input.fill("服务离线时不重复接受");
   await send();
-  await expect(page.getByRole("alert")).toContainText("输入已保留");
+  await expect(page.getByRole("alert").filter({hasText:"输入已保留"})).toBeVisible();
   await page.getByRole("tab", { name: "阅读", exact: true }).click();
   const editor = page.getByLabel("正文编辑器");
   if ((await editor.getAttribute("contenteditable")) !== "true")
@@ -270,6 +294,18 @@ try {
   await send();
   await expect(turns).toHaveCount(beforeRetry + 2, { timeout: 20000 });
   await expect(talk.getByText("正在想…")).toHaveCount(0, { timeout: 20000 });
+  // These additional fault/recovery turns may cross the conservative context cap.
+  // Exercise the real handoff UI rather than enlarging the context limit.
+  const continuation=page.getByLabel("续谈要点");
+  if(await continuation.isVisible()) {
+    const beforeContext=await turns.count();
+    await continuation.fill("作者确认的续谈要点：讨论林舟与父亲从争执到理解的动机；保护与信息差仍是假设，不是正式设定。重要依据仍需从已授权的保存章节重新核验。");
+    await page.getByRole("checkbox",{name:/我确认再次调用本轮原模型/}).check();
+    await page.getByRole("button",{name:"继续执行",exact:true}).click();
+    await expect(turns).toHaveCount(beforeContext+1,{timeout:20000});
+    await expect(talk.getByText("正在想…")).toHaveCount(0,{timeout:20000});
+  }
+
   await expect(turns.last()).not.toContainText(/· (已接受|思考中|未完成|已取消|已中断)/, { timeout: 20000 });
   await expect(turns.last()).not.toContainText("正在思考…");
   const screenshot = resolve("test-results-thinking/thinking-desktop.png");
@@ -298,7 +334,7 @@ try {
     404,
   );
   console.log(
-    "PASS: signed-session Browser → actual Cloudflare Worker/D1 → Go → Pi SDK tools/LLM fixture. Consent, evidence, multi-turn, refresh, cancel, offline history/deletion and writing while Agent offline verified. No paid model called.",
+    "PASS: signed-session Browser → actual Cloudflare Worker/D1 → Go → Pi SDK tools/LLM fixture. Author scopes, evidence, multi-turn, running refresh, offline reconnect, SIGKILL + cost-confirmed Resume, author-confirmed context handoff, cancel, offline history/deletion and writing while Agent offline verified. No paid model called.",
   );
 } finally {
   await browser?.close();

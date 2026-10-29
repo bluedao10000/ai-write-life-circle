@@ -43,6 +43,33 @@ export const thinkingCreateSchema = z
     scopes: z.array(thinkingScopeSchema).max(4).optional(),
   })
   .strict();
+// Recovery is an explicit author action; it never silently replays a paid call.
+export const thinkingRecoverySchema = z.object({
+  runId: z.string().uuid(),
+  confirmAdditionalCost: z.literal(true),
+  continuationContext: z.string().trim().min(1).max(12000).optional(),
+}).strict();
+export const thinkingFailureSchema = z.object({
+  code: z.enum(["PROVIDER_TIMEOUT", "PROVIDER_UNAVAILABLE", "RATE_LIMITED", "CONTEXT_OVERFLOW", "TOOL_TIMEOUT", "TOOL_EXECUTION_FAILED", "SESSION_INTERRUPTED", "SESSION_EXPIRED", "AUTHORIZATION_REQUIRED", "MODEL_CONFIGURATION_ERROR", "BUDGET_EXCEEDED", "INTERNAL_ERROR"]),
+  retryable: z.boolean(), autoRecoverable: z.boolean(),
+  userAction: z.enum(["retry", "continue", "reauthorize", "provide_context", "new_session", "contact_support"]),
+  contextRetained: z.literal(true), mayHaveIncurredCost: z.boolean(),
+  retryMayIncurCost: z.literal(true), message: z.string(),
+}).strict();
+export const thinkingRunSchema = z.object({
+  runId: z.string().uuid(), traceId: z.string().uuid(), messageId: z.string(),
+  status: z.enum(["accepted", "running", "checkpointed", "completed", "failed", "interrupted", "cancelled"]),
+  stepType: z.enum(["accepted", "provider", "tool", "completed"]),
+  authorizationVersion: z.number().int().nonnegative().optional(),
+  checkpointId: z.string().uuid(), epoch: z.number().int().nonnegative(),
+  attempt: z.number().int().positive(), retryCount: z.number().int().nonnegative(),
+  modelCalls: z.number().int().nonnegative(), resumable: z.boolean(),
+  provider: z.string(), model: z.string(), startedAt: z.string(), updatedAt: z.string(),
+  durationMs: z.number().nonnegative(), failure: thinkingFailureSchema.optional(),
+}).strict();
+export type ThinkingRun = z.infer<typeof thinkingRunSchema>;
+export type ThinkingFailure = z.infer<typeof thinkingFailureSchema>;
+export type ThinkingRecovery = z.infer<typeof thinkingRecoverySchema>;
 export const thinkingMessageInputSchema = z
   .object({
     text: z.string().trim().min(1).max(12000),
@@ -59,6 +86,9 @@ export const thinkingMessageInputSchema = z
     compact: z.boolean().optional(),
   })
   .strict();
+export const thinkingExecutionInputSchema = thinkingMessageInputSchema.extend({recovery:thinkingRecoverySchema.optional()}).strict();
+export type ThinkingExecutionInput = z.infer<typeof thinkingExecutionInputSchema>;
+
 export const thinkingSourceSchema = z
   .object({
     sourceId: z.string(),
@@ -140,6 +170,7 @@ export const thinkingSessionSchema = z
     messages: z.array(thinkingMessageSchema),
     cursor: z.number().int().nonnegative(),
     usage: thinkingUsageSchema,
+    run: thinkingRunSchema.optional(),
   })
   .strict();
 export const thinkingSummarySchema = thinkingSessionSchema.pick({
@@ -176,6 +207,7 @@ export const thinkingGrantSchema = z
       .regex(
         /^th-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/,
       ),
+    authorizationVersion: z.number().int().nonnegative().optional(),
     authorId: z.string(),
     bookId: z.string(),
     model: thinkingModelSchema,
@@ -220,7 +252,7 @@ export const thinkingPrivateCreateSchema = thinkingGrantSchema
   .strict();
 export const thinkingPrivateMessageSchema = z
   .object({
-    input: thinkingMessageInputSchema,
+    input: thinkingExecutionInputSchema,
     key: z.string().regex(/^[A-Za-z0-9_.:-]{1,128}$/),
     capability: z.string().max(4096),
   })

@@ -47,17 +47,19 @@ type Model struct {
 	Limits          Limits `json:"limits"`
 }
 type Record struct {
-	ID      string   `json:"sessionId"`
-	Book    string   `json:"bookId"`
-	Owner   string   `json:"ownerId"`
-	Title   string   `json:"title"`
-	Created string   `json:"createdAt"`
-	Model   Model    `json:"model"`
-	Scopes  []string `json:"scopes"`
-	Deleted bool     `json:"deleted"`
-	Pending bool     `json:"cleanupPending"`
-	Nonce   string   `json:"nonce"`
-	Calls   int      `json:"toolCalls"`
+	ID                   string   `json:"sessionId"`
+	Book                 string   `json:"bookId"`
+	Owner                string   `json:"ownerId"`
+	Title                string   `json:"title"`
+	Created              string   `json:"createdAt"`
+	Model                Model    `json:"model"`
+	Scopes               []string `json:"scopes"`
+	Deleted              bool     `json:"deleted"`
+	Pending              bool     `json:"cleanupPending"`
+	AuthorizationVersion int      `json:"authorizationVersion,omitempty"`
+	ResumeBlocked        bool     `json:"resumeBlocked,omitempty"`
+	Nonce                string   `json:"nonce"`
+	Calls                int      `json:"toolCalls"`
 	// LastMessage is the most recently accepted user message, used only to
 	// scope the controlled request_turn_organize tool to the current turn.
 	LastMessage string `json:"lastMessageId,omitempty"`
@@ -76,6 +78,7 @@ type receipt struct {
 }
 type registry struct {
 	Schema      int                 `json:"schema"`
+	Cancelled   map[string]bool     `json:"cancelledReceipts,omitempty"`
 	Sessions    map[string]Record   `json:"sessions"`
 	Requests    map[string]receipt  `json:"requests"`
 	Preferences map[string][]string `json:"preferences,omitempty"`
@@ -107,7 +110,13 @@ type Selection struct {
 	Hash     string `json:"contentHash"`
 	Quote    string `json:"quote"`
 }
+type Recovery struct {
+	RunID                 string `json:"runId"`
+	ConfirmAdditionalCost bool   `json:"confirmAdditionalCost"`
+	ContinuationContext   string `json:"continuationContext,omitempty"`
+}
 type Message struct {
+	Recovery  *Recovery  `json:"recovery,omitempty"`
 	ModelID   string     `json:"modelId,omitempty"`
 	Text      string     `json:"text"`
 	Selection *Selection `json:"selection,omitempty"`

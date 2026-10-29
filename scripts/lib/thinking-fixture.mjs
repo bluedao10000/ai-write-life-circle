@@ -38,6 +38,7 @@ export async function startThinkingFixture({ live = false, taskProtocol = false,
   await mkdir(join(root, "harness"));
   for (const [name, value] of Object.entries({ bearer, token, secret, taskToken }))
     await writeFile(join(root, name), value, { mode: 0o600 });
+  const providerWaiters = new Set(), hangingProviders = new Set();
   const calls = [],
     tools = [],
     config = { hang: false, unknown: false };
@@ -47,8 +48,10 @@ export async function startThinkingFixture({ live = false, taskProtocol = false,
     for await (const chunk of req) raw += chunk;
     const body = JSON.parse(raw);
     calls.push(body);
+    for(const wake of providerWaiters)wake();
     res.writeHead(200, { "Content-Type": "text/event-stream" });
     if (config.hang) {
+      hangingProviders.add(res);res.once("close",()=>hangingProviders.delete(res));
       res.flushHeaders();
       return;
     }
@@ -235,6 +238,20 @@ export async function startThinkingFixture({ live = false, taskProtocol = false,
     });
     return agent;
   };
+  const startAPI = () => {
+    api = spawn(
+      new URL("../../apps/api-go/dist/writer-agent-api", import.meta.url)
+        .pathname,
+      [],
+      { env, stdio: ["ignore", "pipe", "pipe"] },
+    );
+    api.stdout.on("data", (d) => {
+      output += d;
+    });
+    api.stderr.on("data", (d) => {
+      errors += d;
+    });
+  };
   const close = async () => {
     for (const child of [agent, api])
       if (child && child.exitCode === null) {
@@ -250,18 +267,7 @@ export async function startThinkingFixture({ live = false, taskProtocol = false,
     await rm(root, { recursive: true, force: true });
   };
   try {
-    api = spawn(
-      new URL("../../apps/api-go/dist/writer-agent-api", import.meta.url)
-        .pathname,
-      [],
-      { env, stdio: ["ignore", "pipe", "pipe"] },
-    );
-    api.stdout.on("data", (d) => {
-      output += d;
-    });
-    api.stderr.on("data", (d) => {
-      errors += d;
-    });
+    startAPI();
     startAgent();
     for (let i = 0; i < 150; i++) {
       apiOrigin = output.match(/API listening on (http:\/\/[^\s]+)/)?.[1];
@@ -279,6 +285,7 @@ export async function startThinkingFixture({ live = false, taskProtocol = false,
       const response = await fetch(apiOrigin + path, {
         method,
         headers: {
+          "X-Writer-Agent-Thinking":"reliability-v1",
           ...(auth ? { Authorization: "Bearer " + bearer, ...identity.headers(method, path) } : {}),
           ...(body ? { "Content-Type": "application/json" } : {}),
           ...(key ? { "Idempotency-Key": key } : {}),
@@ -302,10 +309,37 @@ export async function startThinkingFixture({ live = false, taskProtocol = false,
       token,
       taskToken,taskOrigin:`http://127.0.0.1:${taskPort}`,env,
       calls,
+      releaseProviders() {
+        for(const res of hangingProviders) {
+          res.write('data: '+JSON.stringify({choices:[{index:0,delta:{content:"Synthetic completed response after API restart."},finish_reason:null}]})+'\n\n');
+          res.write('data: '+JSON.stringify({choices:[{index:0,delta:{},finish_reason:"stop"}],usage:{prompt_tokens:300,completion_tokens:100,total_tokens:400}})+'\n\n');
+          res.end('data: [DONE]\n\n');
+        }
+        hangingProviders.clear();
+      },
+      waitForProviderCall(after=calls.length) {
+        if(calls.length>after)return Promise.resolve();
+        return new Promise((resolve,reject)=>{
+          const wake=()=>{if(calls.length>after){clearTimeout(timer);providerWaiters.delete(wake);resolve()}};
+          const timer=setTimeout(()=>{providerWaiters.delete(wake);reject(Error("provider was not entered"))},5000);
+          providerWaiters.add(wake);
+        });
+      },
       tools,
       config,
       call,
       close,
+      async restartAPI() {
+        api.kill("SIGTERM");await new Promise(r=>api.once("exit",r));
+        output="";startAPI();
+        for(let i=0;i<150;i++) {
+          const origin=output.match(/API listening on (http:\/\/[^\s]+)/)?.[1];
+          if(origin){apiOrigin=origin;return}
+          if(api.exitCode!==null)throw Error("API restart failed "+errors);
+          await delay(50);
+        }
+        throw Error("API restart timeout "+errors);
+      },
       async stopAgent(signal = "SIGTERM") {
         agent.kill(signal);
         await new Promise((r) => agent.once("exit", r));

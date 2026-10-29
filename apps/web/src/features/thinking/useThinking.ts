@@ -1,14 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ThinkingCreate, ThinkingMessageInput, ThinkingModel, ThinkingModelOption, ThinkingSession } from "@writer-agent/contracts";
+import type { ThinkingCreate, ThinkingMessageInput, ThinkingModel, ThinkingModelOption, ThinkingRecovery, ThinkingSession } from "@writer-agent/contracts";
 import { thinkingApi as api } from "../../services/api/thinkingApi";
 import { thinkingError } from "./errors";
 import { scopedKey } from "../../services/storageScope";
 import { applyToolEvents, type ToolStep } from "./toolActivity";
 import { emptyOutbox, readChoices, readOutbox, saveBrowserState } from "./conversationState";
 type Summary = Pick<ThinkingSession, "sessionId" | "bookId" | "title" | "createdAt" | "model" | "scopes" | "status">;
-const errorText = (e: unknown) => e instanceof Error
-  ? ((e as Error & {code?: string}).code ? thinkingError((e as Error & {code?: string}).code) : e.message)
-  : "思考服务暂不可用，请保留输入后重试。";
+const errorText = (e: unknown) => thinkingError((e as {code?:string})?.code);
 const readText = (key: string) => {try {return sessionStorage.getItem(key) ?? ""} catch {return ""}};
 const modelID = (s: ThinkingSession) => s.model.modelId ?? "default";
 const sameInput = (a: ThinkingMessageInput, b: ThinkingMessageInput) => JSON.stringify(a) === JSON.stringify(b);
@@ -22,8 +20,11 @@ export function useThinking(book: string, enabled: boolean) {
   const [sessions, setSessions] = useState<Summary[]>([]), [model, setModel] = useState<ThinkingModel | null>(null),
     [selected, setSelected] = useState<string | null>(() => readText("thinking-v1:" + partition) || null),
     [session, setSession] = useState<ThinkingSession | null>(null), [error, setError] = useState(""),
+    [requestFailure,setRequestFailure] = useState<{code:string;traceId?:string} | null>(null),
+    [reconnecting, setReconnecting] = useState(false),
     [busy, setBusy] = useState(false), [tool, setTool] = useState(""),
     [steps, setSteps] = useState<ToolStep[]>([]), [draft, setDraftRaw] = useState(() => readText(draftKey));
+  const actionFailed = useRef(false);
   const stepId = useRef(0), epoch = useRef(0), request = useRef(0), operation = useRef(0),
     outbox = useRef(emptyOutbox()), choices = useRef<Record<string, string>>({}),
     sending = useRef(new Set<string>()), selectedRef = useRef(selected), catalogue = useRef(models);
@@ -40,13 +41,14 @@ export function useThinking(book: string, enabled: boolean) {
     const id = readText("thinking-v1:" + partition) || null;
     selectedRef.current = id; setSelected(id); setSession(null); setSessions([]); setModels([]);
     setModelChoice(id ? choices.current[id] ?? "" : choices.current.new ?? "");
+    actionFailed.current=false;setRequestFailure(null);setReconnecting(false);
     setDraftRaw(readText(draftKey)); setScopes([]); setOutgoing(""); setBusy(false); setError("");
     sending.current = new Set();
     return () => {epoch.current = generation + 1};
   }, [partition, outboxKey, choicesKey, draftKey]);
   const select = useCallback((id: string | null) => {
     request.current++; operation.current++; selectedRef.current = id;
-    setBusy(false); setSelected(id); setSession(null); setOutgoing(""); setTool(""); setSteps([]); setError("");
+    setBusy(false); setSelected(id); setSession(null); setOutgoing(""); setTool(""); setSteps([]); setError("");actionFailed.current=false;setRequestFailure(null);setReconnecting(false);
     if (id) setModelChoice(choices.current[id] ?? "");
     else {
       const preferred = choices.current.new;
@@ -66,6 +68,7 @@ export function useThinking(book: string, enabled: boolean) {
         return "";
       });
     }
+    setReconnecting(false);
     setSession(value);
     setSessions(old => old.some(s => s.sessionId === value.sessionId) ? old.map(s => s.sessionId === value.sessionId ? {...s,title:value.title,model:value.model,status:value.status} : s) : [value,...old]);
     setModelChoice(choices.current[value.sessionId] ?? modelID(value));
@@ -83,11 +86,21 @@ export function useThinking(book: string, enabled: boolean) {
       api.list(book, signal).then(items => {if(current()) setSessions(items)}),
       api.capabilities(book, signal).then(cap => {if(current()) setModel(cap)}).catch(err => {if(current()) setModel(null);throw err}),
     ]);
-    if(current()) {const failure = results.find(r => r.status === "rejected");setError(failure?.status === "rejected" ? errorText(failure.reason) : "")}
+    if(current()) {const failure = results.find(r => r.status === "rejected");setError(old => failure?.status === "rejected" ? errorText(failure.reason) : actionFailed.current || Object.keys(outbox.current.pending).length ? old : "")}
+    return results.every(r=>r.status === "fulfilled");
   }, [book]);
   useEffect(() => {
     if (!enabled) return;
-    const c = new AbortController(); void reload(c.signal); return () => c.abort();
+    const c = new AbortController();let timer: ReturnType<typeof setTimeout> | undefined, loading = false;
+    const refresh = async () => {
+      if (loading || c.signal.aborted) return;
+      loading = true;clearTimeout(timer);
+      try {if(!await reload(c.signal) && !c.signal.aborted) timer = setTimeout(()=>void refresh(),3000)}
+      finally {loading = false}
+    };
+    const wake = () => void refresh();
+    window.addEventListener("online",wake);void refresh();
+    return () => {c.abort();clearTimeout(timer);window.removeEventListener("online",wake)};
   }, [enabled, reload, partition]);
   useEffect(() => {
     if (!enabled || !selected || busy) return;
@@ -101,23 +114,37 @@ export function useThinking(book: string, enabled: boolean) {
         for(const event of events.items) {if(event.type === "tool_started") setTool(event.tool ?? "");if(event.type === "tool_completed") setTool("")}
         if(events.items.some(e => e.type === "tool_started" || e.type === "tool_completed")) setSteps(prev => applyToolEvents(prev, events.items, () => ++stepId.current));
         const value = await api.get(book, selected, c.signal); if(!current()) return;
-        acceptSnapshot(value); setError("");
+        acceptSnapshot(value); if(!actionFailed.current) setError("");
         if(value.status === "running" || events.cursor < value.cursor) timer = setTimeout(() => void poll(), 500);
-      } catch(err) {if(current()) {setError(errorText(err));timer = setTimeout(() => void poll(), 3000)}}
+      } catch {if(current()) {setReconnecting(true);setError("连接中断，正在重新连接。已接受的消息会从服务端恢复。");timer = setTimeout(() => void poll(), 3000)}}
     };
-    void (async () => {
+    let loading = false;
+    const restore = async () => {
+      if (loading || !current()) return;
+      loading = true;clearTimeout(timer);
       try {
-        const value = await api.get(book, selected, c.signal); if(!current()) return;
-        acceptSnapshot(value); cursor = value.cursor; if(value.status === "running") void poll();
-      } catch(err) {if(current()) setError(errorText(err))}
-    })();
-    return () => {c.abort();clearTimeout(timer)};
+        const value = await api.get(book,selected,c.signal); if(!current()) return;
+        acceptSnapshot(value); if (!actionFailed.current && !outbox.current.pending[selected]) setError(""); cursor = value.cursor;
+        if(value.status === "running") timer = setTimeout(() => void poll(),0);
+      } catch {if(current()) {
+        setReconnecting(true);setError("连接中断，正在重新连接。已接受的消息会从服务端恢复。");
+        timer = setTimeout(() => void restore(),3000);
+      }} finally {loading = false}
+    };
+    const wake = () => {if(document.visibilityState === "visible") void restore()};
+    window.addEventListener("online",wake);document.addEventListener("visibilitychange",wake);
+    void restore();
+    return () => {c.abort();clearTimeout(timer);window.removeEventListener("online",wake);document.removeEventListener("visibilitychange",wake)};
   }, [book, selected, enabled, busy, acceptSnapshot, partition]);
   const action = async <T>(fn: () => Promise<T>, apply: (v: T) => void) => {
     const e = epoch.current, r = request.current, op = ++operation.current;
-    setBusy(true); setError("");
+    actionFailed.current=false;setBusy(true); setError("");setRequestFailure(null);
     try {const v = await fn();if(e === epoch.current && r === request.current) apply(v)}
-    catch(err) {if(e === epoch.current && r === request.current) setError(errorText(err))}
+    catch(err) {if(e === epoch.current && r === request.current) {
+      actionFailed.current=true;setError(errorText(err));
+      const p = err as {code?:string;requestId?:string};
+      setRequestFailure({code:/^[A-Z_]{1,80}$/.test(p?.code ?? "") ? p.code! : "INTERNAL_ERROR",...(/^[a-f0-9-]{36}$/.test(p?.requestId ?? "")?{traceId:p.requestId}:{})});
+    }}
     finally {if(e === epoch.current && op === operation.current) setBusy(false)}
   };
   const create = (scopes: ThinkingCreate["scopes"]) => {
@@ -172,6 +199,12 @@ export function useThinking(book: string, enabled: boolean) {
         if(e !== epoch.current) return null;
         p.messageId = receipt.messageId;saveBrowserState(outboxKey,outbox.current);
       } catch(err) {
+        // A durable cancellation fence is a definitive rejection, not an ambiguous
+        // handoff. Keeping its key would trap all later questions behind the outbox.
+        if((err as {code?:string})?.code === "SESSION_INTERRUPTED" && e === epoch.current) {
+          if(outbox.current.pending[id] === p) delete outbox.current.pending[id];
+          saveBrowserState(outboxKey,outbox.current);
+        }
         if((err as {code?:string})?.code === "MODEL_UNAVAILABLE" && e === epoch.current && r === request.current && session) {
           // This explicit rejection is not an ambiguous network failure. Pi did not
           // accept this new intent; keep the draft but allow a different model.
@@ -210,7 +243,28 @@ export function useThinking(book: string, enabled: boolean) {
     try {const result = await api.setPreferences(book,value);if(e === epoch.current) {setScopes(result.scopes);setError("")};return true}
     catch(err) {if(e === epoch.current) setError(errorText(err));return false}
   };
-  const cancel = () => {if(selected) void action(() => api.cancel(book,selected),acceptSnapshot)};
+  const resume = (input: ThinkingRecovery) => {
+    if (!selected || busy || session?.status === "running") return;
+    const id = selected;
+    const storage = "thinking-recovery:" + partition + ":" + input.runId;
+    const fingerprint = JSON.stringify(input);
+    let pending: {key:string;fingerprint:string} | undefined;
+    try {pending = JSON.parse(sessionStorage.getItem(storage) ?? "null") ?? undefined} catch { /* optional */ }
+    if (pending && pending.fingerprint !== fingerprint) {
+      setError("上次恢复请求是否送达尚未确认，请保留原续谈要点重试。");return;
+    }
+    pending ??= {key:crypto.randomUUID(),fingerprint};
+    saveBrowserState(storage,pending);
+    const key = pending.key;
+    void action(async () => {
+      await api.resume(book,id,input,key);
+      return api.get(book,id);
+    },acceptSnapshot);
+  };
+  const cancel = () => {if(selected) void action(() => api.cancel(book,selected),value => {
+    delete outbox.current.pending[selected];saveBrowserState(outboxKey,outbox.current);
+    acceptSnapshot(value);
+  })};
   const remove = () => {if(selected) void action(() => api.delete(book,selected),() => {
     delete outbox.current.pending[selected];delete choices.current[selected];saveBrowserState(outboxKey,outbox.current);saveBrowserState(choicesKey,choices.current);
     setSessions(old => old.filter(s => s.sessionId !== selected));select(null);
@@ -223,5 +277,5 @@ export function useThinking(book: string, enabled: boolean) {
       choices.current[selected] = choice;saveBrowserState(choicesKey,choices.current);setModelChoice(choice);
     }
   };
-  return {pendingDelivery,outgoing,models,modelChoice,chooseModel,modelAvailable,modelNotice,retryPending,scopes,saveScopes,sessions,model,selected,session,error,busy,tool,steps,draft,setDraft,select,reload,create,send,cancel,remove};
+  return {requestFailure,resume,reconnecting,pendingDelivery,outgoing,models,modelChoice,chooseModel,modelAvailable,modelNotice,retryPending,scopes,saveScopes,sessions,model,selected,session,error:reconnecting ? "连接中断，正在重新连接。已接受的消息会从服务端恢复。" : error,busy,tool,steps,draft,setDraft,select,reload,create,send,cancel,remove};
 }

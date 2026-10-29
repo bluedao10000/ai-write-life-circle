@@ -1,3 +1,4 @@
+import { failureFor, traceRun } from "./reliability.js";
 import { canonicalJSON } from "./fingerprint.js";
 import {configuredModel,boundedModelFetch,completionUsage} from "./model-gateway.js";
 import {
@@ -16,7 +17,7 @@ import {
 import { createHash, randomUUID } from "node:crypto";
 import type {
   ThinkingEvent,
-  ThinkingMessageInput,
+  ThinkingExecutionInput,
   ThinkingSource,
 } from "@writer-agent/contracts";
 import { modelEntries, modelId, type Config } from "../config.js";
@@ -37,7 +38,7 @@ export const safeCode = (e: unknown) =>
   e instanceof AgentError
     ? e.code
     : e instanceof Error &&
-        /^(AUTHORIZATION_REVOKED|TOOL_RESULT_TOO_LARGE)$/.test(e.message)
+        /^(AUTHORIZATION_REVOKED|SESSION_INTERRUPTED|TOOL_RESULT_TOO_LARGE|TOOL_TIMEOUT|TOOL_EXECUTION_FAILED|PROVIDER_UNAVAILABLE)$/.test(e.message)
       ? e.message
       : "AGENT_EXECUTION_FAILED";
 export function loader(): ResourceLoader {
@@ -65,6 +66,7 @@ type Active = {
   done: Promise<void>;
 };
 export class PiHost {
+  readonly instance = randomUUID();
   readonly active = new Map<string, Active>();
   constructor(
     readonly config: Config,
@@ -112,6 +114,7 @@ export class PiHost {
     }
     const s: Saved = {
       schema: 1,
+      accountingVersion:2,
       owner: input.authorId,
       entries: [],
       events: [],
@@ -139,12 +142,13 @@ export class PiHost {
   }
   async accept(
     id: string,
-    input: ThinkingMessageInput,
+    input: ThinkingExecutionInput,
     key: string,
     capability: string,
   ) {
-    const s = this.get(id),
-      fingerprint = digest(input),
+    let s = this.get(id);
+    const admittedEpoch = s.epoch ?? 0;
+    const fingerprint = digest(input),
       old = Object.hasOwn(s.requests, key) ? s.requests[key] : undefined;
     if (old) {
       if (old.fingerprint !== fingerprint)
@@ -166,6 +170,15 @@ export class PiHost {
       throw new AgentError("GRANT_MISMATCH", 403);
     const selected = modelEntries(this.config).find(v => v.enabled && modelId(v.model) === (input.modelId ?? modelId(grant.model)) && digest(v.model) === digest(grant.model));
     if (!selected) throw new AgentError("MODEL_UNAVAILABLE", 409);
+    // Authorization awaits network. Cancel/delete/another admission must fence this snapshot.
+    const latest = this.get(id);
+    const replay = Object.hasOwn(latest.requests, key) ? latest.requests[key] : undefined;
+    if (replay) {
+      if (replay.fingerprint !== fingerprint) throw new AgentError("IDEMPOTENCY_KEY_REUSED");
+      return {messageId: replay.messageId};
+    }
+    if ((latest.epoch ?? 0) !== admittedEpoch) throw new AgentError("SESSION_INTERRUPTED",409);
+    s = latest;
     const sameModelActive = [...this.active.keys()].filter(sessionID => {
       const current = this.store.read(sessionID);
       return current && modelId(current.view.model) === modelId(selected.model);
@@ -176,15 +189,33 @@ export class PiHost {
       throw new AgentError("AGENT_BUSY", 429);
     if (this.active.has(id) || this.store.read(id)?.deleted)
       throw new AgentError("SESSION_BUSY", 409);
+    let previousAttempt = 0;
+    if (input.recovery) {
+      if (input.recovery.confirmAdditionalCost !== true) throw new AgentError("COST_CONFIRMATION_REQUIRED",422);
+      const run = s.view.run;
+      if (!run || run.runId !== input.recovery.runId || !s.checkpoint ||
+          !["failed","interrupted"].includes(run.status) || !run.resumable ||
+          !run.failure?.retryable) throw new AgentError("RESUME_NOT_SAFE",409);
+      if (digest(s.view.model) !== digest(selected.model) || digest(s.view.scopes) !== digest(grant.scopes) || (run.authorizationVersion ?? 0) !== (grant.authorizationVersion ?? 0))
+        throw new AgentError("AUTHORIZATION_REQUIRED",403);
+      if (run.failure.code === "CONTEXT_OVERFLOW" && !input.recovery.continuationContext)
+        throw new AgentError("CONTINUATION_CONTEXT_REQUIRED",422);
+      previousAttempt = run.attempt;
+      s.entries = input.recovery.continuationContext ? [] : structuredClone(s.checkpoint.entries);
+      const recovery = {...s.checkpoint.input.recovery,...input.recovery};
+      input = {...s.checkpoint.input, recovery};
+    }
+    if (input.compact) throw new AgentError("CONTINUATION_CONTEXT_REQUIRED",422);
+    if (input.recovery?.continuationContext && s.checkpoint) s.checkpoint.input = {...s.checkpoint.input, recovery:input.recovery};
     // Tool results were authorized for the old scope/model. Keep visible discussion,
     // but never replay raw private retrieval into a reduced scope or a new host.
     if (digest(s.view.model) !== digest(selected.model) || s.view.scopes.some(scope => !grant.scopes.includes(scope))) s.entries = [];
     s.view.model = selected.model;
     s.view.scopes = grant.scopes;
-    const mid = randomUUID(),
+    const mid = input.recovery ? s.checkpoint!.messageId : randomUUID(),
       at = new Date().toISOString();
     s.requests = { ...s.requests, [key]: { fingerprint, messageId: mid } };
-    s.view.messages.push(
+    if (!input.recovery) s.view.messages.push(
       {
         id: mid,
         role: "user",
@@ -196,8 +227,10 @@ export class PiHost {
         sources: [],
         createdAt: at,
       },
+    );
+    s.view.messages.push(
       {
-        id: mid + "-answer",
+        id: mid + "-answer" + (previousAttempt ? "-" + (previousAttempt + 1) : ""),
         role: "assistant",
         modelId: modelId(selected.model),
         modelLabel: selected.model.displayName ?? selected.model.model,
@@ -207,9 +240,15 @@ export class PiHost {
         createdAt: at,
       },
     );
+    if (s.view.run) {s.runs ??= [];s.runs.push(s.view.run)}
+    s.epoch = (s.epoch ?? 0) + 1;
+    s.view.run = {authorizationVersion:grant.authorizationVersion ?? 0,runId:randomUUID(),traceId:randomUUID(),messageId:mid,status:"accepted",stepType:"accepted",checkpointId:randomUUID(),epoch:s.epoch,attempt:previousAttempt+1,retryCount:previousAttempt,modelCalls:0,resumable:true,provider:selected.model.provider,model:selected.model.model,startedAt:at,updatedAt:at,durationMs:0};
+    if (!input.recovery) s.checkpoint = {input,entries:structuredClone(s.entries),messageId:mid};
+    s.executionLease = {owner:this.instance,epoch:s.epoch,expiresAt:Date.now()+selected.model.limits.maxDurationMs};
     s.view.status = "running";
     if (s.view.title === "新的思考") s.view.title = input.text.slice(0, 40);
     this.event(s, { type: "message_started", messageId: mid });
+    traceRun(id,s.view.run,{input:0,output:0,charged:0,incomplete:false});
     const active: Active = {
       abort: new AbortController(),
       done: Promise.resolve(),
@@ -222,7 +261,16 @@ export class PiHost {
   }
   async cancel(id: string) {
     const active = this.active.get(id);
-    active?.abort.abort();
+    const s = this.get(id);
+    s.epoch = (s.epoch ?? 0) + 1;
+    if (!active && s.view.run && ["failed","interrupted"].includes(s.view.run.status)) {
+      s.view.run.status = "cancelled"; s.view.run.resumable = false;
+      const last = s.view.messages.at(-1);
+      if (last?.role === "assistant") { last.status = "cancelled"; last.errorCode = "CANCELLED"; }
+    }
+    delete s.executionLease;
+    this.store.write(s);
+    active?.abort.abort(new AgentError("CANCELLED"));
     if (active?.session) await active.session.abort();
     if (active) await active.done;
     return this.get(id).view;
@@ -237,6 +285,10 @@ export class PiHost {
       s.entries = [];
       s.events = [];
       s.requests = {};
+      delete s.executionLease;
+      delete s.runs;
+      delete s.checkpoint;
+      delete s.view.run;
       this.store.write(s);
     }
     const a = this.active.get(id);
@@ -254,14 +306,18 @@ export class PiHost {
   }
   async run(
     s: Saved,
-    input: ThinkingMessageInput,
+    input: ThinkingExecutionInput,
     capability: string,
     active: Active,
   ) {
     const id = s.view.sessionId,
       limit = {...s.view.model.limits},
       message = s.view.messages.at(-1)!,
-      sources = new Map<string, ThinkingSource>();
+      sources = new Map<string, ThinkingSource>(),
+      run = s.view.run!,
+      usageBefore = {...s.view.usage};
+    const started = performance.now();
+    const runUsage = () => ({input:s.view.usage.input-usageBefore.input,output:s.view.usage.output-usageBefore.output,charged:s.view.usage.charged-usageBefore.charged,incomplete:s.view.usage.incomplete});
     // A chat with no allowed tools is a single completion, not a six-turn agent reservation.
     if ((!s.view.scopes.length || s.view.model.toolCalling === false) && !input.compact) limit.maxTurnsPerRequest = 1;
     // Historical cards remain on their original messages. A new answer can only
@@ -270,21 +326,32 @@ export class PiHost {
       turns = 0,
       errorCode: string | undefined;
     const alive = () => {
-      if (active.abort.signal.aborted) throw new AgentError("CANCELLED");
+      if (active.abort.signal.aborted) throw active.abort.signal.reason instanceof AgentError ? active.abort.signal.reason : new AgentError("CANCELLED");
       if (this.store.isDeleted(id) || this.store.read(id)?.deleted)
         throw new AgentError("SESSION_DELETED", 410);
+      const current = this.store.read(id);
+      if (current?.view.run?.runId !== run.runId || current.executionLease?.owner !== this.instance || current.executionLease.epoch !== run.epoch) throw new AgentError("SESSION_INTERRUPTED",409);
+      if (current.executionLease.expiresAt < Date.now()) throw new AgentError(run.stepType === "tool" ? "TOOL_TIMEOUT" : "DURATION_EXCEEDED");
     };
     const persist = (event: Omit<ThinkingEvent, "id">) => {
       alive();
       this.event(s, event);
     };
+    const checkpoint = (step: typeof run.stepType) => {
+      run.status = "checkpointed"; run.stepType = step;
+      run.checkpointId = randomUUID(); run.updatedAt = new Date().toISOString();
+      if (session) s.entries = [session.sessionManager.getHeader(), ...session.sessionManager.getEntries()].filter((v): v is FileEntry => v !== null);
+      run.durationMs = Math.max(0,performance.now()-started);
+      persist({type:"usage",usage:{...s.view.usage}});
+      traceRun(id,run,runUsage());
+    };
     const deadline = setTimeout(
-      () => active.abort.abort(new AgentError("DURATION_EXCEEDED")),
+      () => active.abort.abort(new AgentError(run.stepType === "tool" ? "TOOL_TIMEOUT" : "DURATION_EXCEEDED")),
       limit.maxDurationMs,
     );
     const revoke = setInterval(() => {
-      void authorize(this.config, capability, active.abort.signal).catch(() =>
-        active.abort.abort(new AgentError("AUTHORIZATION_REVOKED")),
+      void authorize(this.config, capability, active.abort.signal).catch((e) =>
+        active.abort.abort(new AgentError(safeCode(e))),
       );
     }, 1000);
     let session: AgentSession | undefined;
@@ -317,12 +384,20 @@ export class PiHost {
             s.view.usage.incomplete = true;
             persist({ type: "usage", usage: { ...s.view.usage } });
             const providerUsage: {reported:ReturnType<typeof completionUsage>;seen:boolean} = {reported:null,seen:false};
+            run.status = "running"; run.stepType = "provider"; run.modelCalls++;
+            run.updatedAt = new Date().toISOString();run.durationMs=Math.max(0,performance.now()-started);
+            persist({type:"usage",usage:{...s.view.usage}});
+            traceRun(id,run,runUsage());
+            let transportCode = "";
             const providerStream = original(model, context, {
               ...options,
+              headers:{...options?.headers,"X-Client-Request-Id":run.runId+":"+turns},
               maxTokens: limit.maxOutputTokens,
               maxRetries: 0,
               signal: active.abort.signal,
-              fetch:boundedModelFetch(cfg.model.endpoint,limit.maxOutputTokens*32+65536,active.abort.signal),
+              fetch:boundedModelFetch(cfg.model.endpoint,limit.maxOutputTokens*32+65536,active.abort.signal,(code,status) => {
+                transportCode = code === "LLM_CONTEXT_OVERFLOW" ? "CONTEXT_OVERFLOW" : status === 429 ? "RATE_LIMITED" : status === 401 || status === 403 || status === 404 ? "MODEL_CONFIGURATION_ERROR" : code === "LLM_RESPONSE_TOO_LARGE" ? "MODEL_OUTPUT_INCOMPLETE" : "PROVIDER_UNAVAILABLE";
+              }),
               onPayload(value) {
                 const payload = value as Record<string, unknown>;
                 delete payload.max_tokens; delete payload.max_completion_tokens;
@@ -356,6 +431,8 @@ export class PiHost {
                   const output=reported?.outputTokens ?? m.usage.output;
                   const validTotal=Number.isInteger(totalInput)&&totalInput>=0&&totalInput<=1000000&&Number.isInteger(output)&&output>=0&&output<=limit.maxOutputTokens;
                   if(validTotal){
+                    // Settle a known reservation. Unknown/crashed attempts retain the full ceiling.
+                    s.view.usage.charged += Math.max(0,totalInput+output) - reserve;
                     s.view.usage.input += totalInput;
                     s.view.usage.cachedInput = (s.view.usage.cachedInput ?? 0) + (Number.isInteger(cachedInput)&&cachedInput>=0&&cachedInput<=totalInput?cachedInput:0);
                     s.view.usage.output += output;
@@ -364,8 +441,9 @@ export class PiHost {
                 }
                 if (m.stopReason === "length") errorCode = "MODEL_OUTPUT_INCOMPLETE";
                 if (m.stopReason === "error" || m.stopReason === "aborted")
-                  errorCode = "MODEL_REQUEST_FAILED";
-                persist({ type: "usage", usage: { ...s.view.usage } });
+                  errorCode = transportCode || (/context.{0,30}(length|window|limit)|maximum.{0,15}tokens|context_length_exceeded/i.test(m.errorMessage ?? "") ? "CONTEXT_OVERFLOW" : "MODEL_REQUEST_FAILED");
+                if(event.type === "error") m.errorMessage = errorCode ?? "MODEL_REQUEST_FAILED";
+                checkpoint("provider");
               }
               stream.push(event);
             }
@@ -377,7 +455,7 @@ export class PiHost {
               content: [],
               api: "openai-completions",
               provider: "story2u",
-              model: this.config.model.model,
+              model: cfg.model.model,
               usage: {
                 input: 0,
                 output: 0,
@@ -407,8 +485,11 @@ export class PiHost {
         undefined,
         s.entries.length ? s.entries : undefined,
       );
-      if (!s.entries.length && s.view.messages.length > 2) {
-        for (const previous of s.view.messages.slice(0, -2)) {
+      if (input.recovery?.continuationContext) {
+        manager.appendMessage({role:"user",content:"Author-confirmed continuation context. Earlier discussion remains in history but is excluded from this request. This is not authorization or confirmed canon:\n"+input.recovery.continuationContext,timestamp:Date.now()});
+      }
+      if (!s.entries.length && s.view.messages.length > 2 && !input.recovery?.continuationContext) {
+        for (const previous of s.view.messages.slice(0, input.recovery ? s.view.messages.findIndex(m => m.id === s.checkpoint!.messageId) : -2)) {
           if (!previous.text.trim()) continue;
           const timestamp = Date.parse(previous.createdAt) || Date.now();
           if (previous.role === "user") manager.appendMessage({role: "user", content: previous.text, timestamp});
@@ -486,32 +567,33 @@ export class PiHost {
             return;
           }
           message.text += text;
+          message.sources = [...sources.values()].filter(src=>message.text.includes(`[[source:${src.sourceId}]]`));
           message.status = "running";
           persist({ type: "text_delta", messageId: message.id, text });
         }
-        if (event.type === "tool_execution_start")
+        if (event.type === "tool_execution_start") {
+          if (event.toolName === "request_turn_organize") run.resumable = false;
+          checkpoint("tool");
           persist({
             type: "tool_started",
             tool: event.toolName,
             messageId: message.id,
           });
-        if (event.type === "tool_execution_end")
+        }
+        if (event.type === "tool_execution_end") {
+          if (event.isError) {
+            errorCode = JSON.stringify(event.result).includes("TOOL_TIMEOUT") ? "TOOL_TIMEOUT" : "TOOL_EXECUTION_FAILED";
+            active.abort.abort(new AgentError(errorCode));
+            return;
+          }
+          if (!active.abort.signal.aborted) checkpoint("tool");
           persist({
             type: "tool_completed",
             tool: event.toolName,
             messageId: message.id,
           });
+        }
       });
-      if (input.compact && manager.getEntries().length > 2) {
-        persist({
-          type: "compaction",
-          text: "正在压缩会话讨论；不会写入知识库。",
-        });
-        await session.compact(
-          "Keep questions, uncertainty, exact source IDs and version bindings. Never turn claims into canon.",
-        );
-        alive();
-      }
       let text = input.text;
       if (input.selection) {
         text +=
@@ -519,6 +601,7 @@ export class PiHost {
           JSON.stringify(input.selection); // fetch canonical evidence through the same bounded tool path
         const tool = allowedTools.find((t) => t.name === "read_chapter");
         if (!tool) throw new AgentError("SCOPE_FORBIDDEN",403);
+        checkpoint("tool");
         await tool.execute(
           "selection",
           {
@@ -552,6 +635,7 @@ export class PiHost {
       );
       // Unrecognized inline markers remain plain prose; only tool-backed cards are evidence.
       message.status = "completed";
+      run.status = "completed"; run.stepType = "completed";
       s.entries = [manager.getHeader(), ...manager.getEntries()].filter(
         (v): v is FileEntry => v !== null,
       );
@@ -562,13 +646,17 @@ export class PiHost {
       });
       persist({ type: "message_completed", messageId: message.id });
     } catch (e) {
+      message.sources = [...sources.values()].filter(src=>message.text.includes(`[[source:${src.sourceId}]]`));
       // Retain accepted input and completed internal messages after a failed turn.
       if (session) s.entries = [session.sessionManager.getHeader(), ...session.sessionManager.getEntries()].filter((v): v is FileEntry => v !== null);
       message.errorCode =
         active.abort.signal.reason instanceof AgentError
           ? active.abort.signal.reason.code
           : safeCode(e);
-      message.status = message.errorCode === "CANCELLED" ? "cancelled" : "failed";
+      message.status = message.errorCode === "CANCELLED" ? "cancelled" : message.errorCode === "SESSION_INTERRUPTED" ? "interrupted" : "failed";
+      run.status = message.status;
+      run.failure = failureFor(message.errorCode,run.modelCalls>0);
+      if (message.status === "cancelled") run.resumable = false;
       if (!this.store.read(id)?.deleted)
         this.event(s, {
           type: "error",
@@ -580,6 +668,10 @@ export class PiHost {
       clearInterval(revoke);
       session?.dispose();
       if (!this.store.read(id)?.deleted) {
+        delete s.executionLease;
+        s.epoch = Math.max(s.epoch ?? 0,this.store.read(id)?.epoch ?? 0);
+        run.durationMs = Math.max(0,performance.now()-started); run.updatedAt = new Date().toISOString();
+        traceRun(id,run,runUsage());
         s.view.status = "idle";
         message.usage = { ...s.view.usage };
         this.event(s, { type: "session_completed", messageId: message.id });

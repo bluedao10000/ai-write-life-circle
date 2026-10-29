@@ -56,8 +56,8 @@ export async function authorize(
     headers: { Authorization: "Bearer " + capability },
     signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(5000)]) : AbortSignal.timeout(5000),
     redirect: "error",
-  });
-  if (!res.ok) throw Error("AUTHORIZATION_REVOKED");
+  }).catch(() => {throw Error("SESSION_INTERRUPTED")});
+  if (!res.ok) throw Error([401,403,410].includes(res.status) ? "AUTHORIZATION_REVOKED" : "SESSION_INTERRUPTED");
   return thinkingGrantSchema.parse(await res.json());
 }
 export function tools(
@@ -105,6 +105,7 @@ export function tools(
             const fingerprint = canonicalJSON([name, args]);
             if (seen.has(fingerprint)) return {content: [{type: "text" as const, text: "This exact lookup was already attempted. Do not repeat it. Answer using available information and explain any gaps."}], details: {duplicate: true}};
             seen.add(fingerprint);
+            const deadline = AbortSignal.timeout(5000);
             const res = await fetch(
               config.storyOrigin + "/internal/v1/agent/tools/execute",
               {
@@ -118,15 +119,18 @@ export function tools(
                   tool: name,
                   arguments: args,
                 }),
-                signal,
+                signal: AbortSignal.any([signal,deadline]),
                 redirect: "error",
               },
-            );
+            ).catch(() => {throw Error(deadline.aborted && !signal.aborted ? "TOOL_TIMEOUT" : "TOOL_EXECUTION_FAILED")});
             const text = await boundedText(
               res,
               config.model.limits.maxToolResultBytes,
-            );
-            if (!res.ok) throw Error("STORY_TOOL_FAILED");
+            ).catch((e:unknown) => {
+              if(e instanceof Error && e.message === "TOOL_RESULT_TOO_LARGE") throw e;
+              throw Error(deadline.aborted && !signal.aborted ? "TOOL_TIMEOUT" : "TOOL_EXECUTION_FAILED");
+            });
+            if (!res.ok) throw Error("TOOL_EXECUTION_FAILED");
             const value = JSON.parse(text) as { sources?: unknown[] };
             const sources = (value.sources ?? []).flatMap((src) => {
               const result = thinkingSourceSchema.safeParse(src);

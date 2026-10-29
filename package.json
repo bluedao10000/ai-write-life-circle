@@ -54,7 +54,9 @@
     "test:pi:worker": "pnpm build:api:go && pnpm build:agent:worker && pnpm build:agent:control && pnpm build:agent && node scripts/test-pi-review-worker.mjs",
     "test:pi:knowledge": "pnpm build:api:go && pnpm build:agent:worker && pnpm build:agent:control && pnpm build:agent && node scripts/test-pi-eval-policy.mjs && node scripts/test-pi-knowledge-parity.mjs && node scripts/test-pi-knowledge-worker.mjs && node scripts/test-pi-knowledge-faults.mjs",
     "eval:pi:review:live": "pnpm build:api:go && pnpm build:agent:control && pnpm build:agent && node scripts/eval-pi-live.mjs",
-    "eval:pi:knowledge:live": "pnpm build:api:go && pnpm build:agent:control && pnpm build:agent && node scripts/eval-pi-live.mjs --knowledge"
+    "eval:pi:knowledge:live": "pnpm build:api:go && pnpm build:agent:control && pnpm build:agent && node scripts/eval-pi-live.mjs --knowledge",
+    "eval:reliability": "pnpm --filter @writer-agent/contracts build && node scripts/eval-agent-reliability.mjs",
+    "test:reliability": "pnpm eval:reliability && pnpm test:thinking"
   },
   "devDependencies": {
     "@redocly/cli": "2.63.0",

@@ -10,6 +10,7 @@ import (
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/compat"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/storage"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -19,7 +20,7 @@ import (
 	"time"
 )
 
-var route = regexp.MustCompile(`^/v1/studio/books/([A-Za-z0-9_-]+)/thinking/(capabilities|models|preferences|sessions)(?:/(th-[a-f0-9-]{36}))?(?:/(messages|events|cancel))?$`)
+var route = regexp.MustCompile(`^/v1/studio/books/([A-Za-z0-9_-]+)/thinking/(capabilities|models|preferences|sessions)(?:/(th-[a-f0-9-]{36}))?(?:/(messages|events|cancel|resume))?$`)
 
 func IsPublicPath(path string) bool { return strings.Contains(path, "/thinking/") }
 func reply(w http.ResponseWriter, v any, e error, status int) {
@@ -27,8 +28,11 @@ func reply(w http.ResponseWriter, v any, e error, status int) {
 	w.Header().Set("Content-Type", "application/json")
 	if e != nil {
 		p := application.AsError(e)
+		trace := compat.UUID()
+		w.Header().Set("X-Request-Id", trace)
+		slog.Info("thinking_request_failed", "trace_id", trace, "error_code", p.Code)
 		w.WriteHeader(p.Status)
-		_ = json.NewEncoder(w).Encode(map[string]any{"code": p.Code, "detail": p.Detail, "status": p.Status, "type": "about:blank", "title": p.Code})
+		_ = json.NewEncoder(w).Encode(map[string]any{"code": p.Code, "detail": p.Detail, "status": p.Status, "type": "about:blank", "title": p.Code, "requestId": trace, "failure": recoveryFailure(p.Code, p.Detail)})
 		return
 	}
 	w.WriteHeader(status)
@@ -36,6 +40,25 @@ func reply(w http.ResponseWriter, v any, e error, status int) {
 		_ = json.NewEncoder(w).Encode(v)
 	}
 }
+
+// Old browser bundles strictly decode thinking-v1. Expose the additive Run only
+// to clients that negotiate it; private snapshots always retain the full record.
+func publicSessionView(r *http.Request, raw json.RawMessage) json.RawMessage {
+	if r.Header.Get("X-Writer-Agent-Thinking") == "reliability-v1" {
+		return raw
+	}
+	var view map[string]json.RawMessage
+	if json.Unmarshal(raw, &view) != nil {
+		return raw
+	}
+	delete(view, "run")
+	projected, err := json.Marshal(view)
+	if err != nil {
+		return raw
+	}
+	return projected
+}
+
 func decode(w http.ResponseWriter, r *http.Request, v any) error {
 	d := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64*1024))
 	d.DisallowUnknownFields()
@@ -227,6 +250,7 @@ func (s *Service) PublicHandler() http.Handler {
 					for id, v := range st.Sessions {
 						if v.Owner == a.ID && v.Book == book && !v.Deleted {
 							v.Scopes = in.Scopes
+							v.AuthorizationVersion++
 							v.Nonce = compat.UUID()
 							st.Sessions[id] = v
 						}
@@ -363,7 +387,7 @@ func (s *Service) PublicHandler() http.Handler {
 			if e == nil {
 				_, e = s.owned(*a, book, record.ID)
 			}
-			reply(w, v, e, 201)
+			reply(w, publicSessionView(r, v), e, 201)
 			return
 		}
 		record, e := s.owned(*a, book, id)
@@ -404,19 +428,31 @@ func (s *Service) PublicHandler() http.Handler {
 				target += "/events?after=" + strconv.Itoa(cursor)
 			}
 			v, e := s.agent(r.Context(), "GET", target, nil)
+			if e == nil && action == "" && record.ResumeBlocked {
+				v = cancelledSessionView(v)
+			}
 			if e == nil {
 				v, e = s.validateResponseSources(r.Context(), record, v)
 			}
 			if e == nil {
 				_, e = s.owned(*a, book, id)
 			}
-			reply(w, v, e, 200)
+			reply(w, publicSessionView(r, v), e, 200)
 			return
 		}
 		if r.Method == "POST" && action == "cancel" {
 			e = s.tx(r.Context(), func(st *registry) error {
 				v := st.Sessions[id]
+				v.ResumeBlocked = true
 				v.Nonce = compat.UUID()
+				if st.Cancelled == nil {
+					st.Cancelled = map[string]bool{}
+				}
+				for key, receipt := range st.Requests {
+					if receipt.ID == id {
+						st.Cancelled[key] = true
+					}
+				}
 				st.Sessions[id] = v
 				return nil
 			})
@@ -425,13 +461,28 @@ func (s *Service) PublicHandler() http.Handler {
 				return
 			}
 			v, e := s.agent(r.Context(), "POST", target+"/cancel", map[string]any{})
-			reply(w, v, e, 200)
+			reply(w, publicSessionView(r, v), e, 200)
 			return
 		}
-		if r.Method == "POST" && action == "messages" {
+		if r.Method == "POST" && (action == "messages" || action == "resume") {
 			var in Message
-			if e := decode(w, r, &in); e != nil {
-				reply(w, nil, e, 0)
+			var decoding error
+			if action == "resume" {
+				var recovery Recovery
+				decoding = decode(w, r, &recovery)
+				if !recovery.ConfirmAdditionalCost || !regexp.MustCompile(`^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$`).MatchString(recovery.RunID) || compat.UTF16Len(recovery.ContinuationContext) > 12000 || (recovery.ContinuationContext != "" && strings.TrimSpace(recovery.ContinuationContext) == "") {
+					decoding = fail(422, "VALIDATION_FAILED")
+				}
+				in.Recovery = &recovery
+				in.Text = "Resume accepted message"
+			} else {
+				decoding = decode(w, r, &in)
+				if in.Recovery != nil {
+					decoding = fail(422, "VALIDATION_FAILED")
+				}
+			}
+			if decoding != nil {
+				reply(w, nil, decoding, 0)
 				return
 			}
 			if strings.TrimSpace(in.Text) == "" || compat.UTF16Len(in.Text) > 12000 {
@@ -449,6 +500,9 @@ func (s *Service) PublicHandler() http.Handler {
 					return err
 				}
 				record = latest
+				if in.Recovery != nil && record.ResumeBlocked {
+					return fail(409, "SESSION_INTERRUPTED")
+				}
 				if in.ModelID != "" {
 					st, err := s.load()
 					if err != nil {
@@ -467,6 +521,9 @@ func (s *Service) PublicHandler() http.Handler {
 				if e != nil {
 					return e
 				}
+				if modelID(model) == modelID(record.Model) && hash(model) != hash(record.Model) {
+					return fail(409, "MODEL_REAUTHORIZATION_REQUIRED")
+				}
 
 				// Only explicit saved-version selections enter model context.
 				if in.Selection != nil {
@@ -484,6 +541,9 @@ func (s *Service) PublicHandler() http.Handler {
 					return e
 				}
 				old, exists := st.Requests[rk]
+				if st.Cancelled[rk] {
+					return fail(409, "SESSION_INTERRUPTED")
+				}
 				if exists && old.Hash != fp {
 					return fail(422, "IDEMPOTENCY_KEY_REUSED")
 				}
@@ -495,6 +555,27 @@ func (s *Service) PublicHandler() http.Handler {
 					var state sessionUsage
 					if json.Unmarshal(raw, &state) != nil {
 						return fail(502, "AGENT_INVALID_RESPONSE")
+					}
+					if action == "resume" {
+						var snapshot struct {
+							Model  Model    `json:"model"`
+							Scopes []string `json:"scopes"`
+							Run    struct {
+								ID                   string `json:"runId"`
+								AuthorizationVersion int    `json:"authorizationVersion"`
+								Status               string `json:"status"`
+								Resumable            bool   `json:"resumable"`
+								Failure              struct {
+									Retryable bool `json:"retryable"`
+								} `json:"failure"`
+							} `json:"run"`
+						}
+						if json.Unmarshal(raw, &snapshot) != nil || snapshot.Run.ID != in.Recovery.RunID || !snapshot.Run.Resumable || !snapshot.Run.Failure.Retryable || (snapshot.Run.Status != "failed" && snapshot.Run.Status != "interrupted") {
+							return fail(409, "RESUME_NOT_SAFE")
+						}
+						if hash(snapshot.Model) != hash(model) || hash(snapshot.Scopes) != hash(record.Scopes) || snapshot.Run.AuthorizationVersion != record.AuthorizationVersion {
+							return fail(403, "AUTHORIZATION_REQUIRED")
+						}
 					}
 					if state.Status == "running" {
 						return fail(409, "SESSION_BUSY")
@@ -520,6 +601,9 @@ func (s *Service) PublicHandler() http.Handler {
 						v := st.Sessions[id]
 						if v.Deleted {
 							return fail(404, "NOT_FOUND")
+						}
+						if v.Nonce != record.Nonce {
+							return fail(409, "SESSION_INTERRUPTED")
 						}
 						if plan.Sessions > 0 {
 							busy := 0
@@ -583,8 +667,12 @@ func (s *Service) PublicHandler() http.Handler {
 						// hook below is retried by RetryIntake instead of being lost.
 						queued := s.tx(r.Context(), func(st *registry) error {
 							current := st.Sessions[id]
-							if current.Deleted {
+							if current.Deleted || current.Nonce != record.Nonce {
+								record = current
 								return nil
+							}
+							if in.Recovery == nil {
+								current.ResumeBlocked = false
 							}
 							current.LastMessage = accepted.MessageID
 							if s.OnMessageAccepted != nil {
@@ -594,7 +682,7 @@ func (s *Service) PublicHandler() http.Handler {
 							record = current
 							return nil
 						}) == nil
-						if s.OnMessageAccepted != nil && !record.Deleted {
+						if s.OnMessageAccepted != nil && !record.Deleted && !record.ResumeBlocked {
 							if s.OnMessageAccepted(r.Context(), record, accepted.MessageID) == nil && queued {
 								_ = s.dropIntake(r.Context(), id, accepted.MessageID)
 							}

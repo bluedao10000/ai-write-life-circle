@@ -7,6 +7,7 @@ import {
   thinkingSessionSchema,
   thinkingSummarySchema,
   type ThinkingCreate,
+  type ThinkingRecovery,
   type ThinkingMessageInput,
 } from "@writer-agent/contracts";
 import { requestApi, postJson } from "./client";
@@ -68,6 +69,9 @@ export const thinkingApi = {
       .parse(
         await postJson(root(book) + `/sessions/${id}/messages`, input, key),
       );
+  },
+  async resume(book: string, id: string, input: ThinkingRecovery, key: string) {
+    return z.object({messageId:z.string()}).parse(await postJson(root(book)+`/sessions/${id}/resume`,input,key));
   },
   async cancel(book: string, id: string) {
     return thinkingSessionSchema.parse(

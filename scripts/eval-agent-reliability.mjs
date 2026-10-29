@@ -1,0 +1,10 @@
+import { spawnSync } from "node:child_process";
+import { readFileSync, rmSync } from "node:fs";
+import { resolve } from "node:path";
+const path=resolve(".local/evals/agent-reliability/report.json");
+rmSync(path,{force:true});
+const result=spawnSync("pnpm",["--filter","@writer-agent/agent","exec","tsx","--test","test/reliability.test.ts"],{stdio:"inherit",env:{...process.env,RELIABILITY_EVAL_REPORT:path}});
+if(result.status!==0)process.exit(result.status??1);
+const report=JSON.parse(readFileSync(path,"utf8"));
+if(!report.syntheticOnly || report.realLLMCalled || report.metrics.sessionRecoverySuccessRate!==1 || report.metrics.messageLossRate!==0 || report.metrics.duplicateToolExecutions!==0 || report.metrics.unexpectedDuplicateModelCalls!==0 || report.metrics.errorStateConsistencyRate!==1)throw Error("RELIABILITY_GATE_FAILED");
+console.log(JSON.stringify({report:path,metrics:report.metrics}));
