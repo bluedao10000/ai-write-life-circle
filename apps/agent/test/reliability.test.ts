@@ -103,6 +103,21 @@ test("legacy known reservations migrate lazily while unknown costs are never rel
  }finally{await f.close()}
 });
 
+test("restart preserves a completed answer persisted before legacy session finalization",async()=>{
+ const f=await fixture();try{
+  await f.send();const saved=f.host.get(f.id),runId=saved.view.run!.runId,calls=f.calls;
+  saved.view.status="running";saved.view.run!.resumable=true;
+  saved.events=saved.events.filter(e=>e.type!=="session_completed");
+  f.host.store.write(saved);f.restart();
+  const restored=f.host.get(f.id).view;
+  assert.equal(restored.status,"idle");assert.equal(restored.run?.runId,runId);
+  assert.equal(restored.run?.status,"completed");assert.equal(restored.run?.resumable,false);
+  assert.equal(restored.run?.failure,undefined);assert.equal(restored.messages.at(-1)?.status,"completed");
+  await assert.rejects(f.resume("must-not-pay-twice"),e=>e instanceof AgentError && e.code==="RESUME_NOT_SAFE");
+  assert.equal(f.calls,calls);
+ }finally{await f.close()}
+});
+
 test("safe accepted checkpoint survives restart without automatic model invocation",async()=>{
   const f=await fixture();try {
     // Simulate the durable state left by SIGKILL, without manufacturing SDK internals.

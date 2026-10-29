@@ -124,7 +124,10 @@ const paths = {
   },
   [base + "/sessions/{sessionId}/cancel"]: {
     parameters: [param("bookId"), param("sessionId")],
-    post: op("cancelThinkingRequest", "thinkingSession"),
+    post: {...op("cancelThinkingRequest", "thinkingSession"),responses:{
+      ...op("cancelThinkingRequest", "thinkingSession").responses,
+      202:{description:"Cancellation durably recorded; sidecar synchronization pending",content:{"application/json":{schema:{$ref:"#/components/schemas/thinkingCancelReceipt"}}}},
+    }},
   },
 };
 const doc = {

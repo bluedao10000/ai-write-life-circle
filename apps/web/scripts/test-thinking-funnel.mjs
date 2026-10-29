@@ -274,8 +274,15 @@ try {
   await input.fill("取消这次思考");
   await send();
   await fixture.waitForProviderCall(callsBefore);
+  await expect(page.getByRole("button", { name: "停止", exact: true })).toBeVisible();
+  await fixture.stopAgent("SIGKILL");
   await page.getByRole("button", { name: "停止", exact: true }).click();
+  await expect(page.getByText("取消已记录，服务恢复后会同步停止状态。不会恢复已取消的任务。")).toBeVisible();
   await expect(turns.last()).toContainText("已取消");
+  const callsAfterOfflineCancel=fixture.calls.length;
+  fixture.config.hang=false;await fixture.restartAgent();
+  await expect(page.getByText("取消已记录，服务恢复后会同步停止状态。不会恢复已取消的任务。")).toHaveCount(0,{timeout:20000});
+  assert.equal(fixture.calls.length,callsAfterOfflineCancel);
   fixture.config.hang = false;
   await fixture.stopAgent();
   await input.fill("服务离线时不重复接受");

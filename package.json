@@ -38,7 +38,7 @@
     "build:agent": "pnpm --filter @writer-agent/contracts build && pnpm --filter @writer-agent/agent build",
     "typecheck:agent": "pnpm --filter @writer-agent/agent typecheck",
     "test:agent": "pnpm --filter @writer-agent/contracts build && pnpm --filter @writer-agent/agent test",
-    "test:thinking": "pnpm build:api:go && pnpm build:agent && node scripts/test-thinking-agent.mjs",
+    "test:thinking": "pnpm build:api:go && pnpm build:agent && node scripts/test-thinking-agent.mjs && node scripts/test-thinking-terminal-crash.mjs",
     "eval:creative": "go run -C apps/api-go ./cmd/creative-eval",
     "eval:creative:live": "go run -C apps/api-go ./cmd/creative-eval --live --confirm-fixtures",
     "test:creative": "pnpm build:api:go && pnpm build:agent:worker && pnpm build:agent && node scripts/test-creative-workflow.mjs",

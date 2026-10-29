@@ -61,6 +61,12 @@ Resume 从已持久化的“当前用户请求之前”业务检查点重建 SDK
 - `apps/web/src/features/thinking/*`、`InspirationWorkspace.tsx`、`thinkingApi.ts`、Worker 白名单：断线恢复、真实恢复与授权操作、错误/Trace 展示，保留草稿/历史。
 - 自动化：Agent fault tests、Go service tests、Web controller/UX tests、真实 Go/Pi restart 集成、Reliability Eval、CI 门禁。章节编辑、自动保存、出版、正式知识 apply 路径未修改。
 
+### 定向回归修复
+
+- REL-R01：Creative Turn 以逻辑 user message 为主键，在下一 user message 之前解析该逻辑 Turn 的所有 assistant attempt；捕获最新 completed attempt，而不是固定 `-answer`。Resume 接受时只把 `ANSWER_failed` / `ANSWER_interrupted` 的未产出 Turn 重新置为 awaiting；Turn 与 Job 仍在同一个 Go transaction 中提交，重复 reconcile 不产生第二份整理任务。回归：`TestResumeCapturesLatestSuccessfulAttemptOnce`。
+- REL-R02：成功路径将 `sources`、`message_completed` 暂存在内存，与 completed assistant、completed Run、usage、idle Session、lease 释放一起由 `session_completed` 一次 fsync+rename 提交。`Store.recover` 对新旧快照先寻找 completed assistant / `message_completed` / completed Run 证据；已经完成的回合保持 completed、`resumable=false`，不会重新开放付费 Resume。回归包括 Store 级旧快照测试和 `test-thinking-terminal-crash.mjs` 的确定性 SIGKILL barrier。
+- REL-R03：Go 先持久化取消栅栏；Pi 在线时返回 200，Pi 离线时返回 `202 {status:"cancelled",syncPending:true}`。Session/events 在严格客户端上暴露 `cancellationPending`，Cleanup 使用 nonce 和与消息准入相同的 Session lock 重试下游取消。迟到的旧取消不会停止后续新任务；pending 期间新消息返回 `CANCELLATION_PENDING`。回归：Go offline-cancel、controller 202 receipt 和真实浏览器/Pi 进程测试。
+
 ## 5. 验证与结果
 
 Eval 只统计隔离故障场景，不能外推生产可用性或文学质量。taskCompletionRate 的分母包含故意不恢复的故障，不能把它解释为线上完成率。真实进程 SIGKILL 与 Go restart 在 `test-thinking-agent.mjs`，不混同 Store 单测模拟。
@@ -72,7 +78,7 @@ Eval 只统计隔离故障场景，不能外推生产可用性或文学质量。
 | 429、500、超时、截断、上下文溢出 | `apps/agent/test/reliability.test.ts` | 规范错误分类；失败调用无自动重试；未知用量保留预留 |
 | 工具失败、重复调用、未知副作用 | fingerprint/runtime/reliability tests；Go creative integration | 单轮重复读取去重；工具失败立即停止；副作用执行后拒绝恢复 |
 | 长对话与预算、旧数据迁移 | 小额度 15 轮回归、legacy accounting test、真实浏览器续谈要点 | 有效 usage 结算；旧会话仅结算已知预留；容量超限由作者确认上下文继续 |
-| 主动取消、Resume/Cancel 竞争、离线取消 | admission gate test、reliability tests、真实进程 offline cancel | 取消有持久栅栏；新幂等键也不能复活已取消 Run |
+| 主动取消、Resume/Cancel 竞争、离线取消 | admission gate test、reliability tests、Go offline-cancel、真实浏览器/Pi 进程 | 取消有持久栅栏；离线返回 202 pending，恢复后同步且不复活；新幂等键也不能复活已取消 Run |
 | 删除后迟到结果 | reliability delete、Go ownership race、进程离线删除 | 墓碑阻断后续写入，抹除消息、entries、checkpoint、runs、lease |
 | 撤销授权，再授予相同范围 | authorizationVersion test、Go scope preflight | 旧 Run 仍被拒绝，恢复不能自行重新授权 |
 | 用户主动切换模型、同 ID 配置改变 | chat/config/Go model switch tests | 明确选择可切换；不 fallback；同 ID 改变 Provider 配置要求新话题确认 |
@@ -81,13 +87,13 @@ Eval 只统计隔离故障场景，不能外推生产可用性或文学质量。
 
 最终验证：
 
-- `pnpm test:api:go`：全部 Go 包通过 `-race`。
-- `pnpm test:agent`：34 项通过；`pnpm eval:reliability`：18 项通过。
-- Web 单测：221 项通过；Worker/D1 单测：23 项通过。
+- `go test -race ./...`：全部 Go 包通过。
+- `pnpm test:agent`：35 项通过；`pnpm eval:reliability`：19 项通过。
+- Web 单测：222 项通过；Worker/D1 单测：23 项通过。
 - `pnpm test:thinking`、Web `test:thinking`、`pnpm test:pi:worker`、`pnpm test:creative`：真实隔离进程/浏览器集成通过。
 - `pnpm typecheck`、`pnpm lint`、`pnpm build`、`pnpm openapi:check`、`pnpm openapi:lint`、`pnpm test:style` 通过。构建保留 chunk 大小提示，OpenAPI lint 保留 license/未引用组件提示；无阻断错误。
 
-Reliability Eval 的 9 个计量场景中：6/9 完成，另 3 个故意注入且不恢复的 timeout/tool failure/unsafe side-effect 被安全停止；恢复成功 5/5，23 条已接受消息丢失 0，重复工具执行 0，非预期重复模型调用 0，错误与实际状态一致 9/9。本机 Mock HTTP 故障恢复多次运行约 70–130ms（不含真实网络、排队和作者确认时间；不是 SLA）。原始报告生成于 `.local/evals/agent-reliability/report.json`。
+Reliability Eval 的 9 个计量场景中：6/9 完成，另 3 个故意注入且不恢复的 timeout/tool failure/unsafe side-effect 被安全停止；恢复成功 5/5，23 条已接受消息丢失 0，重复工具执行 0，非预期重复模型调用 0，错误与实际状态一致 9/9。本机 Mock HTTP 故障恢复多次运行约 61–66ms（不含真实网络、排队和作者确认时间；不是 SLA）。原始报告生成于 `.local/evals/agent-reliability/report.json`。
 
 ## 6. 未解决风险与后续
 

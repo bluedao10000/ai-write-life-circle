@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -605,4 +606,60 @@ func sliceUTF16(text string, start, end int) (string, bool) {
 		u += w
 	}
 	return string(out), true
+}
+
+func TestResumeCapturesLatestSuccessfulAttemptOnce(t *testing.T) {
+	f := setup(t)
+	f.enable()
+	ctx := context.Background()
+	session := "th-" + compat.UUID()
+	mid := "resume-focus"
+	if _, e := f.s.AcceptTurn(ctx, session, mid, "auto"); e != nil {
+		t.Fatal(e)
+	}
+	f.pi[session] = &Snapshot{SessionID: session, BookID: f.book.ID, Status: "idle", Messages: []SnapshotMessage{{ID: mid, Role: "user", Text: "synthetic author question", Status: "completed"}, {ID: mid + "-answer", Role: "assistant", Text: "incomplete attempt", Status: "failed"}}}
+	f.reconcile()
+	if turn, _ := f.s.Excerpt(ctx, TurnKey(session, mid)); turn.Status != "skipped" {
+		t.Fatal(turn)
+	}
+	// The real Resume acceptance hook carries the SAME logical user message.
+	if _, e := f.s.AcceptTurn(ctx, session, mid, "auto"); e != nil {
+		t.Fatal(e)
+	}
+	f.pi[session].Messages = append(f.pi[session].Messages, SnapshotMessage{ID: mid + "-answer-2", Role: "assistant", Status: "running"})
+	f.reconcile()
+	if turn, _ := f.s.Excerpt(ctx, TurnKey(session, mid)); turn.Status != "awaiting" {
+		t.Fatalf("resume was skipped before its answer completed: %+v", turn)
+	}
+	// Enough failed attempts to exceed the excerpt's history-count limit must
+	// not evict the focus USER or import a neighbouring conversation turn.
+	for i := 3; i < MaxExcerptMsgs+5; i++ {
+		f.pi[session].Messages = append(f.pi[session].Messages, SnapshotMessage{ID: mid + "-answer-" + strconv.Itoa(i), Role: "assistant", Status: "failed"})
+	}
+	answer := mid + "-answer-99"
+	f.pi[session].Messages = append(f.pi[session].Messages, SnapshotMessage{ID: answer, Role: "assistant", Text: "latest successful synthetic answer", Status: "completed"}, SnapshotMessage{ID: "next", Role: "user", Text: "unrelated later question", Status: "completed"}, SnapshotMessage{ID: "next-answer", Role: "assistant", Text: "unrelated later answer", Status: "completed"})
+	f.reconcile()
+	turn, _ := f.s.Excerpt(ctx, TurnKey(session, mid))
+	if turn.Status != "queued" || turn.AnswerID != answer || len(turn.Excerpt) != 2 || turn.Excerpt[0].ID != mid || turn.Excerpt[1].ID != answer {
+		t.Fatalf("wrong logical focus: %+v", turn)
+	}
+	for i := 0; i < 3; i++ {
+		_, _ = f.s.AcceptTurn(ctx, session, mid, "auto")
+		f.reconcile()
+	}
+	st, e := f.s.load()
+	if e != nil {
+		t.Fatal(e)
+	}
+	if len(st.Jobs) != 1 || st.Jobs[0].TurnKey != turn.Key {
+		t.Fatalf("duplicate organizing job: %+v", st.Jobs)
+	}
+	f.client.f = func(llm.Request) (llm.Response, error) {
+		return llm.Response{Text: `{"summary":"synthetic discussion","noChange":true,"noChangeReason":"No setting change","changes":[]}`}, nil
+	}
+	f.process()
+	f.process()
+	if f.client.calls.Load() != 1 {
+		t.Fatalf("organizing executed %d times", f.client.calls.Load())
+	}
 }

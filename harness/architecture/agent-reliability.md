@@ -18,6 +18,8 @@ Store 的 PID 排他进程锁增加原子 admission guard，串行初始创建�
 
 accept 在异步 authorize 返回后重新读取 epoch；取消、删除、另一轮准入改变状态会使旧快照失效。运行时用 runId + lease owner/epoch 校验结果；取消显式 Abort 原因。Go cancel 轮换 capability nonce，设置持久 ResumeBlocked（离线取消也有效），并持久标记已有请求回执 cancelled，防止未确认的旧 handoff 在重新签发能力后复活。只有后来新用户消息的真实接受回执才能解除 ResumeBlocked；恢复请求不能自行解除。Go 新准入事务再次比对 nonce，避免验证期间范围撤销。
 
+Pi 在线时取消返回同步后的 200；Pi 离线时 Go 返回 `202 {status:"cancelled",syncPending:true}`，并在 Session/events 上用 `cancellationPending` 展示下游待同步状态。Cleanup 复用消息准入的 Session lock，并只接受当前 nonce 的取消，因而旧请求迟到时不会停止后来创建的新任务。pending 存在时新消息被稳定拒绝为 `CANCELLATION_PENDING`；Pi 恢复并同步后清除 pending，已取消 Run 仍保持不可恢复。
+
 当前单写者锁 + 持久 epoch 不支持跨主机多副本；要扩展必须以事务存储替代文件锁，不能仅延长 lease。
 
 ## 恢复协议

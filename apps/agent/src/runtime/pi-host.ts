@@ -135,10 +135,10 @@ export class PiHost {
     this.event(s, { type: "session_started" });
     return s.view;
   }
-  event(s: Saved, event: Omit<ThinkingEvent, "id">) {
+  event(s: Saved, event: Omit<ThinkingEvent, "id">, commit = true) {
     if (s.deleted) return;
     s.events.push({ ...event, id: ++s.view.cursor });
-    this.store.write(s);
+    if (commit) this.store.write(s);
   }
   async accept(
     id: string,
@@ -259,7 +259,13 @@ export class PiHost {
     );
     return { messageId: mid };
   }
-  async cancel(id: string) {
+  async cancel(id: string, capability?: string) {
+    if (capability) {
+      const before=this.get(id),epoch=before.epoch??0;
+      const grant=await authorize(this.config,capability);
+      if(grant.sessionId!==id || grant.authorId!==before.owner || grant.bookId!==before.view.bookId) throw new AgentError("GRANT_MISMATCH",403);
+      if((this.get(id).epoch??0)!==epoch) throw new AgentError("SESSION_INTERRUPTED",409);
+    }
     const active = this.active.get(id);
     const s = this.get(id);
     s.epoch = (s.epoch ?? 0) + 1;
@@ -635,16 +641,14 @@ export class PiHost {
       );
       // Unrecognized inline markers remain plain prose; only tool-backed cards are evidence.
       message.status = "completed";
-      run.status = "completed"; run.stepType = "completed";
+      run.status = "completed"; run.stepType = "completed"; run.resumable = false;
       s.entries = [manager.getHeader(), ...manager.getEntries()].filter(
         (v): v is FileEntry => v !== null,
       );
-      persist({
-        type: "sources",
-        messageId: message.id,
-        sources: message.sources,
-      });
-      persist({ type: "message_completed", messageId: message.id });
+      // Buffer terminal events: the finally block commits them together with
+      // the completed answer, Run, usage, idle Session and released lease.
+      this.event(s, {type:"sources",messageId:message.id,sources:message.sources}, false);
+      this.event(s, {type:"message_completed",messageId:message.id}, false);
     } catch (e) {
       message.sources = [...sources.values()].filter(src=>message.text.includes(`[[source:${src.sourceId}]]`));
       // Retain accepted input and completed internal messages after a failed turn.
@@ -671,10 +675,10 @@ export class PiHost {
         delete s.executionLease;
         s.epoch = Math.max(s.epoch ?? 0,this.store.read(id)?.epoch ?? 0);
         run.durationMs = Math.max(0,performance.now()-started); run.updatedAt = new Date().toISOString();
-        traceRun(id,run,runUsage());
         s.view.status = "idle";
         message.usage = { ...s.view.usage };
         this.event(s, { type: "session_completed", messageId: message.id });
+        traceRun(id,run,runUsage());
       }
     }
   }

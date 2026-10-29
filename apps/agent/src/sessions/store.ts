@@ -164,25 +164,29 @@ export class Store {
         continue;
       }
       if (s.view.status !== "running") continue;
-      for (const m of s.view.messages) {
-        if (m.status === "accepted" || m.status === "running") {
-          m.status = "interrupted";
-          m.errorCode = "AGENT_RESTARTED";
-        }
-      }
+      const run = s.view.run;
+      const answerId = run ? run.messageId + "-answer" + (run.attempt > 1 ? "-" + run.attempt : "") : undefined;
+      const answer = answerId ? s.view.messages.find(m=>m.role==="assistant" && m.id===answerId) : [...s.view.messages].reverse().find(m=>m.role==="assistant");
+      const completed = answer?.status === "completed" || run?.status === "completed" ||
+        (answer && s.events.some(e=>e.type==="message_completed" && e.messageId===answer.id));
+      const terminal = completed ? "completed" : answer && ["failed","cancelled","interrupted"].includes(answer.status) ? answer.status : run && ["failed","cancelled","interrupted"].includes(run.status) ? run.status : undefined;
       delete s.executionLease;
       s.epoch = (s.epoch ?? 0) + 1;
-      if (s.view.run) {
-        s.view.run.status = "interrupted";
-        s.view.run.failure = failureFor("SESSION_INTERRUPTED", s.view.run.modelCalls > 0);
-        s.view.run.updatedAt = new Date().toISOString();
+      if (completed) {
+        if (answer) {answer.status="completed";delete answer.errorCode}
+        if (run) {run.status="completed";run.resumable=false;delete run.failure}
+      } else if (terminal === "failed" || terminal === "cancelled") {
+        if (run) {run.status=terminal;if(terminal==="cancelled")run.resumable=false}
+      } else {
+        if (answer) {answer.status="interrupted";answer.errorCode="AGENT_RESTARTED"}
+        if (run) {run.status="interrupted";run.failure=failureFor("SESSION_INTERRUPTED",run.modelCalls>0)}
+        s.events.push({id:++s.view.cursor,type:"error",messageId:answer?.id,code:"AGENT_RESTARTED"});
       }
-      s.view.status = "idle";
-      s.events.push({
-        id: ++s.view.cursor,
-        type: "error",
-        code: "AGENT_RESTARTED",
-      });
+      if (run) run.updatedAt=new Date().toISOString();
+      s.view.status="idle";
+      if (!s.events.some(e=>e.type==="session_completed" && e.messageId===answer?.id))
+        s.events.push({id:++s.view.cursor,type:"session_completed",messageId:answer?.id});
+
       this.write(s);
     }
   }

@@ -740,6 +740,16 @@
               }
             }
           },
+          "202": {
+            "description": "Cancellation durably recorded; sidecar synchronization pending",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/thinkingCancelReceipt"
+                }
+              }
+            }
+          },
           "401": {
             "description": "Author session required"
           },
@@ -774,6 +784,28 @@
       }
     },
     "schemas": {
+      "thinkingCancelReceipt": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "sessionId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "const": "cancelled"
+          },
+          "syncPending": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "sessionId",
+          "status",
+          "syncPending"
+        ],
+        "additionalProperties": false
+      },
       "thinkingCreate": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -1224,6 +1256,9 @@
               "running",
               "deleted"
             ]
+          },
+          "cancellationPending": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -2981,6 +3016,9 @@
               "durationMs"
             ],
             "additionalProperties": false
+          },
+          "cancellationPending": {
+            "type": "boolean"
           }
         },
         "required": [

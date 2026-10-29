@@ -1,4 +1,5 @@
 const messages: Record<string, string> = {
+  CANCELLATION_PENDING: "取消已记录，正在等待服务同步停止。同步完成后可以发送新问题。",
   RESUME_NOT_SAFE: '本轮不能安全重放，请检查已有结果后再发送新问题。',
   CONTINUATION_CONTEXT_REQUIRED: '请确认续谈要点后使用继续执行。',
   SESSION_INTERRUPTED: '执行已中断，对话已保留。',

@@ -84,7 +84,8 @@ export function server(host: PiHost) {
           return;
         }
         if (req.method === "POST" && action === "cancel") {
-          json(res, 200, await host.cancel(id));
+          const b=z.object({capability:z.string().max(4096).optional()}).strict().parse(await body(req));
+          json(res, 200, await host.cancel(id,b.capability));
           return;
         }
         const s = host.get(id);

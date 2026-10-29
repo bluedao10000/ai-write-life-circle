@@ -166,7 +166,8 @@ try {
   await f.call(cancelledPath+'/messages',{method:'POST',key:'offline-cancel-message',body:{text:'Synthetic offline cancellation'},status:202});
   await f.waitForProviderCall(callsBefore);
   await f.stopAgent('SIGKILL');
-  await f.call(cancelledPath+'/cancel',{method:'POST',body:{},status:503});
+  const cancelAck=await f.call(cancelledPath+'/cancel',{method:'POST',body:{},status:202});
+  assert.equal(cancelAck.status,'cancelled');assert.equal(cancelAck.syncPending,true);
   await f.restartAgent();
   const cancelled=await f.call(cancelledPath);
   assert.equal(cancelled.run.status,'cancelled');assert.equal(cancelled.messages.at(-1).status,'cancelled');

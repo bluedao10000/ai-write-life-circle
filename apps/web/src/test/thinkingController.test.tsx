@@ -249,3 +249,19 @@ it("a definitive cancelled-request fence releases the outbox without losing the 
  act(()=>result.current.send({text:"new author question"}));await waitFor(()=>expect(send).toHaveBeenCalledTimes(2));
  expect(send.mock.calls[1][3]).not.toBe(send.mock.calls[0][3]);
 });
+
+it("a real 202 cancel receipt reports the recorded stop until backend synchronization completes",async()=>{
+ let recorded=false;
+ const fetch=vi.spyOn(globalThis,"fetch").mockImplementation(async()=>{
+   recorded=true;return new Response(JSON.stringify({sessionId:"A",status:"cancelled",syncPending:true}),{status:202,headers:{"content-type":"application/json"}});
+ });
+ const {result}=setup();
+ vi.mocked(api.get).mockImplementation(async(_book,id)=>({...session(id),cancellationPending:recorded}));
+ act(()=>result.current.select("A"));await waitFor(()=>expect(result.current.session?.sessionId).toBe("A"));
+ act(()=>result.current.cancel());
+ await waitFor(()=>expect(result.current.cancellationPending).toBe(true));
+ expect(result.current.session?.status).toBe("idle");expect(result.current.error).toBe("");
+ expect(fetch.mock.calls[0][0]).toBe("/v1/studio/books/book-a/thinking/sessions/A/cancel");
+ recorded=false;act(()=>window.dispatchEvent(new Event("online")));
+ await waitFor(()=>expect(result.current.cancellationPending).toBe(false));
+});

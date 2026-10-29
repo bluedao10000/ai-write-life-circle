@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   thinkingEventsSchema,
+  thinkingCancelReceiptSchema,
   thinkingModelsSchema,
   thinkingPreferencesSchema,
   thinkingModelSchema,
@@ -74,13 +75,13 @@ export const thinkingApi = {
     return z.object({messageId:z.string()}).parse(await postJson(root(book)+`/sessions/${id}/resume`,input,key));
   },
   async cancel(book: string, id: string) {
-    return thinkingSessionSchema.parse(
-      await postJson(
-        root(book) + `/sessions/${id}/cancel`,
-        {},
-        crypto.randomUUID(),
-      ),
+    const value = await postJson(
+      root(book) + `/sessions/${id}/cancel`,
+      {},
+      crypto.randomUUID(),
     );
+    const receipt = thinkingCancelReceiptSchema.safeParse(value);
+    return receipt.success ? receipt.data : thinkingSessionSchema.parse(value);
   },
   async delete(book: string, id: string) {
     await requestApi(root(book) + "/sessions/" + id, {

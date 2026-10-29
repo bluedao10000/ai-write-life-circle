@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/application"
@@ -52,8 +54,10 @@ func (s *Service) AcceptTurn(ctx context.Context, session, message, trigger stri
 		if t, ok := st.Turns[key]; ok {
 			out = t
 			// A manual retry re-arms only terminal, unproductive turns.
-			if trigger == "manual" && (t.Status == "failed" || t.Status == "skipped" || t.Status == "expired") {
-				t.Status, t.Reason, t.Trigger, t.UpdatedAt, t.JobID = "awaiting", "", "manual", now, ""
+			resumeWaiting := trigger == "auto" && t.Status == "skipped" && t.JobID == "" &&
+				(t.Reason == "ANSWER_failed" || t.Reason == "ANSWER_interrupted")
+			if resumeWaiting || (trigger == "manual" && (t.Status == "failed" || t.Status == "skipped" || t.Status == "expired")) {
+				t.Status, t.Reason, t.Trigger, t.UpdatedAt, t.JobID = "awaiting", "", trigger, now, ""
 				t.AcceptedAt = now
 				st.Turns[key] = t
 				out = t
@@ -94,14 +98,22 @@ func excerptHash(msgs []TurnMessage) string {
 
 // buildExcerpt keeps the focus pair and as many preceding messages as the
 // count and byte bounds allow. It never truncates the focus messages.
-func buildExcerpt(msgs []SnapshotMessage, answer int) ([]TurnMessage, bool) {
-	start := max(0, answer-MaxExcerptMsgs+1)
+func buildExcerpt(msgs []SnapshotMessage, user, answer int) ([]TurnMessage, bool) {
+	if msgs[user].Status != "completed" || msgs[user].Text == "" || msgs[answer].Text == "" {
+		return nil, false
+	}
 	out := []TurnMessage{}
-	for i := start; i <= answer; i++ {
-		m := msgs[i]
-		if m.Status != "completed" || m.Text == "" {
-			continue
+	// Keep history BEFORE the logical focus, never its failed assistant attempts.
+	for _, m := range msgs[:user] {
+		if m.Status == "completed" && m.Text != "" {
+			out = append(out, TurnMessage{ID: m.ID, Role: m.Role, Text: m.Text})
 		}
+	}
+	if len(out) > MaxExcerptMsgs-2 {
+		out = out[len(out)-(MaxExcerptMsgs-2):]
+	}
+	for _, i := range []int{user, answer} {
+		m := msgs[i]
 		out = append(out, TurnMessage{ID: m.ID, Role: m.Role, Text: m.Text})
 	}
 	size := func() int {
@@ -115,6 +127,45 @@ func buildExcerpt(msgs []SnapshotMessage, answer int) ([]TurnMessage, bool) {
 		out = out[1:]
 	}
 	return out, size() <= MaxExcerptBytes
+}
+
+// Assistant attempts share one logical user ID. Bound the scan at the next
+// user; neither ID prefixes alone nor adjacency can identify a resumed answer.
+func turnAnswer(msgs []SnapshotMessage, message string) (user, answer int) {
+	user, answer = -1, -1
+	for i, m := range msgs {
+		if m.ID == message && m.Role == "user" {
+			user = i
+			break
+		}
+	}
+	if user < 0 {
+		return
+	}
+	latest := -1
+	for i := user + 1; i < len(msgs) && msgs[i].Role != "user"; i++ {
+		m := msgs[i]
+		if m.Role != "assistant" {
+			continue
+		}
+		base := message + "-answer"
+		valid := m.ID == base
+		if strings.HasPrefix(m.ID, base+"-") {
+			n, e := strconv.Atoi(strings.TrimPrefix(m.ID, base+"-"))
+			valid = e == nil && n >= 2
+		}
+		if !valid {
+			continue
+		}
+		latest = i
+		if m.Status == "completed" {
+			answer = i
+		}
+	}
+	if answer < 0 {
+		answer = latest
+	}
+	return
 }
 
 // Capture inspects a Pi snapshot for an awaiting turn. A completed answer
@@ -145,21 +196,14 @@ func (s *Service) Capture(ctx context.Context, key string, snap *Snapshot, missi
 		if snap.SessionID != t.SessionID || snap.BookID != st.BookID {
 			return finish("skipped", "SESSION_MISMATCH")
 		}
-		user, answer := -1, -1
-		for i, m := range snap.Messages {
-			if m.ID == t.MessageID && m.Role == "user" {
-				user = i
-			}
-			if m.ID == t.AnswerID && m.Role == "assistant" {
-				answer = i
-			}
-		}
-		if user < 0 || answer != user+1 {
+		user, answer := turnAnswer(snap.Messages, t.MessageID)
+		if user < 0 || answer < 0 {
 			if expired {
 				return finish("expired", "MESSAGE_NOT_FOUND")
 			}
 			return false, nil
 		}
+
 		switch snap.Messages[answer].Status {
 		case "completed":
 		case "failed", "cancelled", "interrupted":
@@ -170,13 +214,14 @@ func (s *Service) Capture(ctx context.Context, key string, snap *Snapshot, missi
 			}
 			return false, nil
 		}
-		excerpt, fits := buildExcerpt(snap.Messages, answer)
+		excerpt, fits := buildExcerpt(snap.Messages, user, answer)
 		if !fits || len(excerpt) < 2 {
 			return finish("skipped", "TURN_TOO_LARGE")
 		}
 		if len(st.Jobs) >= MaxJobs {
 			return finish("failed", "CREATIVE_JOB_LIMIT")
 		}
+		t.AnswerID = snap.Messages[answer].ID
 		t.Excerpt, t.ExcerptHash, t.CapturedAt = excerpt, excerptHash(excerpt), now
 		job := Job{ID: "cj-" + newID(), Kind: "organize", TurnKey: key, SessionID: t.SessionID, Strategy: Strategy, Model: st.Settings.Model, Status: "pending", Due: now, CreatedAt: now}
 		st.Jobs = append(st.Jobs, job)

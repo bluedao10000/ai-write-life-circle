@@ -57,6 +57,7 @@ type Record struct {
 	Deleted              bool     `json:"deleted"`
 	Pending              bool     `json:"cleanupPending"`
 	AuthorizationVersion int      `json:"authorizationVersion,omitempty"`
+	CancelPending        bool     `json:"cancelPending,omitempty"`
 	ResumeBlocked        bool     `json:"resumeBlocked,omitempty"`
 	Nonce                string   `json:"nonce"`
 	Calls                int      `json:"toolCalls"`
@@ -302,6 +303,9 @@ func (s *Service) Cleanup(ctx context.Context) {
 				if errors.As(e, &p) && p.Status == 404 {
 					_ = s.CleanupBook(ctx, application.Actor{ID: r.Owner, Role: "author"}, r.Book)
 				}
+			}
+			if r.CancelPending && r.ResumeBlocked {
+				_, _, _ = s.syncCancellation(ctx, id, r.Nonce)
 			}
 			continue
 		}

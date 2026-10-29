@@ -739,3 +739,68 @@ func TestLegacyThinkingViewDoesNotExposeStrictSchemaExtension(t *testing.T) {
 		t.Fatal("negotiated run missing")
 	}
 }
+
+func TestOfflineCancelIsAcceptedAndSessionEventsAgree(t *testing.T) {
+	s, rec, _ := fixture(t)
+	ctx := context.Background()
+	var online atomic.Bool
+	var cancels atomic.Int32
+	run := compat.UUID()
+	node := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/cancel"):
+			cancels.Add(1)
+			if !online.Load() {
+				w.WriteHeader(503)
+				_, _ = w.Write([]byte(`{"code":"THINKING_UNAVAILABLE"}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"sessionId":"` + rec.ID + `","status":"idle","run":{"runId":"` + run + `","status":"cancelled"}}`))
+		case strings.Contains(r.URL.Path, "/events"):
+			_, _ = w.Write([]byte(`{"items":[],"cursor":0,"status":"running"}`))
+		default:
+			_, _ = w.Write([]byte(`{"sessionId":"` + rec.ID + `","status":"running","run":{"runId":"` + run + `","status":"running","resumable":true},"messages":[{"id":"m-answer","role":"assistant","status":"running"}]}`))
+		}
+	}))
+	defer node.Close()
+	s.Origin = node.URL
+	s.ServiceToken = strings.Repeat("t", 64)
+	s.ResolveActor = func(*http.Request) *application.Actor { return &application.Actor{ID: rec.Owner, Role: "author"} }
+	request := func(method, action, body string, status int) map[string]any {
+		t.Helper()
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(method, "/v1/studio/books/"+rec.Book+"/thinking/sessions/"+rec.ID+action, strings.NewReader(body))
+		r.Header.Set("Idempotency-Key", "synthetic")
+		r.Header.Set("X-Writer-Agent-Thinking", "reliability-v1")
+		s.PublicHandler().ServeHTTP(w, r)
+		if w.Code != status {
+			t.Fatalf("%s: %d %s", action, w.Code, w.Body.String())
+		}
+		var out map[string]any
+		_ = json.Unmarshal(w.Body.Bytes(), &out)
+		return out
+	}
+	ack := request("POST", "/cancel", `{}`, 202)
+	if ack["status"] != "cancelled" || ack["syncPending"] != true || ack["sessionId"] != rec.ID {
+		t.Fatalf("unclear cancellation receipt: %+v", ack)
+	}
+	for _, action := range []string{"", "/events?after=0"} {
+		view := request("GET", action, "", 200)
+		if view["status"] != "idle" || view["cancellationPending"] != true {
+			t.Fatalf("contradictory cancellation view: %+v", view)
+		}
+	}
+	// Recreate the API service to prove downstream synchronization survives restart.
+	copyService := *s
+	s = &copyService
+	online.Store(true)
+	s.Cleanup(ctx)
+	if cancels.Load() != 2 {
+		t.Fatalf("pending cancellation not synchronized: %d", cancels.Load())
+	}
+	view := request("GET", "/events?after=0", "", 200)
+	if view["status"] != "idle" || view["cancellationPending"] == true {
+		t.Fatalf("synchronized cancellation view: %+v", view)
+	}
+	request("POST", "/resume", `{"runId":"`+run+`","confirmAdditionalCost":true}`, 409)
+}

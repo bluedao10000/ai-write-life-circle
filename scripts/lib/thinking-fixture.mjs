@@ -1,6 +1,7 @@
 // Real Go and Pi processes with an isolated OpenAI-compatible HTTP fixture.
 import { createServer } from "node:http";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import {existsSync,watch,rmSync} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
@@ -17,7 +18,8 @@ const free = async () => {
   await new Promise((r) => s.close(r));
   return p;
 };
-export async function startThinkingFixture({ live = false, taskProtocol = false, chatModels = false, maxOutputTokens = "1024", allowLocalLiveTransport = false } = {}) {
+export async function startThinkingFixture({ live = false, taskProtocol = false, chatModels = false, maxOutputTokens = "1024", allowLocalLiveTransport = false, completionCrash = false } = {}) {
+  if (completionCrash && live) throw Error("CRASH_FIXTURE_MUST_USE_MOCK_PROVIDER");
   // Go runs in production mode, so every author call carries a signed user.
   const identity = identityFixture();
   if (live && !process.env.WRITER_AGENT_LLM_API_KEY)
@@ -224,11 +226,19 @@ export async function startThinkingFixture({ live = false, taskProtocol = false,
     WRITER_AGENT_LLM_TIMEOUT_SECONDS:"5",WRITER_AGENT_LLM_MAX_OUTPUT_TOKENS:"2048",
     WRITER_AGENT_REVIEW_MAX_CONTEXT_TOKENS:"12000"
   });
+  const completionMarker=join(root,"completion.checkpoint");
+  if(completionCrash)env.WRITER_AGENT_TEST_COMPLETION_MARKER=completionMarker;
+  let completionBarrierArmed = completionCrash;
   const startAgent = () => {
+    const useCrashBarrier = completionBarrierArmed;
+    completionBarrierArmed = false;
+    if(useCrashBarrier)rmSync(completionMarker,{force:true});
+    const agentEnv = {...env};
+    if(!useCrashBarrier)delete agentEnv.WRITER_AGENT_TEST_COMPLETION_MARKER;
     agent = spawn(
       process.execPath,
-      [new URL("../../apps/agent/dist/main.js", import.meta.url).pathname],
-      { env, stdio: ["ignore", "pipe", "pipe"] },
+      [new URL(useCrashBarrier?"./pause-at-thinking-completion.mjs":"../../apps/agent/dist/main.js", import.meta.url).pathname],
+      { env: agentEnv, stdio: ["ignore", "pipe", "pipe"] },
     );
     agent.stdout.on("data", (d) => {
       output += d;
@@ -309,6 +319,14 @@ export async function startThinkingFixture({ live = false, taskProtocol = false,
       token,
       taskToken,taskOrigin:`http://127.0.0.1:${taskPort}`,env,
       calls,
+      waitForCompletionCheckpoint() {
+        return new Promise((resolve,reject)=>{
+          const check=()=>{if(existsSync(completionMarker)){clearTimeout(timer);observer.close();resolve()}};
+          const observer=watch(root,check);
+          const timer=setTimeout(()=>{observer.close();reject(Error("completion barrier not reached"))},10000);
+          check();
+        });
+      },
       releaseProviders() {
         for(const res of hangingProviders) {
           res.write('data: '+JSON.stringify({choices:[{index:0,delta:{content:"Synthetic completed response after API restart."},finish_reason:null}]})+'\n\n');

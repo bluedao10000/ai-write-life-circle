@@ -1,8 +1,12 @@
 package thinking
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
+
+	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/compat"
+	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/storage"
 )
 
 // Failure is the public recovery policy shared with thinkingFailureSchema.
@@ -62,18 +66,17 @@ func recoveryFailure(code, detail string) Failure {
 }
 
 // A cancel recorded while Pi was offline must still be visible after Pi restart.
-func cancelledSessionView(raw json.RawMessage) json.RawMessage {
+func cancelledSessionView(raw json.RawMessage, pending bool) json.RawMessage {
 	var view map[string]json.RawMessage
 	if json.Unmarshal(raw, &view) != nil {
 		return raw
 	}
 	var run map[string]any
-	if json.Unmarshal(view["run"], &run) != nil || run["status"] == "completed" {
-		return raw
+	if json.Unmarshal(view["run"], &run) == nil && run["status"] != "completed" {
+		run["status"] = "cancelled"
+		run["resumable"] = false
+		view["run"], _ = json.Marshal(run)
 	}
-	run["status"] = "cancelled"
-	run["resumable"] = false
-	view["run"], _ = json.Marshal(run)
 	var messages []map[string]any
 	if json.Unmarshal(view["messages"], &messages) == nil && len(messages) > 0 {
 		last := messages[len(messages)-1]
@@ -84,9 +87,41 @@ func cancelledSessionView(raw json.RawMessage) json.RawMessage {
 		view["messages"], _ = json.Marshal(messages)
 	}
 	view["status"] = json.RawMessage(`"idle"`)
+	view["cancellationPending"], _ = json.Marshal(pending)
 	result, e := json.Marshal(view)
 	if e != nil {
 		return raw
 	}
 	return result
+}
+
+// Reuse the message admission lock so a delayed cancellation cannot stop a
+// later request. Only the matching nonce may acknowledge a pending stop.
+func (s *Service) syncCancellation(ctx context.Context, id, nonce string) (json.RawMessage, bool, error) {
+	var raw json.RawMessage
+	var synced bool
+	err := storage.Lock(ctx, s.path()+"."+compat.Key(id)+".lock", func() error {
+		st, e := s.load()
+		if e != nil {
+			return e
+		}
+		rec, ok := st.Sessions[id]
+		if !ok || rec.Deleted || !rec.ResumeBlocked || !rec.CancelPending || rec.Nonce != nonce {
+			return nil
+		}
+		raw, e = s.agent(ctx, "POST", "/internal/v1/sessions/"+id+"/cancel", map[string]any{"capability": s.capability(rec)})
+		if e != nil {
+			return e
+		}
+		return s.tx(ctx, func(current *registry) error {
+			v := current.Sessions[id]
+			if !v.Deleted && v.ResumeBlocked && v.CancelPending && v.Nonce == nonce {
+				v.CancelPending = false
+				current.Sessions[id] = v
+				synced = true
+			}
+			return nil
+		})
+	})
+	return raw, synced && err == nil, err
 }

@@ -171,6 +171,7 @@ export const thinkingSessionSchema = z
     cursor: z.number().int().nonnegative(),
     usage: thinkingUsageSchema,
     run: thinkingRunSchema.optional(),
+    cancellationPending: z.boolean().optional(),
   })
   .strict();
 export const thinkingSummarySchema = thinkingSessionSchema.pick({
@@ -182,11 +183,15 @@ export const thinkingSummarySchema = thinkingSessionSchema.pick({
   scopes: true,
   status: true,
 });
+export const thinkingCancelReceiptSchema = z.object({sessionId:z.string(),status:z.literal("cancelled"),syncPending:z.boolean()}).strict();
+export type ThinkingCancelReceipt = z.infer<typeof thinkingCancelReceiptSchema>;
+
 export const thinkingEventsSchema = z
   .object({
     items: z.array(thinkingEventSchema),
     cursor: z.number().int().nonnegative(),
     status: z.enum(["idle", "running", "deleted"]),
+    cancellationPending: z.boolean().optional(),
   })
   .strict();
 export type ThinkingLimits = z.infer<typeof thinkingLimitsSchema>;

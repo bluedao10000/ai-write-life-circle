@@ -52,6 +52,7 @@ func publicSessionView(r *http.Request, raw json.RawMessage) json.RawMessage {
 		return raw
 	}
 	delete(view, "run")
+	delete(view, "cancellationPending")
 	projected, err := json.Marshal(view)
 	if err != nil {
 		return raw
@@ -428,8 +429,11 @@ func (s *Service) PublicHandler() http.Handler {
 				target += "/events?after=" + strconv.Itoa(cursor)
 			}
 			v, e := s.agent(r.Context(), "GET", target, nil)
-			if e == nil && action == "" && record.ResumeBlocked {
-				v = cancelledSessionView(v)
+			if e == nil {
+				record, e = s.owned(*a, book, id)
+				if e == nil && record.ResumeBlocked {
+					v = cancelledSessionView(v, record.CancelPending)
+				}
 			}
 			if e == nil {
 				v, e = s.validateResponseSources(r.Context(), record, v)
@@ -444,6 +448,7 @@ func (s *Service) PublicHandler() http.Handler {
 			e = s.tx(r.Context(), func(st *registry) error {
 				v := st.Sessions[id]
 				v.ResumeBlocked = true
+				v.CancelPending = true
 				v.Nonce = compat.UUID()
 				if st.Cancelled == nil {
 					st.Cancelled = map[string]bool{}
@@ -454,14 +459,24 @@ func (s *Service) PublicHandler() http.Handler {
 					}
 				}
 				st.Sessions[id] = v
+				record = v
 				return nil
 			})
 			if e != nil {
 				reply(w, nil, e, 0)
 				return
 			}
-			v, e := s.agent(r.Context(), "POST", target+"/cancel", map[string]any{})
-			reply(w, publicSessionView(r, v), e, 200)
+			v, synced, _ := s.syncCancellation(r.Context(), id, record.Nonce)
+			latest, ownedErr := s.owned(*a, book, id)
+			if ownedErr != nil {
+				reply(w, nil, ownedErr, 0)
+				return
+			}
+			if synced {
+				reply(w, publicSessionView(r, cancelledSessionView(v, false)), nil, 200)
+			} else {
+				reply(w, map[string]any{"sessionId": id, "status": "cancelled", "syncPending": latest.CancelPending}, nil, 202)
+			}
 			return
 		}
 		if r.Method == "POST" && (action == "messages" || action == "resume") {
@@ -500,6 +515,9 @@ func (s *Service) PublicHandler() http.Handler {
 					return err
 				}
 				record = latest
+				if record.CancelPending {
+					return fail(409, "CANCELLATION_PENDING")
+				}
 				if in.Recovery != nil && record.ResumeBlocked {
 					return fail(409, "SESSION_INTERRUPTED")
 				}
