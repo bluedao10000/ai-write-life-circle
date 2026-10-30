@@ -28,6 +28,7 @@ export type ExecutionAuthority = {
   executionStatus(id:string, fence:ExecutionFence, now?:number): "current" | "expired" | "stale" | "deleted";
 };
 export type Saved = {
+  discussionMemory?: {through:number;summary:string};
   archive?: ArchiveManifest;
   epoch?: number;
   executionLease?: {owner:string;epoch:number;expiresAt:number};
@@ -195,6 +196,7 @@ export class Store implements ExecutionAuthority {
         s.events = [];
         s.entries = [];
         s.requests = {};
+        delete s.discussionMemory;
         delete s.archive;
         delete s.executionLease;
         delete s.runs;

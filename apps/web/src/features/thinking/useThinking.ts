@@ -117,7 +117,7 @@ export function useThinking(book: string, enabled: boolean) {
       try {
         const events = await api.events(book, selected, cursor, c.signal); if(!current()) return;
         cursor = events.cursor;
-        for(const event of events.items) {if(event.type === "tool_started") setTool(event.tool ?? "");if(event.type === "tool_completed") setTool("")}
+        for(const event of events.items) {if(event.type === "compaction") setTool(event.text ?? "正在整理讨论上下文。");if(event.type === "tool_started") setTool(event.tool ?? "");if(event.type === "tool_completed") setTool("")}
         if(events.items.some(e => e.type === "tool_started" || e.type === "tool_completed")) setSteps(prev => applyToolEvents(prev, events.items, () => ++stepId.current));
         const value = await api.get(book, selected, c.signal); if(!current()) return;
         acceptSnapshot(value); if(!actionFailed.current) setError("");

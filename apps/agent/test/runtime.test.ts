@@ -265,7 +265,7 @@ test("real Pi SDK tool loop, durable multi-turn context, replay, cancellation an
       host.get(id).view.messages.at(-1)?.errorCode,
       "TOOL_EXECUTION_FAILED",
     );
-    assert.equal(toolCalls, 1);
+    assert.equal(toolCalls, 2, "new turn re-fetches evidence instead of replaying old tool payloads");
     revoked = true;
     await assert.rejects(host.accept(id, { text: "越权" }, "fifth", "fixture"));
     revoked = false;

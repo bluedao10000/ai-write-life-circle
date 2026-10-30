@@ -338,7 +338,7 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
             )}
             {t.error && t.requestFailure && <details className="text-micro text-ink-3"><summary>请求故障详情</summary><p>错误码：{t.requestFailure.code}{t.requestFailure.traceId ? ` · 追踪编号：${t.requestFailure.traceId}` : ""}</p></details>}
             {t.cancellationPending && <p role="status" className="text-ui-sm text-ink-3">取消已记录，服务恢复后会同步停止状态。不会恢复已取消的任务。</p>}
-            <RunRecovery key={session?.run?.runId} run={session?.run} busy={t.busy || running} onResume={t.resume} onAuthorize={() => {setAccessScopes(t.scopes);setAccess(true)}}/>
+            <RunRecovery continuationContext={(session?.messages ?? []).slice(-8).filter(m=>m.role === "user" || m.status === "completed").map(m=>`${m.role === "user" ? "作者" : "讨论建议"}：${m.text}`).join("\n").slice(-10000)} key={session?.run?.runId} run={session?.run} busy={t.busy || running} onResume={t.resume} onAuthorize={() => {setAccessScopes(t.scopes);setAccess(true)}}/>
             {t.pendingDelivery && !t.busy && <div role="status" className="mb-2 text-ui-sm text-ink-2">上一条消息的送达情况尚未确认，原问题和重试记录已保留。<Btn size="sm" onClick={t.retryPending}>恢复待确认问题</Btn></div>}
             <div className="rounded-xl border border-line bg-surface shadow-soft focus-within:border-accent/50">
               {seed && (
@@ -525,7 +525,7 @@ function AiMessage({
     m.text.replace(/\[\[source:([^\]]+)\]\]/g, (_all, id: string) => {
       const index = m.sources.findIndex((src) => src.sourceId === id)
       return index >= 0 ? `[原文 ${index + 1}]` : m.status === 'running' ? '[引文待核验]' : '[未核验引用]'
-    }) || (m.status === 'accepted' || m.status === 'running' ? '正在思考…' : m.status === 'cancelled' ? '本次思考已取消。' : '未生成完整分析。')
+    }) || (m.status === 'accepted' || m.status === 'running' ? '正在思考…' : m.status === 'cancelled' ? '本次思考已取消。' : thinkingError(m.errorCode))
   const own = useMemo(() => proposals.filter((p) => turn?.changeSetId && p.changeSetId === turn.changeSetId), [proposals, turn?.changeSetId])
   const open = own.filter((p) => p.status === 'proposed').length
   const userId = m.id.replace(/-answer$/, '')

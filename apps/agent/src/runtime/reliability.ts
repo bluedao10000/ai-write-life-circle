@@ -5,7 +5,7 @@ export function failureFor(code: string, mayHaveIncurredCost: boolean): Thinking
   let category: ThinkingFailure["code"] = "INTERNAL_ERROR";
   if (/TIMEOUT|DURATION_EXCEEDED/.test(code)) category = code.startsWith("TOOL") ? "TOOL_TIMEOUT" : "PROVIDER_TIMEOUT";
   else if (/RATE_LIMITED/.test(code)) category = "RATE_LIMITED";
-  else if (/CONTEXT_OVERFLOW|INPUT_BUDGET_EXCEEDED/.test(code)) category = "CONTEXT_OVERFLOW";
+  else if (/CONTEXT_OVERFLOW|INPUT_BUDGET_EXCEEDED|CONTEXT_SUMMARY_FAILED/.test(code)) category = "CONTEXT_OVERFLOW";
   else if (/TOOL_/.test(code) && !/BUDGET/.test(code)) category = "TOOL_EXECUTION_FAILED";
   else if (/AUTHORIZATION|SCOPE_FORBIDDEN|GRANT_MISMATCH/.test(code)) category = "AUTHORIZATION_REQUIRED";
   else if (/SESSION_EXPIRED|SESSION_HISTORY_LIMIT/.test(code)) category = "SESSION_EXPIRED";

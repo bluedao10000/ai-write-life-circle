@@ -761,7 +761,7 @@ func ValidateOrigin(raw string) error {
 func turnLimits(model Model, scopes []string, compact bool) Limits {
 	l := model.Limits
 	if (len(scopes) == 0 || (model.ToolCalling != nil && !*model.ToolCalling)) && !compact {
-		l.Turns = 1
+		l.Turns = min(2, l.Turns)
 	}
 	return l
 }
