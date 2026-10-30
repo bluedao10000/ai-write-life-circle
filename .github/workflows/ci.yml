@@ -2,7 +2,8 @@ name: CI
 
 on:
   push:
-    branches: [main, 'feat/pricing-phase1', 'codex/pricing-phase1-*', 'codex/author-experience-p0', 'codex/ras-001-*', 'codex/agent-reliability-*']
+    # Development branches are verified by pull_request, once publication is authorized.
+    branches: [main]
   pull_request:
     branches: [main, 'codex/**']
   workflow_dispatch:

@@ -6,10 +6,15 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: full-regression-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   verify:
     runs-on: ubuntu-latest
     name: Typecheck, Lint & Test
+    timeout-minutes: 60
 
     steps:
       - uses: actions/checkout@v4
@@ -117,6 +122,7 @@ jobs:
   go-container:
     runs-on: ubuntu-latest
     name: Standalone Go container
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - name: Build runtime without Node.js

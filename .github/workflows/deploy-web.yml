@@ -7,11 +7,20 @@ on:
       - 'apps/web/**'
       - 'packages/**'
       - '.github/workflows/deploy-web.yml'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'tsconfig.base.json'
+      # Tests and documentation still receive the complete CI check.
+      - '!apps/web/**/*.md'
+      - '!apps/web/e2e/**'
+      - '!apps/web/src/test/**'
+      - '!apps/web/playwright*.ts'
+      - '!apps/web/vitest*.ts'
   workflow_dispatch:
 
 permissions:
   contents: read
-  deployments: write
 
 concurrency:
   group: writer-agent-production-web
