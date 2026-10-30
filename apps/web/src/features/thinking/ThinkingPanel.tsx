@@ -25,7 +25,7 @@ export default function ThinkingPanel({studio}: {studio: ReturnType<typeof useSt
     </article>)}</div>
     {t.error && t.requestFailure && <details className="text-micro text-ink-3"><summary>请求故障详情</summary><p>错误码：{t.requestFailure.code}{t.requestFailure.traceId ? ` · 追踪编号：${t.requestFailure.traceId}` : ""}</p></details>}
     {t.cancellationPending && <p role="status" className="text-ui-sm text-ink-3">取消已记录，服务恢复后会同步停止状态。不会恢复已取消的任务。</p>}
-    <RunRecovery key={t.session?.run?.runId} run={t.session?.run} busy={t.busy} onResume={t.resume}/>
+    <RunRecovery continuationContext={(t.session?.messages ?? []).slice(-8).filter(m=>m.role === "user" || m.status === "completed").map(m=>`${m.role === "user" ? "作者" : "讨论建议"}：${m.text}`).join("\n").slice(-10000)} key={t.session?.run?.runId} run={t.session?.run} busy={t.busy} onResume={t.resume}/>
     {running && <details><summary>查看执行详情</summary><ToolTimeline steps={t.steps} activeTool={t.tool}/></details>}
     {t.pendingDelivery && !t.busy && <Btn onClick={t.retryPending}>恢复待确认问题</Btn>}
     <form onSubmit={e => {e.preventDefault();t.send({text: t.draft.trim()})}} className="space-y-3">

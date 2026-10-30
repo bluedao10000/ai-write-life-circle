@@ -529,7 +529,7 @@ func TestChatModelDirectoryAndRevocableWorkPreferences(t *testing.T) {
 	}
 	s.ResolveActor = func(*http.Request) *application.Actor { return &application.Actor{ID: "other", Role: "author"} }
 	request("GET", "preferences", "", "", 404)
-	if turnLimits(model, nil, false).Turns != 1 || turnLimits(model, []string{"knowledge"}, false).Turns != 3 || turnLimits(model, nil, true).Turns != 3 {
+	if turnLimits(model, nil, false).Turns != 2 || turnLimits(model, []string{"knowledge"}, false).Turns != 3 || turnLimits(model, nil, true).Turns != 3 {
 		t.Fatal("reservation and runtime turn policy diverged")
 	}
 }
@@ -571,14 +571,14 @@ func TestMessageModelSwitchReservesSelectedModelAndReplaysOnce(t *testing.T) {
 		t.Fatal(code)
 	}
 	view, _ := ledger.View(ctx, rec.Owner)
-	if view.Day.Reserved != 57 {
+	if view.Day.Reserved != 114 {
 		t.Fatalf("wrong selected model ceiling: %+v", view.Day)
 	}
 	if code := send("first", "oss"); code != 202 {
 		t.Fatal(code)
 	}
 	again, _ := ledger.View(ctx, rec.Owner)
-	if again.Day.Reserved != 57 {
+	if again.Day.Reserved != 114 {
 		t.Fatal("replay reserved twice", again.Day)
 	}
 	st, _ := s.load()

@@ -2,8 +2,8 @@ import { useState } from "react";
 import type { ThinkingRecovery, ThinkingRun } from "@writer-agent/contracts";
 import { Btn } from "../../components/vnext/ui";
 
-export default function RunRecovery({run,busy,onResume,onAuthorize}:{run?:ThinkingRun;busy:boolean;onResume:(input:ThinkingRecovery)=>void;onAuthorize?:()=>void}) {
-  const [confirmed,setConfirmed] = useState(false),[context,setContext] = useState("");
+export default function RunRecovery({run,busy,onResume,onAuthorize,continuationContext=""}:{continuationContext?:string;run?:ThinkingRun;busy:boolean;onResume:(input:ThinkingRecovery)=>void;onAuthorize?:()=>void}) {
+  const [confirmed,setConfirmed] = useState(false),[context,setContext] = useState(continuationContext);
   if (!run || !["failed","interrupted","cancelled"].includes(run.status)) return null;
   const f = run.failure;
   if (run.status === "cancelled") return <p role="status">当前任务已取消，收到的内容已保留。</p>;
