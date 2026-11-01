@@ -181,7 +181,8 @@ test('API notes survive refresh, stay outside canon and protect concurrent edits
   await expect(page.getByRole('button', { name: /另一个浏览器已更新的笔记/ })).toBeVisible()
   await page.getByRole('tab', { name: '灵感', exact: true }).click()
   await expect(page.getByRole('main', { name: '灵感对话' })).toBeVisible()
-  await expect(page.getByRole('alert')).toContainText('思考服务暂不可用')
+  // The workspace explains the outage in plain Chinese and keeps the input (no technical code).
+  await expect(page.getByRole('main', { name: '灵感对话' }).getByRole('status').filter({ hasText: '灵感服务暂时不可用' }).first()).toBeVisible()
   expect(urls.some((url) => /vnextData|vnextAgent|demoWriterAgent|demoData/.test(url))).toBe(false)
   expect(await readFile('e2e/fixtures/harness/manuscript/CH-901.md', 'utf8')).toBe(harnessBefore)
   await context.close(); await contextB.close()

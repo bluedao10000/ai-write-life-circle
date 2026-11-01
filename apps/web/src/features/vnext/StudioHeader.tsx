@@ -36,7 +36,8 @@ export default function StudioHeader({ studio, demo }: { studio: ReturnType<type
   }
   return (
     <>
-      <header className="relative z-40 flex h-12 shrink-0 items-center gap-1 px-2 sm:px-3">
+      {/* 「灵感」在移动端使用自己的 56px 顶栏（主导航放进历史抽屉），这里只在桌面显示（Figma Make App.tsx）。 */}
+      <header className={`relative z-40 h-12 shrink-0 items-center gap-1 px-2 sm:px-3 ${view === 'inspire' && !demo ? 'hidden md:flex' : 'flex'}`}>
         <div className={`chrome flex min-w-0 items-center gap-1 ${hide}`}>
           {view === 'read' && <IconBtn icon="menu" label="目录与本章相关" shortcut="⌘⇧E" active={layout.leftOpen} onClick={() => setLayout((l) => ({ ...l, leftOpen: !l.leftOpen }))} />}
           {publicSite && (

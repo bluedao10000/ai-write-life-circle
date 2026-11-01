@@ -66,7 +66,8 @@ export function tools(
   capability: string,
   signal: AbortSignal,
   onSources: (v: ThinkingSource[]) => void,
-  onCall: () => void,
+  /** Returns false when this reply's tool budget is spent; the call is then not executed. */
+  onCall: () => boolean,
   scopes: readonly string[] = [],
 ): ToolDefinition[] {
   const seen = new Set<string>();
@@ -101,7 +102,7 @@ export function tools(
             `Read-only author-scoped Story Tool: ${name}. No paths, bookId or authorId accepted. Chapter windows are limited; follow truncated/totalUTF16 to retrieve more.`,
           parameters: creativeNames.has(name) ? (narrow[name] ?? empty) : parameters,
           async execute(_id, args) {
-            onCall();
+            if (!onCall()) return budgetSpent();
             const fingerprint = canonicalJSON([name, args]);
             if (seen.has(fingerprint)) return {content: [{type: "text" as const, text: "This exact lookup was already attempted. Do not repeat it. Answer using available information and explain any gaps."}], details: {duplicate: true}};
             seen.add(fingerprint);
@@ -159,7 +160,7 @@ export function tools(
         { additionalProperties: false },
       ),
       async execute(_id, args) {
-        onCall();
+        if (!onCall()) return budgetSpent();
         const name = (args as { name: string }).name;
         if (!["character-analysis", "plot-analysis"].includes(name))
           throw Error("INVALID_SKILL");
@@ -173,6 +174,10 @@ export function tools(
     } satisfies ToolDefinition]),
   ];
 }
+const budgetSpent = () => ({
+  content: [{ type: "text" as const, text: "The lookup budget for this reply is spent. This lookup was not run. Do not call tools again; answer now from available information and state any gaps." }],
+  details: { budget: true },
+});
 export async function boundedText(res: Response, max: number) {
   if (!res.body) throw Error("INVALID_RESPONSE");
   const reader = res.body.getReader();

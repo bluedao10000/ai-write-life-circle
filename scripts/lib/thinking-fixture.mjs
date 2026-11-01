@@ -18,7 +18,10 @@ const free = async () => {
   await new Promise((r) => s.close(r));
   return p;
 };
-export async function startThinkingFixture({ live = false, taskProtocol = false, chatModels = false, maxOutputTokens = "1024", allowLocalLiveTransport = false, completionCrash = false } = {}) {
+// chatReply(body) may return synthetic Markdown for chat-model fixtures (visual
+// checks); chatDelayMs paces its streamed chunks; chatStatus(body) may return an
+// HTTP status to fail that provider call. Defaults keep the canned reply.
+export async function startThinkingFixture({ live = false, taskProtocol = false, chatModels = false, maxOutputTokens = "1024", allowLocalLiveTransport = false, completionCrash = false, chatReply, chatDelayMs = 100, chatStatus } = {}) {
   if (completionCrash && live) throw Error("CRASH_FIXTURE_MUST_USE_MOCK_PROVIDER");
   // Go runs in production mode, so every author call carries a signed user.
   const identity = identityFixture();
@@ -51,6 +54,13 @@ export async function startThinkingFixture({ live = false, taskProtocol = false,
     const body = JSON.parse(raw);
     calls.push(body);
     for(const wake of providerWaiters)wake();
+    // Optional synthetic provider failure (HTTP status) for recovery tests.
+    const failure = chatModels ? chatStatus?.(body) : undefined;
+    if (failure) {
+      res.writeHead(failure, { "Content-Type": "application/json" });
+      res.end('{"error":{"message":"synthetic provider failure"}}');
+      return;
+    }
     res.writeHead(200, { "Content-Type": "text/event-stream" });
     if (config.hang) {
       hangingProviders.add(res);res.once("close",()=>hangingProviders.delete(res));
@@ -82,7 +92,7 @@ export async function startThinkingFixture({ live = false, taskProtocol = false,
           },
         ],
       };
-    else if (chatModels || !(body.tools ?? []).length || body.tool_choice === "none") delta = {content: "可以从权力、责任和代价讨论人物的选择。这些只是创作建议，不是正式设定。"};
+    else if (chatModels || !(body.tools ?? []).length || body.tool_choice === "none") delta = {content: (chatModels && chatReply?.(body)) || "可以从权力、责任和代价讨论人物的选择。这些只是创作建议，不是正式设定。"};
     else if (!related)
       delta = {
         tool_calls: [
@@ -132,11 +142,11 @@ export async function startThinkingFixture({ live = false, taskProtocol = false,
           "\n\n",
       );
     if (delta.content) {
-      const a = delta.content.slice(0, 35),
-        b = delta.content.slice(35);
-      send({ content: a });
-      await delay(100);
-      send({ content: b });
+      const parts = chatReply ? delta.content.match(/[\s\S]{1,40}/g) : [delta.content.slice(0, 35), delta.content.slice(35)];
+      for (const [i, part] of parts.entries()) {
+        if (i) await delay(chatDelayMs);
+        send({ content: part });
+      }
     } else send(delta);
     res.write(
       "data: " +

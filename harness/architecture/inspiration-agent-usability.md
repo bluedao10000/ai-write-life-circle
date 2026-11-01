@@ -47,3 +47,14 @@ Fixture 覆盖普通创意问题（张居正、平行宇宙、好人品）、多
 示例 Registry 已由占位 Runtime URL 更新为实测的 Stockholm Mantle URL + `openai.gpt-oss-120b`；不同 Bedrock API 的模型标识不可混用。
 真实验证、费用依据、回归结果与剩余风险见[复审修复报告](../reviews/inspiration-agent-usability-review-fixes.md)。这份补充报告取代初次交付中「两个真实模型均未验证」的状态：Bedrock 已验证，DeepSeek 仍待测试凭据。
 Smoke 脚本增加 `--tools`，只用合成资料、每个配置模型最多 3 次付费请求。常规 CI 仍不运行付费模型。
+
+## 2026-11-01 收尾与预算修订（TURN_BUDGET_EXCEEDED）
+
+复查发现四条路径会让普通讨论在没有回复时以 `TURN_BUDGET_EXCEEDED`、`TOOL_BUDGET_EXCEEDED` 或 `INPUT_BUDGET_EXCEEDED` 结束，修订后的规则：
+
+1. 讨论记忆（长对话摘要）不再计入回复轮次。它与回复共用同一份单条消息预算：上限与 Go 预留相同（`maxTurnsPerRequest ×（输入 + 4×输出）`，输出权重与 `billing.PointsFor` 一致），每次调用先按保守上界预留，再按模型回报的实际用量结算。摘要只有在之后仍能放下一次完整回复时才允许进行；每条消息最多 3 次摘要，超出按 `CONTEXT_SUMMARY_FAILED` 交作者确认续谈要点。Go 预留与计费规则没有变化。
+2. 收尾轮保留工具定义并设置 `tool_choice=none`（OpenAI 兼容接口不接受没有 tools 的 tool_choice），再追加收尾指令。下面三种情况都按收尾轮处理：没有开放工具、达到轮次或工具上限、下一轮已放不进预留。收尾轮里模型仍然发出的工具调用会被丢弃，不会执行，也不会再开启一轮付费请求。
+3. 同一轮里的并行工具调用如果超过 `maxToolCalls`，超出的调用不执行，只返回“查找额度已用完，请直接回答”的工具结果；下一轮转为收尾轮，不再中止整条回复。
+4. 历史压缩的预算计入每轮都要发送的工具定义，避免开启资料范围的长讨论在压缩后仍然超过 `maxInputTokens`。
+
+验证：`apps/agent/test/turn-budget.test.ts`。四个场景在旧 Runtime 上分别以 TURN_BUDGET_EXCEEDED、TOOL_BUDGET_EXCEEDED、TOOL_EXECUTION_FAILED、INPUT_BUDGET_EXCEEDED 失败，修订后全部完成；其中包括使用张居正回归问题、持续请求工具的模型，以及无资料范围下连续十轮对话。界面集成与视觉验收见[灵感工作台 Figma 集成报告](../reviews/inspiration-figma-workbench.md)。

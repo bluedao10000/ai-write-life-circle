@@ -1,7 +1,10 @@
 import {createServer} from 'node:http';
 import {spawn} from 'node:child_process';
 import {startThinkingFixture, seedThinkingBook} from '../../../scripts/lib/thinking-fixture.mjs';
-const f=await startThinkingFixture({chatModels:true});await seedThinkingBook(f);
+import {failOnce, visualReply} from './fixtures/inspiration-replies.mjs';
+// Long synthetic Markdown replies streamed in small chunks, so the generating,
+// stop and refresh states are observable; INSPIRATION_FIXTURE_DELAY_MS paces them.
+const f=await startThinkingFixture({chatModels:true,chatReply:visualReply,chatStatus:failOnce,chatDelayMs:Number(process.env.INSPIRATION_FIXTURE_DELAY_MS??120)});await seedThinkingBook(f);
 // Local test-only proxy generates per-request signed identities. Nothing reaches production.
 const proxy=createServer(async(req,res)=>{
   try {

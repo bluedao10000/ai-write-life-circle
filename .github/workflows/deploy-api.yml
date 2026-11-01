@@ -5,7 +5,6 @@ on:
     branches: [main]
     paths:
       - 'apps/api-go/**'
-      - 'packages/**'
       - 'scripts/deploy/Dockerfile.api'
       - 'scripts/deploy/docker-compose.prod.yml'
       - '.github/workflows/deploy-api.yml'
@@ -13,7 +12,10 @@ on:
 
 permissions:
   contents: read
-  packages: write
+
+concurrency:
+  group: writer-agent-api-image
+  cancel-in-progress: false
 
 env:
   REGISTRY: ghcr.io
@@ -23,6 +25,10 @@ jobs:
   build-and-push:
     runs-on: ubuntu-latest
     name: Build & Push API Image
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
 
     outputs:
       image_tag: ${{ steps.meta.outputs.version }}
@@ -57,8 +63,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=api-image
+          cache-to: type=gha,scope=api-image,mode=max
 
   deploy:
     runs-on: ubuntu-latest
