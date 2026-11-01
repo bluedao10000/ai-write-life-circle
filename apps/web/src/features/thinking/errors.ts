@@ -1,4 +1,11 @@
 const messages: Record<string, string> = {
+  NETWORK_OFFLINE: '网络已断开，问题还没有发出。输入已保留，恢复连接后再发送。',
+  NETWORK_ERROR: '网络连接中断，暂时无法确认是否送达。输入和重试记录已保留，稍后可以再发送，不会重复提交。',
+  HTTP_502: '灵感服务暂时无法连接。输入已保留，请稍后再试。',
+  HTTP_503: '灵感服务暂时不可用。输入已保留，请稍后再试。',
+  HTTP_504: '灵感服务响应超时。输入已保留，请稍后再试。',
+  NOT_FOUND: '这次讨论已不存在或已被删除。',
+  THINKING_UNAVAILABLE: '灵感服务暂时不可用。写作和保存不受影响，输入已保留，稍后可以再发送。',
   CANCELLATION_PENDING: "取消已记录，正在等待服务同步停止。同步完成后可以发送新问题。",
   RESUME_NOT_SAFE: '本轮不能安全重放，请检查已有结果后再发送新问题。',
   CONTINUATION_CONTEXT_REQUIRED: '请确认续谈要点后使用继续执行。',
@@ -29,3 +36,7 @@ const messages: Record<string, string> = {
   AGENT_RESTARTED: '服务重启中断了本次回复，对话已保留。',
 };
 export const thinkingError = (code?: string) => messages[code ?? ''] ?? '这轮回复未能完成，对话已保留，请稍后再次提问。';
+/** Billing and plan problems carry a precise author-facing explanation from our own API (problem.detail). */
+const serverExplained = /^(PLAN_[A-Z_]+|FREE_POOL_EXHAUSTED|AI_PAUSED)$/;
+export const requestError = (code: string | undefined, detail?: string) =>
+  code && !messages[code] && serverExplained.test(code) && detail && /[\u4e00-\u9fff]/.test(detail) ? detail : thinkingError(code);

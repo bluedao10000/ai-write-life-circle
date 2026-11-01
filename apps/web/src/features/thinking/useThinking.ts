@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ThinkingCreate, ThinkingMessageInput, ThinkingModel, ThinkingModelOption, ThinkingRecovery, ThinkingSession } from "@writer-agent/contracts";
 import { thinkingApi as api } from "../../services/api/thinkingApi";
-import { thinkingError } from "./errors";
+import { requestError, thinkingError } from "./errors";
 import { scopedKey } from "../../services/storageScope";
 import { applyToolEvents, type ToolStep } from "./toolActivity";
 import { emptyOutbox, readChoices, readOutbox, saveBrowserState } from "./conversationState";
 type Summary = Pick<ThinkingSession, "sessionId" | "bookId" | "title" | "createdAt" | "model" | "scopes" | "status">;
-const errorText = (e: unknown) => thinkingError((e as {code?:string})?.code);
+// fetch() rejects with a TypeError and no problem code when the network is down.
+const failureCode = (e: unknown) => (e as {code?:string})?.code ?? (e instanceof TypeError ? (typeof navigator !== "undefined" && navigator.onLine === false ? "NETWORK_OFFLINE" : "NETWORK_ERROR") : undefined);
+const errorText = (e: unknown) => requestError(failureCode(e), e instanceof Error ? e.message : undefined);
 const readText = (key: string) => {try {return sessionStorage.getItem(key) ?? ""} catch {return ""}};
 const modelID = (s: ThinkingSession) => s.model.modelId ?? "default";
 const sameInput = (a: ThinkingMessageInput, b: ThinkingMessageInput) => JSON.stringify(a) === JSON.stringify(b);
@@ -148,8 +150,8 @@ export function useThinking(book: string, enabled: boolean) {
     try {const v = await fn();if(e === epoch.current && r === request.current) apply(v)}
     catch(err) {if(e === epoch.current && r === request.current) {
       actionFailed.current=true;setError(errorText(err));
-      const p = err as {code?:string;requestId?:string};
-      setRequestFailure({code:/^[A-Z_]{1,80}$/.test(p?.code ?? "") ? p.code! : "INTERNAL_ERROR",...(/^[a-f0-9-]{36}$/.test(p?.requestId ?? "")?{traceId:p.requestId}:{})});
+      const p = err as {code?:string;requestId?:string}, code = failureCode(err) ?? "";
+      setRequestFailure({code:/^[A-Z][A-Z0-9_]{0,79}$/.test(code) ? code : "INTERNAL_ERROR",...(/^[a-f0-9-]{36}$/.test(p?.requestId ?? "")?{traceId:p.requestId}:{})});
     }}
     finally {if(e === epoch.current && op === operation.current) setBusy(false)}
   };
