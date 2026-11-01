@@ -26,7 +26,17 @@ test("RAS-001 distinguishes ordinary replies, evidence and explicitly requested 
   assert(replyStyleInstruction.includes("in the author's language"));
   assert(!replyStyleInstruction.includes("direct Chinese"));
   assert(replyStyleInstruction.includes("preserve exact evidence"));
-  assert(replyStyleInstruction.includes("explicitly requests deep, complete or detailed analysis"));
-  assert(replyStyleInstruction.includes("without the ordinary length limit"));
+  assert(replyStyleInstruction.includes("When the author asks for deep or complete analysis"));
+  assert(replyStyleInstruction.includes("without the ordinary length cap"));
   assert(replyStyleInstruction.includes("Never trade accuracy, source fidelity"));
+});
+
+test("RAS-001 asks for plain editor talk instead of criticism jargon and flipped aphorisms", () => {
+  assert(replyStyleInstruction.startsWith("Reply style RAS-001 v1.2.0: Open directly with your judgment"));
+  assert(replyStyleInstruction.includes("sharp fiction editor talking shop with the author"));
+  assert(replyStyleInstruction.includes('avoid mechanical "不是A，而是B" aphorisms'));
+  assert(replyStyleInstruction.includes("mandatory trailing questions"));
+  assert(!replyStyleInstruction.includes("Lead with the conclusion"));
+  for (const phrase of ["体现了", "戏剧张力", "人物弧光", "因果闭环", "某种程度上", "维度", "机制"])
+    assert((replyStylePolicy.forbiddenPhrases as readonly string[]).includes(phrase), phrase);
 });
