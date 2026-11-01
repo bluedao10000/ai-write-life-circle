@@ -112,7 +112,7 @@ export default function ProposalList({
   )
   const sections: [string, string, string, CreativeProposal[]][] = [
     ['conflict', '存在冲突', '两个版本都保留着，等你决定采用哪一个，或自己改写。', shown.filter((p) => p.operation === 'SUPERSEDE')],
-    ['draft', '修改草案', '已确认的设定不会被静默覆盖；修改需要你确认。', shown.filter((p) => p.operation === 'UPDATE')],
+    ['draft', '修改草案', '已定的设定不会被悄悄改掉，要不要改由你决定。', shown.filter((p) => p.operation === 'UPDATE')],
     ['new', '新的候选', '来自灵感对话。确认后进入对应分区。', shown.filter((p) => p.operation !== 'SUPERSEDE' && p.operation !== 'UPDATE')],
   ]
   return (
@@ -120,7 +120,7 @@ export default function ProposalList({
       {inbox && (
         <p className="mb-5 flex flex-wrap items-center gap-x-2 rounded-md bg-surface-2 px-3 py-2 text-ui-sm text-ink-2">
           <Dot tone="quiet" />
-          这里的内容都还不是作品设定。确认后才会出现在人物、世界观等分区。
+          这里是从对话中择出的设定草稿，确认后进入人物、世界观等分区。
         </p>
       )}
       {error && (
@@ -185,7 +185,7 @@ export default function ProposalList({
               否决所选
             </Btn>
           </div>
-          <p hidden={!!only} className="text-micro text-ink-3">整理结果都是候选，确认后才会成为作品设定。未确认的候选在灵感讨论中只作为可能性出现。</p>
+          <p hidden={!!only} className="text-micro text-ink-3">确认后记入作品设定。</p>
           {items.map(card)}
         </>
       )}

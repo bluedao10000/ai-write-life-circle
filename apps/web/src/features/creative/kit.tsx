@@ -8,12 +8,12 @@ import { Btn, Dot, Icon, type IconName } from '../../components/vnext/ui'
 /** Design status vocabulary. Proposal stance/lifecycle and asset status map onto it. */
 export type DesignStatus = 'suggested' | 'pending' | 'confirmed' | 'conflict' | 'rejected' | 'draft' | 'retired'
 const statusName: Record<DesignStatus, string> = {
-  suggested: 'AI 建议',
-  pending: '待作者确认',
-  confirmed: '作者已确认',
+  suggested: '提议',
+  pending: '待定',
+  confirmed: '已定',
   conflict: '存在冲突',
-  rejected: '已否决',
-  draft: '作者草稿',
+  rejected: '已搁置',
+  draft: '草稿',
   retired: '已归档',
 }
 const statusCls: Record<DesignStatus, string> = {
@@ -46,7 +46,7 @@ export function assetStatus(a: Pick<CreativeAsset, 'status'>): DesignStatus {
 }
 
 export type Origin = 'author' | 'idea' | 'prose' | 'revision'
-const originName: Record<Origin, string> = { author: '作者创建', idea: '灵感对话', prose: '正文发现', revision: '作者修改' }
+const originName: Record<Origin, string> = { author: '手记', idea: '聊出', prose: '出自正文', revision: '修订' }
 const originIcon: Record<Origin, IconName> = { author: 'pen', idea: 'think', prose: 'book', revision: 'edit' }
 export function OriginTag({ origin }: { origin: Origin }) {
   return (

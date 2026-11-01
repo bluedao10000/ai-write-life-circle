@@ -51,7 +51,7 @@ export default function MarginPanel({
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-2 px-5 pb-3 text-micro text-ink-3">
-        <span>{review ? 'AI 候选判断 · 引用真实不代表推断成立' : '按段落顺序 · AI 只指出，不修改正文'}</span>
+        <span>{review ? '页边批注 · 供核对前后文' : '按段落顺序 · AI 只指出，不修改正文'}</span>
         {!review && <span className="ml-auto"><Proto /></span>}
       </div>
       <div className="scroll flex-1 overflow-auto px-3 pb-6">
@@ -76,7 +76,7 @@ export default function MarginPanel({
                 <span className="min-w-0 flex-1">
                   <span className="block text-ui text-ink">{m.title}</span>
                   <span className="block text-micro text-ink-3">
-                    {review ? m.locationLabel ?? '固定版本引用' : `第 ${m.para + 1} 段`}
+                    {review ? m.locationLabel ?? '原文出处' : `第 ${m.para + 1} 段`}
                     {m.state !== 'fresh' && (
                       <span className="text-warn">
                         {' '}
@@ -113,7 +113,7 @@ export default function MarginPanel({
                   </section>
                   <section>
                     <Heading level={3} className="mb-1.5">
-                      <span className="text-ai">推断 · AI 的理解，未经确认</span>
+                      <span className="text-ai">批注 · 待斟酌</span>
                     </Heading>
                     <p className="border-l-2 border-dashed border-ai pl-3 text-ui text-ink-2">
                       {m.inference}

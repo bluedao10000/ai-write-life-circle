@@ -27,11 +27,11 @@ const entityType: Record<MemoryEntity['type'], string> = {
 }
 
 const entityStatus: Record<MemoryEntity['status'], string> = {
-  observed: '正文中观察到',
-  inferred: 'AI 推断',
-  disputed: '作者指出理解有误',
-  stale: '来源需要核对',
-  deprecated: '已被后续知识替代',
+  observed: '原文提及',
+  inferred: '推测',
+  disputed: '已纠偏',
+  stale: '来源待核对',
+  deprecated: '已更新',
 }
 
 const sections: { nature: Nature; title: string; hint: string }[] = [
@@ -278,7 +278,7 @@ export default function KnowledgeDetail({
         <div className="mt-10 border-t border-line-soft pt-5">
           <p className="flex gap-2 text-ui-sm text-ink-3">
             <Icon name="info" className="mt-0.5" />
-            引用原文真实，不代表 AI 理解正确。知识不会自动成为作者确认的设定。
+            整理自已保存章节，如有偏差可随时纠偏。
           </p>
         </div>
       </div>

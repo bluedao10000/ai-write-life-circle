@@ -43,8 +43,8 @@ describe('creative proposals', () => {
       />,
     )
     const card = screen.getByRole('article')
-    expect(within(card).getByText('AI 建议')).toBeInTheDocument()
-    expect(within(card).getByText(/这是讨论中的可能性，不构成作品事实/)).toBeInTheDocument()
+    expect(within(card).getByText('提议')).toBeInTheDocument()
+    expect(within(card).getByText(/讨论中的方向，采纳后才会记入设定/)).toBeInTheDocument()
     expect(within(card).getByText(/互斥方案 3 选 1/)).toBeInTheDocument()
     expect(within(card).getByText('AI 说')).toBeInTheDocument()
     expect(card.querySelector('del')).toHaveTextContent('看守人')

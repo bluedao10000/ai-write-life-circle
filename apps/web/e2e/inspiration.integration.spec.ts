@@ -18,7 +18,7 @@ async function chooseModel(page:Page,name:RegExp){
  await expect(menu).toHaveCount(0)
 }
 async function history(page:Page){if(narrow(page)) await page.getByRole('button',{name:'历史会话与导航',exact:true}).click();await expect(page.getByRole('navigation',{name:'历史会话'})).toBeVisible()}
-async function newChat(page:Page){await page.getByRole('button',{name:'新对话',exact:true}).first().click();await expect(page.getByRole('heading',{name:/每一个故事/})).toBeVisible()}
+async function newChat(page:Page){await page.getByRole('button',{name:'新对话',exact:true}).first().click();await expect(page.getByRole('heading',{name:'从哪里开始聊起？'})).toBeVisible()}
 async function moreMenu(page:Page,item:RegExp){await page.getByRole('button',{name:'更多',exact:true}).click();await page.getByRole('group',{name:'更多'}).getByRole('button',{name:item}).click()}
 // Desktop landing has no menu (Figma); the history sidebar footer carries the scope entry.
 async function scopes(page:Page,label:RegExp){
@@ -41,7 +41,7 @@ const sessionPath=(url:string)=>new URL(url).pathname.replace(/\/(messages|resum
 test('first send creates the conversation without any consent dialog, then models switch per message',async({page,request})=>{
  await open(page)
  await expect(picker(page)).toHaveAccessibleName(/当前为 DeepSeek/)
- await expect(page.getByRole('heading',{name:/每一个故事/})).toBeVisible()
+ await expect(page.getByRole('heading',{name:'从哪里开始聊起？'})).toBeVisible()
  const sent=page.waitForRequest(r=>r.method()==='POST' && /\/thinking\/sessions\/[^/]+\/messages$/.test(new URL(r.url()).pathname))
  await composer(page).fill(QUESTION)
  await send(page).click()
