@@ -27,7 +27,7 @@ export function ReviewMarginPanel({ review, locate, select, saveNote, marksHidde
     feedback[finding.findingId] = finding.feedback?.choice
     return { id: finding.findingId, chapterId: run!.chapterId, para: 0, quote: finding.anchor.quote, tone: 'ai', title: finding.title,
       inference: finding.inference, question: finding.question, alternativeExplanation: finding.alternativeExplanation,
-      locationLabel: finding.anchor.status === 'ambiguous' ? '原文匹配多处，暂不能定位' : '固定版本原文引用',
+      locationLabel: finding.anchor.status === 'ambiguous' ? '原文匹配多处，暂不能定位' : '原文出处',
       state: review.stale ? 'stale' : 'fresh', facts: finding.evidence.map((evidence): Source => {
         const ref = run!.sources.find((item) => item.sourceId === evidence.sourceId)
         return { label: `${ref?.title ?? '来源'} · ${ref?.kind === 'confirmed_knowledge' ? '确认知识' : '正文快照'}`, quote: evidence.quote,
@@ -54,7 +54,7 @@ export function ReviewMarginPanel({ review, locate, select, saveNote, marksHidde
       </div>}
       {run?.status === 'failed' && <p role="alert" className="flex items-start gap-2 rounded-lg border border-danger bg-danger-soft px-3.5 py-2.5 text-ui-sm text-ink"><Icon name="alert" className="mt-0.5 text-danger" /><span>{failureMessage(run.failureCode)}正文和正式资料保持不变。</span></p>}
       {review.stale && <p role="alert" className="flex items-start gap-2 rounded-lg border border-warn bg-warn-soft px-3.5 py-2.5 text-ui-sm text-ink"><Icon name="clock" className="mt-0.5 text-warn" /><span>正文或历史证据已变化。这份结果基于旧快照，不能定位到当前正文；可以重新审查。</span></p>}
-      {run?.status === 'completed' && run.findings.length === 0 && <p className="text-ui-sm text-ink-2">没有发现可证实的冲突。{run.rejectedCount ? '部分模型候选未通过引用核验，没有作为注记展示。' : '本次仅覆盖已确认的发送范围。'}</p>}
+      {run?.status === 'completed' && run.findings.length === 0 && <p className="text-ui-sm text-ink-2">未发现明显的前后矛盾。{run.rejectedCount ? '' : '本次仅覆盖已确认的发送范围。'}</p>}
       {run && run.rejectedCount > 0 && <p className="text-micro text-ink-3">有 {run.rejectedCount} 项候选引用未通过核验。</p>}
       {(review.error || noteError) && <p role="alert" className="text-ui-sm text-warn">{review.error || noteError}</p>}
     </section>

@@ -14,6 +14,7 @@
     "openapi:check": "pnpm exec tsx scripts/build-notes-openapi.mts --check && pnpm exec tsx scripts/build-review-openapi.mts --check && pnpm exec tsx scripts/build-author-workspace-openapi.mts --check && node scripts/build-openapi-candidate.mjs --check && pnpm exec tsx scripts/build-publication-openapi.mts --check && pnpm exec tsx scripts/build-management-openapi.mts --check && pnpm exec tsx scripts/build-knowledge-openapi.mts --check && pnpm exec tsx scripts/build-thinking-openapi.mts --check && pnpm exec tsx scripts/build-agent-tasks-openapi.mts --check",
     "style:sync": "node scripts/sync-agent-reply-style.mjs",
     "style:check": "node scripts/sync-agent-reply-style.mjs --check",
+    "style:eval": "node scripts/eval-agent-reply-style.mjs --check",
     "test:style": "node --test scripts/test-agent-reply-style.mjs && node scripts/eval-agent-reply-style.mjs --check && pnpm --filter @writer-agent/agent exec tsx --test test/reply-style.test.ts",
     "openapi:lint": "pnpm exec redocly lint harness/contracts/api-spec-v0.4.0-proposed.yaml && pnpm exec redocly lint harness/contracts/publication-api-v1.json && pnpm exec redocly lint harness/contracts/management-api-v1.json && pnpm exec redocly lint harness/contracts/knowledge-api-v1.json && pnpm exec redocly lint harness/contracts/thinking-api-v1.json && pnpm exec redocly lint harness/contracts/agent-tasks-v1.json",
     "dev:api": "pnpm dev:api:go",

@@ -240,10 +240,11 @@ export default function WritingSpace({
                 scrollRef={scroll}
                 annotations={adapter.mode === 'api' ? reviewAnnotations : annotations}
                 flash={
+                  // A current review anchor wins; otherwise a verified evidence quote (from 灵感 or 书).
                   adapter.mode === 'api'
-                    ? !reviews.stale && reviewFlash?.runId === reviews.run?.runId
+                    ? reviewFlash && !reviews.stale && reviewFlash.runId === reviews.run?.runId
                       ? reviewFlash
-                      : null
+                      : flash
                     : flash
                 }
                 downloadLocalDraft={downloadLocalDraft}

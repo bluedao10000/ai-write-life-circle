@@ -8,7 +8,9 @@ import {
   estimateSentenceCount,
   evaluateSamples,
   findForbiddenPhrases,
+  hasConclusionFirst,
   loadReplyStylePolicy,
+  restatementOverlap,
 } from "./lib/agent-reply-style.mjs";
 import {
   assertLiveBudget,
@@ -51,6 +53,48 @@ test("forbidden phrase detection finds canned prose without matching unrelated t
     findForbiddenPhrases("关键在于从人物动机而非句式判断。", policy.forbidden_phrases),
     [],
   );
+  assert.deepEqual(
+    findForbiddenPhrases("沈照守灵体现了人物弧光，充满戏剧张力。", policy.forbidden_phrases),
+    ["体现了", "戏剧张力", "人物弧光"],
+  );
+  assert.deepEqual(
+    findForbiddenPhrases("这一幕折射出判断体系的伦理代价。", policy.forbidden_phrases),
+    ["折射出", "判断体系", "伦理代价"],
+  );
+  assert.deepEqual(
+    findForbiddenPhrases("让他把火石收走，读者就看得出他在防人。", policy.forbidden_phrases),
+    [],
+  );
+});
+
+test("conclusion-first accepts a direct situation or action without a marker word", () => {
+  const options = {
+    fillers: policy.opening_fillers,
+    forbiddenPhrases: policy.forbidden_phrases,
+    question: "沈照明明恨父亲，为什么还替他守灵？",
+    restatementThreshold: policy.restatement_overlap,
+  };
+  const check = (text) => hasConclusionFirst(text, policy.conclusion_markers, options);
+  assert.equal(check("他得守。缺席等于告诉众人，这些年的反抗只是赌气。"), true);
+  assert.equal(check("灵堂里只有他一个人跪到天亮。"), true);
+  assert.equal(check("说得通，沈照替父亲守灵是在给自己作证。"), true);
+  assert.equal(check("好的，我们来看沈照。他得守。"), false, "pleasantry opening");
+  assert.equal(check("首先要看沈照的处境。"), false, "warm-up opening");
+  assert.equal(check("你提到沈照恨父亲。他还是得守。"), false, "restating the author");
+  assert.equal(check("沈照明明恨父亲，为什么还替他守灵。因为他得守。"), false, "restated question");
+  assert.equal(check("谁会在仇人灵前跪三夜？他会。"), false, "opening with a question");
+  assert.equal(check("沈照的守灵体现了人物的复杂。"), false, "canned critique");
+  assert.equal(check("  \n"), false);
+  assert(restatementOverlap("沈照明明恨父亲，为什么还替他守灵", options.question) >= 0.99);
+  assert.equal(restatementOverlap("他得守", ""), 0);
+});
+
+test("offline samples avoid the 'not A but B' aphorism and criticism jargon", () => {
+  for (const sample of samples) {
+    assert.doesNotMatch(sample.response, /不是[^。！？；\n]*而是/, sample.id);
+    assert.doesNotMatch(sample.response, /关键在于/, sample.id);
+    assert.doesNotMatch(sample.response, /弧光|张力|维度|机制|折射|体现/, sample.id);
+  }
 });
 
 test("visible character counting strips markup, citations and whitespace but counts Unicode code points", () => {
@@ -90,6 +134,7 @@ test("offline baseline meets automatic targets without claiming manual or real-m
   assert(report.metrics.defaultLengthPassRate >= 0.9);
   assert(report.metrics.defaultAverageVisibleCharacters <= 150);
   assert(report.metrics.extendedAverageVisibleCharacters > 180);
+  assert.equal(report.metrics.conclusionFirstRate, 1);
   assert.equal(report.metrics.manualPracticalityPassRate, null);
 });
 
@@ -138,9 +183,15 @@ test("generated TypeScript carries the same policy version and forbidden phrases
   assert(generated.includes(`"version": "${policy.policy_version}"`));
   for (const phrase of policy.forbidden_phrases)
     assert(generated.includes(JSON.stringify(phrase)));
-  assert(generated.includes(policy.runtime_instruction.trim()));
+  const asLiteral = (text) => JSON.stringify(text.trim()).slice(1, -1);
+  assert(generated.includes(asLiteral(policy.runtime_instruction)));
+  assert(generated.includes(asLiteral(policy.fidelity_instruction)));
   const numeric = policy.default_reply;
   const instruction = buildReplyStyleInstruction(policy);
+  assert(
+    instruction.indexOf(policy.runtime_instruction.trim()) <
+      instruction.indexOf(policy.fidelity_instruction.trim()),
+  );
   assert(instruction.includes(`normally ${numeric.min_sentences}-${numeric.max_sentences} sentences`));
   assert(instruction.includes(`at most ${numeric.max_visible_characters} visible characters`));
   assert(!policy.runtime_instruction.includes(String(numeric.max_visible_characters)));

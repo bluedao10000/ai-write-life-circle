@@ -11,17 +11,17 @@ export const operationLabels: Record<CreativeProposal['operation'], string> = {
 }
 
 export const proposalStatusLabels: Record<CreativeProposal['status'], string> = {
-  proposed: '待审核',
-  accepted: '已接受',
-  rejected: '已拒绝',
-  superseded: '已被后续讨论修订',
+  proposed: '待定',
+  accepted: '已收入',
+  rejected: '已搁置',
+  superseded: '已随讨论更新',
   expired: '已失效',
 }
 
 export const assetStatusLabels = {
   draft: '草稿',
-  accepted: '已确认',
-  superseded: '已被替代',
+  accepted: '已定稿',
+  superseded: '已更新',
   archived: '已归档',
 } as const
 

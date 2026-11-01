@@ -32,10 +32,10 @@ const questionOf = (answerId: string) => answerId.replace(/-answer(-\d+)?$/, '')
 
 /** Starters only fill the composer; the author edits before sending (Figma SUGGEST). */
 const SUGGEST: { icon: IconName; label: string; fill: string }[] = [
-  { icon: 'users', label: '探索一个人物的内心', fill: '我想探索一个人物的内心：' },
-  { icon: 'globe', label: '讨论世界观中的矛盾', fill: '我想讨论世界观中的一个矛盾：' },
-  { icon: 'flag', label: '梳理故事的核心冲突', fill: '帮我梳理故事的核心冲突：' },
-  { icon: 'book', label: '从历史与哲学寻找灵感', fill: '我想从历史与哲学中寻找灵感：' },
+  { icon: 'users', label: '探索一个人物的内心', fill: '有个角色我还没完全想透：' },
+  { icon: 'globe', label: '讨论世界观中的矛盾', fill: '这个故事发生的地方有个规矩：' },
+  { icon: 'flag', label: '梳理故事的核心冲突', fill: '有一场对手戏卡住了：' },
+  { icon: 'book', label: '从历史与哲学寻找灵感', fill: '最近读到一段历史，想借来用：' },
 ]
 
 export default function InspirationWorkspace({ studio }: { studio: Studio }) {
@@ -73,7 +73,9 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
   const [fresh, setFresh] = useState<string | null>(null)
   const input = useRef<HTMLTextAreaElement>(null)
   const scroller = useRef<HTMLDivElement>(null)
-  const seen = useRef<{ id: string | null; count: number }>({ id: null, count: 0 })
+  const seen = useRef<{ id: string | null; count: number; first?: string; last?: string; height: number }>({ id: null, count: 0, height: 0 })
+  /** Scroll position captured just before older messages are requested. */
+  const anchor = useRef<{ top: number; height: number } | null>(null)
   const sentAt = useRef<{ text: string; questions: number } | null>(null)
   const pin = useRef<string | null>(null)
   const session = t.session
@@ -150,14 +152,23 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
   useLayoutEffect(() => {
     const el = scroller.current
     if (!el) return
+    const id = t.selected
+    const count = messages.length
+    const before = seen.current
+    seen.current = { id, count, first: messages[0]?.id, last: messages[count - 1]?.id, height: el.scrollHeight }
+    // 加载更早的讨论 inserts above: keep the reader exactly where they were.
+    const older = before.id === id && count > before.count && messages[0]?.id !== before.first && messages[count - 1]?.id === before.last
+    if (older) {
+      const a = anchor.current ?? { top: el.scrollTop, height: before.height }
+      anchor.current = null
+      el.scrollTop = a.top + el.scrollHeight - a.height
+      seen.current.height = el.scrollHeight
+      return
+    }
     if (lit) {
       document.getElementById(`msg-${lit}`)?.scrollIntoView({ block: 'center' })
       return
     }
-    const id = t.selected
-    const count = messages.length
-    const before = seen.current
-    seen.current = { id, count }
     const behavior = reducedMotion() ? 'auto' : 'smooth'
     if (before.id !== id || (before.count === 0 && count > 0 && !sending)) {
       pin.current = null
@@ -286,7 +297,7 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
   const decide = async (p: CreativeProposal, action: 'accept' | 'reject') => {
     try {
       await creativeApi.decide(book, [{ proposalId: p.proposalId, action }])
-      studio.toast(action === 'accept' ? `「${p.result?.name ?? p.targetName}」已成为作品设定` : '已否决，可以在「书 · 待确认」中查看记录')
+      studio.toast(action === 'accept' ? `「${p.result?.name ?? p.targetName}」已收入设定` : '已搁置，可以在「书 · 待确认」中查看记录')
       setDrawer(null)
       reloadCreative()
     } catch (e) {
@@ -308,10 +319,8 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
     if (sid !== t.selected) t.select(sid)
     setLit(mid)
   }
-  const openSource = (src: ThinkingSource) => {
-    studio.workspace.switchChapter(src.chapterId)
-    studio.setView('read')
-  }
+  // Reuses the studio's evidence location: exact paragraph, stale and ambiguous quotes refused.
+  const openSource = (src: ThinkingSource) => studio.openEvidence(src)
   const openInbox = () => {
     setNav(false)
     setMenu(false)
@@ -540,9 +549,9 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
         <div className="relative">
           <div aria-hidden className="paper-grid pointer-events-none absolute -inset-x-6 -inset-y-12 md:-inset-x-20" />
           <Heading level={1} className="rise relative text-center tracking-wide whitespace-pre-line max-md:text-display md:text-headline">
-            {'每一个故事，\n都始于一个问题。'}
+            从哪里开始聊起？
           </Heading>
-          {!kb && <p className="rise relative mt-4 text-center text-ui-lg text-ink-3">讨论人物，探索世界，寻找故事尚未出现的可能。</p>}
+          {!kb && <p className="rise relative mt-4 text-center text-ui-lg text-ink-3">可以是一个人的处境、一条世界规矩，或一幕还没头绪的戏。聊出的设定会整理进「本次整理」，随时挑有用的收进「书」里。</p>}
         </div>
         {wide && (
           <div className="rise-late mt-10">
@@ -601,7 +610,16 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
     <div className="mx-auto w-full max-w-chat px-5 pt-6 pb-10 md:px-8">
       {session?.history?.hasMore && (
         <div className="mb-6 text-center">
-          <Btn size="sm" variant="quiet" disabled={t.historyBusy} onClick={t.loadHistory}>
+          <Btn
+            size="sm"
+            variant="quiet"
+            disabled={t.historyBusy}
+            onClick={() => {
+              const el = scroller.current
+              if (el) anchor.current = { top: el.scrollTop, height: el.scrollHeight }
+              t.loadHistory()
+            }}
+          >
             {t.historyBusy ? '正在读取…' : '加载更早的讨论'}
           </Btn>
         </div>
@@ -650,7 +668,7 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
       <div className="mx-auto w-full max-w-chat">
         {notices}
         {composer}
-        {wide && <p className="mt-2 text-center text-micro text-ink-3">创作伙伴只参与讨论；正文与最终决定，始终属于你。</p>}
+        {wide && <p className="mt-2 text-center text-micro text-ink-3">仅作讨论与整理，不会改动正文或已定设定。</p>}
       </div>
     </div>
   )
@@ -673,7 +691,7 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
 
       <main aria-label="灵感对话" className="relative flex min-w-0 flex-1 flex-col">
         {wide ? desktopBar : mobileBar}
-        <div ref={scroller} onScroll={onScroll} onWheel={release} onTouchMove={release} onKeyDown={release} className="scroll min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain">
+        <div ref={scroller} onScroll={onScroll} onWheel={release} onTouchMove={release} onKeyDown={release} className="scroll min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain [overflow-anchor:none]">
           {landing ? landingView : thread}
         </div>
         {(!landing || !wide) && dock}

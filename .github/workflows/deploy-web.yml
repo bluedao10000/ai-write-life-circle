@@ -61,16 +61,25 @@ jobs:
         run: |
           node --input-type=module - <<'JS'
           import { publicHomeSchema } from './packages/contracts/dist/index.js'
-          const response = await fetch('https://api.story2u.xyz/v1/public/home', { signal: AbortSignal.timeout(15000), redirect: 'error' })
-          if (!response.ok) throw new Error('Deploy the publication Go API before the public web entry')
-          publicHomeSchema.parse(await response.json())
+          // Same checks as before; failures now name the check and the transport cause
+          // (unreachable host, timeout) so the gate can be diagnosed from the log.
+          const get = async (url, init = {}) => {
+            try { return await fetch(url, { ...init, signal: AbortSignal.timeout(15000), redirect: 'error' }) }
+            catch (e) { throw new Error(`Preflight could not reach ${new URL(url).host} from this runner: ${e?.cause?.code ?? e?.name ?? 'network error'}`) }
+          }
+          const response = await get('https://api.story2u.xyz/v1/public/home')
+          console.log('public home', response.status, 'identity mode', response.headers.get('x-writer-agent-identity-mode'))
+          if (!response.ok) throw new Error('Deploy the publication Go API before the public web entry (status ' + response.status + ')')
+          const parsed = publicHomeSchema.safeParse(await response.json())
+          if (!parsed.success) throw new Error('Public home response does not match this web build contract: ' + JSON.stringify(parsed.error.issues.slice(0, 3)))
           // Sign-up is open: never switch the web entry to an API that would map
           // every Google account onto one shared author.
           if (response.headers.get('x-writer-agent-identity-mode') !== 'per-user-v1') throw new Error('Deploy the per-user identity Go API (WRITER_AGENT_IDENTITY_PUBLIC_KEY) before this web entry')
           if(!process.env.WRITER_AGENT_API_TOKEN) throw new Error('Missing API credential for managed workspace preflight')
           // A bearer without a signed user must be refused by the per-user API.
-          const managed = await fetch('https://api.story2u.xyz/v1/studio/books', { headers: { authorization: `Bearer ${process.env.WRITER_AGENT_API_TOKEN}` }, signal: AbortSignal.timeout(15000), redirect: 'error' })
+          const managed = await get('https://api.story2u.xyz/v1/studio/books', { headers: { authorization: `Bearer ${process.env.WRITER_AGENT_API_TOKEN}` } })
           await managed.body?.cancel()
+          console.log('bearer without signed user', managed.status)
           if (managed.status !== 401) throw new Error('Go API accepted a request without a signed user (status ' + managed.status + ')')
           JS
 

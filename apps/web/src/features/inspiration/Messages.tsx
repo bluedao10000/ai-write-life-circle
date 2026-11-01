@@ -172,7 +172,7 @@ export function Failure({ m, run, busy, recent, onResume, onAsk, onScopes, onNew
         </div>
       )}
       {resumable && <p className="mt-2 text-micro text-ink-3">重新尝试会再次请求原模型，按实际用量计入 AI 点数{failure?.mayHaveIncurredCost ? '；上次请求可能已计入' : ''}。</p>}
-      {run && !run.resumable && !stopped && run.status !== 'completed' && <p className="mt-2 text-micro text-ink-3">本轮曾安排了不能安全重放的操作，请先查看结果，再重新提问。</p>}
+      {run && !run.resumable && !stopped && run.status !== 'completed' && <p className="mt-2 text-micro text-ink-3">这一轮已经做过的步骤不能自动重来，请先看看已有内容，再重新提问。</p>}
       {more && (
         <p className="fade mt-2 text-micro break-all text-ink-3">
           技术详情：<span className="font-mono">{code}</span>
@@ -210,7 +210,7 @@ export function Sources({ sources, onSource }: { sources: ThinkingSource[]; onSo
               {src.quote}
             </Quote>
           ))}
-          <p className="text-micro text-ink-3">引文证明原文存在，不代表推断成立。</p>
+          <p className="text-micro text-ink-3">点击可跳回对应章节核对上下文。</p>
         </div>
       )}
     </div>
