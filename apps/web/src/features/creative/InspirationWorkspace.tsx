@@ -463,7 +463,8 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
             </div>
             <div className="space-y-3 border-b border-line-soft px-3 py-3">
               <div className="min-w-0">{management ? <BookMenu wide /> : <span className="block truncate px-1 font-prose text-ui text-ink-2">{studio.workspace.projectTitle}</span>}</div>
-              <div className="flex items-center justify-between gap-2">{mainNav}</div>
+              {/* The drawer has room for the desktop tab padding (Figma). */}
+              <div className="flex items-center justify-between gap-2 [&_[role=tab]]:px-3">{mainNav}</div>
             </div>
           </>
         ) : undefined
@@ -516,7 +517,8 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
             <span aria-label={`${organized.length} 项待确认`} className="h-1.5 w-1.5 rounded-full bg-warn" />
           </Btn>
         )}
-        {more}
+        {/* Figma: no menu over the empty desktop landing; the sidebar footer carries scopes and inbox. */}
+        {(!landing || !side) && more}
       </div>
     </header>
   )

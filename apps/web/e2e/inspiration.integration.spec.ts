@@ -19,6 +19,11 @@ async function chooseModel(page:Page,name:RegExp){
 async function history(page:Page){if(narrow(page)) await page.getByRole('button',{name:'历史会话与导航',exact:true}).click();await expect(page.getByRole('navigation',{name:'历史会话'})).toBeVisible()}
 async function newChat(page:Page){await page.getByRole('button',{name:'新对话',exact:true}).first().click();await expect(page.getByRole('heading',{name:/每一个故事/})).toBeVisible()}
 async function moreMenu(page:Page,item:RegExp){await page.getByRole('button',{name:'更多',exact:true}).click();await page.getByRole('group',{name:'更多'}).getByRole('button',{name:item}).click()}
+// Desktop landing has no menu (Figma); the history sidebar footer carries the scope entry.
+async function scopes(page:Page,label:RegExp){
+ if(narrow(page)) return moreMenu(page,label)
+ await page.getByRole('complementary',{name:'历史会话'}).getByRole('button',{name:label}).click()
+}
 async function sendAndWait(page:Page,text:string,expected:string|RegExp){
  const before=await replies(page).count()
  await composer(page).fill(text)
@@ -72,18 +77,18 @@ test('first send creates the conversation without any consent dialog, then model
 
 test('AI 资料范围 is explicit, per work, revocable, and private notes stay off',async({page})=>{
  await open(page)
- await moreMenu(page,/^AI 资料范围/)
+ await scopes(page,/^AI 资料范围/)
  const dialog=page.getByRole('dialog',{name:'本作品的 AI 资料范围'})
  await expect(dialog.getByRole('checkbox',{name:/私人作者笔记（额外授权）/})).not.toBeChecked()
  await dialog.getByRole('checkbox',{name:/本作品知识库/}).check()
  await dialog.getByRole('button',{name:'保存范围'}).click()
  await expect(dialog).toHaveCount(0)
- await moreMenu(page,/^AI 资料范围 · 已开启 1 项/)
+ await scopes(page,/^AI 资料范围 · 已开启 1 项/)
  await expect(dialog.getByRole('checkbox',{name:/本作品知识库/})).toBeChecked()
  await expect(dialog.getByRole('checkbox',{name:/私人作者笔记/})).not.toBeChecked()
  await dialog.getByRole('checkbox',{name:/本作品知识库/}).uncheck()
  await dialog.getByRole('button',{name:'保存范围'}).click()
- await moreMenu(page,/^AI 资料范围 · 仅限对话内容/)
+ await scopes(page,/^AI 资料范围 · 仅限对话内容/)
  await page.keyboard.press('Escape')
  await expect(dialog).toHaveCount(0)
 })
