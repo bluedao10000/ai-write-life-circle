@@ -73,7 +73,9 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
   const [fresh, setFresh] = useState<string | null>(null)
   const input = useRef<HTMLTextAreaElement>(null)
   const scroller = useRef<HTMLDivElement>(null)
-  const seen = useRef<{ id: string | null; count: number }>({ id: null, count: 0 })
+  const seen = useRef<{ id: string | null; count: number; first?: string; last?: string; height: number }>({ id: null, count: 0, height: 0 })
+  /** Scroll position captured just before older messages are requested. */
+  const anchor = useRef<{ top: number; height: number } | null>(null)
   const sentAt = useRef<{ text: string; questions: number } | null>(null)
   const pin = useRef<string | null>(null)
   const session = t.session
@@ -150,14 +152,23 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
   useLayoutEffect(() => {
     const el = scroller.current
     if (!el) return
+    const id = t.selected
+    const count = messages.length
+    const before = seen.current
+    seen.current = { id, count, first: messages[0]?.id, last: messages[count - 1]?.id, height: el.scrollHeight }
+    // 加载更早的讨论 inserts above: keep the reader exactly where they were.
+    const older = before.id === id && count > before.count && messages[0]?.id !== before.first && messages[count - 1]?.id === before.last
+    if (older) {
+      const a = anchor.current ?? { top: el.scrollTop, height: before.height }
+      anchor.current = null
+      el.scrollTop = a.top + el.scrollHeight - a.height
+      seen.current.height = el.scrollHeight
+      return
+    }
     if (lit) {
       document.getElementById(`msg-${lit}`)?.scrollIntoView({ block: 'center' })
       return
     }
-    const id = t.selected
-    const count = messages.length
-    const before = seen.current
-    seen.current = { id, count }
     const behavior = reducedMotion() ? 'auto' : 'smooth'
     if (before.id !== id || (before.count === 0 && count > 0 && !sending)) {
       pin.current = null
@@ -308,10 +319,8 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
     if (sid !== t.selected) t.select(sid)
     setLit(mid)
   }
-  const openSource = (src: ThinkingSource) => {
-    studio.workspace.switchChapter(src.chapterId)
-    studio.setView('read')
-  }
+  // Reuses the studio's evidence location: exact paragraph, stale and ambiguous quotes refused.
+  const openSource = (src: ThinkingSource) => studio.openEvidence(src)
   const openInbox = () => {
     setNav(false)
     setMenu(false)
@@ -601,7 +610,16 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
     <div className="mx-auto w-full max-w-chat px-5 pt-6 pb-10 md:px-8">
       {session?.history?.hasMore && (
         <div className="mb-6 text-center">
-          <Btn size="sm" variant="quiet" disabled={t.historyBusy} onClick={t.loadHistory}>
+          <Btn
+            size="sm"
+            variant="quiet"
+            disabled={t.historyBusy}
+            onClick={() => {
+              const el = scroller.current
+              if (el) anchor.current = { top: el.scrollTop, height: el.scrollHeight }
+              t.loadHistory()
+            }}
+          >
             {t.historyBusy ? '正在读取…' : '加载更早的讨论'}
           </Btn>
         </div>
@@ -673,7 +691,7 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
 
       <main aria-label="灵感对话" className="relative flex min-w-0 flex-1 flex-col">
         {wide ? desktopBar : mobileBar}
-        <div ref={scroller} onScroll={onScroll} onWheel={release} onTouchMove={release} onKeyDown={release} className="scroll min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain">
+        <div ref={scroller} onScroll={onScroll} onWheel={release} onTouchMove={release} onKeyDown={release} className="scroll min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain [overflow-anchor:none]">
           {landing ? landingView : thread}
         </div>
         {(!landing || !wide) && dock}
