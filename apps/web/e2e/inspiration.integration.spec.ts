@@ -9,6 +9,7 @@ const composer=(page:Page)=>page.getByRole('textbox',{name:'说说你正在思�
 const picker=(page:Page)=>page.getByRole('button',{name:/^选择回复模型/})
 const send=(page:Page)=>page.getByRole('button',{name:'发送',exact:true})
 const replies=(page:Page)=>page.getByRole('article',{name:'创作伙伴的回复'})
+const thread=(page:Page)=>page.getByRole('list',{name:'对话记录'})
 async function open(page:Page){await page.goto('/studio?view=inspire');await expect(composer(page)).toBeVisible()}
 async function chooseModel(page:Page,name:RegExp){
  await picker(page).click()
@@ -104,13 +105,53 @@ test('ten rounds in a row keep every message, with no consent prompts and no dup
  expect(s.history?.totalMessages ?? s.messages.length).toBe(20)
  expect(s.messages.filter((m:{status:string})=>m.status!=='completed')).toEqual([])
  await expect(replies(page)).toHaveCount(10)
- // After a reload only the recent page is loaded; older turns come back on demand.
  await page.reload()
- if(s.history?.hasMore){
-  await page.getByRole('button',{name:'加载更早的讨论'}).click()
-  await expect(page.getByText(`十轮讨论 ${testInfo.project.name} 第 1 轮：张居正的好人品`,{exact:true})).toBeVisible()
- }
  await expect(replies(page)).toHaveCount(10)
+ await expect(thread(page).getByText(`十轮讨论 ${testInfo.project.name} 第 1 轮：张居正的好人品`,{exact:true})).toBeAttached()
+})
+
+test('加载更早的讨论 inserts older turns above without moving the reader',async({page,request},testInfo)=>{
+ await open(page);await newChat(page)
+ const sent=page.waitForRequest(r=>r.method()==='POST' && /\/messages$/.test(new URL(r.url()).pathname))
+ await sendAndWait(page,`分页 ${testInfo.project.name} 第 1 轮`,SHORT)
+ const path=sessionPath((await sent).url())
+ // The snapshot holds the newest 40 messages; 22 rounds make two pages. Rounds 2–22 go through the real API.
+ for(let i=2;i<=22;i++){
+  const r=await request.post(path+'/messages',{headers:{'content-type':'application/json','idempotency-key':crypto.randomUUID()},data:{text:`分页第 ${i} 轮`,modelId:'deepseek'}})
+  expect(r.status()).toBeLessThan(300)
+  await expect.poll(async()=>(await snapshotOf(request,path)).status,{timeout:20000}).toBe('idle')
+ }
+ await page.reload()
+ const older=page.getByRole('button',{name:'加载更早的讨论'})
+ await expect(older).toBeVisible({timeout:20000})
+ const scroller=page.locator('main[aria-label="灵感对话"] .overflow-y-auto').first()
+ await scroller.evaluate(el=>el.scrollTo({top:0}))
+ const kept=thread(page).getByText('分页第 3 轮',{exact:true})
+ const y0=(await kept.boundingBox())!.y
+ await older.click()
+ await expect(thread(page).getByText(`分页 ${testInfo.project.name} 第 1 轮`,{exact:true})).toBeAttached()
+ await expect(replies(page)).toHaveCount(22)
+ expect(Math.abs((await kept.boundingBox())!.y-y0)).toBeLessThan(40)
+ expect(await scroller.evaluate(el=>el.scrollHeight-el.scrollTop-el.clientHeight)).toBeGreaterThan(400)
+})
+
+test('unsent drafts belong to their own conversation: A → B → A, a new topic and a reload',async({page},testInfo)=>{
+ await open(page);await newChat(page)
+ const titleA=`草稿隔离 A ${testInfo.project.name}`,titleB=`草稿隔离 B ${testInfo.project.name}`
+ await sendAndWait(page,titleA,SHORT)
+ await composer(page).fill('只属于 A 的想法')
+ await newChat(page)
+ await expect(composer(page)).toHaveValue('')
+ await sendAndWait(page,titleB,SHORT)
+ await expect(composer(page)).toHaveValue('')
+ await composer(page).fill('只属于 B 的想法')
+ const pick=async(title:string)=>{await history(page);await page.getByRole('navigation',{name:'历史会话'}).getByRole('button',{name:new RegExp(`^${title}`)}).first().click();await expect(page.getByText(title,{exact:true}).first()).toBeVisible()}
+ await pick(titleA)
+ await expect(composer(page)).toHaveValue('只属于 A 的想法')
+ await page.reload()
+ await expect(composer(page)).toHaveValue('只属于 A 的想法')
+ await pick(titleB)
+ await expect(composer(page)).toHaveValue('只属于 B 的想法')
 })
 
 test('A → B → A sends the model owned by each conversation', async({page,request},testInfo)=>{

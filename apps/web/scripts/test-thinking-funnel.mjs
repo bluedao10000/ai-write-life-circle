@@ -242,6 +242,14 @@ try {
   // Evidence stays inspectable: verified source quotes behind a disclosure.
   await talk.getByRole("button", { name: /已参考作品中的 \d+ 处原文/ }).first().click();
   await expect(talk.getByText(/原文位置已核验/).first()).toBeVisible();
+  // 查看原文 lands on the exact quoted paragraph in 阅读, not just the chapter.
+  const firstQuote = (await talk.locator("blockquote").first().innerText()).trim();
+  await talk.getByRole("button", { name: "查看原文" }).first().click();
+  await expect(page.getByLabel("正文编辑器")).toBeVisible();
+  await expect(page.locator(".ann-flash")).toHaveCount(1);
+  await expect(page.locator(".ann-flash")).toContainText(firstQuote.split("\n")[0]);
+  await page.getByRole("tab", { name: "灵感", exact: true }).click();
+  await expect(input).toBeVisible();
   await input.fill("那么父亲还有什么其他解释？");
   await expect(page.getByRole("button", { name: "发送", exact: true })).toBeEnabled();
   await send();
