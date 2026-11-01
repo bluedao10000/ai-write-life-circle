@@ -5,6 +5,10 @@
 // Usage (both apps already running; see harness/design/figma-v3-sync-report.md):
 //   FIGMA=http://127.0.0.1:8443/#/studio OURS=http://127.0.0.1:5199/studio \
 //   VIEWPORTS=1440x900 SCENES=book,inbox node scripts/compare-figma-baseline.mjs
+// 灵感 scenes (idea, idea-thread, idea-models, idea-drawer) send the regression
+// question; run OURS against the synthetic inspiration stack
+// (INSPIRATION_VISUAL replies: node e2e/start-inspiration-stack.mjs) at
+// OURS=http://127.0.0.1:5191/studio?view=inspire, never against production.
 // Writes <scene>-<viewport>-{figma,ours,diff,overlay}.png and report.json to $OUT.
 // Pixel diff: a pixel counts as changed when |ΔR|+|ΔG|+|ΔB| > 48.
 // Content differs between the prototype's demo work and real data, so the
@@ -18,7 +22,7 @@ const apps = {
   figma: process.env.FIGMA ?? 'http://127.0.0.1:8443/#/studio',
   ours: process.env.OURS ?? 'http://127.0.0.1:5199/studio',
 }
-const viewports = (process.env.VIEWPORTS ?? '1920x1080,1440x900,1280x800,768x1024,390x844').split(',').map((v) => v.split('x').map(Number))
+const viewports = (process.env.VIEWPORTS ?? '1920x1080,1440x900,1280x800,768x1024,390x844,375x667').split(',').map((v) => v.split('x').map(Number))
 const only = process.env.SCENES?.split(',')
 
 const tab = (name) => async (page) => {
@@ -27,8 +31,24 @@ const tab = (name) => async (page) => {
   // narrow layouts may hide the main tabs behind a menu
   await page.getByRole('button', { name, exact: true }).first().click()
 }
+const QUESTION = '我想讨论一个问题，什么样的人品才是真正的好人品。我想以明朝的张居正为原型，写一部背景是平行宇宙的科幻小说。'
+const ask = async (page) => {
+  await page.getByRole('textbox', { name: '说说你正在思考的问题' }).fill(QUESTION)
+  await page.getByRole('button', { name: '发送', exact: true }).click()
+  await page.getByText('判断的标准由你来定').first().waitFor({ timeout: 25000 })
+  await page.waitForTimeout(1500)
+}
 const scenes = {
   idea: async () => {},
+  'idea-thread': ask,
+  'idea-models': async (page) => {
+    await ask(page)
+    await page.getByRole('button', { name: /^选择回复模型/ }).click()
+  },
+  'idea-drawer': async (page) => {
+    if (page.viewportSize().width < 768) await page.getByRole('button', { name: '历史会话与导航', exact: true }).click()
+    else await page.getByRole('button', { name: '收起历史会话', exact: true }).click()
+  },
   read: tab('阅读'),
   write: async (page) => {
     await tab('阅读')(page)
@@ -75,11 +95,23 @@ const landmarkScript = () => {
     if (named.includes(n)) put('btn:' + n, b)
   }
   for (const s of document.querySelectorAll('input[placeholder]')) put('input:' + s.getAttribute('placeholder').slice(0, 8), s)
+  // 灵感: icon buttons are matched by their accessible name.
+  for (const b of document.querySelectorAll('button[aria-label]')) {
+    const n = b.getAttribute('aria-label')
+    if (['发送', '停止回复', '更多', '新对话', '历史会话与导航', '收起历史会话', '展开历史会话'].includes(n)) put('btn:' + n, b)
+    if (n.startsWith('选择回复模型')) put('modelPicker', b)
+  }
+  for (const t of document.querySelectorAll('textarea[aria-label="说说你正在思考的问题"]')) put('composer', t.closest('.vt-composer'))
+  put('history', document.querySelector('nav[aria-label="历史会话"]'))
+  put('reply', document.querySelector('article[aria-label="创作伙伴的回复"]'))
+  put('modelMenu', document.querySelector('[aria-label="选择回复模型"][role=group], [aria-label="选择回复模型"][role=dialog] > div'))
   return out
 }
 
 async function capture(browser, app, scene, [w, h]) {
-  const page = await browser.newPage({ viewport: { width: w, height: h }, deviceScaleFactor: 1 })
+  const mobile = w < 768
+  const context = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 1, isMobile: mobile, hasTouch: mobile, locale: 'zh-CN' })
+  const page = await context.newPage()
   const errors = []
   page.on('pageerror', (e) => errors.push(e.message))
   await page.goto(apps[app])
@@ -94,7 +126,7 @@ async function capture(browser, app, scene, [w, h]) {
   const file = `${OUT}/${scene}-${w}x${h}-${app}.png`
   await page.screenshot({ path: file })
   const boxes = await page.evaluate(landmarkScript)
-  await page.close()
+  await context.close()
   return { file, boxes, errors }
 }
 
