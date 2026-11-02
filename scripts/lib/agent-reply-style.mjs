@@ -112,6 +112,7 @@ export function analyzeReply(sample, policy) {
   const visibleCharacters = countVisibleCharacters(text);
   const sentenceCount = estimateSentenceCount(text);
   const forbiddenPhrases = findForbiddenPhrases(text, policy.forbidden_phrases);
+  if (/不是[^。！？；\n]{1,30}而是/.test(text)) forbiddenPhrases.push("不是…而是");
   const isDefault = sample.kind === "default";
   const lengthPass =
     !isDefault || visibleCharacters <= policy.default_reply.max_visible_characters;

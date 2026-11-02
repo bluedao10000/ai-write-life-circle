@@ -4,7 +4,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import type { ThinkingMessage, ThinkingRecovery, ThinkingRun, ThinkingSource } from '@writer-agent/contracts'
-import { Btn, Icon, Quote, TextArea } from '../../components/vnext/ui'
+import { Btn, Icon, Quote } from '../../components/vnext/ui'
 import { thinkingError } from '../thinking/errors'
 import ToolTimeline, { labelOf } from '../thinking/ToolTimeline'
 import type { ToolStep } from '../thinking/toolActivity'
@@ -99,7 +99,7 @@ export function Failure({ m, run, busy, recent, onResume, onAsk, onScopes, onNew
   /** The session's current run when it belongs to this reply. */
   run?: ThinkingRun
   busy: boolean
-  /** Recent visible discussion, offered as editable continuation context. */
+  /** Recent visible discussion used to resume an interrupted reply. */
   recent: string
   onResume: (input: ThinkingRecovery) => void
   onAsk: () => void
@@ -107,32 +107,25 @@ export function Failure({ m, run, busy, recent, onResume, onAsk, onScopes, onNew
   onNewTopic: () => void
 }) {
   const [more, setMore] = useState(false)
-  const [context, setContext] = useState<string | null>(null)
   const stopped = m.status === 'cancelled'
   const code = m.errorCode ?? (stopped ? 'CANCELLED' : 'SESSION_INTERRUPTED')
   const failure = run?.failure
   const resumable = !!run && !!failure?.retryable && run.resumable && ['failed', 'interrupted'].includes(run.status)
-  const needsContext = failure?.userAction === 'provide_context'
+  const needsContext = failure?.code === 'CONTEXT_OVERFLOW'
   const title = stopped ? '已停止回复。' : m.text.trim() ? '这次回复没有完整生成，已收到的内容已保留。' : '这次回复未能完成，你的问题已保存。'
   // The code-specific explanation is the most precise; the run's category text covers unknown codes.
   const specific = thinkingError(code)
   const explanation = specific === thinkingError() && failure?.message ? failure.message : specific
-  const resume = (continuationContext?: string) => onResume({ runId: run!.runId, confirmAdditionalCost: true, ...(continuationContext ? { continuationContext } : {}) })
+  const resume = () => onResume({ runId: run!.runId, confirmAdditionalCost: true, ...(recent.trim() ? { continuationContext: recent.trim() } : {}) })
   return (
     <div className="msg-in mt-5 border-l-2 border-line pl-4">
       <p className="text-ui text-ink-2">{title}</p>
       {!stopped && <p className="mt-1 text-ui-sm text-ink-3">{explanation}</p>}
       <div className="mt-2 flex flex-wrap items-center gap-x-1 gap-y-1">
-        {resumable && !needsContext && (
-          <Btn size="sm" variant="outline" disabled={busy} onClick={() => resume()} className="max-md:min-h-11">
+        {resumable && (
+          <Btn size="sm" variant="outline" disabled={busy} onClick={resume} className="max-md:min-h-11">
             <Icon name="refresh" className="h-3 w-3" />
-            {run!.status === 'interrupted' ? '继续回复' : '重新尝试'}
-          </Btn>
-        )}
-        {resumable && needsContext && context === null && (
-          <Btn size="sm" variant="outline" disabled={busy} onClick={() => setContext(recent)} className="max-md:min-h-11">
-            <Icon name="refresh" className="h-3 w-3" />
-            带着续谈要点继续
+            {run!.status === 'interrupted' || needsContext ? '继续回复' : '重新尝试'}
           </Btn>
         )}
         {!resumable && (
@@ -157,20 +150,6 @@ export function Failure({ m, run, busy, recent, onResume, onAsk, onScopes, onNew
           </Btn>
         )}
       </div>
-      {resumable && context !== null && (
-        <div className="fade mt-3 space-y-2">
-          <p className="text-ui-sm text-ink-3">讨论较长，模型会用这份要点代替较早的上下文继续；完整历史仍然保留。请保留已定事项、重要引用和尚未确定的假设。</p>
-          <TextArea label="续谈要点" rows={5} value={context} onChange={setContext} maxLength={12000} className="rounded-md border border-line bg-paper px-3 py-2 text-ui" />
-          <div className="flex flex-wrap gap-1">
-            <Btn size="sm" variant="primary" disabled={busy || !context.trim()} onClick={() => resume(context.trim())}>
-              继续回复
-            </Btn>
-            <Btn size="sm" onClick={() => setContext(null)}>
-              取消
-            </Btn>
-          </div>
-        </div>
-      )}
       {resumable && <p className="mt-2 text-micro text-ink-3">重新尝试会再次请求原模型，按实际用量计入 AI 点数{failure?.mayHaveIncurredCost ? '；上次请求可能已计入' : ''}。</p>}
       {run && !run.resumable && !stopped && run.status !== 'completed' && <p className="mt-2 text-micro text-ink-3">这一轮已经做过的步骤不能自动重来，请先看看已有内容，再重新提问。</p>}
       {more && (
@@ -203,7 +182,7 @@ export function Sources({ sources, onSource }: { sources: ThinkingSource[]; onSo
           {sources.map((src, i) => (
             <Quote
               key={src.sourceId}
-              label={`［原文 ${i + 1}］${src.title} · ${src.validity === 'stale' ? '旧版本引文' : '原文位置已核验'}${src.epistemic ? ` · ${{ observation: '正文观察', claim: '角色说法', inference: 'AI 推测' }[src.epistemic]}` : ''}`}
+              label={`［原文 ${i + 1}］${src.title} · ${src.validity === 'stale' ? '旧版本引文' : '原文位置已核验'}${src.epistemic ? ` · ${{ observation: '原文提及', claim: '角色说法', inference: 'AI 推测' }[src.epistemic]}` : ''}`}
               state={src.validity === 'stale' ? 'stale' : 'ok'}
               onOpen={() => onSource(src)}
             >

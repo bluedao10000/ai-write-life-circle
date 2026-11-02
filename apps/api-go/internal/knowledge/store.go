@@ -18,7 +18,13 @@ func (s *Service) load() (State, error) {
 		return st, e
 	}
 	if !found {
-		return State{BookID: s.App.Project, SchemaVersion: 1, Settings: Settings{DailyTokenBudget: 100000000, DailyJobBudget: 200}, Entities: map[string]Entity{}, Assertions: map[string]Assertion{}, Jobs: []Job{}, Corrections: []Correction{}, Changes: []Change{}, Requests: map[string]receipt{}, Index: map[string][]string{}}, nil
+		settings := Settings{DailyTokenBudget: 100000000, DailyJobBudget: 200}
+		if s.Config.ValidatePublic() == nil {
+			settings.Enabled = true
+			settings.Model = s.Config.Info()
+			settings.ConfigFingerprint = s.Config.Fingerprint()
+		}
+		return State{BookID: s.App.Project, SchemaVersion: 1, Settings: settings, Entities: map[string]Entity{}, Assertions: map[string]Assertion{}, Jobs: []Job{}, Corrections: []Correction{}, Changes: []Change{}, Requests: map[string]receipt{}, Index: map[string][]string{}}, nil
 	}
 	if st.BookID != s.App.Project || st.SchemaVersion != 1 || st.Version < 0 || st.BudgetTokens < 0 || st.BudgetAttempts < 0 || st.Entities == nil || st.Assertions == nil || st.Requests == nil || st.Index == nil {
 		return st, application.Fail(500, "KNOWLEDGE_STORAGE_INVALID", "Knowledge state is invalid.")

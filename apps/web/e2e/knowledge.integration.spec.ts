@@ -60,11 +60,6 @@ test("saved prose automatically becomes private memory, links chapter two, revis
     .poll(() => savedMarkdown(ch1), { timeout: 10000 })
     .toBe("林舟十五岁离开北港。");
   await book(page);
-  await expect(page.getByText("启用知识维护后开始整理")).toBeVisible();
-  await page.getByRole("button", { name: "启用自动整理" }).click();
-  await page.getByLabel("每日 Token 上限（保守预留）").fill("200000");
-  await page.getByRole("checkbox").check();
-  await page.getByRole("button", { name: "确认启用" }).click();
   await people(page);
   await expect(
     page.getByRole("heading", { name: "林舟", exact: true }),

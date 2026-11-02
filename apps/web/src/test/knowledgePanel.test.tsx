@@ -132,7 +132,7 @@ describe("private AI memory", () => {
     expect(knowledgeApi.history).not.toHaveBeenCalled();
     expect(knowledgeApi.corrections).not.toHaveBeenCalled();
   });
-  it("requires per-book explicit model disclosure consent before enable", async () => {
+  it("enables knowledge with the stored budgets without budget forms", async () => {
     const p = page();
     p.settings.enabled = false;
     p.entities = [];
@@ -142,17 +142,10 @@ describe("private AI memory", () => {
     render(<KnowledgePanel {...props} />);
     await screen.findByText("启用知识维护后开始整理");
     fireEvent.click(screen.getByRole("button", { name: "启用自动整理" }));
-    expect(screen.getByRole("button", { name: "确认启用" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "确认启用" })).toBeEnabled();
     expect(screen.getByText(p.disclosure)).toBeVisible();
-    expect(
-      screen.getByRole("textbox", { name: "每日 Token 上限（保守预留）" }),
-    ).toHaveValue("100000");
-    expect(
-      screen.getByRole("textbox", {
-        name: "每日执行次数上限（含失败与重试）",
-      }),
-    ).toHaveValue("20");
-    fireEvent.click(screen.getByRole("checkbox"));
+    expect(screen.queryByRole("textbox", { name: /每日/ })).toBeNull();
+    expect(screen.queryByRole("checkbox")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "确认启用" }));
     await waitFor(() =>
       expect(knowledgeApi.mutate).toHaveBeenCalledWith(
@@ -415,7 +408,6 @@ describe("private AI memory", () => {
 
     render(<KnowledgePanel {...props} />);
     fireEvent.click(await screen.findByRole("button", { name: "启用自动整理" }));
-    fireEvent.click(screen.getByRole("checkbox"));
     fireEvent.click(screen.getByRole("button", { name: "确认启用" }));
 
     await waitFor(

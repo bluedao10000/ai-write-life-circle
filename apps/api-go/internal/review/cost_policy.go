@@ -32,5 +32,5 @@ func (s *Service) validateCost(p Plan) bool {
 	if p.Cost == nil {
 		return true
 	}
-	return p.Cost.Policy == FreeReviewPolicy && p.BudgetBytes == min(s.Config.MaxContextBytes, freeContextBytes) && p.ContextBytes <= p.BudgetBytes && p.Cost.MaxOutputTokens == min(s.Config.MaxOutputTokens, freeOutputTokens) && p.Cost.ReservedPoints == billing.PointsFor(p.BudgetBytes+20000, p.Cost.MaxOutputTokens)
+	return p.Cost.Policy == FreeReviewPolicy && p.BudgetBytes > 0 && p.BudgetBytes <= freeContextBytes && p.ContextBytes <= p.BudgetBytes && p.Cost.MaxOutputTokens >= 128 && p.Cost.MaxOutputTokens <= freeOutputTokens && p.Cost.ReservedPoints == billing.PointsFor(p.BudgetBytes+20000, p.Cost.MaxOutputTokens)
 }

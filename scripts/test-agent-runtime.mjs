@@ -29,6 +29,10 @@ async function expire(id){const st=JSON.parse(await readFile(store,'utf8'));st.r
 const sourceBytes=await fixture.sourceBytes()
 try{
  await startAPI()
+ const book='/v1/studio/books/review-fixture'
+ const knowledge=await req(book+'/knowledge')
+ await req(book+'/knowledge/pause','POST',{baseVersion:knowledge.version})
+ await req(book+'/creative/settings/pause','POST',{})
  let r=await enqueue();assert.equal(r.status,'queued');assert.equal(fixture.calls,0)
  await expire(r.runId) // Old creation deadline must not expire a never-claimed task.
  assert.equal((await get(r.runId)).status,'queued')

@@ -58,7 +58,7 @@ for(const [mode,code] of [["429","RATE_LIMITED"],["500","PROVIDER_UNAVAILABLE"],
     const f=await fixture();try {
       f.mode(mode);const original=await f.send();const failed=f.host.get(f.id).view;
       assert.equal(failed.run?.status,"failed");assert.equal(failed.run?.failure?.code,code);assert.equal(failed.run?.failure?.autoRecoverable,false);assert.equal(f.calls,1);
-      const recovery={text:"Resume accepted message",recovery:{runId:failed.run!.runId,confirmAdditionalCost:true as const,...(code==="CONTEXT_OVERFLOW"?{continuationContext:"Author confirms: uncertain motivations; keep source:synthetic at revision:v1 as a reference, not canon."}:{})}};
+      const recovery={text:"Resume accepted message",recovery:{runId:failed.run!.runId,confirmAdditionalCost:true as const}};
       f.mode("ok");const start=performance.now();
       await f.host.accept(f.id,recovery,"recovery","fixture");await f.host.active.get(f.id)?.done;
       const restored=f.host.get(f.id).view;
@@ -70,6 +70,20 @@ for(const [mode,code] of [["429","RATE_LIMITED"],["500","PROVIDER_UNAVAILABLE"],
     }finally{await f.close()}
   });
 }
+
+test("runtime limit changes keep the model identity and allow checkpoint recovery",async()=>{
+  const f=await fixture();try {
+    f.mode("500");await f.send();
+    f.model.limits.maxOutputTokens=768;
+    f.model.limits.maxInputTokens=28000;
+    f.model.limits.maxDurationMs=5000;
+    f.mode("ok");await f.resume();
+    const view=f.host.get(f.id).view;
+    assert.equal(view.run?.status,"completed");
+    assert.equal(view.model.limits.maxOutputTokens,768);
+    assert.equal((f.payloads.at(-1) as {max_tokens:number}).max_tokens,768);
+  }finally{await f.close()}
+});
 
 test("known usage settles the reservation so repeated small turns do not exhaust a cumulative ceiling",async()=>{
   const f=await fixture();try {

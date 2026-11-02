@@ -46,7 +46,7 @@ func (s *Service) path() string {
 func empty(book string) State {
 	return State{
 		BookID: book, SchemaVersion: SchemaVersion,
-		Settings:    Settings{DailyTokenBudget: 2000000, DailyJobBudget: 200, AutoOrganize: true},
+		Settings:    Settings{DailyTokenBudget: 100000000, DailyJobBudget: 200, AutoOrganize: true},
 		Assets:      map[string]Asset{},
 		Versions:    map[string][]Version{},
 		Links:       map[string]Link{},
@@ -70,7 +70,13 @@ func (s *Service) load() (State, error) {
 		return st, e
 	}
 	if !found {
-		return empty(s.App.Project), nil
+		st = empty(s.App.Project)
+		if s.Config.ValidatePublic() == nil {
+			st.Settings.Enabled = true
+			st.Settings.Model = s.Config.Info()
+			st.Settings.ConfigFingerprint = s.Config.Fingerprint()
+		}
+		return st, nil
 	}
 	if st.BookID != s.App.Project || st.SchemaVersion != SchemaVersion || st.Version < 0 {
 		return st, invalid("Creative state does not belong to this book.")

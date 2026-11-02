@@ -67,6 +67,18 @@ test("forbidden phrase detection finds canned prose without matching unrelated t
   );
 });
 
+test("reply analysis detects criticism variants and mechanical oppositions", () => {
+  for (const phrase of ["体现出", "折射了"]) {
+    const result = analyzeReply({kind: "extended", response: `这一段${phrase}人物的复杂。`}, policy);
+    assert(result.forbiddenPhrases.includes(phrase));
+    assert(result.violations.includes("forbidden_phrase"));
+  }
+  const result = analyzeReply({kind: "extended", response: "他守的不是父亲，而是自己的判断。"}, policy);
+  assert(result.forbiddenPhrases.includes("不是…而是"));
+  assert(result.violations.includes("forbidden_phrase"));
+  assert(!analyzeReply({kind: "extended", response: "不是他的错。她选择留下，而是为了等哥哥。"}, policy).forbiddenPhrases.includes("不是…而是"));
+});
+
 test("conclusion-first accepts a direct situation or action without a marker word", () => {
   const options = {
     fillers: policy.opening_fillers,

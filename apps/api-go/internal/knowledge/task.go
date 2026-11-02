@@ -13,7 +13,7 @@ func (s *Service) Check(ctx context.Context, p *PreparedJob) error {
 		return e
 	}
 	j := p.Claim.Job
-	if st.Settings.ConfigFingerprint != s.Config.Fingerprint() || !st.Settings.Enabled || st.Settings.Paused || st.Settings.Model != j.Model || j.Model != s.Config.Info() {
+	if !st.Settings.Enabled || st.Settings.Paused || st.Settings.Model != j.Model || j.Model != s.Config.Info() {
 		return executorpolicy.ErrFenced
 	}
 	for _, current := range st.Jobs {

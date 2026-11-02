@@ -192,7 +192,7 @@ func (s *Service) Process(ctx context.Context, claimed *ClaimedRun) error {
 // Prepare returns exactly the author-confirmed source snapshot; no model call occurs here.
 func (s *Service) Prepare(ctx context.Context, claimed *ClaimedRun) (llm.Request, error) {
 	run := claimed.Run
-	if !s.validateCost(run.Plan) || (run.ConfigFingerprint != "" && run.ConfigFingerprint != s.Config.Fingerprint()) || (s.ExecutorOwner == "pi" && run.ConfigFingerprint == "") || run.Model != s.Config.Info() || run.StrategyVersion != StrategyVersion || run.ContextBytes > s.Config.MaxContextBytes {
+	if !s.validateCost(run.Plan) || run.Model != s.Config.Info() || run.StrategyVersion != StrategyVersion || run.ContextBytes > s.Config.MaxContextBytes {
 		return llm.Request{}, failure(409, "REVIEW_CONFIG_CHANGED", "Preview and confirm the current model again.")
 	}
 	if s.freshen(ctx, run).Stale {
@@ -200,7 +200,7 @@ func (s *Service) Prepare(ctx context.Context, claimed *ClaimedRun) (llm.Request
 	}
 	request := llm.Request{System: prompt(), Input: promptInput(run.Plan), Schema: CandidateSchema()}
 	if run.Cost != nil {
-		request.OutputLimit = run.Cost.MaxOutputTokens
+		request.OutputLimit = min(run.Cost.MaxOutputTokens, s.Config.MaxOutputTokens)
 	}
 	return request, nil
 }

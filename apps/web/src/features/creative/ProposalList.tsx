@@ -17,7 +17,7 @@ export default function ProposalList({
   refreshKey = 0,
   chapters,
   onDecided,
-  emptyText = '暂无待审核的设定候选。',
+  emptyText = '暂无待确认的设定候选。',
   onSession,
   dense,
   only,
@@ -173,7 +173,7 @@ export default function ProposalList({
         <>
           <div hidden={!!only} className="flex flex-wrap items-center gap-2 text-ui-sm">
             <span className="text-ink-3">
-              {items.length} 条待审核{selected.length ? `，已选 ${selected.length} 条` : ''}
+              {items.length} 条待确认{selected.length ? `，已选 ${selected.length} 条` : ''}
             </span>
             <Btn size="sm" onClick={() => setSelected(selected.length === items.length ? [] : items.map((p) => p.proposalId))}>
               {selected.length === items.length ? '取消全选' : '全选'}
@@ -216,7 +216,7 @@ export default function ProposalList({
         />
       )}
       {conversation && (
-        <Dialog title="相关对话" label="相关对话" size="lg" onClose={() => setConversation(null)} footnote="整理时截取的有界对话片段，仅作者可见。">
+        <Dialog title="相关对话" label="相关对话" size="lg" onClose={() => setConversation(null)} footnote="整理该设定时的对话节选。">
           <div className="space-y-3">
             {(conversation.excerpt ?? []).length === 0 && <p className="text-ink-3">对话片段已按保留策略清除。</p>}
             {(conversation.excerpt ?? []).map((m) => (

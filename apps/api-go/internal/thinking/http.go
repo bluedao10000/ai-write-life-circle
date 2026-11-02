@@ -120,6 +120,10 @@ type modelEntry struct {
 	Description string `json:"description"`
 }
 
+func sameModelIdentity(a, b Model) bool {
+	return a.Provider == b.Provider && a.Model == b.Model && a.Endpoint == b.Endpoint
+}
+
 func modelID(m Model) string {
 	if m.ID == "" {
 		return "default"
@@ -306,7 +310,7 @@ func (s *Service) PublicHandler() http.Handler {
 				return
 			}
 			// Legacy clients explicitly disclose a full model. New clients select only a registry ID.
-			if (in.Model.Model != "" && (!in.Consent || hash(model) != hash(in.Model))) || len(in.Scopes) > 4 {
+			if (in.Model.Model != "" && (!in.Consent || !sameModelIdentity(model, in.Model))) || len(in.Scopes) > 4 {
 				reply(w, nil, fail(422, "THINKING_CONSENT_REQUIRED"), 0)
 				return
 			}
@@ -556,7 +560,7 @@ func (s *Service) PublicHandler() http.Handler {
 				if e != nil {
 					return e
 				}
-				if modelID(model) == modelID(record.Model) && hash(model) != hash(record.Model) {
+				if modelID(model) == modelID(record.Model) && !sameModelIdentity(model, record.Model) {
 					return fail(409, "MODEL_REAUTHORIZATION_REQUIRED")
 				}
 
@@ -608,7 +612,7 @@ func (s *Service) PublicHandler() http.Handler {
 						if json.Unmarshal(raw, &snapshot) != nil || snapshot.Run.ID != in.Recovery.RunID || !snapshot.Run.Resumable || !snapshot.Run.Failure.Retryable || (snapshot.Run.Status != "failed" && snapshot.Run.Status != "interrupted") {
 							return fail(409, "RESUME_NOT_SAFE")
 						}
-						if hash(snapshot.Model) != hash(model) || hash(snapshot.Scopes) != hash(record.Scopes) || snapshot.Run.AuthorizationVersion != record.AuthorizationVersion {
+						if !sameModelIdentity(snapshot.Model, model) || hash(snapshot.Scopes) != hash(record.Scopes) || snapshot.Run.AuthorizationVersion != record.AuthorizationVersion {
 							return fail(403, "AUTHORIZATION_REQUIRED")
 						}
 					}

@@ -41,14 +41,13 @@ export function ReviewDrawer({ settings, proposals, onOpen, onDecide, onClose, o
           {settings && off && (
             <div className="mb-4 rounded-lg border border-line-soft bg-paper px-3.5 py-3 text-ui-sm">
               <p className="text-ink">{settings.needsModelConsent ? '整理所用的模型已变化，需要重新确认后才能继续整理。' : '启用后，讨论中的人物、世界观、剧情与伏笔会被整理成待确认的候选。'}</p>
-              <p className="mt-1 text-ink-3">候选不会自动成为设定；不启用也不影响对话。</p>
               <Btn size="sm" variant="primary" className="mt-2" disabled={!settings.available} onClick={onEnable}>
                 {settings.needsModelConsent ? '重新确认' : '启用灵感整理'}
               </Btn>
               {!settings.available && <p className="mt-1 text-micro text-warn">整理服务暂未配置，稍后再试。</p>}
             </div>
           )}
-          <p className="mb-3 text-ui-sm text-ink-3">这次讨论整理出的候选。确认后才会成为作品设定；不处理也不影响对话。</p>
+          <p className="mb-3 text-ui-sm text-ink-3">这次讨论整理出的设定草稿，挑有用的收入「书」即可。</p>
           {!proposals.length && !off && <p className="py-6 text-center text-ui-sm text-ink-3">这次讨论还没有整理出内容。继续聊下去，人物、世界观、剧情和伏笔会在这里逐步出现。</p>}
           <ul className="space-y-2">
             {proposals.map((p) => (
@@ -168,7 +167,6 @@ export function ProposalDrawer({ proposal: p, book, chapters, onClose, onDecide,
         <div className="scroll min-h-0 flex-1 overflow-auto px-5 pt-5 pb-16">
           <ProposalCard proposal={p} busy={busy} onAccept={() => onDecide(p, 'accept')} onReject={() => onDecide(p, 'reject')} onEdit={() => setEdit(true)} onShowConversation={() => onSession(p.source.sessionId, p.source.messageId)} />
           <p className="mt-4 text-micro text-ink-3">来源：灵感对话 · {ago(Date.parse(p.source.capturedAt) || Date.now())}</p>
-          <p className="mt-2 text-micro text-ink-3">AI 整理的内容永远是候选；你确认过的设定，不会被 AI 的推测覆盖。</p>
           {error && (
             <p role="alert" className="mt-3 text-ui-sm text-danger">
               {error}

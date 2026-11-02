@@ -92,8 +92,10 @@ func organizePrompt() string {
 	return OrganizePrompt + string(b)
 }
 
-// ExecutionContract identifies prompt and schema for capability checks.
-func ExecutionContract() string { return compat.Hash(organizePrompt() + "\x00" + planPrompt()) }
+// ExecutionContract identifies the supported strategy and output schema versions.
+func ExecutionContract() string {
+	return compat.Hash(Strategy + "creative-organize-candidates-v1" + PlanStrategy + "creative-plan-check-candidates-v1")
+}
 
 type promptAsset struct {
 	ID      string   `json:"assetId"`
