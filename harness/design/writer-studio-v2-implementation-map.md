@@ -140,7 +140,7 @@ Make 到处是 `Proto` 标记，说明"模拟/不发起请求"。仓库规则：
 | 4 | 作品菜单、EPUB 导入 | 完成 |
 | 5 | 公开站点与发布 | **作者决定**：拆到单独的 PR，本 PR 不包含 |
 
-交付结果、测试记录与未完成项见 [writer-studio-v2-figma-report.md](../reviews/writer-studio-v2-figma-report.md)。
+交付结果、测试记录与未完成项见 [writer-studio-v2-figma-report.md](../reviews/archive/writer-studio-v2-figma-report.md)。
 
 ## 7. 无法验证项
 

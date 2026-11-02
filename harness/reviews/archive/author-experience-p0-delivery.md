@@ -13,7 +13,7 @@
 | 成本与执行 | 逐次确认实际发送范围后运行，Free 单次最多预留 217 点，实际 Usage 结算 | 上下文最多 64 KiB、输出最多 32,768；限制进入 consent hash，Go 与 Pi 同步执行；完整预留须放入 Free 日/月/全站预算，不提高全站上限；超长目标不静默裁切 |
 | 隐私指标 | Time to Writing 耗时桶、恢复 attempt/success/failure、Free started/completed、反馈 useful/other | 默认关闭，仅进程内枚举载荷，无 SDK、网络或持久身份；运行时丢弃额外字段，sink 错误不影响写作 |
 
-完整设计、数据结构、并发与回滚约束见 [架构设计](../architecture/author-experience-p0.md)。
+完整设计、数据结构、并发与回滚约束见 [架构设计](../../architecture/author-experience-p0.md)。
 
 ## 自动化验证
 

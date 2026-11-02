@@ -43,7 +43,7 @@
 
 ## 3. 修改设计与边界
 
-完整方案见 [Reliability ADR](../architecture/agent-reliability.md)。消息、Run 和内部步骤分开：已接受的用户消息不重建；每次 Run 有独立 attempt 与 trace；模型/工具边界持久 checkpoint。`accepted → running ↔ checkpointed → completed/failed/interrupted/cancelled`。Session 继续使用 idle/running/deleted，兼容已有前端和 Go 结算。
+完整方案见 [Reliability ADR](../../architecture/agent-reliability.md)。消息、Run 和内部步骤分开：已接受的用户消息不重建；每次 Run 有独立 attempt 与 trace；模型/工具边界持久 checkpoint。`accepted → running ↔ checkpointed → completed/failed/interrupted/cancelled`。Session 继续使用 idle/running/deleted，兼容已有前端和 Go 结算。
 
 Resume 从已持久化的“当前用户请求之前”业务检查点重建 SDK 会话，重新走 Go 归属/模型/授权/预算，再走 Pi 校验；不是复活 SDK 内部 token stream。保留失败回答和部分文本，不增加假用户消息。只恢复最近失败/中断且 resumable 的 Run；取消、删除、作用域/模型变化、已进入排队副作用的 Run 均拒绝。
 

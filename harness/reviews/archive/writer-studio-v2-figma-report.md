@@ -1,6 +1,6 @@
 # Writer Studio V2 · Figma 同步报告
 
-日期：2026-10-23。分支 `codex/writer-studio-v2-figma-sync`，基于 `origin/main` `633c295`。设计到代码的映射见 [writer-studio-v2-implementation-map.md](../design/writer-studio-v2-implementation-map.md)。
+日期：2026-10-23。分支 `codex/writer-studio-v2-figma-sync`，基于 `origin/main` `633c295`。设计到代码的映射见 [writer-studio-v2-implementation-map.md](../../design/writer-studio-v2-implementation-map.md)。
 
 ## 1. Figma Make URL
 

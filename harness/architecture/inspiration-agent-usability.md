@@ -45,5 +45,5 @@ Fixture 覆盖普通创意问题（张居正、平行宇宙、好人品）、多
 模型选择和 Outbox 按会话分区。历史会话默认恢复其实际模型；下架模型必须由作者显式替换，新话题可迁移过期默认偏好。每轮来源只接受本轮授权工具返回的证据，历史 source ID 不自动获得新轮次的有效来源身份。
 用户消息的可选 requestKey 关联幂等回执，用于先确认送达、再决定是否原键重试；旧记录从 Pi requests 映射派生回执。全局并发与模型并发分别受控；工具去重使用规范化 JSON。
 示例 Registry 已由占位 Runtime URL 更新为实测的 Stockholm Mantle URL + `openai.gpt-oss-120b`；不同 Bedrock API 的模型标识不可混用。
-真实验证、费用依据、回归结果与剩余风险见[复审修复报告](../reviews/inspiration-agent-usability-review-fixes.md)。这份补充报告取代初次交付中「两个真实模型均未验证」的状态：Bedrock 已验证，DeepSeek 仍待测试凭据。
+真实验证、费用依据、回归结果与剩余风险见[复审修复报告](../reviews/archive/inspiration-agent-usability-review-fixes.md)。这份补充报告取代初次交付中「两个真实模型均未验证」的状态：Bedrock 已验证，DeepSeek 仍待测试凭据。
 Smoke 脚本增加 `--tools`，只用合成资料、每个配置模型最多 3 次付费请求。常规 CI 仍不运行付费模型。

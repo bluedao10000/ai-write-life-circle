@@ -79,6 +79,6 @@ Go API 支持在 Studio 内创建在线作品，无需创建 Markdown 文件。�
 
 ### 独立 Pi Thinking Agent（Sprint 5，尚未生产发布）
 
-Node >=22.19.0，Pi SDK 1.3.0；Go Review/Knowledge Worker 保持不变。配置、授权与回滚见 [Pi 工作流](harness/workflows/pi-agent.md) 和 [ADR](harness/architecture/pi-agent-runtime.md)。`pnpm dev:agent` 单独启动；配置就绪后 `pnpm dev:local -- --agent` 可启动完整开发栈。无 Agent 时编辑/保存继续可用。
+Node >=22.19.0，Pi SDK 1.3.0；Go Review/Knowledge Worker 保持不变。配置、授权与回滚见 [Pi 工作流](harness/workflows/pi-agent.md) 和 [ADR](harness/architecture/adr/pi-agent-runtime.md)。`pnpm dev:agent` 单独启动；配置就绪后 `pnpm dev:local -- --agent` 可启动完整开发栈。无 Agent 时编辑/保存继续可用。
 
 `pnpm test:agent`、`pnpm test:thinking`、`pnpm --filter @writer-agent/web test:thinking` 和 `pnpm eval:thinking` 均使用隔离 HTTP 模型。真实模型 Eval 仅 `pnpm eval:thinking:live` 手动选择，不读取作者目录。模型成功返回与文学语义质量分别验收。发布打包使用 `pnpm package:agent -- <新目录>`；本 Sprint 不自动部署、不合并 PR。

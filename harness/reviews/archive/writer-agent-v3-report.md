@@ -1,6 +1,6 @@
 # Writer Agent V3 交付报告
 
-日期：2026-10-25。基线 `main` `b9fb657`。设计见 [ADR](../architecture/writer-agent-v3-creative-assets.md)。
+日期：2026-10-25。基线 `main` `b9fb657`。设计见 [ADR](../../architecture/writer-agent-v3-creative-assets.md)。
 
 ## 1. 分支与提交（按阶段堆叠，均未合并、未部署）
 

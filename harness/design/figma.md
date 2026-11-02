@@ -30,7 +30,7 @@ Playwright 检查 1440、1024、768、390px，Light/Dark、写作、抽屉、Foc
 
 ## Writer Studio V2（2026-10-22）
 
-读取方式：MCP `get_design_context(0:1)` 返回了资源清单，但客户端无法读取资源内容，因此改为读取作者导出的 Make 源码。已同步 V2 Tokens、作品菜单、知识状态与进度、授权布局、审查状态、思考工具时间线、EPUB 对话框、续写卡和随手记。公开站点留给单独的 PR。映射见 [writer-studio-v2-implementation-map.md](writer-studio-v2-implementation-map.md)，验证记录见 [writer-studio-v2-figma-report.md](../reviews/writer-studio-v2-figma-report.md)。1440 写作页的配色经过逐像素量化比较；其余页面没有像素级验证。
+读取方式：MCP `get_design_context(0:1)` 返回了资源清单，但客户端无法读取资源内容，因此改为读取作者导出的 Make 源码。已同步 V2 Tokens、作品菜单、知识状态与进度、授权布局、审查状态、思考工具时间线、EPUB 对话框、续写卡和随手记。公开站点留给单独的 PR。映射见 [writer-studio-v2-implementation-map.md](writer-studio-v2-implementation-map.md)，验证记录见 [writer-studio-v2-figma-report.md](../reviews/archive/writer-studio-v2-figma-report.md)。1440 写作页的配色经过逐像素量化比较；其余页面没有像素级验证。
 
 ## Writer Studio V2.1「书」页（2026-10-24）
 

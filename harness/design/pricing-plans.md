@@ -228,7 +228,7 @@ sudo -u writer-agent /opt/writer-agent/current/writer-agent-control --state /var
 - **`GET /v1/account`** 增加了方案期限、加油包、用量明细、方案限制、作品与导入计数和价格目录。**`POST /v1/account/redeem`** 用于兑换，Worker 只放行这两个路由。
 - **计费持久化**：计费使用持久 inode 上的内核 `flock`，进程退出自动释放锁，禁止按文件年龄抢锁。账户、全站池、兑换码的最终状态先写入 `billing/pending-v1.json`，再逐文件落盘；每次计费读取或写入先恢复未完成提交。
 - **缓存计点**：Go 与 Pi 都采集缓存命中输入；按 `ai-points-cache-v1` 规则用整数计算，最后统一向上取整。缓存字段缺失、越界或冲突时不打折；无法取得完整 Usage 时保持保守预留。
-- **升级要求**：锁协议变化时必须停止所有旧版计费写入进程（API、Go Worker、Pi Worker 以及管理员 CLI），完整备份后一起升级。回滚到旧锁协议前，先在新版下完成日志恢复并停止写入；不得删除 mutex、提交日志或用旧账户备份覆盖新流水。详情见 [审查修复记录](../reviews/pricing-phase1-review-fixes.md)。
+- **升级要求**：锁协议变化时必须停止所有旧版计费写入进程（API、Go Worker、Pi Worker 以及管理员 CLI），完整备份后一起升级。回滚到旧锁协议前，先在新版下完成日志恢复并停止写入；不得删除 mutex、提交日志或用旧账户备份覆盖新流水。详情见 [审查修复记录](../reviews/archive/pricing-phase1-review-fixes.md)。
 
 暂未实现：
 
