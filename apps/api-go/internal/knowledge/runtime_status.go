@@ -3,9 +3,19 @@ package knowledge
 import (
 	"context"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/agentruntime"
+	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/application"
+	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/llm"
 	"os"
+	"sync"
 	"time"
 )
+
+type Inspector struct {
+	Config    llm.Config
+	Resolve   func(string) (*application.Service, error)
+	controlMu sync.Mutex
+	control   *controlSnapshot
+}
 
 func knowledgeCounts(st State) agentruntime.Counts {
 	var counts agentruntime.Counts
@@ -35,7 +45,7 @@ func knowledgeCounts(st State) agentruntime.Counts {
 	return counts
 }
 
-func (x *Executor) Inspect(ctx context.Context, id string) (agentruntime.Counts, error) {
+func (x *Inspector) Inspect(ctx context.Context, id string) (agentruntime.Counts, error) {
 	app, err := x.Resolve(id)
 	if err != nil {
 		return agentruntime.Counts{}, err
@@ -47,12 +57,12 @@ func (x *Executor) Inspect(ctx context.Context, id string) (agentruntime.Counts,
 	return knowledgeCounts(st), nil
 }
 
-func (x *Executor) Ready(ctx context.Context, id string) (bool, error) {
+func (x *Inspector) Ready(ctx context.Context, id string) (bool, error) {
 	app, err := x.Resolve(id)
 	if err != nil {
 		return false, err
 	}
-	s := New(app, x.Config, x.Client)
+	s := New(app, x.Config, nil)
 	s.QuietPeriod = 2 * time.Second
 	st, err := x.readControl(s)
 	if err != nil {
@@ -94,7 +104,7 @@ type controlSnapshot struct {
 	state State
 }
 
-func (x *Executor) readControl(s *Service) (State, error) {
+func (x *Inspector) readControl(s *Service) (State, error) {
 	x.controlMu.Lock()
 	defer x.controlMu.Unlock()
 	path := s.path()

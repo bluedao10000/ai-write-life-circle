@@ -454,7 +454,9 @@
                     "type": "string",
                     "enum": [
                       "review.execute",
-                      "knowledge.extract"
+                      "knowledge.extract",
+                      "creative.organize",
+                      "creative.plan_check"
                     ]
                   },
                   "bookId": {
@@ -537,7 +539,9 @@
                     "type": "string",
                     "enum": [
                       "review-candidates-v1",
-                      "knowledge-candidates-v1"
+                      "knowledge-candidates-v1",
+                      "creative-organize-candidates-v1",
+                      "creative-plan_check-candidates-v1"
                     ]
                   },
                   "reservedTokens": {
@@ -641,13 +645,14 @@
           },
           "kinds": {
             "minItems": 1,
-            "maxItems": 2,
+            "maxItems": 3,
             "type": "array",
             "items": {
               "type": "string",
               "enum": [
                 "review",
-                "knowledge"
+                "knowledge",
+                "creative"
               ]
             }
           },
@@ -692,7 +697,9 @@
             "type": "string",
             "enum": [
               "review.execute",
-              "knowledge.extract"
+              "knowledge.extract",
+              "creative.organize",
+              "creative.plan_check"
             ]
           },
           "inputHash": {
@@ -809,7 +816,9 @@
             "type": "string",
             "enum": [
               "review.execute",
-              "knowledge.extract"
+              "knowledge.extract",
+              "creative.organize",
+              "creative.plan_check"
             ]
           },
           "bookId": {
@@ -892,7 +901,9 @@
             "type": "string",
             "enum": [
               "review-candidates-v1",
-              "knowledge-candidates-v1"
+              "knowledge-candidates-v1",
+              "creative-organize-candidates-v1",
+              "creative-plan_check-candidates-v1"
             ]
           },
           "reservedTokens": {
@@ -990,13 +1001,14 @@
           },
           "kinds": {
             "minItems": 1,
-            "maxItems": 2,
+            "maxItems": 3,
             "type": "array",
             "items": {
               "type": "string",
               "enum": [
                 "review",
-                "knowledge"
+                "knowledge",
+                "creative"
               ]
             }
           },

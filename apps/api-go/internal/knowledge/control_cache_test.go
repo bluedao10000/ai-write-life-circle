@@ -10,13 +10,13 @@ import (
 )
 
 func TestControlCacheTracksAtomicChangesAndKeepsNoProse(t *testing.T) {
-	s, _, b, c := setup(t)
+	s, _, b, _ := setup(t)
 	save(t, s, b.Chapters[0].ID, "林舟来自北港。")
 	enable(t, s)
 	if err := s.sync(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	x := &Executor{Config: s.Config, Client: c, Resolve: func(string) (*application.Service, error) { return s.App, nil }}
+	x := &Inspector{Config: s.Config, Resolve: func(string) (*application.Service, error) { return s.App, nil }}
 	if ready, err := x.Ready(context.Background(), s.App.Project); err != nil || !ready {
 		t.Fatal("initial job not ready", err)
 	}
@@ -70,13 +70,13 @@ func TestControlCacheTracksAtomicChangesAndKeepsNoProse(t *testing.T) {
 }
 
 func TestControlCacheConcurrentReaders(t *testing.T) {
-	s, _, b, c := setup(t)
+	s, _, b, _ := setup(t)
 	save(t, s, b.Chapters[0].ID, "林舟来自北港。")
 	enable(t, s)
 	if err := s.sync(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	x := &Executor{Config: s.Config, Client: c, Resolve: func(string) (*application.Service, error) { return s.App, nil }}
+	x := &Inspector{Config: s.Config, Resolve: func(string) (*application.Service, error) { return s.App, nil }}
 	var wg sync.WaitGroup
 	for range 8 {
 		wg.Add(1)

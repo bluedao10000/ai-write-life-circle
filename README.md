@@ -23,13 +23,13 @@ pnpm dev          # Demo 界面
 pnpm dev:local    # 本地 API + 前端
 ```
 
-默认 API 为 Go，单独运行其二进制无需 Node.js；前端工具链仍使用 pnpm。本地 API 仅提供开发身份。Go 已支持作者主动触发、固定修订与精确引文核验的连续性审查；需配置真实模型并逐次授权发送范围。通用 Agent Runtime 与正式知识写入尚未实现；Demo 模拟能力与 API 数据隔离。详情见 [Web](apps/web/README.md) 与 [Go API](apps/api-go/README.md)。
+默认业务 API 为 Go，单独运行其二进制无需 Node.js；全部模型执行统一由独立 Pi Agent 进程承担。前端工具链仍使用 pnpm，本地 API 仅提供开发身份。Review、Knowledge、Creative 均通过 `agent-tasks-v1` 执行，由 Go 校验修订、证据、预算与提交围栏；真实模型需要显式配置和授权。Demo 模拟能力与 API 数据隔离。详情见 [Pi 后台执行器](harness/workflows/pi-worker.md)、[Web](apps/web/README.md) 与 [Go API](apps/api-go/README.md)。
 
 ## 目录
 
 | 目录 | 必要职责 |
 | --- | --- |
-| `apps/` | Web 与 API 应用 |
+| `apps/` | Web、Go API 与 Pi Agent 应用 |
 | `packages/` | 共享类型、数据契约与校验 |
 | `scripts/` | 开发、生成、校验工具；部署配置在 `scripts/deploy/` |
 | `harness/` | 唯一文档中心：架构、设计、API 规范、工作流与验证报告 |
@@ -77,8 +77,8 @@ Go API 支持在 Studio 内创建在线作品，无需创建 Markdown 文件。�
 
 当前会明确警告或拒绝非线性内容、固定版式、DRM、不安全 ZIP、目录部分覆盖及超限文件，不使用 OCR。详见 [EPUB 导入架构与限制](harness/architecture/epub-import.md)。
 
-### 独立 Pi Thinking Agent（Sprint 5，尚未生产发布）
+### Pi Thinking 与统一后台执行器
 
-Node >=22.19.0，Pi SDK 1.3.0；Go Review/Knowledge Worker 保持不变。配置、授权与回滚见 [Pi 工作流](harness/workflows/pi-agent.md) 和 [ADR](harness/architecture/adr/pi-agent-runtime.md)。`pnpm dev:agent` 单独启动；配置就绪后 `pnpm dev:local -- --agent` 可启动完整开发栈。无 Agent 时编辑/保存继续可用。
+Node >=22.19.0，Pi SDK 1.3.0。作者主动对话由 Pi Thinking 执行；Review、Knowledge、Creative 后台任务统一由 Pi Worker 通过 `agent-tasks-v1` 执行，Go API 只保留身份、Revision、证据/预算校验和业务提交。配置与发布见 [Pi 后台执行器流程](harness/workflows/pi-worker.md)，架构边界见 [统一 Runtime ADR](harness/architecture/pi-unified-agent-runtime.md)。`pnpm dev:agent` 单独启动 Thinking；配置就绪后 `pnpm dev:local -- --agent` 可启动完整开发栈。无 Agent 时编辑/保存继续可用。
 
 `pnpm test:agent`、`pnpm test:thinking`、`pnpm --filter @writer-agent/web test:thinking` 和 `pnpm eval:thinking` 均使用隔离 HTTP 模型。真实模型 Eval 仅 `pnpm eval:thinking:live` 手动选择，不读取作者目录。模型成功返回与文学语义质量分别验收。发布打包使用 `pnpm package:agent -- <新目录>`；本 Sprint 不自动部署、不合并 PR。

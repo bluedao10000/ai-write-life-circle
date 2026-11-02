@@ -47,20 +47,26 @@ func (c Controller) Read() (State, error) {
 	if s.Schema != 1 || s.Kinds == nil {
 		return s, errors.New("invalid executor registry")
 	}
-	for _, kind := range []string{"review", "knowledge"} {
+	for _, kind := range []string{"review", "knowledge", "creative"} {
 		if _, ok := s.Kinds[kind]; !ok {
-			s.Kinds[kind] = Assignment{Owner: "go", Epoch: 1, Leases: map[string]Lease{}}
+			s.Kinds[kind] = Assignment{Owner: "pi", Epoch: 1, Leases: map[string]Lease{}}
 		}
 	}
-	for _, a := range s.Kinds {
-		if (a.Owner != "go" && a.Owner != "pi" && a.Owner != "disabled") || a.Epoch < 1 || a.Leases == nil {
+	for kind, a := range s.Kinds {
+		// Legacy state files recorded the removed Go executor. Pi is the only
+		// model executor now, so read it as an already-completed migration.
+		if a.Owner == "go" {
+			a.Owner = "pi"
+			s.Kinds[kind] = a
+		}
+		if (a.Owner != "pi" && a.Owner != "disabled") || a.Epoch < 1 || a.Leases == nil {
 			return s, errors.New("invalid executor assignment")
 		}
 	}
 	return s, nil
 }
 func (c Controller) update(ctx context.Context, kind string, fn func(*Assignment) error) error {
-	if kind != "review" && kind != "knowledge" {
+	if kind != "review" && kind != "knowledge" && kind != "creative" {
 		return errors.New("invalid executor kind")
 	}
 	return storage.Lock(ctx, c.path()+".lock", func() error {
@@ -78,7 +84,7 @@ func (c Controller) update(ctx context.Context, kind string, fn func(*Assignment
 }
 func Owner(v string) string {
 	if v == "" {
-		return "go"
+		return "pi"
 	}
 	return v
 }
@@ -134,7 +140,7 @@ func (c Controller) Drain(ctx context.Context, kind string) error {
 
 // Switch refuses live leases. An expired worker remains fenced even if it later wakes up.
 func (c Controller) Switch(ctx context.Context, kind, owner string) error {
-	if owner != "go" && owner != "pi" && owner != "disabled" {
+	if owner != "pi" && owner != "disabled" {
 		return errors.New("invalid executor owner")
 	}
 	return c.update(ctx, kind, func(a *Assignment) error {

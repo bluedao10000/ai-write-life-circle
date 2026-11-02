@@ -1,10 +1,10 @@
-# Go API 与 Agent Worker 生产部署指南
+# Go API、Pi Thinking 与 Pi Worker 生产部署指南
 
 当前支持单机 EC2。身份由两部分组成：服务间 Bearer，加上 Worker 为每个请求签发的 Ed25519 用户声明。每个 Google 账号是独立作者。
 
-API 和 Agent Worker 由 systemd 分进程管理。API 只监听 127.0.0.1:8787，不持有 LLM 密钥；Worker 持有模型配置并执行 Review 与 Knowledge 任务。Caddy 提供 HTTPS 和证书自动续期。保留现有 Web/Nginx，按 API 域名单独路由，不重置旧服务器仓库。
+生产固定为三个 systemd 服务：Go API、Pi Thinking、Pi Worker。API 只监听 `127.0.0.1:8787`，不持有模型 Key；Pi Thinking 提供作者主动对话；Pi Worker 通过私有任务协议执行 Review、Knowledge 与 Creative。Caddy 只提供 API 的 HTTPS 入口，保留现有 Web/Nginx，不重置旧服务器仓库。
 
-Pi 迁移目标为 API + Pi Thinking + Pi Worker 三个服务，手动安装、归属切换、兼容 Go 回滚见 [Pi 后台执行器流程](workflows/pi-worker.md)。以下双 Go 进程安装器只适用于两类 owner 均为 Go 的兼容发布；Pi/disabled/draining 时拒绝执行，不能用它绕过切换。生产尚未自动迁移。Node 只安装独立运行时与已构建发布包，服务器不运行前端构建或 pnpm install。
+代码中不存在 Go Worker、API 内嵌模型循环或 Go fallback executor。安装 API 时会停用并删除遗留 `writer-agent-worker.service`。首次安装、逐域维护开关、健康检查和回滚见 [Pi 后台执行器流程](workflows/pi-worker.md)。服务器只安装 Node 运行时和已构建 Pi 发布包，不运行前端构建或 `pnpm install`。
 
 ## 发布前验证
 
@@ -15,40 +15,42 @@ pnpm build:api:go
 node scripts/smoke-production-api.mjs
 node scripts/smoke-built-api.mjs
 pnpm test:api:go
+pnpm verify
+pnpm package:agent -- /secure/pi-releases/COMMIT_SHA
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -C apps/api-go -trimpath -ldflags="-s -w" -o dist/writer-agent-api-linux-amd64 ./cmd/server
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -C apps/api-go -trimpath -ldflags="-s -w" -o dist/writer-agent-worker-linux-amd64 ./cmd/agent-worker
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -C apps/api-go -trimpath -ldflags="-s -w" -o dist/writer-agent-control-linux-amd64 ./cmd/agent-control
 ```
 
-CI 包含身份和持久化检查，以及现有浏览器 E2E。部署使用已提交并通过检查的源码版本。二进制 release ID 对应其 Git commit。ARM 实例应调整 GOARCH。不要在服务器安装 Node 或 Go 工具链。
+`package:agent` 要求工作树已提交，并同时验证 `thinking-v1` 与 `agent-tasks-v1`。部署使用已提交并通过检查的源码版本。Go 二进制与 Pi `release.json` 的 release ID 都对应同一 Git commit。ARM 实例应调整 GOARCH。不要在服务器安装 Go 工具链或前端依赖。
 
 ## 安装 API
 
-通过 SSH 上传两个 Linux 二进制、`scripts/deploy/install-api-systemd.sh`、`scripts/deploy/systemd/writer-agent-api.service` 和 `scripts/deploy/systemd/writer-agent-worker.service`。在目标服务器执行：
+通过 SSH 上传 Go API、`writer-agent-control`、`scripts/deploy/install-api-systemd.sh` 和 `scripts/deploy/systemd/writer-agent-api.service`。首次安装前，`/etc/writer-agent/api.env` 必须包含身份、bearer、Task Token 文件和与 Pi Worker 一致的公共模型配置；不得包含模型 API Key。在目标服务器执行：
 
 ```sh
-sudo bash install-api-systemd.sh ./writer-agent-api COMMIT_SHA bruce ./writer-agent-api.service ./writer-agent-worker ./writer-agent-worker.service /path/to/protected-worker.env
+sudo bash install-api-systemd.sh ./writer-agent-api COMMIT_SHA bruce ./writer-agent-api.service ./writer-agent-control
 ```
 
-首次安装前，`/etc/writer-agent/api.env` 必须包含 `WRITER_AGENT_IDENTITY_PUBLIC_KEY`，并应包含 `WRITER_AGENT_LEGACY_OWNER_EMAIL`（见下一节）。缺少公钥时，安装器在停止任何服务之前就会退出。
+安装器要求 `WRITER_AGENT_IDENTITY_PUBLIC_KEY`、`WRITER_AGENT_TASK_SERVICE_TOKEN_FILE` 与 production bearer 配置，并核验 API 同时支持 `writer-agent-api-v1` 和 `agent-tasks-v1`。缺少前置配置时在停止任何服务之前退出。
 
-首次安装必须提前提供权限 0600 的 Worker env，至少设置 `WRITER_AGENT_LLM_API_KEY`（DeepSeek 默认配置）或明确的兼容模型配置。安装器在 service user 下执行 Worker `--check-config`，失败不停止服务；API 所需的公开模型配置由同一份配置生成，不复制密钥。
-
-安装器先停止 Worker、再停止 API，备份完整状态、配置与旧 unit，然后更新 release 软链接，显式重启 API、验证 healthz，再重启 Worker 并等待新心跳。重复部署保留已有令牌、作者配置和数据。已有 release 目录禁止换入不同二进制。失败时尝试恢复旧二进制或 unit。
+安装器先停用并删除遗留 Go Worker unit，再停止 API、备份完整状态、配置与旧 unit，更新 release 软链接并启动 API。健康检查通过后才算成功；失败时只在上一 API 仍支持 `agent-tasks-v1` 时恢复它。重复部署保留已有令牌、作者配置和数据，已有 release 目录禁止换入不同二进制。
 
 | 路径 | 内容 |
 | --- | --- |
-| /opt/writer-agent/releases/COMMIT_SHA | 版本化 API 与 Worker 二进制 |
+| /opt/writer-agent/releases/COMMIT_SHA | 版本化 Go API 与管理 CLI |
 | /opt/writer-agent/current | 当前版本软链接 |
 | /etc/writer-agent/api.env | root-only 生产配置 |
-| /etc/writer-agent/worker.env | root-only Worker 配置；真实 LLM 密钥只放在这里 |
 | /etc/writer-agent/auth-token | 随机 Bearer 令牌；root:writer-agent 0640 |
 | /var/lib/writer-agent | 应用 JSON 与审计状态；writer-agent 0700 |
 | /srv/writer-agent/harness | 只读资料根目录；首次部署为空 |
 | /var/backups/writer-agent | root-only 一致性备份与回滚记录 |
+| /opt/writer-agent-pi/releases/COMMIT_SHA | Thinking + Worker 的版本化 Node 发布 |
+| /etc/writer-agent-pi/agent.env | Thinking 模型与私有 RPC 配置；root:writer-agent-pi 0640 |
+| /etc/writer-agent-pi-worker/worker.env | 后台模型与 Task RPC 配置；root:writer-agent-pi-worker 0640 |
 
-systemd 以专用无登录用户运行，ProtectSystem=strict、ProtectHome、NoNewPrivileges。只有独立状态目录可写。业务 actor 只来自 Bearer 加有效签名声明。每个 Google `user.id` 是独立作者，旧数据仍归 api.env 中的 `WRITER_AGENT_AUTHOR_ID`。不接受请求自带的角色或 actor 头。
+三个服务都以专用无登录用户运行，启用 ProtectSystem=strict、ProtectHome、NoNewPrivileges，并只允许各自状态目录写入。Pi 用户不能读取 Go 状态、Harness、备份或其他 Pi 服务状态。业务 actor 只来自 Bearer 加有效签名声明。每个 Google `user.id` 是独立作者，旧数据仍归 `api.env` 中的 `WRITER_AGENT_AUTHOR_ID`；不接受请求自带的角色或 actor 头。
 
-升级或回滚必须同时替换 API 与 Worker 二进制，避免内置旧 Agent 与新 Worker 并发执行同一队列。Worker 不提供公网监听；用 `writer-agent-worker --healthcheck`（加载 worker.env 后）或作者鉴权 `GET /v1/agent-runtime` 核验心跳和配置兼容性；仅 is-active 不足以验收。每个 release 保存 `SHA256SUMS` 和 `manifest`。
+升级 API 与 Pi 发布时必须核验相同公共模型指纹和协议版本。Worker 不提供公网监听；用 `dist/worker/main.js --healthcheck` 与作者鉴权 `GET /v1/agent-runtime` 核验心跳、三域 ready 和配置兼容性，仅 `is-active` 不足以验收。每个 API release 保存 `SHA256SUMS` 与 `manifest`，Pi 发布保存逐文件哈希 `release.json`。
 
 ## 启用 per-user 身份（一次性）
 
@@ -128,14 +130,16 @@ sudo bash install-api-https.sh api.example.com /home/ubuntu/nginx/nginx.conf ./d
 ```sh
 sudo systemctl status writer-agent-api
 sudo journalctl -u writer-agent-api
-sudo systemctl status writer-agent-worker
-sudo journalctl -u writer-agent-worker
+sudo systemctl status writer-agent-pi
+sudo journalctl -u writer-agent-pi
+sudo systemctl status writer-agent-pi-worker
+sudo journalctl -u writer-agent-pi-worker
 sudo docker logs writer-agent-api-edge   # 不记录 Authorization
 ```
 
 更新受保护令牌文件后重启即完成轮换。保留稳定作者 ID。
 
-回滚代码时先停 Worker，再停止 API，备份当前完整状态，再将 current 指回上一 release 并启动 API；仅当上一 release 也是独立 Worker 模式时再启动旧 Worker。不要用旧状态覆盖新写入。首次上线没有旧 API 数据，不等于日后无需备份。证书私钥、身份文件和备份都不得进入 Git。
+回滚后台任务前，先用 `agent-control` 将目标领域 drain 并设为 `disabled`。API 只回滚到支持 `agent-tasks-v1` 的版本；Pi 使用新的已验证 release symlink。绝不启动旧 Go Worker，也不要用旧状态覆盖新写入。首次上线没有旧 API 数据，不等于日后无需备份。证书私钥、身份文件和备份都不得进入 Git。
 
 旧 Web/PostgreSQL 的 BUILD_AND_DEPLOY、deploy-simple 等脚本已废弃。GitHub Actions 的 EC2 自动部署仍禁用。本次提供可审计的手动发布路径。
 
@@ -145,7 +149,8 @@ Google 登录、公开站点、在线作品管理和 SEO 基础均已合并并�
 
 - `https://www.story2u.xyz`：Cloudflare Worker SSR、Better Auth/D1 与同源 API 代理；根域名和 HTTP 规范跳转到此入口。
 - `https://api.story2u.xyz`：Caddy HTTPS → loopback Go/systemd。后端 Bearer 不进入浏览器。
-- 独立 Agent Worker：同一 release 目录的 systemd 进程，持有 Worker env 中的模型凭证，不对外监听。
+- Pi Thinking：独立用户与状态目录，只服务作者主动对话。
+- Pi Worker：独立用户与状态目录，通过 loopback `8792` 领取三域后台任务；模型 Key 仅在它的受保护环境中。
 - 每个 Google 账号是独立作者。per-user 之前的数据由绑定的旧所有者账号继承，见 [google-login.md](google-login.md)。
 
 Web 工作流成功不能证明 Go 已升级。通过 SSH 只读核对 `systemctl is-active writer-agent-api`、`readlink /opt/writer-agent/current`、`sha256sum /opt/writer-agent/current/writer-agent-api`，再分别检查公网 API 健康、匿名私有请求401和可信服务端认证读取；不打印认证配置或令牌。具体核对时间及版本属于单次发布记录，不固定写成永远最新的版本号。

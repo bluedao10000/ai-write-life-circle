@@ -1,1 +1,1 @@
-Review remains exclusively in the existing Go Worker. A future Pi executor must obtain a Go lease, return candidates for Go evidence validation, and commit with fencing. Never run both executors for this task type.
+Review is executed only by the Pi Worker through `agent-tasks-v1`. Go owns the lease, source snapshots, evidence validation and commit; Pi returns candidates and is fenced when ownership, Revision or consent changes.

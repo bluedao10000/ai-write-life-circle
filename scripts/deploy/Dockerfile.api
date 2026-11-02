@@ -7,7 +7,6 @@ COPY apps/api-go/go.mod apps/api-go/go.sum ./
 RUN go mod download
 COPY apps/api-go/ ./
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /writer-agent-api ./cmd/server && \
-    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /writer-agent-worker ./cmd/agent-worker && \
     mkdir -p /runtime/data/harness /runtime/data/state /runtime/tmp
 
 # Standalone Go binary. No Node.js, shell, package manager or dynamic libc.
@@ -15,7 +14,6 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /writer-agent-api ./cmd
 FROM scratch
 COPY --from=builder /runtime/ /
 COPY --from=builder /writer-agent-api /writer-agent-api
-COPY --from=builder /writer-agent-worker /writer-agent-worker
 # net/http needs trust roots for configured HTTPS model providers.
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 ENV HOME=/tmp \

@@ -75,13 +75,9 @@ func envelope(task *Task) Envelope {
 func TestClaimStartedCompletionReceiptsAndRollback(t *testing.T) {
 	s, k := fixture(t)
 	ctx := context.Background()
-	if task, e := s.Claim(ctx, "fixture", s.Config.Fingerprint()); e != nil || task != nil {
-		t.Fatal("default Go ownership changed", task, e)
-	}
 	if _, e := s.Claim(ctx, "fixture", "wrong model"); e == nil {
 		t.Fatal("configuration mismatch transmitted snapshot")
 	}
-	switchOwner(t, s, "pi")
 	time.Sleep(2100 * time.Millisecond)
 	task, e := s.Claim(ctx, "fixture", s.Config.Fingerprint())
 	if e != nil || task == nil {
@@ -136,7 +132,7 @@ func TestClaimStartedCompletionReceiptsAndRollback(t *testing.T) {
 	if after.BudgetTokens != before.BudgetTokens || after.BudgetAttempts != before.BudgetAttempts {
 		t.Fatal("usage settled twice")
 	}
-	switchOwner(t, s, "go")
+	switchOwner(t, s, "disabled")
 	if e = s.Action(ctx, task.ID, "complete", in); e != nil {
 		t.Fatal("committed receipt was lost after rollback", e)
 	}
@@ -315,7 +311,6 @@ func TestPiReviewStartRechecksPlanAndReleasesUnusedReservation(t *testing.T) {
 	}
 	r := review.New(app, s.Config, nil)
 	defer r.Close()
-	r.DisableLocalExecution = true
 	plan, e := r.Preview(ctx, actor, chapter.ID, review.Input{RevisionID: revision.ID, ContentHash: revision.Hash, ReviewTypes: []string{"character_consistency"}})
 	if e != nil {
 		t.Fatal(e)

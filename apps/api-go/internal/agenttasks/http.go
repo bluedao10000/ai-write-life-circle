@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/application"
+	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/creative"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/executorpolicy"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/knowledge"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/review"
@@ -88,7 +89,7 @@ func (s *Service) Handler() http.Handler {
 			}
 			kinds := in.Kinds
 			if len(kinds) == 0 {
-				kinds = []string{"review", "knowledge"}
+				kinds = []string{"review", "knowledge", "creative"}
 			}
 			for _, kind := range kinds {
 				if expected, ok := executionContracts()[kind]; !ok || in.Contracts[kind] != expected {
@@ -170,5 +171,5 @@ func (s *Service) Listen() (*http.Server, error) {
 }
 
 func executionContracts() map[string]string {
-	return map[string]string{"review": review.ExecutionContract(), "knowledge": knowledge.ExecutionContract()}
+	return map[string]string{"review": review.ExecutionContract(), "knowledge": knowledge.ExecutionContract(), "creative": creative.ExecutionContract()}
 }

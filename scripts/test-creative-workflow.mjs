@@ -1,4 +1,4 @@
-// End-to-end V3 workflow with real Go API, Pi Thinking and Go Agent Worker
+// End-to-end V3 workflow with real Go API, Pi Thinking and Pi Worker
 // processes against a local OpenAI-compatible fixture. No paid model is called.
 // Scenarios: A (from zero), C (alternatives), D (write then return), E (plan
 // divergence), F (deletion invalidates derived work).
@@ -25,7 +25,7 @@ const free = async () => {
 };
 const root = await mkdtemp(join(tmpdir(), "story2u-creative-"));
 const secrets = {};
-for (const name of ["bearer", "token", "secret"]) {
+for (const name of ["bearer", "token", "secret", "tasktoken"]) {
   secrets[name] = randomBytes(32).toString("hex");
   await writeFile(join(root, name), secrets[name], { mode: 0o600 });
 }
@@ -61,10 +61,18 @@ const provider = createServer(async (req, res) => {
   let raw = "";
   for await (const chunk of req) raw += chunk;
   const body = JSON.parse(raw);
-  if (body.stream) {
+  const system = body.messages?.find((m) => m.role === "system")?.content ?? "";
+  const userText = body.messages?.findLast((m) => m.role === "user")?.content ?? "";
+  let out;
+  if (system.startsWith("You organize")) {
+    calls.organize++;
+    out = organize(JSON.parse(userText));
+  } else if (system.startsWith("You compare")) {
+    calls.plan++;
+    out = planCheck(JSON.parse(userText));
+  } else if (body.stream) {
     calls.chat++;
-    const user = body.messages.findLast((m) => m.role === "user");
-    const said = typeof user?.content === "string" ? user.content : JSON.stringify(user?.content ?? "");
+    const said = typeof userText === "string" ? userText : JSON.stringify(userText);
     res.writeHead(200, { "Content-Type": "text/event-stream" });
     const chunk = (delta, finish = null, usage) => "data: " + JSON.stringify({ id: "x", object: "chat.completion.chunk", model: "fixture", choices: [{ index: 0, delta, finish_reason: finish }], ...(usage ? { usage } : {}) }) + "\n\n";
     res.write(chunk({ content: "我理解你的构思：" + said.slice(0, 40) + "。这些还需要你确认。" }));
@@ -72,20 +80,18 @@ const provider = createServer(async (req, res) => {
     res.end("data: [DONE]\n\n");
     return;
   }
-  const input = JSON.parse(body.messages[1].content);
-  let out;
-  if (body.messages[0].content.startsWith("You organize")) {
-    calls.organize++;
-    out = organize(input);
-  } else {
-    calls.plan++;
-    out = planCheck(input);
+  const content = JSON.stringify(out);
+  if (body.stream) {
+    res.writeHead(200, { "Content-Type": "text/event-stream" });
+    res.write("data: " + JSON.stringify({ id: "x", object: "chat.completion.chunk", model: "fixture", choices: [{ index: 0, delta: { role: "assistant", content }, finish_reason: "stop" }], usage: { prompt_tokens: 200, completion_tokens: 100 } }) + "\n\ndata: [DONE]\n\n");
+    res.end();
+    return;
   }
   res.setHeader("content-type", "application/json");
-  res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(out) }, finish_reason: "stop" }], usage: { prompt_tokens: 200, completion_tokens: 100 } }));
+  res.end(JSON.stringify({ choices: [{ message: { content }, finish_reason: "stop" }], usage: { prompt_tokens: 200, completion_tokens: 100 } }));
 });
 const providerOrigin = `http://127.0.0.1:${await listen(provider)}`;
-const agentPort = await free(), toolPort = await free();
+const agentPort = await free(), toolPort = await free(), taskPort = await free();
 const env = {
   ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("WRITER_AGENT_"))),
   NODE_ENV: "production",
@@ -121,6 +127,11 @@ const env = {
   WRITER_AGENT_PI_FIXTURE: "1",
   WRITER_AGENT_PI_MAX_DURATION_MS: "10000",
   WRITER_AGENT_PI_VERSION: "fixture",
+  WRITER_AGENT_TASK_SERVICE_TOKEN_FILE: join(root, "tasktoken"),
+  WRITER_AGENT_TASK_INTERNAL_PORT: String(taskPort),
+  WRITER_AGENT_TASK_ORIGIN: `http://127.0.0.1:${taskPort}`,
+  WRITER_AGENT_PI_WORKER_LLM_API_KEY: "synthetic-fixture-only",
+  WRITER_AGENT_PI_WORKER_FIXTURE: "1",
 };
 let output = "", errors = "";
 const children = [];
@@ -152,7 +163,7 @@ try {
     await delay(50);
   }
   assert(api && output.includes("agent_started"), "startup: " + errors);
-  start(bin("writer-agent-worker"), []);
+  start(process.execPath, [new URL("../apps/agent/dist/worker/main.js", import.meta.url).pathname]);
   const call = async (path, { method = "GET", body, key, status = 200 } = {}) => {
     const r = await fetch(api + path, {
       method,

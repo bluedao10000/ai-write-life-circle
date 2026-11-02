@@ -5928,10 +5928,13 @@ components:
           required:
             - review
             - knowledge
+            - creative
           properties:
             review:
               $ref: "#/components/schemas/AgentExecutorStatus"
             knowledge:
+              $ref: "#/components/schemas/AgentExecutorStatus"
+            creative:
               $ref: "#/components/schemas/AgentExecutorStatus"
       additionalProperties: false
     AgentRuntimeCounts: *a1
@@ -5972,10 +5975,10 @@ components:
           enum:
             - review
             - knowledge
+            - creative
         executorOwner:
           type: string
           enum:
-            - go
             - pi
             - disabled
             - ""

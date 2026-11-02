@@ -55,8 +55,8 @@ pnpm dev
 /
 ├── apps/              # 应用代码
 │   ├── web/          # 前端应用（主要）
-│   ├── api-go/       # Go 默认后端
-│   └── api/          # Node 对照与回滚实现
+│   ├── api-go/       # Go API、任务权威与业务提交
+│   ├── agent/        # Pi Thinking 与 Pi Worker
 ├── packages/         # 共享包
 │   └── contracts/    # 类型定义
 ├── harness/          # 文档中心
@@ -69,8 +69,9 @@ pnpm dev
 ## 🔧 技术栈
 
 - React 19 + TypeScript
-- Vite 8 + TailwindCSS 4
-- TipTap 编辑器
+- Go 1.27.3 业务 API
+- Node 22 + Pi SDK 模型执行器
+- Vite 8 + TailwindCSS 4 + TipTap
 - Docker + AWS ECR + EC2
 
 ---

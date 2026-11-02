@@ -78,7 +78,7 @@ func output(name, quote, text, existing string) string {
 }
 func process(t *testing.T, s *Service) {
 	t.Helper()
-	if e := s.ProcessOne(context.Background()); e != nil {
+	if e := processOneForTest(context.Background(), s); e != nil {
 		t.Fatal(e)
 	}
 }
@@ -266,7 +266,7 @@ func TestLateResponseDoesNotOverrideNewRevisionAndPause(t *testing.T) {
 		}
 	}
 	done := make(chan error, 1)
-	go func() { done <- s.ProcessOne(context.Background()) }()
+	go func() { done <- processOneForTest(context.Background(), s) }()
 	<-entered
 	save(t, s, id, "林舟十六岁。")
 	close(release)
@@ -335,8 +335,9 @@ func TestCredentialFreeAPICanEnableAndQueueButCannotExecute(t *testing.T) {
 	if len(st.Jobs) != 1 || st.Jobs[0].Status != "pending" {
 		t.Fatal("saved head not durably queued")
 	}
-	worked, err := s.processOne(context.Background())
-	if err != nil || worked || client.calls.Load() != 0 {
+	s.QueueOnly = false
+	claim, err := s.Claim(context.Background())
+	if err != nil || claim != nil || client.calls.Load() != 0 {
 		t.Fatal("API executed LLM", err)
 	}
 }

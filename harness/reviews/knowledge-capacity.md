@@ -7,7 +7,7 @@ P90 16,399，P95 21,381，P99 25,738，最大 37,038。统计未复制正文。
 默认整请求输入改为 65,536 字节（包含 JSON 元数据，不截断正文），配置上限
 262,144 字节。正确命名的 WRITER_AGENT_LLM_MAX_CONTEXT_BYTES 优先于旧
 WRITER_AGENT_REVIEW_MAX_CONTEXT_TOKENS；旧变量仍按字节解释，显式值保留。
-Review 和 Knowledge 共用此模型执行配置，API、Go Worker 与 Pi Worker 必须同步。
+Review、Knowledge 与 Creative 共用 Pi Worker 的模型执行配置；Go API 只同步无密钥公共配置。
 
 DeepSeek 默认输出提高为 131,072 Token，最大可配置 131,072；
 Go 校验、Pi 执行配置及 Usage 契约同步。其他 Provider 默认输出仍 2,048。

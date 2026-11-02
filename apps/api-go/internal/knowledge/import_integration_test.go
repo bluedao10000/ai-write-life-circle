@@ -76,7 +76,7 @@ func TestImportedBookQueuesKnowledgeOnlyAfterConsent(t *testing.T) {
 	}
 	service := New(app, config, nil)
 	service.QueueOnly = true
-	if err := service.ProcessOne(ctx); err != nil {
+	if err := processOneForTest(ctx, service); err != nil {
 		t.Fatal(err)
 	}
 	state, err := service.load()
@@ -93,7 +93,7 @@ func TestImportedBookQueuesKnowledgeOnlyAfterConsent(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := service.ProcessOne(ctx); err != nil {
+	if err := processOneForTest(ctx, service); err != nil {
 		t.Fatal(err)
 	}
 	state, err = service.load()

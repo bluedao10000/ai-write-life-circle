@@ -159,7 +159,6 @@ func TestFreeReviewEndToEndUsesBoundedConsentQuotaAndPreservesHistory(t *testing
 	model := &freeReviewModel{}
 	r := review.New(app, config, model)
 	defer r.Close()
-	r.DisableLocalExecution = true
 	in := review.Input{RevisionID: head.ID, ContentHash: head.Hash, ReviewTypes: []string{"character_consistency"}}
 	for i := 0; i < 2; i++ {
 		plan, e := r.Preview(ctx, w.actor, c.ID, in)
@@ -185,9 +184,26 @@ func TestFreeReviewEndToEndUsesBoundedConsentQuotaAndPreservesHistory(t *testing
 		if u.Review.Reserved != 1 || u.Review.Used != i {
 			t.Fatal("API admission not reserved", u)
 		}
-		did, e := r.ProcessAll(ctx)
-		if !did || e != nil {
-			t.Fatal("free execution failed", did, e)
+		claim, e := r.Claim(ctx)
+		if e != nil || claim == nil {
+			t.Fatal("free execution claim failed", e)
+		}
+		request, e := r.Prepare(ctx, claim)
+		if e != nil {
+			t.Fatal(e)
+		}
+		op := fmt.Sprintf("review:%s:%d", claim.Run.RunID, claim.Run.Attempts)
+		if e = r.App.MeterAuthorize(ctx, op, "review"); e != nil {
+			t.Fatal(e)
+		}
+		response, e := model.Generate(ctx, request)
+		if e == nil {
+			e = r.Complete(claim, response, nil)
+		} else {
+			e = r.Complete(claim, response, e)
+		}
+		if e != nil {
+			t.Fatal("free execution failed", e)
 		}
 		saved, e := r.Get(ctx, w.actor, run.RunID)
 		if e != nil || saved.Status != "completed" {

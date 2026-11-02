@@ -18,9 +18,14 @@ import (
 // Service is constructed per resolved book. Client is nil in the API process;
 // only the Agent Worker holds a model credential.
 type Service struct {
-	App    *application.Service
-	Config llm.Config
-	Client llm.Client
+	App           *application.Service
+	Config        llm.Config
+	Client        llm.Client
+	ExecutorOwner string
+	claimEpoch    uint64
+	// QueueOnly lets the business API claim jobs without holding a model
+	// credential. The Pi worker executes the prepared request.
+	QueueOnly bool
 	// Clock is replaceable in tests.
 	Clock func() time.Time
 }

@@ -5,10 +5,10 @@ const sizes=process.argv.includes('--quick')?[10]:[10,100,500];
 for(const size of sizes){
  const f=await createPiWorkerFixture();let thinkingCalls=0;
  try{
-  const node=f.start('pi-worker'),go=f.start('worker'),thinking=f.start('pi');
+  const node=f.start('pi-worker'),thinking=f.start('pi');
   await until(()=>{if(node.exitCode!==null)throw Error(node.output);return node.output.includes('worker_started')},'Pi worker startup');
   const book=await importSyntheticEpub(f,size);await fetch(f.origin+'/control',{method:'POST',body:JSON.stringify({mode:'knowledge-empty'})});
-  f.switchOwner('knowledge','pi');const root=`/v1/studio/books/${book.bookId}/knowledge`;
+  const root=`/v1/studio/books/${book.bookId}/knowledge`;
   const view=()=>f.call(root);const progress=async()=>(await f.call('/v1/agent-runtime')).executors.knowledge.tasks;const mutate=async(action,extra={})=>f.call(root+'/'+action,{method:'POST',body:{baseVersion:(await view()).version,...extra}});
   const page=await view();await mutate('enable',{consent:true,model:page.model,dailyTokenBudget:100000000,dailyJobBudget:1});
   await until(async()=>{return (await progress()).completed===1},'first budgeted chapter',30000);
@@ -22,8 +22,9 @@ for(const size of sizes){
   assert.equal(inputs.length,size);assert.deepEqual(inputs.map(r=>r.chapterId),Array.from({length:size},(_,i)=>`CH-${String(i+1).padStart(6,'0')}`),'spine/global chapter order and no duplicates');
   for(let i=0;i<inputs.length;i++)assert.ok(inputs[i].targetMarkdown.includes(`合成原文第 ${i+1} 章。`),'EPUB spine order and saved original text');
   await sleep(700);assert.equal(f.calls,size+thinkingCalls,'same Revision cannot enqueue twice');
-  const status=await f.call('/v1/agent-runtime');assert.equal(status.executors.knowledge.executorOwner,'pi');assert.equal(status.executors.review.executorOwner,'go');
-  f.switchOwner('knowledge','go');await mutate('rebuild',{chapterId:inputs[0].chapterId});await until(()=>f.calls===size+1+thinkingCalls,'Go rollback resumes rebuilt chapter',30000);await until(async()=>(await f.call(root+'/jobs')).items.some(j=>j.chapterId===inputs[0].chapterId&&j.status==='completed'),'Go rollback domain commit',30000);
-  console.log(`PASS: ${size} EPUB chapters imported and analyzed in spine order via Pi; job budget, pause/resume, no duplicates, fallback Go rebuild. Four processes, synthetic HTTP only.`);
+  const status=await f.call('/v1/agent-runtime');for(const kind of ['review','knowledge','creative'])assert.equal(status.executors[kind].executorOwner,'pi');
+  f.switchOwner('knowledge','disabled');const pausedCalls=f.calls;await mutate('rebuild',{chapterId:inputs[0].chapterId});await sleep(1200);assert.equal(f.calls,pausedCalls,'disabled Knowledge must remain queued');
+  f.switchOwner('knowledge','pi');await until(()=>f.calls===size+1+thinkingCalls,'Pi resume executes rebuilt chapter',30000);await until(async()=>(await f.call(root+'/jobs')).items.some(j=>j.chapterId===inputs[0].chapterId&&j.status==='completed'),'Pi resume domain commit',30000);
+  console.log(`PASS: ${size} EPUB chapters imported and analyzed in spine order via Pi; job budget, pause/resume, no duplicates, disabled/resume rebuild. Three processes, synthetic HTTP only.`);
  }finally{await f.close()}
 }

@@ -1,6 +1,6 @@
 # Writer Agent Go API
 
-默认后端。Go 1.27.3、标准库 HTTP/JSON/文件存储，唯一模块依赖为 Go 官方 `golang.org/x/text`（兼容 Node 的 Unicode 排序与解码）。没有数据库或写入正式 Harness 的通路；可选 LLM 仅用于作者主动授权的连续性审查。
+Go 业务 API。Go 1.27.3、标准库 HTTP/JSON/文件存储，唯一模块依赖为 Go 官方 `golang.org/x/text`（兼容 Node 的 Unicode 排序与解码）。没有数据库或写入正式 Harness 的通路。API 只读取无密钥的公共模型配置；Review、Knowledge、Creative 的模型调用统一由独立 Pi Worker 执行。
 
 ```sh
 cd apps/api-go
@@ -19,7 +19,7 @@ HTTP 对正文实施 32MiB 上限，覆盖 2Mi Unicode 字符的合法 JSON 转�
 
 旧 Workspace、Draft、Note、Audit、幂等记录使用原路径和格式直接读取，不运行数据重写迁移。跨进程 O_EXCL .lock 协议沿用 Node；临时文件 Sync + Rename，章节审计追加前后保持旧错误语义，Notes 三类记录一次提交。未知遗留锁不自动删除。支持本机 macOS/Linux；多机共享网络文件系统不在本次验收范围。
 
-停止旧 API 写入→备份完整状态目录→启动 Go。不要让两种后端同时写真实目录。回滚时停止 Go，使用 `pnpm dev:api:node` 指向同一目录；已由对照测试验证 Node 可读取并重放 Go 生成的状态。需要调查时，将备份恢复到另一路径，勿覆盖更新的数据。
+Go 是唯一业务 API，早期 `apps/api` Node 实现已删除，不存在双后端回滚路径。升级或回滚二进制前先停止写入并备份完整状态目录；不要让两个 API 进程同时写真实目录。需要调查时，将备份恢复到另一路径，勿覆盖更新的数据。
 
 [迁移基线](../../harness/architecture/go-backend-migration.md)
 
@@ -31,11 +31,11 @@ HTTP 对正文实施 32MiB 上限，覆盖 2Mi Unicode 字符的合法 JSON 转�
 
 ## 连续性审查
 
-新增 `internal/llm`（可注入 Client、配置、OpenAI-compatible HTTP）、`internal/review`（只读上下文、精确引文/版本核验、异步运行、独立原子状态）、`transport/review.go`。没有 Agent 框架、工具执行、自动改稿或知识写入。
+新增 `internal/llm`（无密钥公共配置与领域测试替身）、`internal/review`（只读上下文、精确引文/版本核验、租约与独立原子状态）、`internal/agenttasks`（Pi 私有任务协议）。生产代码没有 Agent 框架、工具执行、自动改稿或模型写入。
 
-默认使用 DeepSeek，服务端只需配置 `WRITER_AGENT_LLM_API_KEY`，其余变量可以省略或留空。密钥通过本地环境/服务端 secret 注入，不进入前端、Git 或命令行参数。未设置任何模型连接信息时，审查 capability 仍关闭。
+Go API 与 Pi Worker 必须配置相同的公共 provider/endpoint/model/格式/限制，但模型 API Key 只进入 Pi Worker 的受保护环境。API 通过 Task Token 文件启用 loopback `127.0.0.1:8792`；未设置服务 Token 时不开放任务监听。未设置公共模型配置时，Review/Knowledge/Creative capability 关闭。
 
-GitHub 仓库 Settings → Secrets and variables → Actions：在 Repository secrets 中设置 `WRITER_AGENT_LLM_API_KEY`；Repository variables 均为可选覆盖项。工作流必须将 secret/vars 显式传给 Go 进程，GitHub 保存配置本身不会改变 EC2 环境。当前历史 API 部署工作流没有下发这些配置，保持暂停；生产 systemd 服务需由部署流程安全更新 `/etc/writer-agent/api.env` 后重启。不要把模型密钥放入 `VITE_*`。
+真实模型 Eval 的 `WRITER_AGENT_LLM_API_KEY` 只作为手动 GitHub Eval Secret 使用，不进入生产 Go systemd。生产 Pi Worker 从 `/etc/writer-agent-pi-worker/worker.env` 读取密钥；Thinking 使用自己的 `/etc/writer-agent-pi/agent.env`。不要把任何模型密钥放入 `VITE_*`、`api.env` 或公开日志。
 
 使用其他 OpenAI-compatible 服务时，显式设置地址与模型：
 
@@ -43,7 +43,7 @@ GitHub 仓库 Settings → Secrets and variables → Actions：在 Repository se
 export WRITER_AGENT_LLM_PROVIDER=openai-compatible
 export WRITER_AGENT_LLM_BASE_URL=https://your-provider.example/v1
 export WRITER_AGENT_LLM_MODEL=your-supported-model
-# 密钥通过本地环境/服务端 secret 配置 WRITER_AGENT_LLM_API_KEY，不进入前端或 Git。
+# 本地测试替身不需要密钥；真实 Pi Worker 需在受保护环境设置 WRITER_AGENT_PI_WORKER_LLM_API_KEY。
 pnpm dev:local
 ```
 
@@ -77,7 +77,7 @@ DeepSeek 默认规则适用于上述官方地址及其 `/v1` 前缀（允许末�
 
 状态在 STATE_DIR/review-runs 下，每项目一个 JSON，权限 0600，原子保存运行/反馈/幂等，不混入 Draft、Notes、Audit 或正式 Harness。备份时包含整个状态目录；Review 快照也含原文，需按作品敏感资料保护。每项目最多 200 个运行、10000 条请求/反馈，达到上限需人工备份归档，不自动删记录。每项目同时一个运行；工作进程重启后原 running 在 deadline 到期读取时转为 interrupted，不自动重新发送作品。跨进程共享状态可协调，但远端进程取消不保证立即终止另一个进程的模型 HTTP 请求，结果仍不会覆盖取消；当前部署以单进程为准。
 
-`pnpm test:review` / `pnpm eval:review` 为真实 HTTP 路径的确定性测试。`pnpm eval:review:live` 显式授权发送合成夹具给配置的真实模型；作者真实作品不用于 CI。用户暂缓真实模型联调，当前不宣称真实 LLM E2E。
+`pnpm test:review` 启动真实 Go API 与 Pi Worker，走确定性 HTTP 模型替身。`pnpm eval:review:live` 显式授权发送合成夹具给配置的真实模型；作者真实作品不用于 CI，当前不宣称真实 LLM 语义质量。
 
 审查历史范围与章节目录共用卷分组、卷内排序，按全局位置选择目标之前的章节；卷顺序保持目录的既有规则（Harness 确定性投影中各卷首次出现的顺序），不把卷内 order 当作全书序号。历史相关性使用保存的 Revision 正文；最多读取64个候选（最近32章及更早范围32个均匀样本），最多纳入4章，候选限制可能遗漏远距离证据。Plan/Run 保存 strategyVersion，当前为 continuity-review-v4，参与 planHash 和模型输入；今后改变 Prompt、上下文选择或证据策略时应升级常量。旧状态缺少此字段时读取为 continuity-review-v1，保留原 planHash、记录与作者反馈。
 

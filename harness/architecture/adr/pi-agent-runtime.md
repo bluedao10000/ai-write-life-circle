@@ -1,10 +1,10 @@
 # Pi Thinking Runtime
 
-状态：Sprint 5 开发；以同一 PR 的代码、测试与报告为验收依据。基线 origin/main 0c12c5c。
+状态：Thinking 部分仍有效；Review/Knowledge 的 Go Worker 和“未来迁移”段落已由 [Pi 统一执行器 ADR](../pi-unified-agent-runtime.md) 取代。
 
 ## 权威与通信
 
-新增 apps/agent（Node >=22.19、Pi SDK 1.3.0），只执行 Thinking。原 Go Worker 继续独占 Review/Knowledge 执行。Go 仍持有作品和 Session 归属权；Pi 会话正文、执行事件在独立私有目录，Node 不挂载 Go StateDirectory。
+新增 apps/agent（Node >=22.19、Pi SDK 1.3.0）。Thinking 与后台 Worker 是同一发布中的两个独立进程；Review、Knowledge、Creative 均由 Pi Worker 执行，不存在 Go Worker。Go 仍持有作品、任务与 Session 归属权；Pi 会话正文、执行事件在独立私有目录，Node 不挂载 Go StateDirectory。
 
 Browser → 同源 Worker → Go 作者 API → loopback Pi 服务。Pi → Go 的第二个专用内部 listener，调用白名单只读工具。公网业务 listener 不安装内部工具路由。两个内部方向有独立服务凭证；Go 为每次运行签发短期、固定 owner/book/session/scope/model 的能力凭证。每次工具执行重新验证注册表、Session 状态、授权与预算。
 
@@ -26,6 +26,6 @@ Go 登记作者、作品、模型披露、范围、生命周期和幂等键。No
 
 ## 发布边界
 
-独立 writer-agent-pi.service 使用独立 Unix 用户与私有 StateDirectory，限制内存/CPU/并发，仅 loopback；现有 Go API/Worker 仍能无 Pi 启动。内部协议 thinking-v1。部署前验证应用版本、协议、凭证、模型能力、备份与清理恢复；本 Sprint 仅提供手动部署与回滚支持，不操作生产、不合并 PR、不自动付费 Eval。
+独立 writer-agent-pi.service 使用独立 Unix 用户与私有 StateDirectory，限制内存/CPU/并发，仅 loopback；后台任务由独立的 writer-agent-pi-worker.service 执行。内部协议为 thinking-v1，后台协议为 agent-tasks-v1。部署前验证应用版本、协议、凭证、模型能力、备份与清理恢复；本文件不授权生产操作、PR 合并或付费 Eval。
 
-未来迁移 Review/Knowledge 时 Go 保留任务租约、证据校验和提交权；按任务类型切换唯一执行器，Pi 只领取受限租约并回传候选输出，迟到结果被 Go fencing 拒绝。
+Review、Knowledge、Creative 已按此边界迁移完成：Go 保留任务租约、证据校验和提交权；Pi 只领取受限租约并回传候选输出，迟到结果被 Go fencing 拒绝。

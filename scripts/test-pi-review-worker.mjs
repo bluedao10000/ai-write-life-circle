@@ -4,20 +4,15 @@ import YAML from 'yaml';
 import assert from 'node:assert/strict';
 import {createPiWorkerFixture,until,sleep} from './lib/pi-worker-fixture.mjs';
 const f=await createPiWorkerFixture();
-let node,go,thinking;
+let node,thinking;
 async function ready(p,event){await until(()=>{if(p.exitCode!==null)throw Error(p.output);return p.output.includes(event)},event)}
 try{
- thinking=f.start('pi');await ready(thinking,'agent_started');const isolated=await f.call('/v1/agent-runtime');assert.equal(isolated.executors.review.ready,false);assert.equal(isolated.executors.knowledge.ready,false);go=f.start('worker');node=f.start('pi-worker');await ready(node,'worker_started');
- // All four processes are alive, but default Go alone executes.
+ thinking=f.start('pi');await ready(thinking,'agent_started');const isolated=await f.call('/v1/agent-runtime');assert.equal(isolated.executors.review.ready,false);assert.equal(isolated.executors.knowledge.ready,false);assert.equal(isolated.executors.creative.ready,false);node=f.start('pi-worker');await ready(node,'worker_started');
+ // Pi is the default and only background executor.
  let before=f.calls,r=await f.enqueue();await f.complete(r.runId);assert.equal(f.calls,before+1);
- const legacy=[];
- for(const scenario of f.cases){await f.select(scenario);const run=await f.enqueue();const done=await until(async()=>{const x=await f.get(run.runId);return !['queued','running'].includes(x.status)&&x},'Go '+scenario.id);legacy.push(done)}
- f.switchOwner('review','pi');
- const runs=[];
- for(const scenario of f.cases){await f.select(scenario);r=await f.enqueue();const done=await until(async()=>{const x=await f.get(r.runId);return !['queued','running'].includes(x.status)&&x},scenario.id);assert.equal(done.status,scenario.fake==='invalid'?'failed':'completed');assert.equal(done.findings.length,scenario.fake==='valid'?1:0);if(scenario.fake.startsWith('fake-'))assert.equal(done.rejectedCount,1);runs.push(done)}
- for(let i=0;i<runs.length;i++){for(const field of ['status','failureCode','usage','rejectedCount'])assert.deepEqual(runs[i][field],legacy[i][field],'Go/Pi contract mismatch: '+field+' '+f.cases[i].id);assert.equal(runs[i].findings.length,legacy[i].findings.length)}
+ for(const scenario of f.cases){await f.select(scenario);r=await f.enqueue();const done=await until(async()=>{const x=await f.get(r.runId);return !['queued','running'].includes(x.status)&&x},scenario.id);assert.equal(done.status,scenario.fake==='invalid'?'failed':'completed');assert.equal(done.findings.length,scenario.fake==='valid'?1:0);if(scenario.fake.startsWith('fake-'))assert.equal(done.rejectedCount,1)}
  assert.ok(f.requests.some(r=>r.stream===true),'Pi SDK must perform real streaming model normalization');
- const status=await f.call('/v1/agent-runtime');const spec=YAML.parse(await readFile(new URL('../harness/contracts/api-spec-v0.4.0-proposed.yaml',import.meta.url),'utf8'));const validate=new Ajv({strict:false}).compile({$ref:'#/components/schemas/AgentRuntimeStatus',components:spec.components});assert.ok(validate(status),JSON.stringify(validate.errors));assert.equal(status.executors.review.executorOwner,'pi');assert.equal(status.executors.knowledge.executorOwner,'go');
+ const status=await f.call('/v1/agent-runtime');const spec=YAML.parse(await readFile(new URL('../harness/contracts/api-spec-v0.4.0-proposed.yaml',import.meta.url),'utf8'));const validate=new Ajv({strict:false}).compile({$ref:'#/components/schemas/AgentRuntimeStatus',components:spec.components});assert.ok(validate(status),JSON.stringify(validate.errors));for(const kind of ['review','knowledge','creative'])assert.equal(status.executors[kind].executorOwner,'pi');
  // Go commits, but the first HTTP acknowledgement is lost; retry is receipt-only.
  await f.select(f.cases[0]);before=f.calls;f.dropCompletion();r=await f.enqueue();await f.complete(r.runId);await until(()=>f.dropped===1,'lost completion acknowledgement');await sleep(500);assert.equal(f.calls,before+1);assert.ok(node.output.includes('task_completed'));
  // Thinking remains responsive while the background Review waits on the model.
@@ -29,9 +24,10 @@ try{
  // Two Node workers race, but one lease is valid.
  await f.select(f.cases[0]);const other=f.start('pi-worker');await ready(other,'worker_started');before=f.calls;r=await f.enqueue();await f.complete(r.runId);assert.equal(f.calls,before+1);await f.stop(other);
  // Node dies after the model started. Only a new lease may eventually commit.
- await f.select({...f.cases[0],fake:'slow'});before=f.calls;r=await f.enqueue();await until(()=>f.calls>before,'crash target entered provider');await f.stop(node,'SIGKILL');await f.stop(go);await f.expire(r.runId);await f.select(f.cases[0]);node=f.start('pi-worker');await ready(node,'worker_started');await f.complete(r.runId);
+ await f.select({...f.cases[0],fake:'slow'});before=f.calls;r=await f.enqueue();await until(()=>f.calls>before,'crash target entered provider');await f.stop(node,'SIGKILL');await f.expire(r.runId);await f.select(f.cases[0]);node=f.start('pi-worker');await ready(node,'worker_started');await f.complete(r.runId);
  // Go API restart keeps durable receipts and the worker reconnects.
  await f.stop(f.api());await f.startAPI();await until(async()=>{const s=await f.call('/v1/agent-runtime');return s.executors.review.ready},'worker reconnected after API restart');
- f.switchOwner('review','go');go=f.start('worker');r=await f.enqueue();await f.complete(r.runId);const final=await f.call('/v1/agent-runtime');assert.equal(final.executors.review.executorOwner,'go');
- console.log('PASS: actual Go API + Go Worker + Pi Thinking + Pi Worker; Review cases, evidence rejection, distinct ownership, cancellation, duplicate workers, SIGKILL, API restart, rollback and Thinking isolation. Fixture model only.');
+ // disabled is a maintenance switch, not a second executor; queued work resumes on pi.
+ f.switchOwner('review','disabled');assert.equal((await f.call('/v1/agent-runtime')).executors.review.executorOwner,'disabled');before=f.calls;r=await f.enqueue();await sleep(300);assert.equal(f.calls,before);f.switchOwner('review','pi');await f.complete(r.runId);assert.equal((await f.call('/v1/agent-runtime')).executors.review.executorOwner,'pi');
+ console.log('PASS: actual Go API + Pi Thinking + Pi Worker; Review cases, evidence rejection, Pi-only ownership, cancellation, duplicate workers, SIGKILL, API restart, disabled/resume and Thinking isolation. Fixture model only.');
 }finally{await f.close()}

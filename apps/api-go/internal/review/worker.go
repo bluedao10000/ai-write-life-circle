@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/agentruntime"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/executorpolicy"
 	"sort"
 	"strconv"
@@ -20,36 +19,9 @@ type ClaimedRun struct {
 	Run Run
 }
 
-// Executor adapts the durable review queue to the shared Agent Runtime.
-type Executor struct {
-	Config  llm.Config
-	Client  llm.Client
-	Resolve func(bookID string) (*application.Service, error)
-	// Memory supplies the same bounded knowledge-backed chapter IDs used by the
-	// business API, without granting the Worker any knowledge mutation rights.
-	Memory func(*application.Service) func(context.Context, string) ([]string, error)
-}
-
-func (x *Executor) Kind() string { return "review" }
-
-func (x *Executor) Process(ctx context.Context, bookID string) (bool, error) {
-	app, e := x.Resolve(bookID)
-	if e != nil {
-		return false, e
-	}
-	service := New(app, x.Config, x.Client)
-	if x.Memory != nil {
-		service.MemoryChapters = x.Memory(app)
-	}
-	return service.ProcessAll(ctx)
-}
-
 // Claim atomically leases one queued review. The caller must call Commit with
 // the same lease; a lost lease can never mutate another worker's result.
 func (s *Service) claim(ctx context.Context) (*ClaimedRun, error) {
-	if s.Client == nil && !s.DisableLocalExecution {
-		return nil, llm.Fail("LLM_NOT_CONFIGURED")
-	}
 	var run *Run
 	reserved := ""
 	e := s.transaction(ctx, func(st *state) (bool, error) {
@@ -115,78 +87,7 @@ func (s *Service) claim(ctx context.Context) (*ClaimedRun, error) {
 	if e != nil || run == nil {
 		return nil, e
 	}
-	agentruntime.TaskEvent("task_claimed", "review", s.App.Project, run.RunID, run.Model.Model, run.Attempts, time.Time{}, nil, "")
-	if run.Attempts > 1 {
-		agentruntime.TaskEvent("task_retried", "review", s.App.Project, run.RunID, run.Model.Model, run.Attempts, time.Time{}, nil, "")
-	}
 	return &ClaimedRun{*run}, nil
-}
-
-// Process executes a claimed review and commits its outcome under lease fencing.
-func (s *Service) Process(ctx context.Context, claimed *ClaimedRun) error {
-	if claimed == nil || claimed.Run.Lease == "" {
-		return llm.Fail("REVIEW_LEASE_INVALID")
-	}
-	run := claimed.Run
-	callCtx, cancel := context.WithTimeout(ctx, s.Config.Timeout)
-	defer cancel()
-	request, prepErr := s.Prepare(callCtx, claimed)
-	if prepErr != nil {
-		if errors.Is(callCtx.Err(), context.DeadlineExceeded) {
-			prepErr = llm.Fail("LLM_TIMEOUT")
-		} else if callCtx.Err() != nil {
-			prepErr = llm.Fail("REVIEW_INTERRUPTED")
-		}
-		return s.Complete(claimed, llm.Response{}, prepErr)
-	}
-	st, err := s.load()
-	if err != nil {
-		return err
-	}
-	current := st.Runs[run.RunID]
-	deadline, err := time.Parse(time.RFC3339Nano, current.DeadlineAt)
-	if err != nil || current.Status != "running" || current.Lease != run.Lease || time.Now().After(deadline) {
-		s.App.MeterSettle(context.Background(), meterOp(run.RunID, run.Attempts), -1)
-		return nil
-	}
-	done := make(chan struct{})
-	defer close(done)
-	go func() {
-		ticker := time.NewTicker(100 * time.Millisecond)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-done:
-				return
-			case <-callCtx.Done():
-				return
-			case <-ticker.C:
-				st, err := s.load()
-				current := st.Runs[run.RunID]
-				if err != nil || current.Status != "running" || current.Lease != run.Lease || !(executorpolicy.Controller{State: s.App.State}).Valid("review", run.ExecutorOwner, run.ExecutorEpoch, run.Lease) {
-					cancel()
-					return
-				}
-			}
-		}
-	}()
-
-	e := (executorpolicy.Controller{State: s.App.State}).Guard(callCtx, "review", run.ExecutorOwner, run.ExecutorEpoch, run.Lease, false, func() error { return nil })
-	var response llm.Response
-	if e == nil {
-		e = s.App.MeterAuthorize(callCtx, meterOp(run.RunID, run.Attempts), "review")
-	}
-	if e == nil {
-		response, e = s.Client.Generate(callCtx, request)
-	}
-	if callCtx.Err() != nil {
-		if errors.Is(callCtx.Err(), context.DeadlineExceeded) {
-			e = llm.Fail("LLM_TIMEOUT")
-		} else {
-			e = llm.Fail("REVIEW_INTERRUPTED")
-		}
-	}
-	return s.Complete(claimed, response, e)
 }
 
 // Prepare returns exactly the author-confirmed source snapshot; no model call occurs here.
@@ -223,7 +124,6 @@ func (s *Service) complete(claimed *ClaimedRun, response llm.Response, modelErr 
 func (s *Service) commit(lease string, response llm.Response, findings []Finding, reasons []string, modelErr error, receipt string) error {
 	finish, stop := context.WithTimeout(context.Background(), 5*time.Second)
 	defer stop()
-	var saved *Run
 	err := s.transaction(finish, func(st *state) (bool, error) {
 		for _, current := range st.Runs {
 			if current.Lease != lease {
@@ -268,34 +168,11 @@ func (s *Service) commit(lease string, response llm.Response, findings []Finding
 			current.CompletionReceipts[lease] = receipt
 			current.Lease = ""
 			st.Runs[current.RunID] = current
-			saved = &current
 			return true, nil
 		}
 		return false, nil // cancelled, reclaimed, or already committed; stale results are inert
 	})
-	if err == nil && saved != nil {
-		code := ""
-		if saved.FailureCode != nil {
-			code = *saved.FailureCode
-		}
-		event := "task_" + saved.Status
-		if saved.Status == "queued" {
-			event = "task_interrupted"
-		}
-		at, _ := time.Parse(time.RFC3339Nano, saved.StartedAt)
-		agentruntime.TaskEvent(event, "review", s.App.Project, saved.RunID, saved.Model.Model, saved.Attempts, at, saved.Usage, code)
-	}
 	return err
-}
-
-// ProcessAll processes at most one queued review and implements the Agent
-// Runtime executor contract. It returns false when the project has no work.
-func (s *Service) ProcessAll(ctx context.Context) (bool, error) {
-	claimed, e := s.Claim(ctx)
-	if e != nil || claimed == nil {
-		return false, e
-	}
-	return true, s.Process(ctx, claimed)
 }
 
 func (s *Service) Claim(ctx context.Context) (*ClaimedRun, error) { return s.claimRun(ctx, "") }
@@ -303,7 +180,6 @@ func (s *Service) claimRun(ctx context.Context, target string) (out *ClaimedRun,
 	err = (executorpolicy.Controller{State: s.App.State}).Claim(ctx, "review", s.ExecutorOwner, func(epoch uint64) (string, string, error) {
 		copy := New(s.App, s.Config, s.Client)
 		defer copy.Close()
-		copy.DisableLocalExecution = s.DisableLocalExecution
 		copy.ExecutorOwner = s.ExecutorOwner
 		copy.MemoryChapters = s.MemoryChapters
 		copy.write = s.write

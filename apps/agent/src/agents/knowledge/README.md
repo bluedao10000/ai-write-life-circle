@@ -1,1 +1,1 @@
-Knowledge remains exclusively in the existing Go Worker. Thinking conversation and compaction do not write facts. Future migration requires a per-domain executor switch, authoritative Go leases/evidence validation and a tested rollback.
+Knowledge is executed only by the Pi Worker through `agent-tasks-v1`. Thinking conversation and compaction never write facts; Go owns scan/budget/lease/evidence validation and index commits.

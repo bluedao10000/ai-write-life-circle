@@ -61,6 +61,6 @@ Entity（人物、地点、组织、规则、事件、剧情候选、伏笔候�
 
 ## 备份、回滚与验收
 
-完整备份现有 StateDirectory，必须包含 knowledge 和含 Intent 的 chapter-drafts；不迁移或覆盖 Harness。部署时先 Go 私有新路由，再 Worker/Web 白名单与 UI。回滚仅程序，保留新状态，绝不用旧备份覆盖新正文。先暂停自动维护再切换执行器。
+完整备份现有 StateDirectory，必须包含 knowledge 和含 Intent 的 chapter-drafts；不迁移或覆盖 Harness。部署时先发布 Go API 与 Pi Worker 的共享任务契约，再更新 Web 白名单与 UI。回滚仅程序，保留新状态，绝不用旧备份覆盖新正文。先暂停自动维护再处理 task lease。
 
 本 Sprint 在独立分支交付 Open PR，不自动部署。新增合成用例24组，工程 Mock 与真实模型报告分别产出，禁止用 Mock 的 Precision 充当模型质量。真实 Eval 只在明确授权后使用 GitHub Secret，临时目录隔离，最多40次远程调用、总请求1 MiB、每次最多8192输出 Token（独立 Eval 护栏，生产 DeepSeek 默认输出上限为32768），无真实作品。名称匹配是自动金标代理指标；Relation Precision、Unsupported Assertion Rate 与文学叙事判断必须独立语义标注，未标注保持 null。

@@ -14,8 +14,8 @@ import (
 
 func run() error {
 	state := flag.String("state", "", "existing Go StateDirectory")
-	kind := flag.String("kind", "", "review or knowledge")
-	owner := flag.String("owner", "", "target go, pi, or disabled; empty means status")
+	kind := flag.String("kind", "", "review, knowledge or creative")
+	owner := flag.String("owner", "", "target pi or disabled; empty means status")
 	wait := flag.Duration("wait", 200*time.Second, "bounded drain timeout")
 	billingStatus := flag.Bool("billing", false, "print the AI-point switch (pause, Free daily pool)")
 	pause := flag.String("ai-pause", "", "pause AI features: none, free or all (writing is never paused)")
@@ -81,7 +81,7 @@ func run() error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), *wait)
 	defer cancel()
-	if (*kind != "review" && *kind != "knowledge") || (*owner != "go" && *owner != "pi" && *owner != "disabled") {
+	if (*kind != "review" && *kind != "knowledge" && *kind != "creative") || (*owner != "pi" && *owner != "disabled") {
 		return fmt.Errorf("invalid kind or owner")
 	}
 	if e := c.Drain(ctx, *kind); e != nil {

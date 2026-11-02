@@ -12,7 +12,7 @@ if (
   throw Error(
     "Configure a model locally or use the synthetic GitHub Actions Eval workflow; never put a key in chat.",
   );
-const fixture = await startKnowledgeFixture({ live, pi:process.argv.includes("--pi") });
+const fixture = await startKnowledgeFixture({ live });
 const cases = JSON.parse(
   await readFile(
     new URL("../harness/evals/knowledge/cases.json", import.meta.url),

@@ -591,6 +591,29 @@ func TestBookDeletionFencesLateCommits(t *testing.T) {
 	}
 }
 
+func TestCompletionReceiptNormalizesDomainFailure(t *testing.T) {
+	f := setup(t)
+	f.enable()
+	ctx := context.Background()
+	f.say("th-"+compat.UUID(), "主角林舟。", "好。")
+
+	claim, e := f.s.Claim(ctx)
+	if e != nil || claim == nil {
+		t.Fatalf("creative claim failed: %v", e)
+	}
+	prepared, e := f.s.Prepare(ctx, claim)
+	if e != nil {
+		t.Fatal(e)
+	}
+	injected := application.Fail(409, "CREATIVE_SUPERSEDED", "Source changed.")
+	if e = f.s.Complete(ctx, prepared, llm.Response{}, false, injected); e != nil {
+		t.Fatal(e)
+	}
+	if !f.s.Completed(prepared, llm.Response{}, false, injected) {
+		t.Fatal("completed failure receipt was not idempotent")
+	}
+}
+
 func sliceUTF16(text string, start, end int) (string, bool) {
 	r := []rune(text)
 	u := 0

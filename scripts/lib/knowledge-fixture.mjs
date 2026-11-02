@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {randomBytes} from "node:crypto";
 import {createServer as tcpServer} from "node:net";
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 // Authored HTTP fixture; never a measurement of model intelligence.
 export function syntheticOutput(input) {
   const text = input.targetMarkdown,
@@ -54,10 +54,8 @@ export function syntheticOutput(input) {
 }
 export async function startKnowledgeFixture({
   live = false,
-  pi = false,
   apiPort = 0,
 } = {}) {
-  if(pi&&live)throw Error("Use the separately bounded Pi live Eval runner");
   const root = await mkdtemp(join(tmpdir(), "story2u-memory-fixture-"));
   await mkdir(join(root, "harness"));
   await mkdir(join(root,"state"));
@@ -102,7 +100,7 @@ export async function startKnowledgeFixture({
     let raw = "";
     for await (const c of req) {
       raw += c;
-      if (raw.length > 64000) {
+      if (Buffer.byteLength(raw) > maxInputBytes) {
         res.writeHead(413);
         res.end("{}");
         return;
@@ -147,7 +145,7 @@ export async function startKnowledgeFixture({
             const { done, value } = await reader.read();
             if (done) break;
             size += value.byteLength;
-            if (size > 256 * 1024) {
+            if (size > 1024 * 1024) {
               await reader.cancel();
               res.writeHead(502);
               res.end("{}");
@@ -204,7 +202,18 @@ export async function startKnowledgeFixture({
       WRITER_AGENT_LLM_MAX_OUTPUT_TOKENS: "8192",
     },
   };
-  if(pi){const port=tcpServer();await new Promise(r=>port.listen(0,'127.0.0.1',r));const address=port.address().port;await new Promise(r=>port.close(r));const token=join(root,'task.token');await writeFile(token,randomBytes(32).toString('hex'),{mode:0o600});Object.assign(env,{WRITER_AGENT_TASK_SERVICE_TOKEN_FILE:token,WRITER_AGENT_TASK_INTERNAL_PORT:String(address),WRITER_AGENT_TASK_ORIGIN:`http://127.0.0.1:${address}`,WRITER_AGENT_PI_WORKER_FIXTURE:'1'})}
+  const port=tcpServer();
+  await new Promise(r=>port.listen(0,'127.0.0.1',r));
+  const address=port.address().port;
+  await new Promise(r=>port.close(r));
+  const token=join(root,'task.token');
+  await writeFile(token,randomBytes(32).toString('hex'),{mode:0o600});
+  Object.assign(env,{
+    WRITER_AGENT_TASK_SERVICE_TOKEN_FILE:token,
+    WRITER_AGENT_TASK_INTERNAL_PORT:String(address),
+    WRITER_AGENT_TASK_ORIGIN:`http://127.0.0.1:${address}`,
+    WRITER_AGENT_PI_WORKER_FIXTURE:'1',
+  })
   let error = "";
   const child = spawn(
     new URL("../../apps/api-go/dist/writer-agent-api", import.meta.url)
@@ -216,8 +225,6 @@ export async function startKnowledgeFixture({
     error += d;
   });
   let worker;
-  if(!pi){worker = spawn(new URL('../../apps/api-go/dist/writer-agent-worker', import.meta.url).pathname, [], { env, stdio: ['ignore','ignore','pipe'] });
-  worker.stderr.on('data', d => { error += d });}
   let api;
   try {
     api = await new Promise((resolve, reject) => {
@@ -246,7 +253,8 @@ export async function startKnowledgeFixture({
     await rm(root, { recursive: true, force: true });
     throw e;
   }
-  if(pi){const c=spawnSync(new URL('../../apps/api-go/dist/writer-agent-control',import.meta.url).pathname,['--state',join(root,'state'),'--kind','knowledge','--owner','pi'],{encoding:'utf8'});if(c.status!==0)throw Error(c.stderr);worker=spawn(process.execPath,[new URL('../../apps/agent/dist/worker/main.js',import.meta.url).pathname],{env:{...env,WRITER_AGENT_LLM_API_KEY:'synthetic-only'},stdio:['ignore','ignore','pipe']});worker.stderr.on('data',d=>{error+=d})}
+  worker=spawn(process.execPath,[new URL('../../apps/agent/dist/worker/main.js',import.meta.url).pathname],{env:{...env,WRITER_AGENT_LLM_API_KEY:'synthetic-only'},stdio:['ignore','ignore','pipe']});
+  worker.stderr.on('data',d=>{error+=d});
   return {
     api,
     modelOrigin,
@@ -265,8 +273,10 @@ export async function startKnowledgeFixture({
       return calls;
     },
     async close() {
-      worker.kill("SIGTERM");
-      await new Promise(r => { if(worker.exitCode !== null || worker.signalCode !== null) r(); else worker.once("exit",r) });
+      if(worker.exitCode === null && worker.signalCode === null) {
+        worker.kill("SIGTERM");
+        await new Promise(r => worker.once("exit",r));
+      }
       child.kill("SIGTERM");
       await new Promise((r) => {
         if (child.exitCode !== null) r();

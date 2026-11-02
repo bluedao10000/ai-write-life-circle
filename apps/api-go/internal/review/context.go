@@ -136,8 +136,8 @@ func (s *Service) BuildPlan(ctx context.Context, chapterID string, input Input) 
 		return Plan{}, e
 	}
 	// The business API intentionally holds no credential; it may still build an
-	// author-consented plan for the Worker. Embedded services require a client.
-	if s.Client == nil && !s.DisableLocalExecution {
+	// author-consented plan for the Worker from the public model configuration.
+	if s.Config.ValidatePublic() != nil {
 		return Plan{}, failure(503, "REVIEW_UNAVAILABLE", "No usable model is configured. No source was sent to a model.")
 	}
 	projection, e := s.App.Projection()

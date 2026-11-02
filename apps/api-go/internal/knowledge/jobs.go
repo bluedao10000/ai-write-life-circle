@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/agentruntime"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/application"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/billing"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/compat"
@@ -208,10 +207,6 @@ func (s *Service) scanRevisions(ctx context.Context, stamp string) (bool, error)
 	return e == nil && transacted, e
 }
 
-// ProcessOne persists its lease before any network call. Other processes cannot claim
-// a second job for this book until completion or the bounded deadline expires.
-func (s *Service) ProcessOne(ctx context.Context) error { _, err := s.processOne(ctx); return err }
-
 type ClaimedJob struct {
 	Job      Job
 	Snapshot State `json:"-"`
@@ -337,10 +332,6 @@ func (s *Service) claim(ctx context.Context) (*ClaimedJob, error) {
 	if e != nil || chosen == nil {
 		return nil, e
 	}
-	agentruntime.TaskEvent("task_claimed", "knowledge", s.App.Project, chosen.ID, chosen.Model.Model, chosen.Attempts, time.Now(), nil, "")
-	if chosen.Attempts > 1 {
-		agentruntime.TaskEvent("task_retried", "knowledge", s.App.Project, chosen.ID, chosen.Model.Model, chosen.Attempts, time.Now(), nil, "")
-	}
 	return &ClaimedJob{Job: *chosen, Snapshot: snapshot, Reserved: reservedThisAttempt, Day: debitedDay, Started: compat.Now()}, nil
 }
 
@@ -376,76 +367,11 @@ func (s *Service) Prepare(ctx context.Context, claim *ClaimedJob) (*PreparedJob,
 	p.Request, err = s.prepareRequest(ctx, claim.Job, p.Revision, claim.Snapshot, p.Allowed)
 	return p, err
 }
-func (s *Service) processOne(ctx context.Context) (bool, error) {
-	if s.Client == nil {
-		return false, s.sync(ctx)
-	}
-	claim, e := s.Claim(ctx)
-	if e != nil || claim == nil {
-		return false, e
-	}
-	j := claim.Job
-	timeout, cancel := context.WithTimeout(ctx, s.timeout())
-	defer cancel()
-	watchDone := make(chan struct{})
-	defer close(watchDone)
-	go func() {
-		tick := time.NewTicker(200 * time.Millisecond)
-		defer tick.Stop()
-		for {
-			select {
-			case <-watchDone:
-				return
-			case <-timeout.Done():
-				return
-			case <-tick.C:
-				current, e := s.load()
-				if e != nil {
-					cancel()
-					return
-				}
-				active := false
-				for _, v := range current.Jobs {
-					if v.ID == j.ID && v.Lease == j.Lease && v.Status == "running" {
-						active = true
-					}
-				}
-				if !(executorpolicy.Controller{State: s.App.State}).Valid("knowledge", j.ExecutorOwner, j.ExecutorEpoch, j.Lease) || current.Settings.Paused || current.Settings.Model != j.Model || !active {
-					cancel()
-					return
-				}
-			}
-		}
-	}()
-
-	p, err := s.Prepare(timeout, claim)
-	var response llm.Response
-	sent := false
-	if err == nil {
-		err = (executorpolicy.Controller{State: s.App.State}).Guard(timeout, "knowledge", j.ExecutorOwner, j.ExecutorEpoch, j.Lease, false, func() error { return nil })
-		if err == nil {
-			sent = true
-			response, err = s.Client.Generate(timeout, p.Request)
-		}
-	}
-	return true, s.Complete(ctx, p, response, sent, err)
-}
-
 // Complete is the sole evidence-validation and domain commit path for both executors.
 func (s *Service) complete(ctx context.Context, p *PreparedJob, response llm.Response, sent bool, err error) error {
 	started, _ := time.Parse(time.RFC3339Nano, p.Claim.Started)
 	receipt := completionHash(response, sent, err)
 	j, rev, allowedEntities := p.Claim.Job, p.Revision, p.Allowed
-	defer func() {
-		st, e := s.load()
-		if e == nil {
-			for _, v := range st.Jobs {
-				if v.ID == j.ID && v.Lease == "" && v.Attempts == j.Attempts {
-					agentruntime.TaskEvent("task_"+v.Status, "knowledge", s.App.Project, v.ID, v.Model.Model, v.Attempts, started, v.Usage, v.Failure)
-				}
-			}
-		}
-	}()
 	reservedThisAttempt, debitedDay := p.Claim.Reserved, p.Claim.Day
 	var output Output
 	var discarded ValidationDiscards

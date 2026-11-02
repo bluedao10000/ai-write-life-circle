@@ -1,6 +1,6 @@
 # ADR：Writer Agent V3 创作资产与灵感驱动工作流
 
-状态：Phase 1–6 已在本地分支实现并通过工程测试，待作者审查、真实模型 Eval 与设计稿对齐。日期：2026-10-25。交付与测试结果见 [V3 报告](../reviews/archive/writer-agent-v3-report.md)。
+状态：Phase 1–6 已实现并通过工程测试；Creative organize/plan check 已接入统一 Pi Worker，待作者审查、真实模型 Eval 与设计稿对齐。日期：2026-10-25。交付与测试结果见 [V3 报告](../reviews/archive/writer-agent-v3-report.md)。
 
 ## 1. 现状评审（基于 main `b9fb657`）
 
@@ -10,7 +10,7 @@
 | Thinking | Go 持有会话注册表、HMAC 能力 Token、工具授权；Pi 持有 transcript、事件与 SDK entries。只读工具 7 个，`load_analysis_skill` 两个方法 | 对话不进 Go 存储。V3 需要在 Go 侧可靠地“看到”完成的回合 |
 | Knowledge | 正文 Revision → Entity/Assertion（observation/claim/inference），来源精确到 UTF-16 区间并在读时重新核验；授权、预算、租约、重试完整 | 保留不动。它是“正文知识”，不能承载作者构思 |
 | Review | v4 用 Knowledge 的 RelatedChapters 选历史章节，证据由 Go 校验 | 保留。计划与正文偏离检查另建任务，不改 Review 语义 |
-| Runtime | API 进程不持有模型 Key；Go Worker（`cmd/agent-worker`）通过 `agentruntime.Executor` 执行任务；Pi Worker 走 `agent-tasks-v1` 协议并受 `executorpolicy` 栅栏 | 新的整理任务必须在 Worker 进程执行，API 只入队 |
+| Runtime | API 进程不持有模型 Key；Pi Worker 通过 `agent-tasks-v1` 执行 Review、Knowledge、Creative，Go 只负责 Claim/Prepare/Check/Complete 与提交 | 新的整理任务只能进入 Pi Worker，API 只入队并提供有界请求 |
 | 模型 Gateway | Go 与 Pi 都只支持**单一** OpenAI-compatible 配置（默认 DeepSeek），以 `ModelInfo` + `Fingerprint()` 做授权绑定 | main 没有多 Provider。`.local/multi-model` 有未合并的 `modelcatalog` 与 `llm` 改动。V3 只使用 `llm.Config.Info()/Fingerprint()` 接口，不修改 `llm` 包，避免与该分支冲突 |
 | 编辑器 | TipTap 3.32 + Markdown 管线；Revision CAS、Idempotency-Key、本地恢复草稿、409 冲突对话框；已有专注模式与打字时淡出 chrome | 足以实现沉浸式创作，不引入新编辑器依赖 |
 | 契约 | `packages/contracts` Zod + OpenAPI 生成脚本；Cloudflare Worker 白名单逐路由放行 | 新路由要同步 Zod 与 Worker 白名单 |
@@ -38,7 +38,7 @@
 灵感对话 (Pi Thinking)
   └─ Go 接受消息 → 记录 Turn(awaiting)            [API 进程，消息被 Pi 持久接受之后]
        └─ Intake 对账：Pi 快照显示回答 completed → 截取有界对话片段 → Turn(captured) + Job(pending)
-            └─ Go Worker：Claim(租约+预算) → 结构化模型调用 → 严格校验 → Resolve 已有资产
+            └─ Pi Worker：Go Claim(租约+预算) → 结构化模型调用 → Go 严格校验 → Resolve 已有资产
                  └─ Commit：ChangeSet + Proposal(proposed)   [租约、Turn 未取消、作品存在]
                       └─ 作者审核：接受 / 编辑后接受 / 拒绝 / 批量
                            └─ Creative Asset 新版本（作者权威）
@@ -111,7 +111,7 @@
 | 旧任务迟到 | 提交时核对 job lease、running、deadline；被替代的候选必须仍是 `proposed` |
 | 同会话多轮并发 | 同一会话的任务按创建顺序串行领取 |
 | 跨会话更新同一资产 | 候选带 `baseVersion`，采纳时资产级 CAS；版本不符返回 409 并在 UI 标为需重新确认 |
-| 模型故障 | 2/4 秒退避，最多 3 次；预算预留与结算沿用 Knowledge 规则；失败可手动重试 |
+| 模型故障 | Pi 不自动重试付费调用；Go 按领域策略重排队或保留失败，预算预留与结算沿用 Knowledge 规则；作者可手动重试 |
 | 跨服务一致性 | Pi 只持有 transcript；Go 只在快照完成后复制有界片段（最多 6 条、24 KiB）并记录 hash。Pi 不调用 Go 的写接口 |
 
 ## 6. 安全边界
@@ -133,5 +133,5 @@
 
 - 去重是名称/别名规范化匹配 + 模型给出的已有 ID，语义近似的不同名称仍可能成为两个候选，需作者合并。
 - 计划核对的判断依赖模型；引文只证明文字存在。
-- Pi Worker 未接入整理任务（只在 Go Worker 执行）。接入需要在 `executorpolicy` 注册新 kind 与私有任务协议。
+- Creative Prompt/Schema 只在 Go 生成；Pi Worker 不维护第二份文本，避免能力合同哈希漂移。
 - 没有新版 Figma 设计文件，UI 沿用 V2 设计 Token 与组件。

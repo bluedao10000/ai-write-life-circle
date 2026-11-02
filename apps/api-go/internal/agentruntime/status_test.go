@@ -5,34 +5,9 @@ import (
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/executorpolicy"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/llm"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/storage"
-	"strings"
 	"testing"
 	"time"
 )
-
-func TestStatusFreshnessCompatibilityAndSecretIsolation(t *testing.T) {
-	root := t.TempDir()
-	c := llm.Config{Model: "fixture", APIKey: "must-never-persist"}
-	if strings.Contains(c.Fingerprint(), c.APIKey) {
-		t.Fatal("key fingerprint leak")
-	}
-	value := Status{Protocol: Protocol, Online: true, Config: c.Fingerprint(), At: time.Now().UTC().Format(time.RFC3339Nano)}
-	if err := WriteStatus(context.Background(), root, value); err != nil {
-		t.Fatal(err)
-	}
-	if s := ReadStatus(root, c); !s.Online || !s.Compatible {
-		t.Fatal(s)
-	}
-	c.Model = "changed"
-	if s := ReadStatus(root, c); s.Compatible {
-		t.Fatal("mixed config accepted")
-	}
-	value.At = time.Now().Add(-time.Minute).UTC().Format(time.RFC3339Nano)
-	WriteStatus(context.Background(), root, value)
-	if s := ReadStatus(root, c); s.Online {
-		t.Fatal("stale worker reported online")
-	}
-}
 
 func TestThinkingDoesNotImplyDomainWorkerReadiness(t *testing.T) {
 	ctx := context.Background()
@@ -51,8 +26,17 @@ func TestThinkingDoesNotImplyDomainWorkerReadiness(t *testing.T) {
 	if ReadExecutionStatus(dir, cfg, "knowledge").Ready {
 		t.Fatal("Review-only worker reported Knowledge online")
 	}
+	if !ReadExecutionStatus(dir, cfg, "review").Ready {
+		t.Fatal("Pi status not surfaced for Pi ownership")
+	}
+	if e := c.Drain(ctx, "review"); e != nil {
+		t.Fatal(e)
+	}
+	if e := c.Switch(ctx, "review", "disabled"); e != nil {
+		t.Fatal(e)
+	}
 	if ReadExecutionStatus(dir, cfg, "review").Ready {
-		t.Fatal("Pi status bypassed Go ownership")
+		t.Fatal("disabled executor reported ready")
 	}
 }
 
@@ -61,7 +45,7 @@ func TestSuccessHeartbeatIsScopedToExecutorKind(t *testing.T) {
 	dir := t.TempDir()
 	cfg := llm.Config{Model: "fixture"}
 	c := executorpolicy.Controller{State: dir}
-	for _, kind := range []string{"review", "knowledge"} {
+	for _, kind := range []string{"review", "knowledge", "creative"} {
 		if e := c.Drain(ctx, kind); e != nil {
 			t.Fatal(e)
 		}
@@ -69,7 +53,7 @@ func TestSuccessHeartbeatIsScopedToExecutorKind(t *testing.T) {
 			t.Fatal(e)
 		}
 	}
-	p := PiWorkerStatus{Status: Status{Protocol: executorpolicy.Protocol, At: time.Now().UTC().Format(time.RFC3339Nano), Online: true, Config: cfg.Fingerprint(), LastSuccess: "knowledge-success", SuccessByKind: map[string]string{"review": "review-success", "knowledge": "knowledge-success"}}, Ready: true, Kinds: []string{"review", "knowledge"}}
+	p := PiWorkerStatus{Status: Status{Protocol: executorpolicy.Protocol, At: time.Now().UTC().Format(time.RFC3339Nano), Online: true, Config: cfg.Fingerprint(), LastSuccess: "creative-success", SuccessByKind: map[string]string{"review": "review-success", "knowledge": "knowledge-success", "creative": "creative-success"}}, Ready: true, Kinds: []string{"review", "knowledge", "creative"}}
 	if e := storage.Write(ctx, PiStatusPath(dir), p); e != nil {
 		t.Fatal(e)
 	}
@@ -77,5 +61,9 @@ func TestSuccessHeartbeatIsScopedToExecutorKind(t *testing.T) {
 		if got := ReadExecutionStatus(dir, cfg, kind).LastSuccess; got != want {
 			t.Fatalf("%s: %q", kind, got)
 		}
+	}
+	unified := ReadUnifiedStatus(dir, cfg)
+	if unified.Protocol != executorpolicy.Protocol || len(unified.Executors) != 3 || unified.Executors["creative"].LastSuccess != "creative-success" {
+		t.Fatalf("creative status was not unified: %+v", unified)
 	}
 }

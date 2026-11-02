@@ -40,7 +40,7 @@ func run() error {
 		return nil
 	}
 	if *version {
-		fmt.Println(agentruntime.Protocol)
+		fmt.Println(agentruntime.APIProtocol)
 		return nil
 	}
 	if *health {
@@ -83,7 +83,6 @@ func run() error {
 	startup, cancelStartup := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancelStartup()
 	reviews := review.New(s, modelConfig, nil)
-	reviews.DisableLocalExecution = true
 	defer reviews.Close()
 	ownerID := c.AuthorID
 	if ownerID == "" && c.AuthMode == "local" && c.Environment != "production" {
@@ -187,7 +186,6 @@ func run() error {
 			return r
 		}
 		r := review.New(app, modelConfig, nil)
-		r.DisableLocalExecution = true
 		r.MemoryChapters = knowledge.New(app, modelConfig, nil).RelatedChapters
 		reviewServices[app.Project] = r
 		return r

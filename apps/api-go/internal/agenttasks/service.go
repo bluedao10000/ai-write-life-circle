@@ -7,6 +7,7 @@ import (
 	"errors"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/application"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/compat"
+	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/creative"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/executorpolicy"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/knowledge"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/llm"
@@ -50,6 +51,7 @@ type Record struct {
 	ResultHash  string                 `json:"resultHash,omitempty"`
 	Knowledge   *knowledge.PreparedJob `json:"knowledge,omitempty"`
 	Review      *review.ClaimedRun     `json:"review,omitempty"`
+	Creative    *creative.PreparedJob  `json:"creative,omitempty"`
 }
 type Registry struct {
 	Schema int               `json:"schema"`
@@ -90,7 +92,8 @@ func (s *Service) load() (Registry, error) {
 		st = Registry{Schema: 1, Tasks: map[string]Record{}}
 	}
 	for id, r := range st.Tasks {
-		if id != r.Task.ID || r.Task.Book == "" || (r.Task.Kind != "review.execute" && r.Task.Kind != "knowledge.extract") || (r.Task.Kind == "review.execute" && r.Review == nil) || (r.Task.Kind == "knowledge.extract" && r.Knowledge == nil) {
+		validKind := r.Task.Kind == "review.execute" || r.Task.Kind == "knowledge.extract" || r.Task.Kind == "creative.organize" || r.Task.Kind == "creative.plan_check"
+		if id != r.Task.ID || r.Task.Book == "" || !validKind || (r.Task.Kind == "review.execute" && r.Review == nil) || (r.Task.Kind == "knowledge.extract" && r.Knowledge == nil) || (r.Task.Kind != "review.execute" && r.Task.Kind != "knowledge.extract" && r.Creative == nil) {
 			return st, errors.New("invalid persisted task identity")
 		}
 	}
@@ -113,7 +116,6 @@ func (s *Service) transaction(ctx context.Context, fn func(*Registry) error) err
 }
 func (s *Service) review(app *application.Service) *review.Service {
 	r := review.New(app, s.Config, nil)
-	r.DisableLocalExecution = true
 	r.ExecutorOwner = "pi"
 	r.MemoryChapters = knowledge.New(app, s.Config, nil).RelatedChapters
 	return r
@@ -124,6 +126,12 @@ func (s *Service) knowledge(app *application.Service) *knowledge.Service {
 	k.ExecutorOwner = "pi"
 	k.QuietPeriod = 2 * time.Second
 	return k
+}
+func (s *Service) creative(app *application.Service) *creative.Service {
+	c := creative.New(app, s.Config, nil)
+	c.QueueOnly = true
+	c.ExecutorOwner = "pi"
+	return c
 }
 func (s *Service) Claim(ctx context.Context, instance, config string, kinds ...string) (*Task, error) {
 	if s.Config.ValidatePublic() != nil {
@@ -140,7 +148,7 @@ func (s *Service) Claim(ctx context.Context, instance, config string, kinds ...s
 	var out *Task
 	e = s.transaction(ctx, func(st *Registry) error {
 		expire(st)
-		total := len(books) * 2
+		total := len(books) * 3
 		if total == 0 {
 			return nil
 		}
@@ -168,8 +176,8 @@ func (s *Service) Claim(ctx context.Context, instance, config string, kinds ...s
 				}
 			}
 		}
-		for _, i := range compat.PriorityOrder(total, st.Cursor, func(i int) bool { return priority[books[i/2].Owner.ID] }) {
-			kind := []string{"review", "knowledge"}[i%2]
+		for _, i := range compat.PriorityOrder(total, st.Cursor, func(i int) bool { return priority[books[i/3].Owner.ID] }) {
+			kind := []string{"review", "knowledge", "creative"}[i%3]
 			if len(kinds) > 0 {
 				supported := false
 				for _, k := range kinds {
@@ -185,8 +193,8 @@ func (s *Service) Claim(ctx context.Context, instance, config string, kinds ...s
 			if assignment.Owner != "pi" || assignment.Draining {
 				continue
 			}
-			owner := books[i/2].Owner
-			app, e := s.Management.Resolve(owner, books[i/2].Book.ID)
+			owner := books[i/3].Owner
+			app, e := s.Management.Resolve(owner, books[i/3].Book.ID)
 			if e != nil {
 				continue
 			}
@@ -222,7 +230,7 @@ func (s *Service) Claim(ctx context.Context, instance, config string, kinds ...s
 				task.Consent = run.Plan
 				task.Request = request
 				rec.Review = claim
-			} else {
+			} else if kind == "knowledge" {
 				k := s.knowledge(app)
 				claim, e := k.Claim(ctx)
 				if e != nil {
@@ -249,6 +257,35 @@ func (s *Service) Claim(ctx context.Context, instance, config string, kinds ...s
 				task.Consent = claim.Snapshot.Settings
 				task.Request = prepared.Request
 				rec.Knowledge = prepared
+			} else {
+				c := s.creative(app)
+				claim, e := c.Claim(ctx)
+				if e != nil {
+					return e
+				}
+				if claim == nil {
+					continue
+				}
+				prepared, e := c.Prepare(ctx, claim)
+				if e != nil {
+					_ = c.Complete(ctx, prepared, llm.Response{}, false, e)
+					continue
+				}
+				j := claim.Job
+				task.Kind = "creative." + j.Kind
+				task.OutputSchema = "creative-" + j.Kind + "-candidates-v1"
+				task.Lease = j.Lease
+				task.Epoch = j.ExecutorEpoch
+				task.Attempt = j.Attempts
+				task.Deadline = j.Deadline
+				task.Strategy = j.Strategy
+				task.Revision = j.RevisionID
+				task.ContentHash = j.ContentHash
+				task.Reserved = claim.Reserved
+				task.BudgetDay = claim.Day
+				task.Consent = claim.Snapshot.Settings
+				task.Request = prepared.Request
+				rec.Creative = prepared
 			}
 			raw, _ := json.Marshal(task.Request)
 			task.InputHash = compat.Hash(string(raw))
@@ -290,6 +327,9 @@ func (s *Service) check(ctx context.Context, rec Record) error {
 	if rec.Knowledge != nil {
 		return s.knowledge(app).Check(ctx, rec.Knowledge)
 	}
+	if rec.Creative != nil {
+		return s.creative(app).Check(ctx, rec.Creative)
+	}
 	r := s.review(app)
 	defer r.Close()
 	return r.Check(ctx, rec.Review)
@@ -327,6 +367,8 @@ func (s *Service) Action(ctx context.Context, id, action string, in Envelope) er
 			completed := false
 			if rec.Knowledge != nil {
 				completed = s.knowledge(app).Completed(rec.Knowledge, in.Response, rec.Started, outcome)
+			} else if rec.Creative != nil {
+				completed = s.creative(app).Completed(rec.Creative, in.Response, rec.Started, outcome)
 			} else {
 				r := s.review(app)
 				completed = r.Completed(rec.Review, in.Response, outcome)
@@ -390,6 +432,9 @@ func (s *Service) Action(ctx context.Context, id, action string, in Envelope) er
 			if t.Kind == "knowledge.extract" {
 				limit = knowledge.CandidateBytes
 			}
+			if t.Kind == "creative.organize" {
+				limit = 256 * 1024
+			}
 			if len(in.Response.Text) > limit {
 				return llm.Fail("LLM_RESPONSE_TOO_LARGE")
 			}
@@ -409,6 +454,8 @@ func (s *Service) Action(ctx context.Context, id, action string, in Envelope) er
 			}
 			if rec.Knowledge != nil {
 				e = s.knowledge(app).Complete(ctx, rec.Knowledge, in.Response, rec.Started, modelErr)
+			} else if rec.Creative != nil {
+				e = s.creative(app).Complete(ctx, rec.Creative, in.Response, rec.Started, modelErr)
 			} else {
 				r := s.review(app)
 				e = r.Complete(rec.Review, in.Response, modelErr)
@@ -434,7 +481,7 @@ func (s *Service) Action(ctx context.Context, id, action string, in Envelope) er
 }
 func failureAllowed(code string) bool {
 	switch code {
-	case "LLM_TIMEOUT", "LLM_NETWORK_ERROR", "LLM_HTTP_ERROR", "LLM_INVALID_RESPONSE", "LLM_INCOMPLETE_OUTPUT", "LLM_RESPONSE_TOO_LARGE", "LLM_INVALID_OUTPUT", "LLM_REFUSED", "LLM_TOOL_OUTPUT_FORBIDDEN", "KNOWLEDGE_INTERRUPTED", "REVIEW_INTERRUPTED":
+	case "LLM_TIMEOUT", "LLM_NETWORK_ERROR", "LLM_HTTP_ERROR", "LLM_INVALID_RESPONSE", "LLM_INCOMPLETE_OUTPUT", "LLM_RESPONSE_TOO_LARGE", "LLM_INVALID_OUTPUT", "LLM_REFUSED", "LLM_TOOL_OUTPUT_FORBIDDEN", "KNOWLEDGE_INTERRUPTED", "REVIEW_INTERRUPTED", "CREATIVE_INTERRUPTED", "CREATIVE_CONTEXT_TOO_LARGE", "CREATIVE_NO_PLANS", "CREATIVE_SUPERSEDED", "CREATIVE_TURN_UNAVAILABLE", "CREATIVE_LEASE_LOST", "CREATIVE_UNKNOWN_JOB":
 		return true
 	}
 	return false
@@ -444,11 +491,17 @@ func taskKind(kind string) string {
 	if kind == "review" {
 		return "review.execute"
 	}
+	if kind == "creative" {
+		return "creative.organize"
+	}
 	return "knowledge.extract"
 }
 func domain(kind string) string {
 	if kind == "review.execute" {
 		return "review"
+	}
+	if kind == "creative.organize" || kind == "creative.plan_check" {
+		return "creative"
 	}
 	return "knowledge"
 }
@@ -465,6 +518,12 @@ func (r *Record) scrub() {
 	}
 	if r.Review != nil {
 		r.Review.Run.Sources = nil
+	}
+	if r.Creative != nil {
+		r.Creative.Request = llm.Request{}
+		r.Creative.Organize = nil
+		r.Creative.Plan = nil
+		r.Creative.Claim.Snapshot = creative.State{}
 	}
 }
 func (s *Service) CleanupBook(ctx context.Context, book string) error {
@@ -497,6 +556,8 @@ func (s *Service) Sweep(ctx context.Context) error {
 func (s *Service) recordOutcome(r *Record, app *application.Service) {
 	if r.Knowledge != nil {
 		r.Outcome, r.CompletedAt = s.knowledge(app).Outcome(r.Knowledge)
+	} else if r.Creative != nil {
+		r.Outcome, r.CompletedAt = s.creative(app).Outcome(r.Creative)
 	} else {
 		review := s.review(app)
 		r.Outcome, r.CompletedAt = review.Outcome(r.Review)

@@ -8,4 +8,4 @@ async function main(){
  if(process.argv.includes('--healthcheck')){const client=new TaskClient(config,'healthcheck');await client.check();const status=await client.request('status');if(status.online!==true||status.ready!==true||status.configFingerprint!==JSON.stringify(config.model))throw Error('WORKER_NOT_READY');return}
  const abort=new AbortController();process.once('SIGTERM',()=>abort.abort());process.once('SIGINT',()=>abort.abort());await new Scheduler(config).run(abort.signal);
 }
-main().catch(()=>{console.error(JSON.stringify({event:'worker_failed',code:'WORKER_START_FAILED'}));process.exitCode=1});
+main().catch((e)=>{console.error(JSON.stringify({event:'worker_failed',code:e instanceof Error?e.message:'WORKER_START_FAILED'}));process.exitCode=1});

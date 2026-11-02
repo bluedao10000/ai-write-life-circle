@@ -27,7 +27,7 @@ func TestReviewHTTPAuthorizationConsentAndProjectIsolation(t *testing.T) {
 	os.WriteFile(filepath.Join(root, "manuscript/CH-008.md"), []byte("# Fixture\nID: CH-008\n\nAuthor fixture.\n"), 0600)
 	app := &application.Service{Root: root, State: t.TempDir(), Project: "project", ReviewsEnabled: true}
 	var calls atomic.Int32
-	cfg := llm.Config{Provider: "openai-compatible", BaseURL: "http://127.0.0.1:11434/v1", Model: "test-only", ResponseFormat: "none", TokenParameter: "max_tokens", Timeout: time.Second, MaxContextBytes: 16000}
+	cfg := llm.Config{Provider: "openai-compatible", BaseURL: "http://127.0.0.1:11434/v1", Model: "test-only", ResponseFormat: "none", TokenParameter: "max_tokens", Timeout: time.Second, MaxContextBytes: 16000, MaxOutputTokens: 2048, MaxResponseBytes: 256 * 1024}
 	service := review.New(app, cfg, reviewModelFunc(func(context.Context, llm.Request) (llm.Response, error) {
 		calls.Add(1)
 		return llm.Response{Text: `{"findings":[]}`}, nil
@@ -95,17 +95,26 @@ func TestReviewHTTPAuthorizationConsentAndProjectIsolation(t *testing.T) {
 	var run review.Run
 	json.Unmarshal(w.Body.Bytes(), &run)
 	runPath := "/v1/projects/project/reviews/" + run.RunID
-	for i := 0; i < 100; i++ {
-		w = request("GET", runPath, "author", "", nil)
-		if w.Code != 200 {
-			t.Fatal(w.Code)
-		}
-		json.Unmarshal(w.Body.Bytes(), &run)
-		if run.Status != "running" && run.Status != "queued" {
-			break
-		}
-		time.Sleep(5 * time.Millisecond)
+	claim, e := service.Claim(context.Background())
+	if e != nil || claim == nil {
+		t.Fatal("claim failed", e)
 	}
+	req, e := service.Prepare(context.Background(), claim)
+	if e != nil {
+		t.Fatal(e)
+	}
+	resp, e := service.Client.Generate(context.Background(), req)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = service.Complete(claim, resp, nil); e != nil {
+		t.Fatal(e)
+	}
+	w = request("GET", runPath, "author", "", nil)
+	if w.Code != 200 {
+		t.Fatal(w.Code)
+	}
+	json.Unmarshal(w.Body.Bytes(), &run)
 	if run.Status != "completed" || calls.Load() != 1 {
 		t.Fatal(run.Status, calls.Load())
 	}

@@ -1,6 +1,6 @@
 # 独立 Agent Runtime 与 Worker 部署
 
-状态：已采纳
+状态：已废弃（由 [Pi 统一执行器 ADR](../pi-unified-agent-runtime.md) 取代）。本文保留为历史部署决策，不得据此启动 Go Worker。
 日期：2026-10-20
 关联：`ai-knowledge-memory.md`、`sprint3-evidence-review-agent.md`、`author-workspace-management.md`、`deploy-guide.md`
 

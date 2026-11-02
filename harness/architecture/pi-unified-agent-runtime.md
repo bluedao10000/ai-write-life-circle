@@ -1,47 +1,69 @@
-# ADR：统一 Pi 执行器与 Go 任务权威
+# ADR：Pi 是唯一的模型执行器
 
-状态：三个阶段已实现，待审查与生产验收；默认仍为 Go，生产不切换。
+状态：已实现。Review、Knowledge、Creative 的后台模型调用均只由 Pi Worker 执行；Go 只保留业务权威与任务协议。
 
-## 分层与实施门
+## 决策
 
-A：Go Claim / Prepare / Complete 与私有任务协议；B：有界 Pi Review 工作流；C：Pi Knowledge 与全书发现、状态、切换/回滚。三个 PR 按依赖顺序审查，均保持 Open。Thinking 的 Session、只读工具和授权独立保留。
+生产运行时固定为三个进程：
 
-Go 保留身份、Revision、知识 apply/freshen、实体与 Correction、Review 证据验证、预算与所有业务提交。Node 只能收到成功领取的有界快照并回传候选；不持有 Go 状态目录、任意章节读取能力或业务写入工具。API 从无密钥公共模型配置准备任务，不创建模型 Client。
+1. **Go API**：身份、作品与 Revision、授权快照、任务领取、预算预留/结算、候选证据验证和业务提交。它只读取无密钥的公共模型配置，不创建模型客户端。
+2. **Pi Thinking**：作者主动对话的 Session、只读工具循环和对话事件。Thinking 与后台任务使用独立用户、状态目录、RPC 凭证和额度。
+3. **Pi Worker**：通过私有 `agent-tasks-v1` 协议领取 Review、Knowledge、Creative 任务，调用模型并回传候选。它不能读取 Go 状态目录、正文库或 Thinking 会话目录。
 
-## 持久化与锁序
+不存在 Go 模型执行进程、API 内嵌执行器或进程内后台模型循环。`writer-agent-worker`、`cmd/agent-worker` 与 `cmd/creative-eval` 已删除。
 
-`agent-runtime/executors-v1.json` 逐领域保存 owner（go/pi/disabled）、epoch、draining 及租约 deadline/started。默认 owner=go。Claim 在 ownership 锁内执行短领域领取事务并登记租约，不持有网络调用。Complete 在同一 ownership 锁内再次检查 epoch、owner、lease、deadline 后执行领域校验/提交。
+## 分域任务
 
-Task API 的外层任务登记锁 → ownership 锁 → 原领域/Revision/作品提交锁。管理切换只获取 ownership 锁，不反向获取任务登记锁。后台网络调用不持有以上文件锁。O_EXCL 遗留锁沿用保守人工核验流程，不按时间自动删除。
+| 领域 | Task kind | Go 负责 | Pi 只负责 |
+| --- | --- | --- | --- |
+| Review | `review.execute` | 计划摘要、同意范围、证据与 Revision 校验、反馈、结算 | 单次结构化候选调用 |
+| Knowledge | `knowledge.extract` | 扫描、预算、实体/断言校验、索引提交、过期与纠错 | 单次结构化候选调用 |
+| Creative organize | `creative.organize` | 对话摘录、候选/资产校验、作者审核状态、幂等提交 | 单次结构化候选调用 |
+| Creative plan check | `creative.plan_check` | 计划与正文快照、Revision 锁、引文校验、作者决定 | 单次结构化候选调用 |
 
-跨文件不是事务：领取后登记失败可能留下无模型调用的领域租约，等待到期恢复，不冒充成功。领域完成回执与最终状态/预算同一次原子写入；若领域写入后进程崩溃、任务登记尚未确认，重试从领域回执确认完成，不重复提交或结算。回执哈希由 Go 根据原执行结果计算，Node 不能指定。
+Pi Worker 不持有任意章节读取能力，也没有业务写接口。任务只包含 Go 已经确认的有界输入、固定 Prompt、Schema、模型配置指纹和输出上限。
 
-## 执行开始、费用与失效
+## 执行器归属
 
-模型请求前须先持久确认 started。调用开始确认丢失时不得发送模型请求；未知发送情况保留预算预留。Knowledge 的每日预留、Attempt/Job 上限、未知 Usage 和重试仍由 Go 结算；Node 不自行决定付费重试。
+`agent-runtime/executors-v1.json` 为每个领域保存 owner、epoch、draining 和租约。owner 只允许 `pi` 或 `disabled`。旧状态中的 `go` 在读取时按已完成迁移处理为 `pi`；切换接口不再接受 `go`。
 
-每次 start/heartbeat 检查归属、当前授权/暂停、模型配置、租约和原文 Revision。Complete 再经领域代码验证证据、来源、实体引用及当前正文，在 Revision 锁内提交。取消、过期、旧 epoch、删除作品的迟到候选不能生效。已提交结果的同一回执重放仅返回确认。
+Claim 在 ownership 文件锁内完成领域领取与租约登记。开始、心跳和完成都会重新核验 owner、epoch、lease、deadline、取消状态、配置指纹和领域前置条件。完成提交持有领域锁；关闭、暂停、Revision 变化、作品删除或 epoch 变化会使迟到结果失效。
 
-## 配置和旧数据
+`disabled` 是维护开关，不是第二个执行器。恢复时必须先确认 Pi Worker 健康，再显式切回 `pi`。生产操作可以使用：
 
-任务携带无密钥执行配置指纹，覆盖 provider/model/endpoint、格式、Token 参数、时长、上下文、输出/响应限制。Worker 配置不匹配时在 Claim 前拒绝；Go 预览/新知识授权另存配置指纹。旧 Go 授权/历史仍可读取；切 Pi 时缺少完整指纹的旧授权须由作者重新确认，不隐式扩大授权。Knowledge 响应明确 needsModelConsent。现有 100,000,000 Token 作品预算可继续读写，迁移不重置用量。
+```sh
+node scripts/deploy/switch-agent-executor.mjs \
+  --confirm-executor-switch --kind review --owner disabled \
+  --state /var/lib/writer-agent \
+  --control /opt/writer-agent/current/writer-agent-control
+```
 
-## 迁移和回滚
+恢复时把 `--owner` 改为 `pi`。Review、Knowledge、Creative 可以独立排空和切换。
 
-管理 CLI 先 drain：禁止新 Claim，但允许现有有效租约完成。Switch 拒绝未到期租约；到期后更新 owner 并递增 epoch，旧进程即使恢复也失去提交权。无强制越过活租约模式。超时保留 draining，运维核验后重试。Review 和 Knowledge 独立切换；Pi → Go 使用相同步骤，不启动两份执行器来“回滚”。
+## 协议与配置
 
-只能使用本协议兼容的 Go Worker 作为回滚执行器；旧二进制不具有 ownership 防护。生产切换前停止旧服务、备份全状态、验证部署组合；不得用旧备份覆盖新正文。源码保留至真实生产切换验收后另行清理。
+私有 Task API 仅监听 loopback，使用独立 service bearer。`capabilities` 和每次 Claim 都校验固定策略、输出 Schema 和完整 Prompt 的 SHA256 合同。共享 Zod 契约位于 `packages/contracts/src/agent-tasks.ts`，Python/Go/Node 都不能自行改写 Prompt 或业务规则。
 
-## Pi 模型执行与准入
+任务配置指纹只覆盖 provider、endpoint、model、ResponseFormat、Token 参数、超时、上下文与输出限制，不包含 API Key。Go API 与 Pi Worker 的公共配置不一致时在 Claim 前拒绝；模型凭证只在受保护的 Pi Worker 环境中。
 
-Thinking 保持 Pi Session / 只读工具循环；Review 和 Knowledge 使用同一 ModelRuntime 的单次结构化调用，不创建自由 Agent Loop，不加载未知扩展，不授予工具。Model Gateway 共享受限 fetch、Endpoint、大小和 AbortSignal 处理；每次付费调用禁止 SDK 自动重试。SDK 通过 SSE 接收输出，response_format 与 Token 字段仍严格遵循既有授权指纹。未知 Usage 不伪装为零。
+## 费用与失败语义
 
-私有 capabilities 与每次 Claim 都验证固定策略/Schema/完整 Prompt 的 SHA256 合同。版本不匹配时不返回正文，不兼容 Node 停止领取并离线报告；不会将作者已排队任务错误标为模型输出失败。Task API 的 Go 全局 Pi 上限为两个有效租约；Node 并发只能配置 1–2。逐 book/kind 轮转避免历史回填饥饿，同一本书 Knowledge 仍逐章执行，Review 与 Thinking 不共用后台会话额度。
+- Go 在领取时预留 AI 点数，在完成或失败时按实际 Usage 结算；Usage 未知时保守保留预留。
+- Pi 不自动重试付费模型调用。是否重试、是否产生新费用由 Go 领域状态决定。
+- 模型开始前必须持久确认 `started`。确认失败时不得发送请求。
+- Complete 的 HTTP 重试复用同一候选；Go 领域回执保证不重复提交或结算。
+- 进程崩溃、网络中断、取消、过期 lease 和旧 epoch 都可能造成一次无效模型调用，但不会重复写入有效业务结果。
 
-## 历史发现、健康与部署
+## 健康与验收
 
-Go Knowledge Claim 内保留 sync，对 OrderedChapters 和已保存 Revision 扫描，以 MaxQueue=256 分批补充；每次完成后继续发现，不由 Node 按 ZIP 文件名推测顺序。不启用授权、不匹配模型、暂停或预算不足时不能开始模型调用。Go 保留幂等、同名身份、有效证据、Correction、Observation/Claim/Inference 和失效逻辑。
+`GET /v1/agent-runtime` 报告 `review`、`knowledge`、`creative` 三个 executor，并分别返回 owner、epoch、draining、ready、心跳、任务计数和最后成功时间。计数来自 Go 领域状态，不是 Node 自报。
 
-API `/v1/agent-runtime` 的 executors 分别报告 Review/Knowledge owner、epoch、draining、ready、模型指纹、发布版本、心跳、计数和最后成功。计数从 Go 领域状态读取；不是 Node 自报完成数。Knowledge UI 使用当前 Knowledge owner 的状态；Thinking 在线性仍通过独立 Thinking capabilities 查询，不能替代后台健康。
+验收至少包含：
 
-最终安装目标为 API、Pi Thinking、Pi Worker 三个 unit。新用户不读取 Go 状态/正文或 Thinking 会话目录；独立 RPC 凭证与 CPU/内存限制。包清单同时记录 Thinking 与后台协议并校验全部 dist/skills。具体安装、逐类型切换、回滚和明确确认的合成 Live Eval 见 [操作流程](../workflows/pi-worker.md)。默认归属仍为 Go，开发交付不代表已迁移生产。
+- 三个 Pi 服务只监听约定端口，Task/Thinking RPC 均只允许 loopback。
+- `--check-config`、`--healthcheck` 与 capabilities 的模型指纹一致。
+- 每个领域完成一次隔离合成任务，重复 Candidate 不重复提交。
+- Worker 在 started 前退出、模型 I/O 中 SIGKILL、lease 过期、取消与 Revision 变化均不能产生有效迟到结果。
+- API 重启后队列可恢复，Thinking 会话不受后台 Worker 故障影响。
+
+部署与运维见 [Pi Worker 流程](../workflows/pi-worker.md) 和 [生产部署指南](../deploy-guide.md)。

@@ -130,8 +130,8 @@ const runtimeStatus=source.components.schemas.AgentRuntimeStatus;
 source.components.schemas.AgentRuntimeCounts=runtimeStatus.properties.tasks;
 runtimeStatus.properties.successByKind={type:'object',additionalProperties:{type:'string'}};
 runtimeStatus.properties.byKind={type:'object',additionalProperties:{$ref:'#/components/schemas/AgentRuntimeCounts'}};
-source.components.schemas.AgentExecutorStatus={...runtimeStatus,required:[...runtimeStatus.required,'executorKind','executorOwner','executorEpoch','ready','draining'],properties:{...runtimeStatus.properties,executorKind:{type:'string',enum:['review','knowledge']},executorOwner:{type:'string',enum:['go','pi','disabled','']},executorEpoch:{type:'integer',minimum:0},ready:{type:'boolean'},draining:{type:'boolean'}}};
-runtimeStatus.properties.executors={type:'object',additionalProperties:false,required:['review','knowledge'],properties:{review:{$ref:'#/components/schemas/AgentExecutorStatus'},knowledge:{$ref:'#/components/schemas/AgentExecutorStatus'}}};
+source.components.schemas.AgentExecutorStatus={...runtimeStatus,required:[...runtimeStatus.required,'executorKind','executorOwner','executorEpoch','ready','draining'],properties:{...runtimeStatus.properties,executorKind:{type:'string',enum:['review','knowledge','creative']},executorOwner:{type:'string',enum:['pi','disabled','']},executorEpoch:{type:'integer',minimum:0},ready:{type:'boolean'},draining:{type:'boolean'}}};
+runtimeStatus.properties.executors={type:'object',additionalProperties:false,required:['review','knowledge','creative'],properties:{review:{$ref:'#/components/schemas/AgentExecutorStatus'},knowledge:{$ref:'#/components/schemas/AgentExecutorStatus'},creative:{$ref:'#/components/schemas/AgentExecutorStatus'}}};
 runtimeStatus.required.push('executors');
 
 const generated = YAML.stringify(source, { indent: 2, lineWidth: 110 })

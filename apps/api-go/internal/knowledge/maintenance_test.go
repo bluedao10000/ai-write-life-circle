@@ -137,7 +137,7 @@ func TestInFlightPauseCancelsAndNoPartialEntities(t *testing.T) {
 		return llm.Response{}, ctx.Err()
 	}
 	done := make(chan error, 1)
-	go func() { done <- s.ProcessOne(context.Background()) }()
+	go func() { done <- processOneForTest(context.Background(), s) }()
 	<-entered
 	st, _ := s.load()
 	_, e := s.Mutate(context.Background(), application.Actor{ID: "synthetic", Role: "author"}, "pause", "pause-running", Mutation{BaseVersion: st.Version})
@@ -773,7 +773,7 @@ func TestUnreadableRevisionDoesNotBlockReadableChapter(t *testing.T) {
 	if st.ScanComplete || len(st.Jobs) != 1 || st.Jobs[0].ChapterID != good {
 		t.Fatalf("unreadable chapter blocked readable work: %+v", st)
 	}
-	x := &Executor{Config: s.Config, Client: c, Resolve: func(string) (*application.Service, error) { return s.App, nil }}
+	x := &Inspector{Config: s.Config, Resolve: func(string) (*application.Service, error) { return s.App, nil }}
 	if ready, err := x.Ready(ctx, s.App.Project); err != nil || !ready {
 		t.Fatal("runnable readable chapter was not ready")
 	}

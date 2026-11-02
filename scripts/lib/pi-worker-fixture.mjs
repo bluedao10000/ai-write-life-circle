@@ -1,4 +1,4 @@
-// Four real processes, isolated synthetic files, loopback HTTP; no production credentials.
+// Go API + Pi Thinking + Pi Worker, isolated synthetic files and loopback HTTP.
 import {spawn,spawnSync} from 'node:child_process';
 import {createServer} from 'node:net';
 import {createServer as httpServer} from 'node:http';
@@ -30,7 +30,8 @@ export async function createPiWorkerFixture({chapters=0,executionEnv={}}={}){
  function start(kind,overrides={}){
   let command,args,env={...baseEnv,...overrides};
   if(kind==='pi'||kind==='pi-worker'){command=process.execPath;args=[new URL(kind==='pi'?'../../apps/agent/dist/main.js':'../../apps/agent/dist/worker/main.js',import.meta.url).pathname];env.WRITER_AGENT_LLM_API_KEY='synthetic-only';if(kind==='pi-worker'){delete env.WRITER_AGENT_STATE_DIR;delete env.WRITER_AGENT_HARNESS_ROOT}}
-  else{command=new URL(`../../apps/api-go/dist/writer-agent-${kind}`,import.meta.url).pathname;args=[]}
+  else if(kind==='api'){command=new URL('../../apps/api-go/dist/writer-agent-api',import.meta.url).pathname;args=[]}
+  else throw Error('Unknown test process: '+kind)
   const p=spawn(command,args,{env,stdio:['ignore','pipe','pipe']});p.output='';p.stdout.on('data',b=>{p.output+=b});p.stderr.on('data',b=>{p.output+=b});processes.add(p);return p;
  }
  async function stop(p,signal='SIGTERM'){if(!p||p.exitCode!==null||p.signalCode!==null)return;const ended=new Promise(r=>p.once('exit',r));p.kill(signal);const timer=setTimeout(()=>p.kill('SIGKILL'),6000);await ended;clearTimeout(timer);processes.delete(p)}

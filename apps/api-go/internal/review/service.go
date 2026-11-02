@@ -3,15 +3,11 @@ package review
 import (
 	"context"
 	"encoding/json"
-	"errors"
-	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/agentruntime"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/application"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/compat"
-	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/executorpolicy"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/llm"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/storage"
 	"sort"
-	"sync"
 	"time"
 )
 
@@ -20,34 +16,16 @@ type Service struct {
 	claimEpoch     uint64
 	claimID        string
 	MemoryChapters func(context.Context, string) ([]string, error)
-	// DisableLocalExecution is set only by the business API process. Queued work
-	// is then claimed by the independent Agent Worker. Embedded deployments keep
-	// the existing single-process executor so local behavior is unchanged.
-	DisableLocalExecution bool
-	App                   *application.Service
-	Config                llm.Config
-	Client                llm.Client
-	root                  context.Context
-	stop                  context.CancelFunc
-	mu                    sync.Mutex
-	jobs                  map[string]context.CancelFunc
-	persistenceFailures   map[string]bool
-	wg                    sync.WaitGroup
-	write                 func(context.Context, string, any) error
+	App    *application.Service
+	Config llm.Config
+	Client llm.Client
+	write  func(context.Context, string, any) error
 }
 
 func New(app *application.Service, c llm.Config, client llm.Client) *Service {
-	root, stop := context.WithCancel(context.Background())
-	return &Service{App: app, Config: c, Client: client, root: root, stop: stop, jobs: map[string]context.CancelFunc{}, persistenceFailures: map[string]bool{}, write: storage.Write}
+	return &Service{App: app, Config: c, Client: client, write: storage.Write}
 }
 func (s *Service) Close() {
-	s.stop()
-	done := make(chan struct{})
-	go func() { s.wg.Wait(); close(done) }()
-	select {
-	case <-done:
-	case <-time.After(5 * time.Second):
-	}
 }
 func fingerprint(v any) string { b, _ := json.Marshal(v); return compat.Hash(string(b)) }
 func keyOK(key string) error {
@@ -169,47 +147,13 @@ func (s *Service) Start(ctx context.Context, a application.Actor, chapterID, key
 		return Run{}, e
 	}
 	if created {
-		agentruntime.TaskEvent("task_created", "review", s.App.Project, run.RunID, run.Model.Model, 0, time.Time{}, nil, "")
-		if s.DisableLocalExecution {
-			return s.freshen(ctx, run), nil
-		}
-		jobCtx, cancel := context.WithCancel(s.root)
-		s.mu.Lock()
-		s.jobs[run.RunID] = cancel
-		s.mu.Unlock()
-		s.wg.Add(1)
-		go s.execute(jobCtx, cancel, run)
+		return s.freshen(ctx, run), nil
 	}
 	return s.freshen(ctx, run), nil
-}
-
-// Embedded compatibility mode uses exactly the durable worker phases as well.
-func (s *Service) execute(ctx context.Context, cancel context.CancelFunc, run Run) {
-	defer s.wg.Done()
-	defer cancel()
-	defer func() { s.mu.Lock(); delete(s.jobs, run.RunID); s.mu.Unlock() }()
-	if ctx.Err() != nil {
-		return
-	}
-	claim, e := s.claimRun(ctx, run.RunID)
-	if e == nil && claim != nil {
-		e = s.Process(ctx, claim)
-	}
-	if e != nil && !errors.Is(e, executorpolicy.ErrFenced) && ctx.Err() == nil {
-		s.mu.Lock()
-		s.persistenceFailures[run.RunID] = true
-		s.mu.Unlock()
-	}
 }
 func (s *Service) Get(ctx context.Context, a application.Actor, id string) (Run, error) {
 	if e := author(a); e != nil {
 		return Run{}, e
-	}
-	s.mu.Lock()
-	failed := s.persistenceFailures[id]
-	s.mu.Unlock()
-	if failed {
-		return Run{}, storageFailure()
 	}
 	var run Run
 	e := s.transaction(ctx, func(st *state) (bool, error) {
@@ -248,12 +192,6 @@ func (s *Service) List(ctx context.Context, a application.Actor, chapter string)
 		return items[i].StartedAt > items[j].StartedAt
 	})
 	for i, r := range items {
-		s.mu.Lock()
-		failed := s.persistenceFailures[r.RunID]
-		s.mu.Unlock()
-		if failed {
-			return nil, storageFailure()
-		}
 		items[i] = s.freshen(ctx, r)
 	}
 	return items, nil
@@ -306,12 +244,6 @@ func (s *Service) Cancel(ctx context.Context, a application.Actor, id, key strin
 		}
 	}
 
-	s.mu.Lock()
-	cancel := s.jobs[id]
-	s.mu.Unlock()
-	if cancel != nil {
-		cancel()
-	}
 	return s.freshen(ctx, run), nil
 }
 func (s *Service) Feedback(ctx context.Context, a application.Actor, id, findingID, key string, in FeedbackInput) (Run, error) {

@@ -248,6 +248,8 @@ type Job struct {
 	ContentHash        string            `json:"contentHash,omitempty"`
 	Strategy           string            `json:"strategyVersion"`
 	Model              llm.ModelInfo     `json:"model"`
+	ExecutorOwner      string            `json:"executorOwner,omitempty"`
+	ExecutorEpoch      uint64            `json:"executorEpoch,omitempty"`
 	Status             string            `json:"status"` // pending|running|retry|completed|failed|cancelled
 	Attempts           int               `json:"attempts"`
 	Due                string            `json:"nextAttemptAt"`

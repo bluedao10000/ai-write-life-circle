@@ -13,7 +13,6 @@ import (
 
 func queued(t *testing.T, s *Service, key string) Run {
 	t.Helper()
-	s.DisableLocalExecution = true
 	return start(t, s, plan(t, s), key)
 }
 func expire(t *testing.T, s *Service, id string) {

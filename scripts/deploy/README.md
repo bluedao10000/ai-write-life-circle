@@ -3,7 +3,8 @@
 当前入口：
 
 - Web：仓库的 [deploy-web.yml](../../.github/workflows/deploy-web.yml) 构建前端并通过 Wrangler 部署到 Cloudflare Workers，需要相应的 Secrets/Variables。
-- Go API：优先按 [生产部署指南](../../harness/deploy-guide.md) 使用 `install-api-systemd.sh` 安装原生二进制，`install-api-https.sh` 配置 HTTPS。身份为 Bearer 加 Worker 签名的每请求用户声明（每个 Google 账号独立，见 `generate-identity-keys.mjs`），所有接口由 loopback API 和 TLS 边缘代理分层处理。
+- Go API：优先按 [生产部署指南](../../harness/deploy-guide.md) 使用 API-only `install-api-systemd.sh` 安装原生二进制，`install-api-https.sh` 配置 HTTPS。安装器会移除遗留 Go Worker unit。
+- Pi Thinking / Worker：使用 `pnpm package:agent` 打包发布，`install-pi-worker.sh` 准备 Worker 用户、Task Token、unit 与 API 附加组；两次 `switch-agent-executor.mjs` 只支持 `pi/disabled`。完整流程见 [Pi Worker](../../harness/workflows/pi-worker.md)。
 - [deploy-api.yml](../../.github/workflows/deploy-api.yml) 继续构建镜像；旧 EC2 deploy job 保持暂停，避免覆盖手工配置的服务和身份。
 - 镜像构建：从仓库根目录使用 `docker build -f scripts/deploy/Dockerfile.api .` 或 `docker build -f scripts/deploy/Dockerfile.web .`。构建成功不代表生产服务可以启动。
 
@@ -21,7 +22,7 @@
 
 `WRITER_AGENT_ENV=production` 必须配置 Bearer 身份、令牌文件和作者 ID，缺少配置时拒绝启动。旧 `docker-compose.prod.yml` 没有挂载身份文件，仍不可直接用于生产启动；其端口映射也不能转发到容器内部 loopback。当前使用宿主机 systemd 运行原生 API，Caddy 在 host network 连接宿主机 loopback。不得改为开发身份或清空 Volume 来恢复部署。
 
-完整本地切换与回滚步骤见 [Go API](../../apps/api-go/README.md)。实际作者状态目录切换前，先停止旧写入服务并备份完整状态目录。
+完整部署与回滚步骤见 [Go API](../../apps/api-go/README.md) 和 [Pi Worker](../../harness/workflows/pi-worker.md)。实际作者状态目录切换前，先停止旧写入服务并备份完整状态目录；不得启动旧 Go Worker。
 
 ## Webhook 自动部署的密钥要求
 

@@ -1,10 +1,19 @@
 import { spawn } from 'node:child_process'
 import { createReviewFixture } from '../../../scripts/lib/review-fixture.mjs'
+import { preparePiWorker } from '../../../scripts/lib/pi-web-fixture.mjs'
 const fixture=await createReviewFixture()
-const worker=spawn('../api-go/dist/writer-agent-worker',[],{stdio:['ignore','ignore','pipe'],env:{...process.env,WRITER_AGENT_ENV:'test',WRITER_AGENT_PROJECT_ID:'review-fixture',WRITER_AGENT_HARNESS_ROOT:fixture.harness,WRITER_AGENT_STATE_DIR:fixture.state,WRITER_AGENT_LLM_PROVIDER:'openai-compatible',WRITER_AGENT_LLM_BASE_URL:`${fixture.origin}/v1`,WRITER_AGENT_LLM_MODEL:'deterministic-test-only',WRITER_AGENT_LLM_API_KEY:'',WRITER_AGENT_LLM_RESPONSE_FORMAT:'none'}})
-worker.stderr.on('data',d=>process.stderr.write(d))
+const pi=await preparePiWorker(fixture,{apiPort:8789})
+let api
 try {
+  api=spawn('../api-go/dist/writer-agent-api',[],{stdio:['ignore','ignore','pipe'],env:{...process.env,...pi.apiEnv}})
+  api.stderr.on('data',d=>process.stderr.write(d))
+  for(let i=0;i<150;i++){try{if((await fetch('http://127.0.0.1:8789/healthz')).ok)break}catch{/* API may still be starting. */}if(i===149)throw Error('Review API startup failed');await new Promise(r=>setTimeout(r,100))}
+  await pi.startWorker()
   const child=spawn('pnpm',['exec','playwright','test','--config','playwright.review.config.ts'],{stdio:'inherit',env:{...process.env,WRITER_AGENT_E2E_STATE_DIR:fixture.state,WRITER_AGENT_E2E_HARNESS_ROOT:fixture.harness,WRITER_AGENT_E2E_MODEL_ORIGIN:fixture.origin}})
   for(const signal of ['SIGINT','SIGTERM']) process.once(signal,()=>child.kill(signal))
   process.exitCode=await new Promise((resolve)=>{child.once('error',()=>resolve(1));child.once('exit',(code)=>resolve(code??1))})
-} finally { worker.kill('SIGTERM'); await new Promise(r=>{if(worker.exitCode!==null||worker.signalCode!==null)r();else worker.once('exit',r)});await fixture.close() }
+} finally {
+  await pi.stopWorker()
+  if(api){api.kill('SIGTERM');await new Promise(r=>{if(api.exitCode!==null||api.signalCode!==null)r();else api.once('exit',r)})}
+  await fixture.close()
+}

@@ -22,7 +22,7 @@
 ## 契约、一致性与权限
 
 - Workspace 增加可选 resume；历史正文增加只读 DTO；Review Plan 增加执行限制和点数报价；Account 增加审查次数窗口。同步 Zod/OpenAPI/Worker 白名单/测试。
-- 次数以 Run ID 去重，计费操作继续按 attempt 区分。reserved/used 状态和预留在同一 billing redo intent 中提交；模型开始前持久确认，进程故障不会退款不明消费。跨作品、API/Go/Pi Worker 都复用同一账本。
+- 次数以 Run ID 去重，计费操作继续按 attempt 区分。reserved/used 状态和预留在同一 billing redo intent 中提交；模型开始前持久确认，进程故障不会退款不明消费。API、Pi Thinking 与三域 Pi Worker 都复用同一账本。
 - 历史读取继续经过认证和 Managed Resolve 所有权校验，作者之外的 Agent 不可读取历史正文接口；历史响应不暴露内部请求键。恢复操作不提供绕过 CAS 的新写接口。
 - 所有新持久字段可选，读取旧数据时回退；回滚代码不恢复旧作者状态。回滚 Free 审查策略前先停止/排空其 Worker，保留次数流水与新 Revision。计费锁协议仍遵循上一轮的统一升级约束。
 
@@ -46,4 +46,4 @@
 
 ## 回滚与上线前条件
 
-本轮不部署。后续上线必须 API、Go Worker、Pi Worker 一起采用支持 Cost/outputLimit 的版本；旧 Worker 无法保证 Free 输出上限，不能混用。先停止接收新审查并排空/取消未执行任务，再备份账本、Revision 与 Workspace；不清理或回写旧备份。若回滚，先停用新审查入口并处理未结算预留，保留所有新版本、试用次数记录和事务日志，避免旧二进制丢弃新账本字段。不能只回滚 Web 就认定计费策略已回滚。
+本轮不部署。后续上线必须 API 与 Pi Worker 一起采用支持 Cost/outputLimit 的版本；旧版本无法保证 Free 输出上限，不能混用。先停止接收新审查并排空/取消未执行任务，再备份账本、Revision 与 Workspace；不清理或回写旧备份。若回滚，先停用新审查入口并处理未结算预留，保留所有新版本、试用次数记录和事务日志，避免旧二进制丢弃新账本字段。不能只回滚 Web 就认定计费策略已回滚。

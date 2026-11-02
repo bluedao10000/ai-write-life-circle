@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/agentruntime"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/application"
+	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/creative"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/executorpolicy"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/knowledge"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/review"
@@ -27,11 +28,11 @@ func (s *Service) ReportWorker(ctx context.Context, in WorkerHeartbeat) error {
 	if in.Config != s.Config.Fingerprint() {
 		return application.Fail(409, "AGENT_CONFIG_CHANGED", "Worker capability changed.")
 	}
-	if len(in.Instance) < 1 || len(in.Instance) > 128 || len(in.Version) < 1 || len(in.Version) > 128 || len(in.Active) > 8 || len(in.Kinds) < 1 || len(in.Kinds) > 2 {
+	if len(in.Instance) < 1 || len(in.Instance) > 128 || len(in.Version) < 1 || len(in.Version) > 128 || len(in.Active) > 8 || len(in.Kinds) < 1 || len(in.Kinds) > 3 {
 		return application.Fail(422, "VALIDATION_FAILED", "Invalid Worker heartbeat.")
 	}
 	for _, kind := range in.Kinds {
-		if kind != "review" && kind != "knowledge" {
+		if kind != "review" && kind != "knowledge" && kind != "creative" {
 			return application.Fail(422, "VALIDATION_FAILED", "Invalid executor kind.")
 		}
 	}
@@ -49,9 +50,15 @@ func (s *Service) ReportWorker(ctx context.Context, in WorkerHeartbeat) error {
 		for _, book := range books {
 			var got agentruntime.Counts
 			if kind == "review" {
-				got, e = (&review.Executor{Config: s.Config, Resolve: resolve}).Inspect(ctx, book.Book.ID)
+				got, e = (&review.Inspector{Config: s.Config, Resolve: resolve}).Inspect(ctx, book.Book.ID)
+			} else if kind == "knowledge" {
+				got, e = (&knowledge.Inspector{Config: s.Config, Resolve: resolve}).Inspect(ctx, book.Book.ID)
 			} else {
-				got, e = (&knowledge.Executor{Config: s.Config, Resolve: resolve}).Inspect(ctx, book.Book.ID)
+				app, err := resolve(book.Book.ID)
+				if err != nil {
+					continue
+				}
+				got, e = creative.Inspect(ctx, app, s.Config)
 			}
 			if e != nil {
 				continue

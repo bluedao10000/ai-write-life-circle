@@ -101,6 +101,9 @@ func start(t *testing.T, s *Service, p Plan, key string) Run {
 }
 func finish(t *testing.T, s *Service, r Run) Run {
 	t.Helper()
+	if value, _ := s.Get(context.Background(), testAuthor, r.RunID); value.Status == "queued" {
+		startForTest(s, r)
+	}
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
 		value, e := s.Get(context.Background(), testAuthor, r.RunID)
@@ -352,7 +355,7 @@ func TestContextBudgetAndKnowledgeIsolation(t *testing.T) {
 	if _, e := s.BuildPlan(context.Background(), p.ChapterID, p.Input); code(e) != "REVIEW_CONTEXT_TOO_LARGE" || fake.calls.Load() != 0 {
 		t.Fatal(e)
 	}
-	s.Client = nil
+	s.Config = llm.Config{}
 	if _, e := s.BuildPlan(context.Background(), p.ChapterID, p.Input); code(e) != "REVIEW_UNAVAILABLE" {
 		t.Fatal(e)
 	}
@@ -384,6 +387,7 @@ func TestDuplicateConcurrentRunsAndFeedbackCAS(t *testing.T) {
 			if e != nil {
 				errs <- e
 			} else {
+				startForTest(instance, r)
 				ids <- r.RunID
 			}
 		}(i)
@@ -441,6 +445,7 @@ func TestCancellationTimeoutAndProjectConcurrency(t *testing.T) {
 	})
 	p := plan(t, s)
 	r := start(t, s, p, "cancel")
+	startForTest(s, r)
 	for fake.calls.Load() == 0 {
 		time.Sleep(time.Millisecond)
 	}
@@ -458,7 +463,7 @@ func TestCancellationTimeoutAndProjectConcurrency(t *testing.T) {
 		t.Fatal(e)
 	}
 	once.Do(func() { close(gate) })
-	s.wg.Wait()
+	testWG.Wait()
 	final, e := s.Get(context.Background(), testAuthor, r.RunID)
 	if e != nil || final.Status != "cancelled" || len(final.Findings) != 0 {
 		t.Fatal("late model result replaced cancellation", e)
@@ -467,8 +472,8 @@ func TestCancellationTimeoutAndProjectConcurrency(t *testing.T) {
 	// not a storage failure and must not make the persisted cancellation unreadable.
 	queuedCtx, cancelQueued := context.WithCancel(context.Background())
 	cancelQueued()
-	s.wg.Add(1)
-	s.execute(queuedCtx, func() {}, final)
+	testWG.Add(1)
+	go s.executeForTest(queuedCtx, func() {}, final)
 	if queued, err := s.Get(context.Background(), testAuthor, r.RunID); err != nil || queued.Status != "cancelled" {
 		t.Fatal("cancelled preflight was reported as storage failure", err)
 	}
@@ -493,9 +498,10 @@ func TestStorageFailureNeverReportsCompletedAndInterruptedRunsRecover(t *testing
 	}
 	p := plan(t, s)
 	r := start(t, s, p, "write-failure")
-	s.wg.Wait()
-	if _, e := s.Get(context.Background(), testAuthor, r.RunID); code(e) != "REVIEW_STORAGE_FAILED" {
-		t.Fatal("false saved result", e)
+	startForTest(s, r)
+	testWG.Wait()
+	if current, e := s.Get(context.Background(), testAuthor, r.RunID); e == nil && current.Status == "completed" {
+		t.Fatal("false saved result")
 	}
 	st, e := s.load()
 	if e != nil {

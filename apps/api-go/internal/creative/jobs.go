@@ -10,6 +10,7 @@ import (
 
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/application"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/compat"
+	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/executorpolicy"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/llm"
 )
 
@@ -44,12 +45,22 @@ func eligible(st *State, index int) bool {
 	return true
 }
 
-type claimed struct {
+type ClaimedJob struct {
 	Job      Job
-	Snapshot State
+	Snapshot State `json:"-"`
 	Reserved int
 	Day      string
-	Started  time.Time
+	Started  string
+}
+
+// PreparedJob is the bounded request handed to the Pi executor. The same
+// value is persisted in the task registry so a restarted API can finish the
+// commit without keeping a model credential.
+type PreparedJob struct {
+	Claim    ClaimedJob
+	Organize *organizeContext
+	Plan     *planContext
+	Request  llm.Request
 }
 
 // recover returns expired running leases to the retry queue.
@@ -82,13 +93,13 @@ func failTurn(st *State, j Job) {
 	}
 }
 
-func (s *Service) claim(ctx context.Context) (*claimed, error) {
-	var out *claimed
+func (s *Service) claim(ctx context.Context) (*ClaimedJob, error) {
+	var out *ClaimedJob
 	metered := ""
 	e := s.transaction(ctx, func(st *State) (bool, error) {
 		now := s.now()
 		changed := recoverLeases(st, now)
-		if !s.runnable(*st) || s.Client == nil {
+		if !s.runnable(*st) || (s.Client == nil && !s.QueueOnly) {
 			return changed, nil
 		}
 		day := now.Format("2006-01-02")
@@ -123,9 +134,11 @@ func (s *Service) claim(ctx context.Context) (*claimed, error) {
 			j.Attempts++
 			j.Status = "running"
 			j.Lease = newID()
+			j.ExecutorOwner = executorpolicy.Owner(s.ExecutorOwner)
+			j.ExecutorEpoch = s.claimEpoch
 			j.Deadline = now.Add(s.timeout() + 15*time.Second).Format(time.RFC3339Nano)
 			st.Jobs[i] = j
-			out = &claimed{Job: j, Reserved: reserve, Day: day, Started: now}
+			out = &ClaimedJob{Job: j, Reserved: reserve, Day: day, Started: now.Format(time.RFC3339Nano)}
 			out.Snapshot = clone(*st)
 			return true, nil
 		}
@@ -140,7 +153,7 @@ func (s *Service) claim(ctx context.Context) (*claimed, error) {
 // Ready reports whether a model call could start now, without claiming.
 func (s *Service) Ready(ctx context.Context) (bool, error) {
 	st, e := s.load()
-	if e != nil || !s.runnable(st) || s.Client == nil {
+	if e != nil || !s.runnable(st) || (s.Client == nil && !s.QueueOnly) {
 		return false, e
 	}
 	now := s.now()
@@ -153,52 +166,90 @@ func (s *Service) Ready(ctx context.Context) (bool, error) {
 	return false, nil
 }
 
-// ProcessOne claims, executes and commits at most one job. Network calls hold no locks.
-func (s *Service) ProcessOne(ctx context.Context) (bool, error) {
-	c, e := s.claim(ctx)
-	if e != nil || c == nil {
-		return false, e
+// Claim leases at most one creative job through the executor ownership fence.
+func (s *Service) Claim(ctx context.Context) (out *ClaimedJob, err error) {
+	err = (executorpolicy.Controller{State: s.App.State}).Claim(ctx, "creative", s.ExecutorOwner, func(epoch uint64) (string, string, error) {
+		copy := *s
+		copy.claimEpoch = epoch
+		var e error
+		out, e = copy.claim(ctx)
+		if e != nil || out == nil {
+			return "", "", e
+		}
+		return out.Job.Lease, out.Job.Deadline, nil
+	})
+	if errors.Is(err, executorpolicy.ErrFenced) {
+		err = nil
 	}
-	run, cancel := context.WithTimeout(ctx, s.timeout())
-	defer cancel()
-	var org *organizeContext
-	var plan *planContext
-	var req llm.Request
+	return
+}
+
+// Prepare builds the immutable model request. It never calls a model.
+func (s *Service) Prepare(ctx context.Context, c *ClaimedJob) (*PreparedJob, error) {
+	p := &PreparedJob{Claim: *c}
+	var e error
 	switch c.Job.Kind {
 	case "organize":
-		org, e = s.prepareOrganize(c.Snapshot, c.Job)
-		if org != nil {
-			req = org.Request
+		p.Organize, e = s.prepareOrganize(c.Snapshot, c.Job)
+		if p.Organize != nil {
+			p.Request = p.Organize.Request
 		}
 	case "plan_check":
-		plan, e = s.preparePlan(run, c.Snapshot, c.Job)
-		if plan != nil {
-			req = plan.Request
+		p.Plan, e = s.preparePlan(ctx, c.Snapshot, c.Job)
+		if p.Plan != nil {
+			p.Request = p.Plan.Request
 		}
 	default:
 		e = errors.New("CREATIVE_UNKNOWN_JOB")
 	}
-	var resp llm.Response
-	sent := false
-	if e == nil {
-		// Fence again immediately before the paid call: pause, deletion and
-		// session cancellation all clear the lease.
-		if s.leaseValid(c.Job) {
-			sent = true
-			resp, e = s.Client.Generate(run, req)
-		} else {
-			e = errors.New("CREATIVE_LEASE_LOST")
+	return p, e
+}
+
+// Complete validates and commits one prepared result. Settlement happens
+// whether or not the fenced commit wins.
+func (s *Service) Complete(ctx context.Context, p *PreparedJob, response llm.Response, sent bool, modelErr error) error {
+	j := p.Claim.Job
+	defer s.App.MeterSettle(context.Background(), meterOp(j.ID, j.Attempts), settlePoints(response, sent))
+	if s.Completed(p, response, sent, modelErr) {
+		return nil
+	}
+	return (executorpolicy.Controller{State: s.App.State}).Guard(ctx, "creative", j.ExecutorOwner, j.ExecutorEpoch, j.Lease, true, func() error {
+		return s.complete(ctx, &p.Claim, p.Organize, p.Plan, response, sent, modelErr)
+	})
+}
+
+func completionHash(response llm.Response, sent bool, e error) string {
+	code := ""
+	if e != nil {
+		code = e.Error()
+	}
+	b, _ := json.Marshal([]any{response, sent, code})
+	return compat.Hash(string(b))
+}
+
+func (s *Service) Completed(p *PreparedJob, response llm.Response, sent bool, e error) bool {
+	st, err := s.load()
+	if err != nil {
+		return false
+	}
+	for _, j := range st.Jobs {
+		if j.ID == p.Claim.Job.ID {
+			return j.CompletionReceipts[p.Claim.Job.Lease] == completionHash(response, sent, e)
 		}
 	}
-	points := 0
-	if sent {
-		points = -1
-		if resp.Usage != nil {
-			points = billing.PointsFor(resp.Usage.InputTokens, resp.Usage.OutputTokens, resp.Usage.CachedInputTokens)
-		}
+	return false
+}
+
+// settlePoints: unsent calls are free, reported usage is charged, and a sent
+// call without usage keeps its reservation.
+func settlePoints(response llm.Response, sent bool) int {
+	if !sent {
+		return 0
 	}
-	s.App.MeterSettle(context.Background(), meterOp(c.Job.ID, c.Job.Attempts), points)
-	return true, s.complete(ctx, c, org, plan, resp, sent, e)
+	if response.Usage != nil {
+		return billing.PointsFor(response.Usage.InputTokens, response.Usage.OutputTokens, response.Usage.CachedInputTokens)
+	}
+	return -1
 }
 
 func meterOp(job string, attempt int) string { return "creative:" + job + ":" + strconv.Itoa(attempt) }
@@ -206,19 +257,6 @@ func meterOp(job string, attempt int) string { return "creative:" + job + ":" + 
 // reservePoints bounds one organize or plan-check attempt for admission.
 func (s *Service) reservePoints() int {
 	return billing.PointsFor(s.reserve(), min(max(s.Config.MaxOutputTokens, 1024), 16384))
-}
-
-func (s *Service) leaseValid(j Job) bool {
-	st, e := s.load()
-	if e != nil || !s.runnable(st) {
-		return false
-	}
-	for _, v := range st.Jobs {
-		if v.ID == j.ID {
-			return v.Lease == j.Lease && v.Status == "running"
-		}
-	}
-	return false
 }
 
 func failureCode(e error) string {
@@ -245,11 +283,10 @@ func retryable(code string) bool {
 	return true
 }
 
-func (s *Service) complete(ctx context.Context, c *claimed, org *organizeContext, plan *planContext, resp llm.Response, sent bool, runErr error) error {
+func (s *Service) complete(ctx context.Context, c *ClaimedJob, org *organizeContext, plan *planContext, resp llm.Response, sent bool, runErr error) error {
 	j := c.Job
 	now := s.stamp()
-	receiptRaw, _ := json.Marshal([]any{resp, sent, failureCode(runErr)})
-	rec := compat.Hash(string(receiptRaw))
+	rec := completionHash(resp, sent, runErr)
 	var result organizeResult
 	var divergences []Divergence
 	err := runErr
@@ -405,30 +442,4 @@ func commitOrganize(st *State, r *organizeResult, now string) {
 		st.Proposals[p.ID] = r.Proposals[i]
 	}
 	st.ChangeSets[r.ChangeSet.ID] = r.ChangeSet
-}
-
-// Executor adapts the creative scheduler to the shared Agent Runtime in the
-// worker process, which is the only process holding a model credential.
-type Executor struct {
-	Config  llm.Config
-	Client  llm.Client
-	Resolve func(bookID string) (*application.Service, error)
-}
-
-func (x *Executor) Kind() string { return "creative" }
-
-func (x *Executor) Process(ctx context.Context, book string) (bool, error) {
-	app, e := x.Resolve(book)
-	if e != nil {
-		return false, e
-	}
-	return New(app, x.Config, x.Client).ProcessOne(ctx)
-}
-
-func (x *Executor) Ready(ctx context.Context, book string) (bool, error) {
-	app, e := x.Resolve(book)
-	if e != nil {
-		return false, e
-	}
-	return New(app, x.Config, x.Client).Ready(ctx)
 }

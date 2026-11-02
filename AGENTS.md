@@ -28,7 +28,8 @@
 /
 ├── apps/              # 应用代码
 │   ├── web/          # 前端应用（主要）
-│   ├── api-go/       # Go 默认后端
+│   ├── api-go/       # Go 业务 API、任务权威与状态
+│   ├── agent/        # Pi Thinking + Pi Worker
 ├── packages/         # 共享包
 │   └── contracts/    # 类型定义
 ├── harness/          # 文档中心（架构、设计、工作流）
@@ -96,6 +97,7 @@
 
 常用工作流：
 - 部署：`harness/workflows/deploy.md`
+- Pi 后台任务：`harness/workflows/pi-worker.md`
 - 初始化：`harness/workflows/bootstrap.md`
 - 审查：`harness/workflows/review.md`
 
@@ -135,7 +137,8 @@
 greenfield-adventures/
 ├── apps/
 │   ├── web/                    # React 前端应用
-│   ├── api-go/                 # Go 默认后端
+│   ├── api-go/                 # Go API 与领域状态权威
+│   ├── agent/                  # Pi Thinking / Pi Worker
 │
 ├── harness/                    # 📖 文档中心
 │   ├── README.md              # 文档导航
@@ -164,9 +167,10 @@ greenfield-adventures/
 - **状态**：React Hooks
 
 ### 后端
-- **运行时**：Go 1.27.3 / net/http
+- **业务 API**：Go 1.27.3 / net/http
+- **模型执行**：Node 22 + Pi SDK；Thinking 与后台 Worker 独立进程
 - **存储**：Markdown Harness 只读；应用状态为带文件锁的原子 JSON
-- **契约**：OpenAPI + 前端 Zod
+- **契约**：OpenAPI + Zod + `agent-tasks-v1` 私有任务协议
 
 ### 部署
 - **容器**：Docker + Docker Compose
@@ -229,5 +233,5 @@ greenfield-adventures/
 ---
 
 **版本**：0.2.0  
-**最后更新**：2026-10-14  
+**最后更新**：2026-11-02
 **架构原则**：Harness 最小上下文加载

@@ -63,7 +63,7 @@ func TestKnowledgeBackedReviewUsesOriginalRevisionsAndFallback(t *testing.T) {
 		t.Fatal(e)
 	}
 	for i := 0; i < 2; i++ {
-		if e = memory.ProcessOne(ctx); e != nil {
+		if e = processKnowledge(ctx, memory); e != nil {
 			t.Fatal(e)
 		}
 	}
@@ -105,4 +105,19 @@ func TestKnowledgeBackedReviewUsesOriginalRevisionsAndFallback(t *testing.T) {
 	if _, e = reviewer.BuildPlan(ctx, target.ID, input); e != nil {
 		t.Fatal("memory failure broke existing review", e)
 	}
+}
+
+func processKnowledge(ctx context.Context, k *knowledge.Service) error {
+	claim, err := k.Claim(ctx)
+	if err != nil || claim == nil {
+		return err
+	}
+	p, err := k.Prepare(ctx, claim)
+	var response llm.Response
+	sent := false
+	if err == nil {
+		sent = true
+		response, err = k.Client.Generate(ctx, p.Request)
+	}
+	return k.Complete(ctx, p, response, sent, err)
 }

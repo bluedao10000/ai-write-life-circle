@@ -3,10 +3,17 @@ package review
 import (
 	"context"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/agentruntime"
+	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/application"
+	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/llm"
 	"time"
 )
 
-func (x *Executor) Inspect(ctx context.Context, id string) (agentruntime.Counts, error) {
+type Inspector struct {
+	Config  llm.Config
+	Resolve func(string) (*application.Service, error)
+}
+
+func (x *Inspector) Inspect(ctx context.Context, id string) (agentruntime.Counts, error) {
 	app, err := x.Resolve(id)
 	if err != nil {
 		return agentruntime.Counts{}, err
@@ -42,7 +49,7 @@ func (x *Executor) Inspect(ctx context.Context, id string) (agentruntime.Counts,
 	return counts, nil
 }
 
-func (x *Executor) Ready(ctx context.Context, id string) (bool, error) {
+func (x *Inspector) Ready(ctx context.Context, id string) (bool, error) {
 	app, err := x.Resolve(id)
 	if err != nil {
 		return false, err

@@ -1,54 +1,159 @@
-# Pi 后台执行器：手动安装、切换与回滚
+# Pi 后台执行器：安装、验收与维护
 
-本流程仅供另行授权的生产操作；当前开发不运行服务器命令。Thinking 仍使用 [原流程](pi-agent.md)。三个服务分别是 Go API、Pi Thinking、Pi Worker。旧 Go Worker 保留兼容回滚能力，默认 owner 仍为 Go。
+本流程用于另行授权的生产操作。开发环境不访问服务器，也不自动部署。
 
-## 安装前提
+固定拓扑为三个 systemd unit：
 
-同一发布的 API、Go Worker、agent-control 均须支持 `agent-tasks-v1`；不能让旧版本 Worker 接触已启用 ownership 的状态目录。先停止旧 Worker，备份完整状态并保留权限，再部署兼容二进制。备份用于灾难恢复，不能覆盖部署后的新正文。`--task-protocol` 可在不加载作者数据时核对 Go 二进制。
+- `writer-agent-api.service`：Go 业务 API，监听 loopback `8787`。
+- `writer-agent-pi.service`：Pi Thinking，独立用户与状态目录；loopback `8790`，只读工具 RPC `8791`。
+- `writer-agent-pi-worker.service`：Review、Knowledge、Creative 后台执行器；loopback `8792` 客户端，不监听公网。
 
-沿用 `pnpm package:agent` 打包 Node 发布（包括 dist/worker），为 Thinking 和后台服务使用独立用户。新增系统组 `writer-agent-pi-task-rpc`，仅 Go API 与 `writer-agent-pi-worker` 加入。随机服务 Token 放 `/etc/writer-agent-pi-task-rpc/service.token`，目录 0750、文件 root:该组 0640；不得复用公网 API Token、Thinking RPC Token 或能力签名 Key。
+不存在 `writer-agent-worker.service`。API 安装器会停用并移除遗留 unit；不得手工启动旧 Go Worker。
 
-`/etc/writer-agent-pi-worker/worker.env` 为 root:writer-agent-pi-worker 0640，参考 `scripts/deploy/pi-worker.env.example`。Go 公共模型参数必须完全一致，Go API 不放模型 Key；Go 环境另加入 pi-tasks-go 示例。旧回滚 Worker 如需模型 Key，仍须在它的独立受保护环境中提供，最终退役后撤销。
+## 发布物
 
-复制 `writer-agent-pi-worker.service` 并 daemon-reload。后台用户不挂载、不能读取 Go StateDirectory、Harness、备份和 Thinking 状态；路径自定义时更新 InaccessiblePaths。先验证用户权限与服务 CPU/内存限制，再启动后台服务。8792 只允许 loopback，不配置公网反向代理或安全组端口。Thinking 的独立额度不由后台队列占用。
-
-## 逐类型切换
-
-先以后台服务身份运行 `dist/worker/main.js --check-config` 及 `--healthcheck`。仅进程在线不代表类型已切换。健康检查须显示正确配置；统一 `/v1/agent-runtime` 的 executors.review / executors.knowledge 显示各自 owner、ready 和队列，Thinking 使用自己的 capabilities/health。
-
-人工确认后，以有权读取 Go 状态的运维身份执行：
+1. 交叉编译 Go API：
 
 ```sh
-node scripts/deploy/switch-agent-executor.mjs --confirm-executor-switch --kind review --owner pi --state /var/lib/writer-agent --control /opt/writer-agent/writer-agent-control
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+  go build -C apps/api-go -trimpath -ldflags="-s -w" \
+  -o dist/writer-agent-api-linux-amd64 ./cmd/server
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+  go build -C apps/api-go -trimpath -ldflags="-s -w" \
+  -o dist/writer-agent-control-linux-amd64 ./cmd/agent-control
 ```
 
-脚本先确认目标服务健康，再由 Go CLI 原子 drain、等待有效 Lease 结束、递增 epoch、切换 owner。超时不抢占活 Lease，维持 draining，核验后重试。完成 Review 隔离验收后，再独立切换 knowledge。切换后旧执行器即使存活也无法有效领取/提交。不手工编辑 ownership JSON。
+2. 在已提交的源码上打包 Pi 发布：
 
-在两类 Pi 执行、预算、故障恢复及回滚均验收后，才能 `systemctl disable --now writer-agent-worker.service`。本次不自动禁用。Go 源码及兼容测试另行保留至实际生产验收后清理。
+```sh
+pnpm package:agent -- /secure/build/pi-releases/COMMIT_SHA
+```
+
+发布包同时包含 `dist/main.js`（Thinking）与 `dist/worker/main.js`（后台执行），`release.json` 记录 `thinking-v1`、`agent-tasks-v1` 和所有文件哈希。
+
+## 凭证与用户
+
+- `writer-agent`：Go API 与业务状态所有者。
+- `writer-agent-pi`：Thinking 用户；加入 `writer-agent-pi-rpc`。
+- `writer-agent-pi-worker`：Worker 用户；加入 `writer-agent-pi-task-rpc`。
+- Task Token 位于 `/etc/writer-agent-pi-task-rpc/service.token`，root:任务组 0640。
+- Thinking RPC Token 与能力签名 Key 不复用 Task Token。
+- 模型 Key 只写入 `/etc/writer-agent-pi-worker/worker.env` 或 Thinking 自己的受保护环境；Go API 不持有模型 Key。
+
+可用以下脚本创建 Pi Worker 用户、组、Task Token、环境文件、API 附加组 drop-in 和 unit：
+
+```sh
+sudo bash scripts/deploy/install-pi-worker.sh --confirm-install
+```
+
+脚本不启动服务、不改变 owner，也不安装发布包。Thinking 用户、RPC 组、`agent.env` 与 `writer-agent-pi.service` 按 [Pi Thinking 流程](pi-agent.md)准备。
+
+## API 环境
+
+首次安装 API 前，`/etc/writer-agent/api.env` 至少要有：
+
+- `WRITER_AGENT_ENV=production`
+- `WRITER_AGENT_AUTH_MODE=bearer`
+- `WRITER_AGENT_AUTHOR_ID`
+- `WRITER_AGENT_IDENTITY_PUBLIC_KEY`
+- `WRITER_AGENT_TASK_SERVICE_TOKEN_FILE`
+- 与 Pi Worker 完全一致的 `WRITER_AGENT_LLM_PROVIDER`、`WRITER_AGENT_LLM_BASE_URL`、`WRITER_AGENT_LLM_MODEL`、格式、Token 参数、超时与上下文/输出限制
+
+不得加入 `WRITER_AGENT_LLM_API_KEY`。
+
+安装 API：
+
+```sh
+sudo bash install-api-systemd.sh \
+  ./writer-agent-api COMMIT_SHA author \
+  ./writer-agent-api.service ./writer-agent-control
+```
+
+安装器只发布 API。它会先停用并删除遗留 `writer-agent-worker.service`，再停止 API、备份完整状态、切换 release、启动 API 并验证 `/healthz`。
+
+## 安装 Pi 发布
+
+1. 将发布目录放到 `/opt/writer-agent-pi/releases/<revision>`，root 所有，服务用户只读。
+2. 使用临时 symlink + rename 原子更新 `/opt/writer-agent-pi/current`。
+3. 运行发布校验：
+
+```sh
+node scripts/deploy/verify-pi-release.mjs /opt/writer-agent-pi/current --worker
+```
+
+4. 分别以服务用户和受保护环境执行：
+
+```sh
+node /opt/writer-agent-pi/current/dist/main.js --check-config
+node /opt/writer-agent-pi/current/dist/worker/main.js --check-config
+```
+
+5. 安装或更新三个 unit，执行 `systemctl daemon-reload`，先启动 API，再启动 Thinking 与 Worker。
+
+## 健康与隔离
+
+```sh
+systemctl status writer-agent-api writer-agent-pi writer-agent-pi-worker
+journalctl -u writer-agent-api
+journalctl -u writer-agent-pi
+journalctl -u writer-agent-pi-worker
+```
+
+同时核验：
+
+- API 的 `/v1/agent-runtime` 中 `review`、`knowledge`、`creative` 都有 owner、epoch、ready、心跳和 Go 侧任务计数。
+- Worker `--healthcheck` 成功；仅 `systemctl is-active` 不算验收。
+- `ss -ltnp` 只显示 `127.0.0.1:8787/8790/8791/8792`，公网代理只转发 `8787`。
+- Pi 用户不能读取 `/var/lib/writer-agent`、Harness、备份或 Thinking 的状态目录。
+- 使用隔离合成作品分别验证 Review、Knowledge 和 Creative organize/plan check。
+
+## 维护开关
+
+每个领域可独立 drain 后切换为 `disabled`：
+
+```sh
+node scripts/deploy/switch-agent-executor.mjs \
+  --confirm-executor-switch --kind review --owner disabled \
+  --state /var/lib/writer-agent \
+  --control /opt/writer-agent/current/writer-agent-control
+```
+
+`knowledge`、`creative` 同理。恢复：
+
+```sh
+node scripts/deploy/switch-agent-executor.mjs \
+  --confirm-executor-switch --kind review --owner pi \
+  --state /var/lib/writer-agent \
+  --control /opt/writer-agent/current/writer-agent-control
+```
+
+`pi` 目标必须先通过发布校验、服务在线和 Worker healthcheck。切换超时只保留 draining，不会强抢活 lease。旧 owner 即使在持久化文件中为 `go`，读取时也按已迁移的 `pi` 处理；写回后只保留 `pi/disabled`。
 
 ## 回滚
 
+- 先通过管理 CLI drain 并停用目标领域，避免旧候选在回滚窗口内提交。
+- API 只回滚到仍支持 `agent-tasks-v1` 的版本；安装器不会恢复 Go Worker。
+- Pi 代码回滚使用上一套已验签发布目录；不要删除 Task 状态、业务回执或作者正文。
+- Thinking 与后台 Worker 可独立回滚，但共享 Pi 发布时必须重新核验两个协议与配置指纹。
+- 不得启动旧 Go Worker，也不得用旧备份覆盖部署后产生的正文或审核结果。
+
+## 模型 Eval
+
+确定性工程 Eval：
+
 ```sh
-node scripts/deploy/rollback-agent-executor.mjs --confirm-executor-switch --kind review --state /var/lib/writer-agent --control /opt/writer-agent/writer-agent-control
+pnpm test:review
+pnpm test:knowledge
+pnpm test:creative
+pnpm test:pi:worker
+pnpm test:pi:knowledge
 ```
 
-knowledge 同理。回滚先 drain/fence Pi 类型，再启动兼容 Go Worker；另一类型不受影响。不得直接启动旧 Go 二进制来绕过归属。不得恢复旧状态覆盖作者新写内容。所有权切回成功但目标服务失败时保留队列，修复服务后继续，不重写业务数据。
-
-## 故障与费用
-
-Node 在 started 持久确认前不发送模型请求。可能已发送而 Usage 未知时，保守保留预留费用。Node 不自动重试模型；重试任务由 Go 决定，可能产生新的模型费用。Complete HTTP 传输重试复用相同请求，领域回执确保不重复提交/结算。Lease 失效、取消、暂停、Revision 改变或删除后，迟到输出无法生效。文件锁异常残留仍由运维核验，不按超时自动抢占。
-
-安装资源可用 `sudo bash scripts/deploy/install-pi-worker.sh --confirm-install` 准备。脚本保留既有凭证与环境，不自动启动、启用服务或改变归属；它新增专用用户、RPC 组、API 附加组 drop-in 和 unit。配置完成后的 API 重启仍按现有部署预检执行。切回 Go 时脚本先核对固定发布路径中的 Go Worker `--task-protocol`，拒绝不兼容旧二进制。
-
-## 手动 Pi 真实模型 Eval
-
-仅在明确准备调用付费模型时，配置本地 `WRITER_AGENT_LLM_API_KEY`，可选 BASE_URL/MODEL/RESPONSE_FORMAT/TOKEN_PARAMETER，然后执行：
+真实模型调用仅在明确授权、临时合成数据与费用上限下执行：
 
 ```sh
 pnpm eval:pi:review:live -- --confirm-fixtures
 pnpm eval:pi:knowledge:live -- --confirm-fixtures
 ```
 
-不带确认参数或缺 Key 时拒绝；仅使用临时合成章节及临时 Go 状态，不接触作者目录。单轮最多两次模型调用、100,000 保守预留 Token、每次输出上限 2,048 Token，无模型自动重试。Go 仍校验候选和证据。`WRITER_AGENT_PI_EVAL_OUTPUT` 可指定私有 JSON 输出路径（0600）；默认终端只显示任务元数据/Usage，不打印正文或模型 Key。输出始终 qualityValidated=false，人工标注另存。这些命令不会由 CI 自动运行，本次未运行付费 Eval。
-
-已有 Go 双进程安装器在 ownership 存在后要求新 API/Worker 支持任务协议，并拒绝 Pi/disabled/draining 归属，防止普通部署绕过人工切换。此安装器更新 API 前须先按上述流程将两类安全切回 Go；也可另行使用经核验的三服务发布流程。失败回滚遇到无法识别 ownership 的旧二进制时，保留 API/Go Worker 停机，不自动启动旧内嵌执行器。作者数据不会恢复为旧备份。
+这些命令不读取作者正文，不自动重试付费调用，也不会由普通 CI 自动执行。

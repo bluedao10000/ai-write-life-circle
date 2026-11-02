@@ -42,16 +42,6 @@ func ReadExecutionStatus(state string, c llm.Config, kind string) ExecutionStatu
 	}
 	a := policy.Kinds[kind]
 	out := ExecutionStatus{ExecutorKind: kind, ExecutorOwner: a.Owner, Epoch: a.Epoch, Draining: a.Draining}
-	if a.Owner == "go" {
-		out.Status = ReadStatus(state, c)
-		out.LastSuccess = out.SuccessByKind[kind]
-		if by, ok := out.ByKind[kind]; ok {
-			out.Counts = by
-			out.Active = by.Running
-		}
-		out.Ready = out.Online && out.Compatible && !a.Draining
-		return out
-	}
 	if a.Owner == "pi" {
 		p := ReadPiStatus(state, c)
 		out.Status = p.Status
@@ -76,23 +66,43 @@ type UnifiedStatus struct {
 }
 
 func ReadUnifiedStatus(state string, c llm.Config) UnifiedStatus {
-	r, k := ReadExecutionStatus(state, c, "review"), ReadExecutionStatus(state, c, "knowledge")
-	base := r.Status
-	if r.ExecutorOwner == "disabled" || (!r.Online && k.Online) {
-		base = k.Status
-	}
-	base.Online = r.Online || k.Online
-	base.Compatible = (r.Compatible || r.ExecutorOwner == "disabled") && (k.Compatible || k.ExecutorOwner == "disabled")
-	if k.LastSuccess > base.LastSuccess {
-		base.LastSuccess = k.LastSuccess
-	}
-	base.SuccessByKind = map[string]string{}
-	for kind, value := range map[string]string{"review": r.LastSuccess, "knowledge": k.LastSuccess} {
-		if value != "" {
-			base.SuccessByKind[kind] = value
+	kinds := []string{"review", "knowledge", "creative"}
+	executors := make(map[string]ExecutionStatus, len(kinds))
+	base := Status{Protocol: executorpolicy.Protocol}
+	for _, kind := range kinds {
+		current := ReadExecutionStatus(state, c, kind)
+		executors[kind] = current
+		if base.At == "" || (current.Online && !base.Online) {
+			base = current.Status
 		}
 	}
-	base.Active = r.Active + k.Active
-	base.Counts = Counts{Pending: r.Counts.Pending + k.Counts.Pending, Running: r.Counts.Running + k.Counts.Running, Completed: r.Counts.Completed + k.Counts.Completed, Failed: r.Counts.Failed + k.Counts.Failed, Cancelled: r.Counts.Cancelled + k.Counts.Cancelled, Retried: r.Counts.Retried + k.Counts.Retried, Interrupted: r.Counts.Interrupted + k.Counts.Interrupted}
-	return UnifiedStatus{Status: base, Executors: map[string]ExecutionStatus{"review": r, "knowledge": k}}
+	base.Protocol = executorpolicy.Protocol
+	base.Online = false
+	base.Compatible = true
+	base.Active = 0
+	base.Counts = Counts{}
+	base.SuccessByKind = map[string]string{}
+	base.LastSuccess = ""
+	for _, kind := range kinds {
+		current := executors[kind]
+		base.Online = base.Online || current.Online
+		if current.ExecutorOwner != "disabled" {
+			base.Compatible = base.Compatible && current.Compatible
+		}
+		base.Active += current.Active
+		base.Counts.Pending += current.Counts.Pending
+		base.Counts.Running += current.Counts.Running
+		base.Counts.Completed += current.Counts.Completed
+		base.Counts.Failed += current.Counts.Failed
+		base.Counts.Cancelled += current.Counts.Cancelled
+		base.Counts.Retried += current.Counts.Retried
+		base.Counts.Interrupted += current.Counts.Interrupted
+		if current.LastSuccess != "" {
+			base.SuccessByKind[kind] = current.LastSuccess
+		}
+		if current.LastSuccess > base.LastSuccess {
+			base.LastSuccess = current.LastSuccess
+		}
+	}
+	return UnifiedStatus{Status: base, Executors: executors}
 }
