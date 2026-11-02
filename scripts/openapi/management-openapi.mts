@@ -1,5 +1,5 @@
 import { readFile, writeFile } from 'node:fs/promises'
-import { managementJsonSchemas as schemas } from '../packages/contracts/src/management.js'
+import { managementJsonSchemas as schemas } from '../../packages/contracts/src/management.js'
 const parameter = {
   name: 'bookId',
   in: 'path',
@@ -319,7 +319,7 @@ const doc = {
     schemas,
   },
 }
-const path = new URL('../harness/contracts/management-api-v1.json', import.meta.url),
+const path = new URL('../../harness/contracts/management-api-v1.json', import.meta.url),
   text = JSON.stringify(doc, null, 2) + '\n'
 if (process.argv.includes('--check')) {
   if ((await readFile(path, 'utf8').catch(() => '')) !== text)

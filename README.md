@@ -6,7 +6,7 @@ Most AI writing tools ask you to trust the model. This one asks the model to pro
 
 - **Live:** https://www.story2u.xyz — writing studio at `/studio`
 - **Run locally:** `pnpm install --frozen-lockfile && pnpm dev:local`
-- **Verify:** `pnpm typecheck && pnpm lint && pnpm test && pnpm build`
+- **Verify:** `pnpm typecheck && pnpm lint && pnpm test && pnpm build`（发版前跑完整回归 `pnpm verify`)
 - **Docs:** [`harness/`](harness/) — architecture, ADRs, OpenAPI contracts
 
 The author makes every creative decision. The AI assists; it does not write the manuscript, and it does not silently update canon.
@@ -42,7 +42,7 @@ pnpm dev:local    # 本地 API + 前端
 - [API 规范](harness/contracts/README.md) · [前端架构](harness/architecture/frontend-architecture.md)
 - [设计来源与同步](harness/design/figma.md) · [部署说明](scripts/deploy/README.md)
 - [Go 迁移基线](harness/architecture/go-backend-migration.md)
-- `pnpm typecheck`、`pnpm lint`、`pnpm test`、`pnpm build`
+- `pnpm typecheck`、`pnpm lint`、`pnpm test`(快速门禁)、`pnpm verify`(完整回归)、`pnpm build`
 - `pnpm openapi:check`、`pnpm openapi:lint`、`pnpm test:e2e`
 
 作者负责创意决策与小说正文。项目维护不代写正文，不自动更新正式设定；外部作品目录与本项目应用状态应分别管理。

@@ -58,7 +58,7 @@ jobs:
         run: sudo bash scripts/test-agent-installer.sh
 
       - name: Unit tests
-        run: pnpm test
+        run: pnpm verify
 
       - name: Isolated Thinking Agent Eval (no provider credentials)
         run: pnpm eval:thinking

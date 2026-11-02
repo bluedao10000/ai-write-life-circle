@@ -2,8 +2,8 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import YAML from 'yaml'
 
-const sourcePath = fileURLToPath(new URL('../harness/contracts/source/api-spec-v0.4.0-figma-copy.yaml', import.meta.url))
-const candidatePath = fileURLToPath(new URL('../harness/contracts/api-spec-v0.4.0-proposed.yaml', import.meta.url))
+const sourcePath = fileURLToPath(new URL('../../harness/contracts/source/api-spec-v0.4.0-figma-copy.yaml', import.meta.url))
+const candidatePath = fileURLToPath(new URL('../../harness/contracts/api-spec-v0.4.0-proposed.yaml', import.meta.url))
 const source = YAML.parse(await readFile(sourcePath, 'utf8'))
 
 if (source.openapi !== '3.1.0' || source.info?.version !== '0.4.0-proposed') {
@@ -82,12 +82,12 @@ source['x-source-provenance'] = {
   note: 'The Figma MCP resource response was truncated; the complete source copy was supplied in the author reply in this task and preserved under harness/contracts/source/.',
 }
 
-const authorExtension = JSON.parse(await readFile(new URL('../harness/contracts/author-workspace-extension.json', import.meta.url), 'utf8'))
+const authorExtension = JSON.parse(await readFile(new URL('../../harness/contracts/author-workspace-extension.json', import.meta.url), 'utf8'))
 Object.assign(source.paths, authorExtension.paths)
 Object.assign(source.components.schemas, authorExtension.schemas)
 source.components.schemas.UserWorkspaceState.properties.resume = { $ref: '#/components/schemas/WorkspaceResume' }
 
-const notesExtension = JSON.parse(await readFile(new URL('../harness/contracts/notes-engineering-extension.json', import.meta.url), 'utf8'))
+const notesExtension = JSON.parse(await readFile(new URL('../../harness/contracts/notes-engineering-extension.json', import.meta.url), 'utf8'))
 Object.assign(source.paths, notesExtension.paths)
 Object.assign(source.components.schemas, notesExtension.schemas)
 source.components.schemas.Workspace.properties.capabilities = { $ref: '#/components/schemas/WorkspaceCapabilities' }
@@ -100,7 +100,7 @@ for (const code of ['NOTE_VERSION_CONFLICT', 'NEXT_WRITING_EXISTS', 'METHOD_NOT_
 }
 source['x-notes-extension-provenance'] = notesExtension.provenance
 
-const reviewExtension = JSON.parse(await readFile(new URL('../harness/contracts/review-engineering-extension.json', import.meta.url), 'utf8'))
+const reviewExtension = JSON.parse(await readFile(new URL('../../harness/contracts/review-engineering-extension.json', import.meta.url), 'utf8'))
 Object.assign(source.paths, reviewExtension.paths)
 Object.assign(source.components.schemas, reviewExtension.schemas)
 source.tags.push({ name: 'Evidence Review', description: 'Author-triggered, fixed-revision continuity review. Verified quotes are evidence, not verified AI judgments.' })

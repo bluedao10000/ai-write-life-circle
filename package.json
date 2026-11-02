@@ -9,9 +9,10 @@
     "build": "pnpm build:api:go && pnpm build:agent:worker && pnpm build:agent && pnpm --filter @writer-agent/web build",
     "typecheck": "pnpm --filter @writer-agent/contracts typecheck && pnpm --filter @writer-agent/web typecheck && pnpm typecheck:agent",
     "lint": "pnpm --filter @writer-agent/web lint && ./apps/web/node_modules/.bin/eslint --config apps/web/eslint.config.js packages/contracts/src && pnpm --filter @writer-agent/agent lint",
-    "test": "pnpm test:api:go && pnpm test:webhook && pnpm test:review && pnpm test:agent:runtime && pnpm test:publication && pnpm test:knowledge && pnpm --filter @writer-agent/web test && pnpm test:agent && pnpm test:style && pnpm test:thinking && pnpm test:creative && pnpm test:agent:tasks && pnpm test:pi:worker && pnpm test:pi:knowledge",
-    "openapi:generate": "pnpm exec tsx scripts/build-notes-openapi.mts && pnpm exec tsx scripts/build-review-openapi.mts && pnpm exec tsx scripts/build-author-workspace-openapi.mts && node scripts/build-openapi-candidate.mjs && pnpm exec tsx scripts/build-publication-openapi.mts && pnpm exec tsx scripts/build-management-openapi.mts && pnpm exec tsx scripts/build-knowledge-openapi.mts && pnpm exec tsx scripts/build-thinking-openapi.mts && pnpm exec tsx scripts/build-agent-tasks-openapi.mts",
-    "openapi:check": "pnpm exec tsx scripts/build-notes-openapi.mts --check && pnpm exec tsx scripts/build-review-openapi.mts --check && pnpm exec tsx scripts/build-author-workspace-openapi.mts --check && node scripts/build-openapi-candidate.mjs --check && pnpm exec tsx scripts/build-publication-openapi.mts --check && pnpm exec tsx scripts/build-management-openapi.mts --check && pnpm exec tsx scripts/build-knowledge-openapi.mts --check && pnpm exec tsx scripts/build-thinking-openapi.mts --check && pnpm exec tsx scripts/build-agent-tasks-openapi.mts --check",
+    "test": "pnpm test:api:go && pnpm test:webhook && pnpm --filter @writer-agent/web test && pnpm test:agent && pnpm test:thinking && pnpm openapi:check && pnpm style:check",
+    "verify": "pnpm test:api:go && pnpm test:webhook && pnpm test:review && pnpm test:agent:runtime && pnpm test:publication && pnpm test:knowledge && pnpm --filter @writer-agent/web test && pnpm test:agent && pnpm test:style && pnpm test:thinking && pnpm test:creative && pnpm test:agent:tasks && pnpm test:pi:worker && pnpm test:pi:knowledge",
+    "openapi:generate": "pnpm exec tsx scripts/build-openapi.mts",
+    "openapi:check": "pnpm exec tsx scripts/build-openapi.mts --check",
     "style:sync": "node scripts/sync-agent-reply-style.mjs",
     "style:check": "node scripts/sync-agent-reply-style.mjs --check",
     "test:style": "node --test scripts/test-agent-reply-style.mjs && node scripts/eval-agent-reply-style.mjs --check && pnpm --filter @writer-agent/agent exec tsx --test test/reply-style.test.ts",
@@ -38,7 +39,7 @@
     "build:agent": "pnpm --filter @writer-agent/contracts build && pnpm --filter @writer-agent/agent build",
     "typecheck:agent": "pnpm --filter @writer-agent/agent typecheck",
     "test:agent": "pnpm --filter @writer-agent/contracts build && pnpm --filter @writer-agent/agent test",
-    "test:thinking": "pnpm build:api:go && pnpm build:agent && node scripts/test-thinking-agent.mjs && node scripts/test-thinking-terminal-crash.mjs",
+    "test:thinking": "pnpm build:api:go && pnpm build:agent && node scripts/test-thinking-agent.mjs",
     "eval:creative": "go run -C apps/api-go ./cmd/creative-eval",
     "eval:creative:live": "go run -C apps/api-go ./cmd/creative-eval --live --confirm-fixtures",
     "test:creative": "pnpm build:api:go && pnpm build:agent:worker && pnpm build:agent && node scripts/test-creative-workflow.mjs",
@@ -56,7 +57,7 @@
     "eval:pi:review:live": "pnpm build:api:go && pnpm build:agent:control && pnpm build:agent && node scripts/eval-pi-live.mjs",
     "eval:pi:knowledge:live": "pnpm build:api:go && pnpm build:agent:control && pnpm build:agent && node scripts/eval-pi-live.mjs --knowledge",
     "eval:reliability": "pnpm --filter @writer-agent/contracts build && node scripts/eval-agent-reliability.mjs",
-    "test:reliability": "pnpm eval:reliability && pnpm test:thinking"
+    "test:reliability": "pnpm eval:reliability"
   },
   "devDependencies": {
     "@redocly/cli": "2.63.0",

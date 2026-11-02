@@ -1,6 +1,6 @@
 import {readFile,writeFile} from "node:fs/promises";
 import {z} from "zod";
-import * as c from "../packages/contracts/src/agent-tasks.js";
+import * as c from "../../packages/contracts/src/agent-tasks.js";
 const schemas=Object.fromEntries(Object.entries(c).filter(([k])=>k.endsWith("Schema")).map(([k,v])=>[k.slice(0,-6),z.toJSONSchema(v as z.ZodType,{target:"draft-2020-12"})]));
 const ref=(name:string)=>({$ref:"#/components/schemas/"+name});
 const operation=(id:string,input:string,output:string)=>({operationId:id,summary:id,security:[{workerService:[]}],requestBody:{required:true,content:{"application/json":{schema:ref(input)}}},responses:{"200":{description:"Acknowledged",content:{"application/json":{schema:ref(output)}}},"401":{description:"Invalid private Worker credential"},"409":{description:"Configuration, grant, or lease fenced"}}});

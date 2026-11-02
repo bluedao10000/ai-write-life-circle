@@ -1,5 +1,5 @@
 import { readFile, writeFile } from "node:fs/promises";
-import { knowledgeJsonSchemas as schemas } from "../packages/contracts/src/knowledge.js";
+import { knowledgeJsonSchemas as schemas } from "../../packages/contracts/src/knowledge.js";
 const param = {
   name: "bookId",
   in: "path",
@@ -161,7 +161,7 @@ const doc = {
   },
 };
 const output = JSON.stringify(doc, null, 2) + "\n",
-  path = new URL("../harness/contracts/knowledge-api-v1.json", import.meta.url);
+  path = new URL("../../harness/contracts/knowledge-api-v1.json", import.meta.url);
 if (process.argv.includes("--check")) {
   if ((await readFile(path, "utf8")) !== output)
     throw new Error("Knowledge OpenAPI stale");

@@ -1,5 +1,5 @@
 import { readFile, writeFile } from 'node:fs/promises'
-import { publicationJsonSchemas } from '../packages/contracts/src/publication.js'
+import { publicationJsonSchemas } from '../../packages/contracts/src/publication.js'
 
 const ref = (name: string) => ({ $ref: `#/components/schemas/${name}` })
 const param = (name: string) => ({
@@ -191,7 +191,7 @@ const doc = {
 }
 const text = `${JSON.stringify(doc, null, 2)}\n`
 const output = new URL(
-  '../harness/contracts/publication-api-v1.json',
+  '../../harness/contracts/publication-api-v1.json',
   import.meta.url,
 )
 if (process.argv.includes('--check')) {

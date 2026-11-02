@@ -1,5 +1,5 @@
 import { readFile, writeFile } from 'node:fs/promises'
-import { notesJsonSchemas } from '../packages/contracts/src/notes.js'
+import { notesJsonSchemas } from '../../packages/contracts/src/notes.js'
 
 const ref = (name: string) => ({ $ref: `#/components/schemas/${name}` })
 const response = (name: string) => ({
@@ -84,7 +84,7 @@ const extension = {
   },
   schemas,
 }
-const path = new URL('../harness/contracts/notes-engineering-extension.json', import.meta.url)
+const path = new URL('../../harness/contracts/notes-engineering-extension.json', import.meta.url)
 const text = `${JSON.stringify(extension, null, 2)}\n`
 if (process.argv.includes('--check')) {
   if ((await readFile(path, 'utf8').catch(() => '')) !== text)

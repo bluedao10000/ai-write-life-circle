@@ -1,5 +1,5 @@
 import { readFile, writeFile } from 'node:fs/promises'
-import { reviewJsonSchemas } from '../packages/contracts/src/reviews.js'
+import { reviewJsonSchemas } from '../../packages/contracts/src/reviews.js'
 const param = (name: string) => ({ name, in: 'path', required: true, schema: { type: 'string', minLength: 1 } })
 const response = (schema: string) => ({ description: 'Author-scoped evidence review result', content: { 'application/json': { schema: { $ref: `#/components/schemas/${schema}` } } } })
 function operation(id: string, result: string, params: string[], input?: string, mutation = false) {
@@ -21,14 +21,14 @@ const extension = { provenance: 'Sprint 3 author request: fixed revisions, expli
     [`${run}/findings/{findingId}/feedback`]: { post: operation('feedbackEvidenceReview','ReviewRun',['projectId','runId','findingId'],'ReviewFeedbackInput',true) },
   }, schemas: reviewJsonSchemas }
 const generated = `${JSON.stringify(extension,null,2)}\n`
-const path = new URL('../harness/contracts/review-engineering-extension.json', import.meta.url)
+const path = new URL('../../harness/contracts/review-engineering-extension.json', import.meta.url)
 if (process.argv.includes('--check')) {
   if (await readFile(path,'utf8').catch(()=>'') !== generated) throw new Error('Review contract extension is stale. Run pnpm openapi:generate.')
  } else await writeFile(path,generated)
 const candidateSchema = { ...reviewJsonSchemas.ReviewCandidate } as Record<string, unknown>
 delete candidateSchema.$schema
 const schemaText = `${JSON.stringify(candidateSchema, null, 2)}\n`
-const schemaPath = new URL('../apps/api-go/internal/review/candidate.schema.json', import.meta.url)
+const schemaPath = new URL('../../apps/api-go/internal/review/candidate.schema.json', import.meta.url)
 if (process.argv.includes('--check')) {
   if (await readFile(schemaPath, 'utf8').catch(() => '') !== schemaText) throw new Error('Embedded review schema is stale.')
 } else await writeFile(schemaPath, schemaText)

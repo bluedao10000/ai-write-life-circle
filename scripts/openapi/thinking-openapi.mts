@@ -1,6 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { z } from "zod";
-import * as c from "../packages/contracts/src/thinking.js";
+import * as c from "../../packages/contracts/src/thinking.js";
 const schemas = Object.fromEntries(
   Object.entries(c)
     .filter(([key]) => key.endsWith("Schema"))
@@ -166,7 +166,7 @@ const doc = {
   },
 };
 const path = new URL(
-    "../harness/contracts/thinking-api-v1.json",
+    "../../harness/contracts/thinking-api-v1.json",
     import.meta.url,
   ),
   text = JSON.stringify(doc, null, 2) + "\n";

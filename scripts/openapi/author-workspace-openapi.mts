@@ -1,8 +1,8 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { z } from 'zod'
-import { workspaceResumeSchema } from '../packages/contracts/src/resume.js'
-import { chapterRevisionContentV04Schema } from '../packages/contracts/src/v04.js'
-import { reviewAllowanceSchema } from '../packages/contracts/src/billing-review.js'
+import { workspaceResumeSchema } from '../../packages/contracts/src/resume.js'
+import { chapterRevisionContentV04Schema } from '../../packages/contracts/src/v04.js'
+import { reviewAllowanceSchema } from '../../packages/contracts/src/billing-review.js'
 const extension = {
   schemas: { ReviewAllowance: z.toJSONSchema(reviewAllowanceSchema, { target: 'draft-2020-12' }), ChapterRevisionContent: z.toJSONSchema(chapterRevisionContentV04Schema, { target: 'draft-2020-12' }), WorkspaceResume: z.toJSONSchema(workspaceResumeSchema, { target: 'draft-2020-12' }) },
   paths: {
