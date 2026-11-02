@@ -105,7 +105,7 @@ export function ModelPicker({ models, value, onPick, disabled, wide }: {
   )
 }
 
-export function Composer({ value, onChange, onSend, onStop, running, sending, canSend, quote, inputRef, landing, wide, picker, disabled }: {
+export function Composer({ value, onChange, onSend, onStop, running, sending, canSend, quote, inputRef, landing, wide, picker, sourceAccess, disabled }: {
   value: string
   onChange: (v: string) => void
   onSend: () => void
@@ -120,6 +120,7 @@ export function Composer({ value, onChange, onSend, onStop, running, sending, ca
   landing: boolean
   wide: boolean
   picker: ReactNode
+  sourceAccess?: ReactNode
   disabled?: boolean
 }) {
   const coarse = useMedia('(pointer: coarse)')
@@ -145,6 +146,7 @@ export function Composer({ value, onChange, onSend, onStop, running, sending, ca
         }}
         className={`scroll field-sizing-content px-4 pt-3.5 pb-1 ${landing ? 'min-h-18 max-h-72' : 'min-h-11 max-h-60 max-md:max-h-36'}`}
       />
+      {sourceAccess && <div className="px-3 pb-1">{sourceAccess}</div>}
       <div className="flex min-w-0 items-center gap-2 px-2 pb-2">
         {picker}
         {wide && <span className="ml-auto shrink-0 text-micro text-ink-4">{running ? '回复中…' : sending ? '正在发送…' : 'Enter 发送 · Shift + Enter 换行'}</span>}

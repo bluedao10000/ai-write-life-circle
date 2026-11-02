@@ -385,6 +385,13 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
       landing={landing}
       wide={wide}
       picker={picker}
+      sourceAccess={
+        <Btn size="sm" onClick={() => setAccess(true)} ariaLabel={`选择作品资料，${scopeSummary(t.scopes)}`} className="max-w-full text-ink-3 max-md:min-h-11">
+          <Icon name="book" className="h-3.5 w-3.5" />
+          <span className="truncate">{t.scopes.length ? scopeSummary(t.scopes) : '作品资料未开启'}</span>
+          <Icon name="chevronDown" className="h-3 w-3" />
+        </Btn>
+      }
       disabled={t.busy && !running}
     />
   )

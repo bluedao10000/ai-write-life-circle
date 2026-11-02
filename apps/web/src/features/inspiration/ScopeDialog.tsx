@@ -41,7 +41,7 @@ export default function ScopeDialog({ scopes, onSave, onClose }: { scopes: Scope
         </>
       }
     >
-      <p className="mb-4 text-ui-sm text-ink-2">默认只讨论你发送的内容。开启下面的范围后，创作伙伴可以在需要时只读查阅本作品资料；不会读取其他作品，也不会修改正文或正式设定。</p>
+      <p className="mb-4 text-ui-sm text-ink-2">选择讨论时可以参考的资料。分析本书人物或情节时，请开启已保存章节；章节查阅不依赖知识库整理是否完成。</p>
       <div className="space-y-3">
         {rows.map((r) => (
           <Choice key={r.key} checked={next.includes(r.key)} onChange={(on) => setNext((old) => (on ? [...old.filter((s) => s !== r.key), r.key] : old.filter((s) => s !== r.key)))}>

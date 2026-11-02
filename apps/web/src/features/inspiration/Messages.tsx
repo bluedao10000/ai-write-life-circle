@@ -34,9 +34,10 @@ export function Rich({ text, streaming }: { text: string; streaming?: boolean })
   )
 }
 
-/** Inline [[source:ID]] markers become numbered references to verified quotes. */
+/** Source markers become numbered references to the returned, verified quotes. */
 export function readable(m: ThinkingMessage) {
-  return m.text.replace(/\[\[source:([^\]]+)\]\]/g, (_all, id: string) => {
+  const text = m.sources.reduce((value, src, index) => value.split(`【${src.sourceId}】`).join(`［原文 ${index + 1}］`), m.text)
+  return text.replace(/\[\[source:([^\]]+)\]\]/g, (_all, id: string) => {
     const index = m.sources.findIndex((src) => src.sourceId === id)
     return index >= 0 ? `［原文 ${index + 1}］` : m.status === 'running' ? '［引文待核验］' : '［未核验引用］'
   })
@@ -174,7 +175,7 @@ export function Sources({ sources, onSource }: { sources: ThinkingSource[]; onSo
     <div className="mb-3 -ml-2">
       <Btn size="sm" pressed={open} onClick={() => setOpen(!open)} className="text-ink-3 max-md:min-h-11">
         <Icon name="book" className="h-3.5 w-3.5" />
-        已参考作品中的 {sources.length} 处原文
+        本轮查阅 {sources.length} 处原文
         <Icon name="chevron" className={`h-3 w-3 transition-transform duration-200 ease-calm ${open ? 'rotate-90' : ''}`} />
       </Btn>
       {open && (

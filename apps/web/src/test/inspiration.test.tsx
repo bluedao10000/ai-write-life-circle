@@ -41,6 +41,7 @@ describe('reply typography', () => {
   it('turns verified source markers into numbered references and flags unverified ones', () => {
     const src = { sourceId: 's1', chapterId: 'c', title: '第一章', revisionId: 'r', contentHash: 'h', quote: '原文', startUTF16: 0, endUTF16: 2, validity: 'current' as const }
     expect(readable(message({ text: '见[[source:s1]]与[[source:zz]]', sources: [src] }))).toBe('见［原文 1］与［未核验引用］')
+    expect(readable(message({ text: '身份【s1】，普通强调【重点】，未返回的来源【zz】', sources: [src] }))).toBe('身份［原文 1］，普通强调【重点】，未返回的来源【zz】')
   })
   it('keeps tool details folded until the author asks', async () => {
     render(<Pending tool="search_knowledge" steps={[{ id: 1, tool: 'search_knowledge', done: false }]} />)
@@ -163,6 +164,26 @@ describe('灵感 workspace', () => {
     expect(s.thinking.setDraft).toHaveBeenCalledWith('有个角色我还没完全想透：')
     expect(s.thinking.send).not.toHaveBeenCalled()
     expect(screen.getByRole('button', { name: '发送' })).toBeDisabled()
+  })
+  it.each([true, false])('shows source access by the composer and saves only selected material (wide=%s)', async (wide) => {
+    setWide(wide)
+    const saveScopes = vi.fn().mockResolvedValue(true)
+    const s = studio({ saveScopes })
+    const { rerender } = render(<InspirationWorkspace studio={s} />)
+    const access = screen.getByRole('button', { name: '选择作品资料，仅限对话内容' })
+    expect(access).toBeVisible()
+    expect(access).toHaveTextContent('作品资料未开启')
+    await userEvent.click(access)
+    const dialog = screen.getByRole('dialog', { name: '本作品的 AI 资料范围' })
+    const chapters = within(dialog).getByRole('checkbox', { name: /本作品已保存章节/ })
+    expect(chapters).not.toBeChecked()
+    await userEvent.click(chapters)
+    await userEvent.click(within(dialog).getByRole('button', { name: '保存范围' }))
+    expect(saveScopes).toHaveBeenCalledWith(['chapters'])
+    expect(s.thinking.send).not.toHaveBeenCalled()
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    rerender(<InspirationWorkspace studio={studio({ scopes: ['chapters'] })} />)
+    expect(screen.getByRole('button', { name: '选择作品资料，已开启 1 项作品资料' })).toBeVisible()
   })
   it('sends straight away with no consent dialog and shows the question as 正在发送 until confirmed', async () => {
     setWide(true)

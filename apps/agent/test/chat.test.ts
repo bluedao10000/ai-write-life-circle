@@ -41,6 +41,8 @@ test('ordinary creativity uses one call; ten messages, model switch, replay and 
     await host.create({sessionId:id,authorId:'a',bookId:'b',createdAt:new Date().toISOString(),model:chosen,scopes:[],capability:'fixture'});
     const receipt=await send(question,'first');
     assert.equal(host.get(id).view.messages.at(-1)?.status,'completed');assert.equal(count,1);assert.equal(networkTools,0);
+    assert.match(JSON.stringify(payloads.at(-1)), /Current source access: none/);
+    assert.match(JSON.stringify(payloads.at(-1)), /selected book is not automatically in your context/i);
     assert.deepEqual(await send(question,'first'),receipt);assert.equal(count,1);
     for(let i=1;i<10;i++) await send('继续讨论选择 '+i,'next-'+i);
     chosen=openai;await send('从另一个角度继续','switch');
@@ -52,8 +54,14 @@ test('ordinary creativity uses one call; ten messages, model switch, replay and 
     assert.equal(host.get(id).view.messages.length,22);
     scopes=['knowledge'];mode='loop';await send('查询作品资料','loop');
     assert.equal(host.get(id).view.messages.at(-1)?.status,'completed');
+    assert.match(JSON.stringify(payloads.at(-1)), /chapters: unavailable; knowledge: available/);
+    assert.doesNotMatch(JSON.stringify(payloads.at(-1)), /Current source access: none/);
     assert.equal(networkTools,1,'identical tool lookups are not repeated');
     assert.equal(payloads.at(-1)?.tool_choice,'none','last turn summarizes without tools');
+    scopes=[];mode='chat';await send('总结一下这个人物','revoked-sources');
+    assert.match(JSON.stringify(payloads.at(-1)), /Current source access: none/);
+    assert.doesNotMatch(JSON.stringify(payloads.at(-1)), /knowledge: available/);
+    assert.equal((payloads.at(-1)?.tools as unknown[] | undefined)?.length ?? 0, 0);
     mode='limited';await send('限流测试','limited');assert.equal(host.get(id).view.messages.at(-1)?.status,'failed');
     mode='empty';await send('空结果测试','empty');assert.equal(host.get(id).view.messages.at(-1)?.status,'failed');
     assert.notEqual(host.get(id).view.messages.at(-1)?.errorCode,undefined);

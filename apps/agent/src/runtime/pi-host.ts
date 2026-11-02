@@ -24,12 +24,12 @@ import type {
 import { modelEntries, modelId, type Config } from "../config.js";
 import { Store, type Saved } from "../sessions/store.js";
 import { tools, authorize } from "../tools/registry.js";
-import { systemPrompt } from "../agents/thinking/prompt.js";
+import { sourceAccessInstruction, systemPrompt } from "../agents/thinking/prompt.js";
 /** Discussion-memory summaries per reply; a summary that needs more is not safe to trust. */
 const MAX_MEMORY_CALLS = 3;
 /** Same relative weights as Go billing.PointsFor (output tokens cost 4× input). */
 const weighted = (input: number, output: number) => input + 4 * output;
-const CLOSING_INSTRUCTION = "Stop retrieving. Answer the author's question now from available information, clearly state gaps, and offer a concise useful conclusion. Do not call tools.";
+const CLOSING_INSTRUCTION = "Stop retrieving. Answer concisely. Ground manuscript facts in retrieved or supplied passages; state gaps instead of guessing. General ideas remain welcome. Do not call tools.";
 /** A closing turn may only answer in prose. Tool calls emitted anyway are discarded, never executed. */
 export function withoutToolCalls(message: AssistantMessage): AssistantMessage {
   if (!message.content.some((c) => c.type === "toolCall")) return message;
@@ -52,7 +52,7 @@ export const safeCode = (e: unknown) =>
         /^(AUTHORIZATION_REVOKED|SESSION_INTERRUPTED|TOOL_RESULT_TOO_LARGE|TOOL_TIMEOUT|TOOL_EXECUTION_FAILED|PROVIDER_UNAVAILABLE|INPUT_BUDGET_EXCEEDED|CONTEXT_SUMMARY_FAILED)$/.test(e.message)
       ? e.message
       : "AGENT_EXECUTION_FAILED";
-export function loader(): ResourceLoader {
+export function loader(prompt = systemPrompt): ResourceLoader {
   return {
     getExtensions: () => ({
       extensions: [],
@@ -63,7 +63,7 @@ export function loader(): ResourceLoader {
     getPrompts: () => ({ prompts: [], diagnostics: [] }),
     getThemes: () => ({ themes: [], diagnostics: [] }),
     getAgentsFiles: () => ({ agentsFiles: [] }),
-    getSystemPrompt: () => systemPrompt,
+    getSystemPrompt: () => prompt,
     getSystemPromptSource: () => undefined,
     getAppendSystemPrompt: () => [],
     getAppendSystemPromptSources: () => [],
@@ -343,13 +343,14 @@ export class PiHost {
       message = s.view.messages.at(-1)!,
       sources = new Map<string, ThinkingSource>(),
       run = s.view.run!,
-      usageBefore = {...s.view.usage};
+      usageBefore = {...s.view.usage},
+      prompt = systemPrompt + "\n\n" + sourceAccessInstruction(s.view.scopes, s.view.model.toolCalling);
     const started = performance.now();
     const runUsage = () => ({input:s.view.usage.input-usageBefore.input,output:s.view.usage.output-usageBefore.output,charged:s.view.usage.charged-usageBefore.charged,incomplete:s.view.usage.incomplete});
     // A chat with no allowed tools is a single completion, not a six-turn agent reservation.
     if ((!s.view.scopes.length || s.view.model.toolCalling === false) && !input.compact) limit.maxTurnsPerRequest = Math.min(2, limit.maxTurnsPerRequest);
-    // Historical cards remain on their original messages. A new answer can only
-    // attach sources fetched through this turn's currently authorized Story Tools.
+    // Keep every passage read this turn so the author can check the answer even
+    // when the model omits inline citations. Historical cards stay on their turns.
     // Reply turns and discussion-memory calls are budgeted separately: summarizing a
     // long chat must never consume the turns the author's actual answer needs.
     // Both still reserve and settle usage through the same accounting below.
@@ -557,7 +558,7 @@ export class PiHost {
       const toolSchemas = custom.length ? JSON.stringify(custom.map(t => ({name: t.name, description: t.description, parameters: t.parameters}))) + CLOSING_INSTRUCTION : "";
       const history = s.view.messages.slice(0, input.recovery ? s.view.messages.findIndex(m => m.id === s.checkpoint!.messageId) : -2);
       const memory = await manageDiscussion(input.recovery?.continuationContext ? [] : history, input.recovery?.continuationContext ? undefined : s.discussionMemory, limit.maxInputTokens,
-        systemPrompt + input.text + toolSchemas, async quoted => {
+        prompt + input.text + toolSchemas, async quoted => {
           persist({type:"compaction",text:"正在整理讨论上下文。"});
           const stream = runtime.streamSimple(model, {systemPrompt:memoryInstruction,messages:[{role:"user",content:quoted,timestamp:Date.now()}]}, {signal:active.abort.signal});
           const result = await stream.result();
@@ -604,7 +605,7 @@ export class PiHost {
           "mcp__*",
         ],
         customTools: custom,
-        resourceLoader: loader(),
+        resourceLoader: loader(prompt),
         sessionManager: manager,
         settingsManager: SettingsManager.inMemory({
           compaction: { enabled: false },
@@ -636,7 +637,7 @@ export class PiHost {
             return;
           }
           message.text += text;
-          message.sources = [...sources.values()].filter(src=>message.text.includes(`[[source:${src.sourceId}]]`));
+          message.sources = [...sources.values()];
           message.status = "running";
           persist({ type: "text_delta", messageId: message.id, text });
         }
@@ -699,9 +700,7 @@ export class PiHost {
       alive();
       if (errorCode) throw new AgentError(errorCode);
       if (!message.text.trim()) throw new AgentError("MODEL_EMPTY_RESPONSE");
-      message.sources = [...sources.values()].filter((src) =>
-        message.text.includes(`[[source:${src.sourceId}]]`),
-      );
+      message.sources = [...sources.values()];
       // Unrecognized inline markers remain plain prose; only tool-backed cards are evidence.
       message.status = "completed";
       run.status = "completed"; run.stepType = "completed"; run.resumable = false;
@@ -713,7 +712,7 @@ export class PiHost {
       this.event(s, {type:"sources",messageId:message.id,sources:message.sources}, false);
       this.event(s, {type:"message_completed",messageId:message.id}, false);
     } catch (e) {
-      message.sources = [...sources.values()].filter(src=>message.text.includes(`[[source:${src.sourceId}]]`));
+      message.sources = [...sources.values()];
       // Retain accepted input and completed internal messages after a failed turn.
       if (session) s.entries = [session.sessionManager.getHeader(), ...session.sessionManager.getEntries()].filter((v): v is FileEntry => v !== null);
       message.errorCode =
