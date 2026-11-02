@@ -1,4 +1,4 @@
-import {manageDiscussion, memoryInstruction, inputBytes, discussionText} from "./context-management.js";
+import {manageDiscussion, memoryInstruction, providerInput, inputTokenBound, discussionText, type MeasuredInput, type ProviderInput} from "./context-management.js";
 import { failureFor, traceRun } from "./reliability.js";
 import { canonicalJSON, modelIdentity } from "./fingerprint.js";
 import {configuredModel,boundedModelFetch,completionUsage} from "./model-gateway.js";
@@ -397,6 +397,7 @@ export class PiHost {
       const cfg = {...this.config, model: configured.model, key: configured.key};
       const {runtime,model}=await configuredModel(cfg.model.endpoint,cfg.model.model,cfg.key,cfg.model.contextWindow ?? limit.maxInputTokens + limit.maxOutputTokens,limit.maxOutputTokens);
       const original = runtime.streamSimple.bind(runtime);
+      let measuredInput: MeasuredInput | undefined;
       runtime.streamSimple = (model, context, options) => {
         const stream = createAssistantMessageEventStream();
         void (async () => {
@@ -404,38 +405,15 @@ export class PiHost {
             alive();
             await authorize(this.config, capability, active.abort.signal);
             alive();
-            const inputBound =
-                inputBytes(context),
-              reserve = inputBound + limit.maxOutputTokens;
-            const memoryCall = phase === "memory",
-              bound = weighted(inputBound, limit.maxOutputTokens);
-            if (inputBound > limit.maxInputTokens)
-              throw new AgentError("INPUT_BUDGET_EXCEEDED", 429);
+            const memoryCall = phase === "memory";
             if (memoryCall) {
-              // A summary may only use the reservation while a full reply turn still
-              // fits after it; otherwise this attempt stops with a recoverable failure.
-              if (++memoryCalls > MAX_MEMORY_CALLS || spent + bound + turnCost > pool) throw new AgentError("CONTEXT_SUMMARY_FAILED", 429);
-            } else if (++turns > limit.maxTurnsPerRequest || spent + bound > pool)
+              if (++memoryCalls > MAX_MEMORY_CALLS) throw new AgentError("CONTEXT_SUMMARY_FAILED", 429);
+            } else if (++turns > limit.maxTurnsPerRequest)
               throw new AgentError("TURN_BUDGET_EXCEEDED", 429);
-            // The closing turn answers from what is already known: no tools are offered,
-            // the turn/tool budget is reached, or another turn would not fit the
-            // reservation. Tool calls the model still emits are dropped, never executed.
-            const closing = !memoryCall && (!toolsOffered() || turns >= limit.maxTurnsPerRequest || calls >= limit.maxToolCalls || spent + bound + turnCost > pool);
             const requestId = run.runId + ":" + (memoryCall ? "memory-" + memoryCalls : turns);
-            spent += bound;
-            if (s.view.usage.charged + reserve > limit.maxSessionTokens)
-              throw new AgentError("SESSION_BUDGET_EXCEEDED", 429);
-            // Reserve before network; never refund unknown/crashed usage. Charged is a
-            // conservative token ceiling, not a currency estimate.
-            s.view.usage.charged += reserve;
-            const hadIncomplete = s.view.usage.incomplete;
-            s.view.usage.incomplete = true;
-            persist({ type: "usage", usage: { ...s.view.usage } });
+            let closing = false, reserve = 0, bound = 0, reserved = false, hadIncomplete = false;
+            let requestInput: ProviderInput | undefined, requestError: string | undefined;
             const providerUsage: {reported:ReturnType<typeof completionUsage>;seen:boolean} = {reported:null,seen:false};
-            run.status = "running"; run.stepType = "provider"; run.modelCalls++;
-            run.updatedAt = new Date().toISOString();run.durationMs=Math.max(0,performance.now()-started);
-            persist({type:"usage",usage:{...s.view.usage}});
-            traceRun(id,run,runUsage());
             let transportCode = "";
             const providerStream = original(model, context, {
               ...options,
@@ -447,18 +425,43 @@ export class PiHost {
                 transportCode = code === "LLM_CONTEXT_OVERFLOW" ? "CONTEXT_OVERFLOW" : status === 429 ? "RATE_LIMITED" : status === 401 || status === 403 || status === 404 ? "MODEL_CONFIGURATION_ERROR" : code === "LLM_RESPONSE_TOO_LARGE" ? "MODEL_OUTPUT_INCOMPLETE" : "PROVIDER_UNAVAILABLE";
               }),
               onPayload(value) {
-                const payload = value as Record<string, unknown>;
-                delete payload.max_tokens; delete payload.max_completion_tokens;
-                payload[cfg.model.tokenParameter ?? "max_tokens"] = limit.maxOutputTokens;
-                if (cfg.model.providerOptions === "deepseek") payload.thinking = {type: "disabled"};
-                if (closing && toolsOffered()) {
-                  // OpenAI-compatible APIs reject tool_choice without tools, and earlier
-                  // tool messages stay in the history; keep definitions, forbid calls.
-                  if (Array.isArray(payload.tools) && payload.tools.length) payload.tool_choice = "none";
-                  else { delete payload.tools; delete payload.tool_choice; }
-                  if (Array.isArray(payload.messages)) payload.messages.push({role: "system", content: CLOSING_INSTRUCTION});
-                }
-                return payload;
+                try {
+                  const payload = value as Record<string, unknown>;
+                  delete payload.max_tokens; delete payload.max_completion_tokens;
+                  payload[cfg.model.tokenParameter ?? "max_tokens"] = limit.maxOutputTokens;
+                  if (cfg.model.providerOptions === "deepseek") payload.thinking = {type: "disabled"};
+                  requestInput = providerInput(payload);
+                  let inputBound = inputTokenBound(requestInput, measuredInput);
+                  bound = weighted(inputBound, limit.maxOutputTokens);
+                  closing = !memoryCall && (!toolsOffered() || turns >= limit.maxTurnsPerRequest || calls >= limit.maxToolCalls || spent + bound + turnCost > pool);
+                  if (closing && toolsOffered()) {
+                    // OpenAI-compatible APIs reject tool_choice without tools, and earlier
+                    // tool messages stay in the history; keep definitions, forbid calls.
+                    if (Array.isArray(payload.tools) && payload.tools.length) payload.tool_choice = "none";
+                    else { delete payload.tools; delete payload.tool_choice; }
+                    if (Array.isArray(payload.messages)) payload.messages.push({role: "system", content: CLOSING_INSTRUCTION});
+                    requestInput = providerInput(payload);
+                    inputBound = inputTokenBound(requestInput, measuredInput);
+                    bound = weighted(inputBound, limit.maxOutputTokens);
+                  }
+                  if (inputBound > limit.maxInputTokens) throw new AgentError("INPUT_BUDGET_EXCEEDED", 429);
+                  if (memoryCall && spent + bound + turnCost > pool) throw new AgentError("CONTEXT_SUMMARY_FAILED", 429);
+                  if (spent + bound > pool) throw new AgentError("TURN_BUDGET_EXCEEDED", 429);
+                  reserve = inputBound + limit.maxOutputTokens;
+                  if (s.view.usage.charged + reserve > limit.maxSessionTokens) throw new AgentError("SESSION_BUDGET_EXCEEDED", 429);
+                  // This hook runs after SDK serialization and before any provider request.
+                  // Unknown/crashed usage retains the reservation; known usage settles below.
+                  spent += bound;
+                  s.view.usage.charged += reserve;
+                  hadIncomplete = s.view.usage.incomplete;
+                  s.view.usage.incomplete = true;
+                  reserved = true;
+                  run.status = "running"; run.stepType = "provider"; run.modelCalls++;
+                  run.updatedAt = new Date().toISOString();run.durationMs=Math.max(0,performance.now()-started);
+                  persist({type:"usage",usage:{...s.view.usage}});
+                  traceRun(id,run,runUsage());
+                  return payload;
+                } catch (e) { requestError = safeCode(e); throw e; }
               },
               onProviderStreamEvent(value, eventModel) {
                 const raw=(value as {usage?:Record<string,unknown>})?.usage;
@@ -474,12 +477,13 @@ export class PiHost {
               if (event.type === "done" || event.type === "error") {
                 const m = event.type === "done" ? event.message : event.error;
                 const reported = providerUsage.reported;
-                if (m.usage.totalTokens > 0 && (!providerUsage.seen || reported)) {
+                if (reserved && m.usage.totalTokens > 0 && (!providerUsage.seen || reported)) {
                   const totalInput=reported?.inputTokens ?? (m.usage.input+m.usage.cacheRead+m.usage.cacheWrite);
                   const cachedInput=reported?.cachedInputTokens ?? m.usage.cacheRead;
                   const output=reported?.outputTokens ?? m.usage.output;
                   const validTotal=Number.isInteger(totalInput)&&totalInput>=0&&totalInput<=1000000&&Number.isInteger(output)&&output>=0&&output<=limit.maxOutputTokens;
                   if(validTotal){
+                    if (requestInput) measuredInput = {input: requestInput, tokens: totalInput};
                     // Settle a known reservation. Unknown/crashed attempts retain the full ceiling.
                     s.view.usage.charged += Math.max(0,totalInput+output) - reserve;
                     s.view.usage.input += totalInput;
@@ -491,9 +495,9 @@ export class PiHost {
                 }
                 if (m.stopReason === "length") errorCode = "MODEL_OUTPUT_INCOMPLETE";
                 if (m.stopReason === "error" || m.stopReason === "aborted")
-                  errorCode = transportCode || (/context.{0,30}(length|window|limit)|maximum.{0,15}tokens|context_length_exceeded/i.test(m.errorMessage ?? "") ? "CONTEXT_OVERFLOW" : "MODEL_REQUEST_FAILED");
+                  errorCode = requestError || transportCode || (/context.{0,30}(length|window|limit)|maximum.{0,15}tokens|context_length_exceeded/i.test(m.errorMessage ?? "") ? "CONTEXT_OVERFLOW" : "MODEL_REQUEST_FAILED");
                 if(event.type === "error") m.errorMessage = errorCode ?? "MODEL_REQUEST_FAILED";
-                checkpoint("provider");
+                if (reserved) checkpoint("provider");
               }
               if (closing && event.type.startsWith("toolcall_")) continue;
               if (closing && event.type === "done") {

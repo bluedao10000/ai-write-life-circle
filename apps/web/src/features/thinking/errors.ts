@@ -20,7 +20,7 @@ const messages: Record<string, string> = {
   TOOL_BUDGET_EXCEEDED: '这一轮能翻查的资料已经到头，可以就已有内容接着问。',
   CONTEXT_OVERFLOW: '讨论较长，点击继续回复即可接着聊。',
   CONTEXT_SUMMARY_FAILED: '讨论较长，点击继续回复即可接着聊。',
-  INPUT_BUDGET_EXCEEDED: '讨论太长，点击继续回复将整理最近的讨论。',
+  INPUT_BUDGET_EXCEEDED: '这轮问题和参考资料超出容量，请缩小范围后再试。',
   SESSION_BUDGET_EXCEEDED: '这次讨论的额度用完了，可以新开一段接着聊，之前的记录都在。',
   SESSION_HISTORY_LIMIT: '这次讨论已很长，请新开话题继续。',
   MODEL_OUTPUT_INCOMPLETE: '回复太长，没能写完。已收到的内容已保留，可以接着追问。',

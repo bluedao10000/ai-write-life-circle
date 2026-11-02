@@ -10,6 +10,20 @@ export function inputBytes(value: unknown) {
   // A conservative upper bound, deliberately not advertised as a tokenizer.
   return Buffer.byteLength(JSON.stringify(value)) + 4096;
 }
+export type ProviderInput = { messages: string[]; tools: string };
+export type MeasuredInput = { input: ProviderInput; tokens: number };
+export function providerInput(payload: Record<string, unknown>): ProviderInput {
+  return {messages: (payload.messages as unknown[]).map(message => JSON.stringify(message)), tools: JSON.stringify(payload.tools ?? [])};
+}
+/** Count only the provider payload. SDK details contain duplicate evidence and never reach the model. */
+export function inputTokenBound(input: ProviderInput, previous?: MeasuredInput): number {
+  const bytes = (messages: string[]) => messages.reduce((sum, text) => sum + Buffer.byteLength(text) + 1, 2);
+  const full = bytes(input.messages) + Buffer.byteLength(input.tools) + 4096;
+  if (!previous || previous.input.tools !== input.tools || !previous.input.messages.every((text, i) => input.messages[i] === text)) return full;
+  // The unchanged prefix already has a measured token count. New UTF-8 bytes
+  // bound the appended text, with room for chat framing at the new boundaries.
+  return Math.min(full, previous.tokens + bytes(input.messages.slice(previous.input.messages.length)) + 1024);
+}
 export async function manageDiscussion(
   messages: ThinkingMessage[], memory: DiscussionMemory | undefined,
   budget: number, current: string, summarize: (text: string) => Promise<string>,
