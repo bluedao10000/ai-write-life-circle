@@ -91,6 +91,12 @@ func (s *Service) Mutate(ctx context.Context, a application.Actor, action, key s
 			if s.Client == nil && (!s.QueueOnly || s.Config.ValidatePublic() != nil) {
 				return false, application.Fail(503, "LLM_NOT_CONFIGURED", "Model not configured.")
 			}
+			if in.DailyTokenBudget == 0 {
+				in.DailyTokenBudget = 100000000
+			}
+			if in.DailyJobBudget == 0 {
+				in.DailyJobBudget = 200
+			}
 			if in.DailyTokenBudget < s.reserve() || in.DailyTokenBudget > 100000000 || in.DailyJobBudget < 1 || in.DailyJobBudget > 1000 {
 				return false, application.Fail(422, "VALIDATION_FAILED", "Set a daily token budget that covers at least one reserved extraction, and bounded daily job budgets.")
 			}
@@ -103,9 +109,6 @@ func (s *Service) Mutate(ctx context.Context, a application.Actor, action, key s
 		case "resume":
 			if !st.Settings.Enabled || st.Settings.Model != s.Config.Info() {
 				return false, application.Fail(422, "KNOWLEDGE_CONSENT_REQUIRED", "Enable with the current model disclosure first.")
-			}
-			if st.Settings.ConfigFingerprint != "" && st.Settings.ConfigFingerprint != s.Config.Fingerprint() {
-				return false, application.Fail(422, "KNOWLEDGE_CONSENT_REQUIRED", "The model capability changed. Confirm the current disclosure.")
 			}
 			st.Settings.Paused = false
 			st.ScanStamp = ""

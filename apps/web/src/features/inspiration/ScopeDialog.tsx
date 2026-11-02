@@ -9,7 +9,7 @@ import { Btn, Choice, Dialog } from '../../components/vnext/ui'
 type Scope = ThinkingSession['scopes'][number]
 const rows: { key: Scope; label: string; hint: string }[] = [
   { key: 'chapters', label: '本作品已保存章节', hint: '讨论需要时按段读取，并附上可核对的原文。' },
-  { key: 'knowledge', label: '本作品知识库', hint: '人物、地点、时间线等 AI 整理的观察，不等于正式设定。' },
+  { key: 'knowledge', label: '本作品知识库', hint: '从已保存章节整理的人物、地点与时间线。' },
   { key: 'creative', label: '创作设定与待确认候选', hint: '已确认设定、草稿与候选会被区分对待。' },
   { key: 'notes', label: '私人作者笔记（额外授权）', hint: '你的私人笔记。只有单独勾选才会读取。' },
 ]

@@ -4,24 +4,12 @@ import (
 	"context"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/application"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/compat"
+	quoteevidence "github.com/story2u/ai-write-life-circle/apps/api-go/internal/evidence"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/harness"
 	"strings"
 	"unicode/utf8"
 )
 
-func bounds(text, quote string, offset int) (*int, *int, string) {
-	at := strings.Index(text, quote)
-	if at < 0 {
-		return nil, nil, "missing"
-	}
-	// Count overlapping occurrences as well, rather than arbitrarily choosing a repeated quote.
-	if strings.Contains(text[at+1:], quote) {
-		return nil, nil, "ambiguous"
-	}
-	start := offset + compat.UTF16Len(text[:at])
-	end := start + compat.UTF16Len(quote)
-	return &start, &end, "unique"
-}
 func parseCandidates(text string) ([]candidate, error) {
 	var value candidateOutput
 	if len(text) > 64*1024 || strict([]byte(text), &value) != nil || value.Findings == nil || len(value.Findings) > 20 {
@@ -80,15 +68,20 @@ func Validate(p Plan, text string) ([]Finding, []string, error) {
 				reason = "invalid_source_hash"
 				break
 			}
-			start, end, ambiguity := bounds(src.Excerpt, quote.Quote, src.StartUTF16)
-			if ambiguity == "missing" {
+			match := quoteevidence.FindQuote(src.Excerpt, quote.Quote)
+			if match.Status == "missing" {
 				reason = "quote_missing"
 				break
 			}
-			evidence = append(evidence, Evidence{src.SourceID, quote.Quote, true, src.ContentHash, src.SourceHash, start, end, ambiguity})
+			var start, end *int
+			if match.Status == "unique" {
+				a, b := src.StartUTF16+match.StartUTF16, src.StartUTF16+match.EndUTF16
+				start, end = &a, &b
+			}
+			evidence = append(evidence, Evidence{src.SourceID, match.Quote, true, src.ContentHash, src.SourceHash, start, end, match.Status})
 			used[src.SourceID] = true
 			if src.Kind == "target" && anchor == nil {
-				anchor = &Anchor{p.RevisionID, p.ContentHash, quote.Quote, "utf16", ambiguity, start, end}
+				anchor = &Anchor{p.RevisionID, p.ContentHash, match.Quote, "utf16", match.Status, start, end}
 			}
 		}
 		if reason == "" && anchor == nil {

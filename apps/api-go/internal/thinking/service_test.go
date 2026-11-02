@@ -642,6 +642,9 @@ func TestResumeAdmissionPreservesAuthorModelBudgetAndCancellationFences(t *testi
 	s, rec, _ := fixture(t)
 	model := Model{ID: "deepseek", Provider: "fixture", Model: "synthetic", Endpoint: "http://127.0.0.1", Protocol: Protocol, Limits: Limits{Turns: 1, Input: 12000, Output: 1024, Tools: 2, Duration: 1000}}
 	rec.Model = model
+	model.Limits.Output = 2048
+	model.Limits.Input = 24000
+	model.Limits.Duration = 2000
 	rec.Scopes = []string{}
 	_ = s.tx(context.Background(), func(st *registry) error { st.Sessions[rec.ID] = rec; return nil })
 	runID := compat.UUID()
@@ -654,7 +657,7 @@ func TestResumeAdmissionPreservesAuthorModelBudgetAndCancellationFences(t *testi
 		case strings.HasSuffix(r.URL.Path, "/cancel"):
 			_, _ = w.Write([]byte(`{}`))
 		case r.Method == "GET":
-			_ = json.NewEncoder(w).Encode(map[string]any{"model": model, "scopes": []string{}, "status": "idle", "run": map[string]any{"runId": runID, "status": "interrupted", "resumable": true, "failure": map[string]any{"retryable": true}}})
+			_ = json.NewEncoder(w).Encode(map[string]any{"model": rec.Model, "scopes": []string{}, "status": "idle", "run": map[string]any{"runId": runID, "status": "interrupted", "resumable": true, "failure": map[string]any{"retryable": true}}})
 		default:
 			var b struct {
 				Key   string  `json:"key"`

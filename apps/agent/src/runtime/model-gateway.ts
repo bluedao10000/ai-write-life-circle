@@ -1,3 +1,4 @@
+import {modelIdentity} from "./fingerprint.js";
 import {candidateBytes} from "./execution-policy.js";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
@@ -39,6 +40,11 @@ export function boundedModelFetch(endpoint:string,maxBytes:number,signal:AbortSi
 }
 export const executionConfigSchema=z.object({Provider:z.literal("openai-compatible"),BaseURL:z.string().url(),APIKey:z.literal(""),Model:z.string().min(1),ResponseFormat:z.enum(["none","json_object","json_schema"]),TokenParameter:z.enum(["max_tokens","max_completion_tokens"]),Timeout:z.number().int().positive().max(180_000_000_000),MaxContextBytes:z.number().int().min(2048).max(256*1024),MaxOutputTokens:z.number().int().min(128).max(131072),MaxResponseBytes:z.number().int().min(1024).max(2*1024*1024)}).strict();
 export type ExecutionConfig=z.infer<typeof executionConfigSchema>;
+export function executionFingerprint(config: ExecutionConfig): string {
+  const url = new URL(config.BaseURL);
+  const path = config.BaseURL.slice(config.BaseURL.indexOf("://") + 3).includes("/") ? url.pathname : "";
+  return modelIdentity({provider: config.Provider, model: config.Model, endpoint: url.origin + path});
+}
 
 // prompt_tokens includes cached input. Optional inconsistent cache details never
 // earn a discount; missing/invalid total usage remains unknown.
@@ -54,14 +60,12 @@ export class ModelGateway {
   constructor(readonly config:ExecutionConfig,readonly key:string){}
   validate(task:AgentTask){
     const limit=task.request.outputLimit;
-    if(limit!==undefined && (task.kind!=='review.execute'||!Number.isInteger(limit)||limit<128||limit>Math.min(32768,this.config.MaxOutputTokens)))throw new GatewayError('AGENT_CONFIG_CHANGED');
-    const received=executionConfigSchema.parse(JSON.parse(task.configFingerprint));
-    if(JSON.stringify(received)!==JSON.stringify(this.config)||task.model.provider!==this.config.Provider||task.model.model!==this.config.Model||task.model.endpoint!==this.config.BaseURL)throw new GatewayError("AGENT_CONFIG_CHANGED");
+    if(limit!==undefined && (task.kind!=='review.execute'||!Number.isInteger(limit)||limit<128||limit>32768))throw new GatewayError('AGENT_CONFIG_CHANGED');
+    if(task.configFingerprint!==executionFingerprint(this.config)||modelIdentity(task.model)!==executionFingerprint(this.config))throw new GatewayError("AGENT_CONFIG_CHANGED");
   }
   async execute(task:AgentTask,signal:AbortSignal):Promise<AgentModelResponse>{
     this.validate(task);
-    const output=task.request.outputLimit??this.config.MaxOutputTokens;
-    if(output>this.config.MaxOutputTokens|| (task.request.outputLimit!==undefined && task.kind!=='review.execute'))throw new GatewayError('AGENT_CONFIG_CHANGED');
+    const output=Math.min(task.request.outputLimit??this.config.MaxOutputTokens,this.config.MaxOutputTokens);
     const cfg=this.config,deadline=AbortSignal.timeout(Math.max(1,Math.min(cfg.Timeout/1e6,Date.parse(task.deadline)-Date.now()))),abort=AbortSignal.any([signal,deadline]);
     const {runtime,model}=await configuredModel(cfg.BaseURL,cfg.Model,this.key,cfg.MaxContextBytes+20000,output);
     let usage:AgentModelResponse['usage']=null,transportError="";

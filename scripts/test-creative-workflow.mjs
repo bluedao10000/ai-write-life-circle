@@ -77,6 +77,8 @@ const provider = createServer(async (req, res) => {
   if (body.messages[0].content.startsWith("You organize")) {
     calls.organize++;
     out = organize(input);
+  } else if (body.messages[0].content.startsWith("Extract private novel memory")) {
+    out = { entities: [], assertions: [] };
   } else {
     calls.plan++;
     out = planCheck(input);
@@ -177,8 +179,10 @@ try {
   const base = `/v1/studio/books/${book.bookId}`;
   const creative = base + "/creative";
   let overview = await call(creative);
-  assert.equal(overview.settings.enabled, false);
-  await call(creative + "/settings/enable", { method: "POST", key: "enable", body: { consent: true, model: overview.settings.currentModel, dailyTokenBudget: Math.max(overview.settings.reserveTokens * 10, 1000000), dailyJobBudget: 50 } });
+  assert.equal(overview.settings.enabled, true);
+  assert.equal(overview.settings.autoOrganize, true);
+  assert.equal(overview.settings.dailyTokenBudget, 100000000);
+  assert.equal(overview.settings.dailyJobBudget, 200);
   const model = await call(base + "/thinking/capabilities");
   const session = await call(base + "/thinking/sessions", { method: "POST", key: "session", status: 201, body: { consent: true, model, scopes: ["chapters", "knowledge", "creative"] } });
   const sessionPath = `${base}/thinking/sessions/${session.sessionId}`;

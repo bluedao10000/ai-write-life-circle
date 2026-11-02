@@ -4,19 +4,18 @@ import type { ThinkingRun } from "@writer-agent/contracts";
 import RunRecovery from "../features/thinking/RunRecovery";
 const run:ThinkingRun={runId:"a",traceId:"trace-synthetic",messageId:"m",status:"interrupted",stepType:"provider",checkpointId:"c",epoch:1,attempt:1,retryCount:0,modelCalls:1,resumable:true,provider:"fixture",model:"fixture",startedAt:"now",updatedAt:"now",durationMs:1,failure:{code:"SESSION_INTERRUPTED",retryable:true,autoRecoverable:false,userAction:"continue",contextRetained:true,mayHaveIncurredCost:true,retryMayIncurCost:true,message:"执行中断，对话已保留。"}};
 afterEach(cleanup);
-it("requires explicit cost confirmation and sends the actual run recovery intent",()=>{
+it("resumes the current run directly and displays its cost information",()=>{
  const resume=vi.fn();render(<RunRecovery run={run} busy={false} onResume={resume}/>);
- const button=screen.getByRole("button",{name:"继续执行"});expect(button).toBeDisabled();
- fireEvent.click(screen.getByRole("checkbox"));fireEvent.click(button);
+ const button=screen.getByRole("button",{name:"继续回复"});expect(button).toBeEnabled();
+ expect(screen.queryByRole("checkbox")).toBeNull();fireEvent.click(button);
  expect(resume).toHaveBeenCalledWith({runId:"a",confirmAdditionalCost:true});
- expect(screen.getByText(/上次请求可能已产生费用/)).toBeVisible();
+ expect(screen.getByText(/上次请求可能已计入/)).toBeVisible();
  fireEvent.click(screen.getByText("故障详情"));expect(screen.getByText(/trace-synthetic/)).toBeVisible();
 });
-it("context overflow requires author-confirmed continuation context",()=>{
- const resume=vi.fn();render(<RunRecovery run={{...run,failure:{...run.failure!,code:"CONTEXT_OVERFLOW",userAction:"provide_context"}}} busy={false} onResume={resume}/>);
- fireEvent.click(screen.getByRole("checkbox"));expect(screen.getByRole("button",{name:"继续执行"})).toBeDisabled();
- fireEvent.change(screen.getByLabelText("续谈要点"),{target:{value:"author approved source:1; suggestion remains uncertain"}});
- fireEvent.click(screen.getByRole("button",{name:"继续执行"}));
+it("context overflow uses the prepared continuation context",()=>{
+ const resume=vi.fn();render(<RunRecovery run={{...run,failure:{...run.failure!,code:"CONTEXT_OVERFLOW",userAction:"provide_context"}}} busy={false} continuationContext="author approved source:1; suggestion remains uncertain" onResume={resume}/>);
+ expect(screen.queryByLabelText("续谈要点")).toBeNull();
+ fireEvent.click(screen.getByRole("button",{name:"继续回复"}));
  expect(resume.mock.calls[0][0].continuationContext).toContain("source:1");
 });
 it("cancelled and unsafe runs have no recovery button",()=>{

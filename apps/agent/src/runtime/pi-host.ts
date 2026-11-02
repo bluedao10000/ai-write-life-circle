@@ -1,6 +1,6 @@
-import {manageDiscussion, memoryInstruction, inputBytes} from "./context-management.js";
+import {manageDiscussion, memoryInstruction, inputBytes, discussionText} from "./context-management.js";
 import { failureFor, traceRun } from "./reliability.js";
-import { canonicalJSON } from "./fingerprint.js";
+import { canonicalJSON, modelIdentity } from "./fingerprint.js";
 import {configuredModel,boundedModelFetch,completionUsage} from "./model-gateway.js";
 import {
   createAgentSession,
@@ -115,8 +115,8 @@ export class PiHost {
       grant.sessionId !== input.sessionId ||
       grant.authorId !== input.authorId ||
       grant.bookId !== input.bookId ||
-      !modelEntries(this.config).some(v => v.enabled && digest(input.model) === digest(v.model)) ||
-      digest(input.model) !== digest(grant.model) ||
+      !modelEntries(this.config).some(v => v.enabled && modelIdentity(input.model) === modelIdentity(v.model)) ||
+      modelIdentity(input.model) !== modelIdentity(grant.model) ||
       digest(input.scopes) !== digest(grant.scopes)
     )
       throw new AgentError("GRANT_MISMATCH", 403);
@@ -185,7 +185,7 @@ export class PiHost {
       grant.bookId !== s.view.bookId
     )
       throw new AgentError("GRANT_MISMATCH", 403);
-    const selected = modelEntries(this.config).find(v => v.enabled && modelId(v.model) === (input.modelId ?? modelId(grant.model)) && digest(v.model) === digest(grant.model));
+    const selected = modelEntries(this.config).find(v => v.enabled && modelId(v.model) === (input.modelId ?? modelId(grant.model)) && modelIdentity(v.model) === modelIdentity(grant.model));
     if (!selected) throw new AgentError("MODEL_UNAVAILABLE", 409);
     // Authorization awaits network. Cancel/delete/another admission must fence this snapshot.
     const latest = this.get(id);
@@ -213,20 +213,22 @@ export class PiHost {
       if (!run || run.runId !== input.recovery.runId || !s.checkpoint ||
           !["failed","interrupted"].includes(run.status) || !run.resumable ||
           !run.failure?.retryable) throw new AgentError("RESUME_NOT_SAFE",409);
-      if (digest(s.view.model) !== digest(selected.model) || digest(s.view.scopes) !== digest(grant.scopes) || (run.authorizationVersion ?? 0) !== (grant.authorizationVersion ?? 0))
+      if (modelIdentity(s.view.model) !== modelIdentity(selected.model) || digest(s.view.scopes) !== digest(grant.scopes) || (run.authorizationVersion ?? 0) !== (grant.authorizationVersion ?? 0))
         throw new AgentError("AUTHORIZATION_REQUIRED",403);
-      if (run.failure.code === "CONTEXT_OVERFLOW" && !input.recovery.continuationContext)
-        throw new AgentError("CONTINUATION_CONTEXT_REQUIRED",422);
-      previousAttempt = run.attempt;
-      s.entries = input.recovery.continuationContext ? [] : structuredClone(s.checkpoint.entries);
       const recovery = {...s.checkpoint.input.recovery,...input.recovery};
+      if (run.failure.code === "CONTEXT_OVERFLOW" && !recovery.continuationContext) {
+        const history = s.view.messages.slice(0, s.view.messages.findIndex(m => m.id === s.checkpoint!.messageId));
+        recovery.continuationContext = [s.discussionMemory?.summary, discussionText(history.slice(-6))].filter(Boolean).join("\n").slice(-6000) || s.checkpoint.input.text.slice(-6000);
+      }
+      previousAttempt = run.attempt;
+      s.entries = recovery.continuationContext ? [] : structuredClone(s.checkpoint.entries);
       input = {...s.checkpoint.input, recovery};
     }
     if (input.compact) throw new AgentError("CONTINUATION_CONTEXT_REQUIRED",422);
     if (input.recovery?.continuationContext && s.checkpoint) s.checkpoint.input = {...s.checkpoint.input, recovery:input.recovery};
     // Tool results were authorized for the old scope/model. Keep visible discussion,
     // but never replay raw private retrieval into a reduced scope or a new host.
-    if (digest(s.view.model) !== digest(selected.model) || s.view.scopes.some(scope => !grant.scopes.includes(scope))) s.entries = [];
+    if (modelIdentity(s.view.model) !== modelIdentity(selected.model) || s.view.scopes.some(scope => !grant.scopes.includes(scope))) s.entries = [];
     s.view.model = selected.model;
     s.view.scopes = grant.scopes;
     const mid = input.recovery ? s.checkpoint!.messageId : randomUUID(),
@@ -387,14 +389,9 @@ export class PiHost {
       () => active.abort.abort(new AgentError(run.stepType === "tool" ? "TOOL_TIMEOUT" : "DURATION_EXCEEDED")),
       limit.maxDurationMs,
     );
-    const revoke = setInterval(() => {
-      void authorize(this.config, capability, active.abort.signal).catch((e) =>
-        active.abort.abort(new AgentError(safeCode(e))),
-      );
-    }, 1000);
     let session: AgentSession | undefined;
     try {
-      const configured = modelEntries(this.config).find(v => v.enabled && digest(v.model) === digest(s.view.model));
+      const configured = modelEntries(this.config).find(v => v.enabled && modelIdentity(v.model) === modelIdentity(s.view.model));
       if (!configured) throw new AgentError("MODEL_UNAVAILABLE");
       const cfg = {...this.config, model: configured.model, key: configured.key};
       const {runtime,model}=await configuredModel(cfg.model.endpoint,cfg.model.model,cfg.key,cfg.model.contextWindow ?? limit.maxInputTokens + limit.maxOutputTokens,limit.maxOutputTokens);
@@ -415,7 +412,7 @@ export class PiHost {
               throw new AgentError("INPUT_BUDGET_EXCEEDED", 429);
             if (memoryCall) {
               // A summary may only use the reservation while a full reply turn still
-              // fits after it; otherwise the author confirms continuation context.
+              // fits after it; otherwise this attempt stops with a recoverable failure.
               if (++memoryCalls > MAX_MEMORY_CALLS || spent + bound + turnCost > pool) throw new AgentError("CONTEXT_SUMMARY_FAILED", 429);
             } else if (++turns > limit.maxTurnsPerRequest || spent + bound > pool)
               throw new AgentError("TURN_BUDGET_EXCEEDED", 429);
@@ -586,7 +583,7 @@ export class PiHost {
         if (previous.role === "user") manager.appendMessage({role:"user",content:previous.text,timestamp});
         else manager.appendMessage({role:"assistant",content:[{type:"text",text:previous.text}],api:"openai-completions",provider:"story2u",model:configured.model.model,usage:{input:0,output:0,cacheRead:0,cacheWrite:0,totalTokens:0,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}},stopReason:"stop",timestamp});
       }
-      if (input.recovery?.continuationContext) manager.appendMessage({role:"user",content:"Author-provided discussion context, not canon:\n"+input.recovery.continuationContext,timestamp:Date.now()});
+      if (input.recovery?.continuationContext) manager.appendMessage({role:"user",content:"Discussion context, not canon:\n"+input.recovery.continuationContext,timestamp:Date.now()});
       const created = await createAgentSession({
         cwd: this.config.state,
         agentDir: this.config.state,
@@ -735,7 +732,6 @@ export class PiHost {
         });
     } finally {
       clearTimeout(deadline);
-      clearInterval(revoke);
       session?.dispose();
       if (!this.store.isDeleted(id) && this.store.read(id,false)?.view.run?.runId === run.runId) {
         delete s.executionLease;

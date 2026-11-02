@@ -182,9 +182,6 @@ export function KnowledgePanel(props: Props) {
     message: string;
   } | null>(null);
   const [showSettings, setShowSettings] = useState(false);
-  const [consent, setConsent] = useState(false);
-  const [budget, setBudget] = useState("100000000");
-  const [jobBudget, setJobBudget] = useState("200");
   const [timelineKnown, setTimelineKnown] = useState<"all" | "known">("all");
   const [historyKind, setHistoryKind] = useState("all");
   const [notice, setNotice] = useState("");
@@ -636,8 +633,6 @@ export function KnowledgePanel(props: Props) {
         />
       );
     if (!entities.length) return EmptyKnowledgeState(current, section, debouncedQuery, setQuery, () => {
-      setBudget(String(current.settings.dailyTokenBudget));
-      setJobBudget(String(current.settings.dailyJobBudget));
       setShowSettings(true);
     });
     if (section === "chapter")
@@ -708,8 +703,6 @@ export function KnowledgePanel(props: Props) {
                   <MaintenancePill
                     view={view}
                     onOpen={() => {
-                      setBudget(String(view.settings.dailyTokenBudget));
-                      setJobBudget(String(view.settings.dailyJobBudget));
                       setShowSettings(true);
                     }}
                   />
@@ -860,19 +853,13 @@ export function KnowledgePanel(props: Props) {
             <SettingsPanel
               page={current}
               busy={busy}
-              consent={consent}
-              setConsent={setConsent}
-              budget={budget}
-              setBudget={setBudget}
-              jobBudget={jobBudget}
-              setJobBudget={setJobBudget}
               onClose={() => setShowSettings(false)}
               onEnable={() =>
                 void mutate("enable", {
                   consent: true,
                   model: current.model,
-                  dailyTokenBudget: Number(budget),
-                  dailyJobBudget: Number(jobBudget),
+                  dailyTokenBudget: current.settings.dailyTokenBudget || 100000000,
+                  dailyJobBudget: current.settings.dailyJobBudget || 200,
                 })
               }
               onPause={() =>
@@ -1066,12 +1053,6 @@ function EmptyKnowledgeState(
 function SettingsPanel({
   page,
   busy,
-  consent,
-  setConsent,
-  budget,
-  setBudget,
-  jobBudget,
-  setJobBudget,
   onClose,
   onEnable,
   onPause,
@@ -1079,12 +1060,6 @@ function SettingsPanel({
 }: {
   page: MemoryPage;
   busy: boolean;
-  consent: boolean;
-  setConsent: (value: boolean) => void;
-  budget: string;
-  setBudget: (value: string) => void;
-  jobBudget: string;
-  setJobBudget: (value: string) => void;
   onClose: () => void;
   onEnable: () => void;
   onPause: () => void;
@@ -1132,40 +1107,10 @@ function SettingsPanel({
         </div>
       ) : (
         <>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <p className="mb-1 text-ui-sm text-ink-2">每日 Token 上限</p>
-              <TextInput
-                label="每日 Token 上限（保守预留）"
-                value={budget}
-                onChange={setBudget}
-              />
-            </div>
-            <div>
-              <p className="mb-1 text-ui-sm text-ink-2">每日执行次数</p>
-              <TextInput
-                label="每日执行次数上限（含失败与重试）"
-                value={jobBudget}
-                onChange={setJobBudget}
-              />
-            </div>
-          </div>
-          <p className="text-ui-sm text-ink-3">
-            两项额度任一用完即暂停，次日北京时间 08:00 重置。失败与重试也计次。
-          </p>
-          <label className="flex cursor-pointer items-start gap-2 rounded-lg bg-surface-2 px-3.5 py-2.5 text-ui-sm text-ink">
-            <input
-              type="checkbox"
-              className="mt-0.5 accent-current"
-              checked={consent}
-              onChange={(event) => setConsent(event.target.checked)}
-            />
-            我授权发送此作品已保存及后续保存的正文，并了解模型费用。
-          </label>
           <div className="flex gap-3">
             <Btn
               variant="primary"
-              disabled={!consent || busy || !page.available}
+              disabled={busy || !page.available}
               onClick={onEnable}
             >
               确认启用

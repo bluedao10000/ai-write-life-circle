@@ -1,4 +1,4 @@
-import { act, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react'
+import { act, render, renderHook, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ThinkingMessage, ThinkingModelOption, ThinkingRun, ThinkingSession } from '@writer-agent/contracts'
@@ -69,20 +69,17 @@ describe('failure recovery', () => {
     expect(screen.getByText(/再次请求原模型，按实际用量计入 AI 点数；上次请求可能已计入/)).toBeVisible()
     expect(screen.queryByText(/PROVIDER_UNAVAILABLE/)).toBeNull()
     await userEvent.click(screen.getByRole('button', { name: '重新尝试' }))
-    expect(onResume).toHaveBeenCalledWith({ runId: run().runId, confirmAdditionalCost: true })
+    expect(onResume).toHaveBeenCalledWith({ runId: run().runId, confirmAdditionalCost: true, continuationContext: props.recent })
     await userEvent.click(screen.getByRole('button', { name: '查看详情' }))
     expect(screen.getByText(/PROVIDER_UNAVAILABLE/)).toBeVisible()
     expect(screen.getByText(run().traceId)).toBeVisible()
   })
-  it('context overflow continues only with author-confirmed continuation context', async () => {
+  it('context overflow resumes with the prepared recent discussion', async () => {
     const onResume = vi.fn()
     render(<Failure {...props} m={message({ status: 'failed', errorCode: 'CONTEXT_SUMMARY_FAILED' })} run={run({ failure: { ...run().failure!, code: 'CONTEXT_OVERFLOW', userAction: 'provide_context' } })} onResume={onResume} />)
-    await userEvent.click(screen.getByRole('button', { name: '带着续谈要点继续' }))
-    const box = screen.getByRole('textbox', { name: '续谈要点' })
-    expect(box).toHaveValue('作者：张居正')
-    fireEvent.change(box, { target: { value: '已定：以张居正为原型' } })
+    expect(screen.queryByRole('textbox', { name: '续谈要点' })).toBeNull()
     await userEvent.click(screen.getByRole('button', { name: '继续回复' }))
-    expect(onResume.mock.calls[0][0]).toMatchObject({ confirmAdditionalCost: true, continuationContext: '已定：以张居正为原型' })
+    expect(onResume.mock.calls[0][0]).toMatchObject({ confirmAdditionalCost: true, continuationContext: props.recent })
   })
   it('stopped or unsafe runs never replay; the question returns to the composer instead', async () => {
     const onAsk = vi.fn()

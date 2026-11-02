@@ -38,7 +38,7 @@ const Disclosure = "启用后，每轮灵感对话完成时，Writer Agent 会�
 func (s *Service) settingsView(st State) SettingsView {
 	v := SettingsView{Settings: st.Settings, CurrentModel: s.Config.Info(), Disclosure: Disclosure, ReserveTokens: s.reserve(), BudgetDay: st.BudgetDay, BudgetTokens: st.BudgetTokens, BudgetAttempts: st.BudgetAttempts}
 	v.Available = s.Config.ValidatePublic() == nil
-	v.NeedsModelConsent = st.Settings.Enabled && (st.Settings.Model != s.Config.Info() || (st.Settings.ConfigFingerprint != "" && st.Settings.ConfigFingerprint != s.Config.Fingerprint()))
+	v.NeedsModelConsent = st.Settings.Enabled && st.Settings.Model != s.Config.Info()
 	return v
 }
 

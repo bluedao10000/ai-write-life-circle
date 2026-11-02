@@ -5,12 +5,14 @@ const sizes=process.argv.includes('--quick')?[10]:[10,100,500];
 for(const size of sizes){
  const f=await createPiWorkerFixture();let thinkingCalls=0;
  try{
-  const node=f.start('pi-worker'),go=f.start('worker'),thinking=f.start('pi');
-  await until(()=>{if(node.exitCode!==null)throw Error(node.output);return node.output.includes('worker_started')},'Pi worker startup');
-  const book=await importSyntheticEpub(f,size);await fetch(f.origin+'/control',{method:'POST',body:JSON.stringify({mode:'knowledge-empty'})});
+  const book=await importSyntheticEpub(f,size);
+  await f.call(`/v1/studio/books/${book.bookId}/creative/settings/pause`,{method:'POST',body:{}});
+  await fetch(f.origin+'/control',{method:'POST',body:JSON.stringify({mode:'knowledge-empty'})});
   f.switchOwner('knowledge','pi');const root=`/v1/studio/books/${book.bookId}/knowledge`;
   const view=()=>f.call(root);const progress=async()=>(await f.call('/v1/agent-runtime')).executors.knowledge.tasks;const mutate=async(action,extra={})=>f.call(root+'/'+action,{method:'POST',body:{baseVersion:(await view()).version,...extra}});
-  const page=await view();await mutate('enable',{consent:true,model:page.model,dailyTokenBudget:100000000,dailyJobBudget:1});
+  const page=await view();assert.equal(page.settings.enabled,true);await mutate('enable',{consent:true,model:page.model,dailyTokenBudget:100000000,dailyJobBudget:1});
+  const node=f.start('pi-worker');f.start('worker');f.start('pi');
+  await until(()=>{if(node.exitCode!==null)throw Error(node.output);return node.output.includes('worker_started')},'Pi worker startup',30000).catch(error=>{throw Error(`${error.message} (${size} chapters)\n${node.output}\n${f.api().output}`)});
   await until(async()=>{return (await progress()).completed===1},'first budgeted chapter',30000);
   await sleep(1500);assert.equal(f.calls,1,'daily job budget is authoritative');
   await mutate('pause');await sleep(1200);assert.equal(f.calls,1,'paused queue must not execute');

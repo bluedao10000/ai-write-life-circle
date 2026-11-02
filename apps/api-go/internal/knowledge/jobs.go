@@ -29,9 +29,7 @@ func (s *Service) sync(ctx context.Context) error {
 
 func (s *Service) maintenanceEligible(st State) bool {
 	return st.Settings.Enabled && !st.Settings.Paused && (s.Client != nil || s.QueueOnly) &&
-		st.Settings.Model == s.Config.Info() &&
-		(st.Settings.ConfigFingerprint == "" || st.Settings.ConfigFingerprint == s.Config.Fingerprint()) &&
-		!(s.ExecutorOwner == "pi" && st.Settings.ConfigFingerprint == "")
+		st.Settings.Model == s.Config.Info()
 }
 
 // revisionStamp is a cheap change detector for managed works. Draft writes use
@@ -256,7 +254,7 @@ func (s *Service) claim(ctx context.Context) (*ClaimedJob, error) {
 	debitedDay := ""
 	var snapshot State
 	e = s.transaction(ctx, func(st *State) (bool, error) {
-		if !st.Settings.Enabled || st.Settings.Paused || (s.Client == nil && !s.QueueOnly) || st.Settings.Model != s.Config.Info() || (st.Settings.ConfigFingerprint != "" && st.Settings.ConfigFingerprint != s.Config.Fingerprint()) || (s.ExecutorOwner == "pi" && st.Settings.ConfigFingerprint == "") {
+		if !st.Settings.Enabled || st.Settings.Paused || (s.Client == nil && !s.QueueOnly) || st.Settings.Model != s.Config.Info() {
 			return false, nil
 		}
 		now := time.Now().UTC()

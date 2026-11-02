@@ -1,11 +1,11 @@
 import { useAccount } from '../account/AccountMeter'
 import { emitAuthorMetric } from '../../observability/authorExperience'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { ReviewFinding, ReviewPlan, ReviewRun, ReviewType, ReviewFeedbackInput } from '@writer-agent/contracts'
+import type { ReviewFinding, ReviewRun, ReviewType, ReviewFeedbackInput } from '@writer-agent/contracts'
 import type { WriterAgentAdapter } from '../../services/writerAgent'
 import type { useWorkspaceController } from '../workspace/useWorkspaceController'
 
-type Busy = 'preview' | 'start' | 'feedback' | 'cancel' | 'loading'
+type Busy = 'start' | 'feedback' | 'cancel' | 'loading'
 type Scope = { projectId: string; chapterId: string; epoch: number }
 const message = (e: unknown) => e instanceof Error ? e.message : '审查请求失败，请重试。'
 export function useReviewController({ adapter, workspace, available, paneOpen, toast }: {
@@ -26,7 +26,7 @@ export function useReviewController({ adapter, workspace, available, paneOpen, t
   const scope = scopeRef.current
   const [history, setHistory] = useState<{ epoch: number; items: ReviewRun[] }>({ epoch: scope.epoch, items: [] })
   const [selected, setSelected] = useState<{ epoch: number; value: ReviewRun } | null>(null)
-  const [planned, setPlanned] = useState<{ epoch: number; value: ReviewPlan; key: string } | null>(null)
+  const startRequest = useRef<{ epoch: number; input: string; key: string } | null>(null)
   const [types, setTypes] = useState<ReviewType[]>(['character_consistency', 'timeline_consistency'])
   const [pending, setPending] = useState<{ epoch: number; kind: Busy; token: number } | null>(null)
   const pendingRef = useRef(pending)
@@ -40,7 +40,6 @@ export function useReviewController({ adapter, workspace, available, paneOpen, t
   const notified = useRef(new Set<string>())
   useEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
   const run = selected?.epoch === scope.epoch ? selected.value : null
-  const plan = planned?.epoch === scope.epoch ? planned.value : null
   const runs = history.epoch === scope.epoch ? history.items : []
   const busy = pending?.epoch === scope.epoch ? pending.kind : null
   const error = failure?.epoch === scope.epoch ? failure.text : ''
@@ -89,7 +88,7 @@ export function useReviewController({ adapter, workspace, available, paneOpen, t
     })
   }, [isScope])
   useEffect(() => {
-    if (!client || !paneOpen || !current) return
+    if (!client || !paneOpen || !current || pendingRef.current?.epoch === scope.epoch) return
     const controller = new AbortController()
     const request = ++generation.current
     void client.list(projectId, current, controller.signal).then((items) => {
@@ -128,43 +127,30 @@ export function useReviewController({ adapter, workspace, available, paneOpen, t
     return () => { controller.abort(); if (timer) clearTimeout(timer) }
   }, [client, projectId, runId, runStatus, accept, toast, refresh, scope, isScope])
 
-  const prepare = async (nextTypes = types) => {
-    if (!client || !available) { toast('服务端尚未配置可用模型，真实审查不可用。'); return }
-    if (quotaExhausted) { toast('本月免费审查次数已用完，已有结果仍可查看。可下月继续，或在账号方案中升级。'); return }
-    if (nextTypes.length === 0) { toast('至少选择一种审查类型。'); return }
-    const operation = begin('preview')
-    if (!operation) return
+  const start = async (nextTypes = types) => {
+    if (!client || !available) { toast('服务端尚未配置可用模型，暂时无法审查。'); return false }
+    if (quotaExhausted) { toast('本月免费审查次数已用完，已有结果仍可查看。可下月继续，或在账号方案中升级。'); return false }
+    if (nextTypes.length === 0) { toast('至少选择一种审查类型。'); return false }
+    const operation = begin('start')
+    if (!operation) return false
     setTypes(nextTypes)
     const request = ++generation.current
     try {
       const snapshot = await prepareReview(current)
-      if (!isRequest(scope, request)) return
-      const value = await client.preview(projectId, current, { revisionId: snapshot.revisionId, contentHash: snapshot.contentHash, reviewTypes: nextTypes })
-      if (isRequest(scope, request)) setPlanned({ epoch: scope.epoch, value, key: crypto.randomUUID() })
-    } catch (e) {
-      if (isRequest(scope, request)) { setFailure({ epoch: scope.epoch, text: message(e) }); toast(message(e)) }
-    } finally { end(operation) }
-  }
-  const start = async () => {
-    const consentKey = planned?.epoch === scope.epoch ? planned.key : null
-    if (!client || !plan || !consentKey) return false
-    const operation = begin('start')
-    if (!operation) return false
-    const request = ++generation.current, selectedRun = runId ?? null
-    try {
-      const snapshot = await prepareReview(plan.chapterId)
-      if (!isRequest(scope, request, selectedRun)) return false
-      if (snapshot.revisionId !== plan.revisionId || snapshot.contentHash !== plan.contentHash) throw new Error('正文已变化，请重新预览并确认审查范围。')
-      const value = await client.start(projectId, plan.chapterId, {
-        revisionId: plan.revisionId, contentHash: plan.contentHash, reviewTypes: plan.reviewTypes,
-        consent: { confirmed: true, planHash: plan.planHash },
-      }, consentKey)
-      if (!isRequest(scope, request, selectedRun)) return false
-      if (plan.cost && !activated.current.has(value.runId)) { activated.current.add(value.runId); emitAuthorMetric({event:'free_review',bucket:'started'}) }
-      accept(value, scope); setPlanned(null); setActiveId(null); window.dispatchEvent(new Event('writer-agent:account-refresh'))
+      if (!isRequest(scope, request)) return false
+      const input = { revisionId: snapshot.revisionId, contentHash: snapshot.contentHash, reviewTypes: nextTypes }
+      const serialized = JSON.stringify(input)
+      if (startRequest.current?.epoch !== scope.epoch || startRequest.current.input !== serialized) {
+        startRequest.current = { epoch: scope.epoch, input: serialized, key: crypto.randomUUID() }
+      }
+      const value = await client.start(projectId, current, input, startRequest.current.key)
+      if (!isRequest(scope, request)) return false
+      startRequest.current = null
+      if (value.cost && !activated.current.has(value.runId)) { activated.current.add(value.runId); emitAuthorMetric({event:'free_review',bucket:'started'}) }
+      accept(value, scope); setActiveId(null); window.dispatchEvent(new Event('writer-agent:account-refresh'))
       return true
     } catch (e) {
-      if (isRequest(scope, request, selectedRun)) { setFailure({ epoch: scope.epoch, text: message(e) }); toast(message(e)) }
+      if (isRequest(scope, request)) { setFailure({ epoch: scope.epoch, text: message(e) }); toast(message(e)) }
       return false
     } finally { end(operation) }
   }
@@ -218,8 +204,8 @@ export function useReviewController({ adapter, workspace, available, paneOpen, t
     } catch (e) { if (isRequest(scope, request, run.runId)) setFailure({ epoch: scope.epoch, text: message(e) }); return null }
   }
   const finding = (id: string): ReviewFinding | undefined => run?.findings.find((item) => item.findingId === id)
-  return { allowance, quotaExhausted, available: available && !!client, runs, run, plan, consentSessionId: plan ? planned?.key : null,
-    closePlan: () => { if (busy !== 'start') { generation.current++; setPlanned(null) } }, types, busy, error, stale, prepare, start, cancel, feedback,
+  return { allowance, quotaExhausted, available: available && !!client, runs, run,
+    types, setTypes, busy, error, stale, prepare: start, start, cancel, feedback,
     activeId: run?.findings.some((item) => item.findingId === active) ? active : null, setActiveId, choose, finding, revalidate,
     refresh: () => setRefresh((value) => value + 1),
   }

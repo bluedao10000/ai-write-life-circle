@@ -40,7 +40,6 @@ describe('review requests remain bound to their original UI context', () => {
           const adapter = { ...createHttpWriterAgentAdapter(), reviews: client }
           const { result, rerender } = renderHook(({ chapter }) => useReviewController({ adapter, workspace: workspace(chapter), available: true, paneOpen: true, toast }), { initialProps: { chapter: 'A' } })
           await waitFor(() => expect(result.current.run?.runId).toBe(a.runId))
-          if (operation === 'start') await act(async () => { await result.current.prepare() })
           let action!: Promise<unknown>
           act(() => { action = operation === 'feedback' ? result.current.feedback('finding', 'useful') : operation === 'cancel' ? result.current.cancel() : result.current.start() })
           await waitFor(() => expect(client[operation]).toHaveBeenCalledOnce())
@@ -62,7 +61,6 @@ describe('review requests remain bound to their original UI context', () => {
           expect(result.current.runs).toEqual([b])
           expect(result.current.error).toBe('')
           expect(result.current.busy).toBeNull()
-          expect(result.current.plan).toBeNull()
           expect(toast).not.toHaveBeenCalled()
         })
       }
@@ -107,7 +105,7 @@ describe('review requests remain bound to their original UI context', () => {
     expect(result.current.run?.version).toBe(1)
     expect(toast).not.toHaveBeenCalled()
   })
-  it('reuses a consent session key after uncertain failure and uses a new key for an explicit rerun', async () => {
+  it('reuses the request key after uncertain failure and uses a new key for an explicit rerun', async () => {
     const a = fixture('A'), toast = vi.fn()
     const start = vi.fn<ReviewsAdapter['start']>()
       .mockRejectedValueOnce(new Error('response lost'))
@@ -117,11 +115,9 @@ describe('review requests remain bound to their original UI context', () => {
     const adapter = { ...createHttpWriterAgentAdapter(), reviews: client }
     const { result } = renderHook(() => useReviewController({ adapter, workspace: workspace('A'), available: true, paneOpen: true, toast }))
     await waitFor(() => expect(result.current.run?.runId).toBe(a.runId))
-    await act(async () => { await result.current.prepare() })
     await act(async () => { expect(await result.current.start()).toBe(false) })
     await act(async () => { expect(await result.current.start()).toBe(true) })
     expect(start.mock.calls[0][3]).toBe(start.mock.calls[1][3])
-    await act(async () => { await result.current.prepare() })
     await act(async () => { expect(await result.current.start()).toBe(true) })
     expect(start.mock.calls[2][3]).not.toBe(start.mock.calls[0][3])
   })
@@ -140,4 +136,38 @@ it('polls queued reviews and permits cancellation before a Worker claims them', 
  await act(async()=>{await result.current.cancel()})
  expect(result.current.run?.status).toBe('cancelled')
  unmount()
+})
+
+it('saves and starts directly while opening the review pane', async () => {
+  const a = fixture('A', 'queued'), save = deferred<{ chapterId: string; revisionId: string; contentHash: string; markdown: string }>()
+  const saved = workspace('A')
+  saved.prepareReview = vi.fn(() => save.promise)
+  const client: ReviewsAdapter = { list: vi.fn(async () => []), get: vi.fn(async () => a), preview: vi.fn(async () => a),
+    start: vi.fn(async () => a), cancel: vi.fn(async () => a), feedback: vi.fn(async () => a) }
+  const adapter = { ...createHttpWriterAgentAdapter(), reviews: client }, toast = vi.fn()
+  const { result, rerender } = renderHook(({ paneOpen }) => useReviewController({ adapter, workspace: saved, available: true, paneOpen, toast }), { initialProps: { paneOpen: false } })
+  let action!: Promise<boolean>
+  act(() => { action = result.current.prepare(['timeline_consistency']) })
+  rerender({ paneOpen: true })
+  expect(result.current.busy).toBe('start')
+  expect(client.start).not.toHaveBeenCalled()
+  await act(async () => {
+    save.resolve({ chapterId: 'A', revisionId: 'saved', contentHash: hash, markdown: '原文' })
+    expect(await action).toBe(true)
+  })
+  expect(client.preview).not.toHaveBeenCalled()
+  expect(client.start).toHaveBeenCalledWith('project', 'A', { revisionId: 'saved', contentHash: hash, reviewTypes: ['timeline_consistency'] }, expect.any(String))
+  expect(result.current.run?.status).toBe('queued')
+})
+
+it('does not start a review when saving fails', async () => {
+  const a = fixture('A'), saved = workspace('A')
+  saved.prepareReview = vi.fn().mockRejectedValue(new Error('保存失败'))
+  const client: ReviewsAdapter = { list: vi.fn(async () => []), get: vi.fn(async () => a), preview: vi.fn(async () => a),
+    start: vi.fn(async () => a), cancel: vi.fn(async () => a), feedback: vi.fn(async () => a) }
+  const adapter = { ...createHttpWriterAgentAdapter(), reviews: client }, toast = vi.fn()
+  const { result } = renderHook(() => useReviewController({ adapter, workspace: saved, available: true, paneOpen: false, toast }))
+  await act(async () => { expect(await result.current.prepare()).toBe(false) })
+  expect(client.start).not.toHaveBeenCalled()
+  expect(result.current.error).toBe('保存失败')
 })

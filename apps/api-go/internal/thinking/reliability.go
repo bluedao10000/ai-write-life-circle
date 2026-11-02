@@ -36,7 +36,7 @@ func recoveryFailure(code, detail string) Failure {
 		f.UserAction = "retry"
 	case code == "CONTEXT_OVERFLOW" || code == "INPUT_BUDGET_EXCEEDED" || code == "CONTINUATION_CONTEXT_REQUIRED":
 		f.Code = "CONTEXT_OVERFLOW"
-		f.UserAction = "provide_context"
+		f.UserAction = "continue"
 	case strings.Contains(code, "BUDGET_EXCEEDED"):
 		f.Code = "BUDGET_EXCEEDED"
 		f.UserAction = "new_session"

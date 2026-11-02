@@ -8,7 +8,7 @@ export async function createReviewFixture() {
   const directory = await mkdtemp(join(tmpdir(), 'writer-review-fixture-'))
   const harness = join(directory, 'harness'), state = join(directory, 'state')
   await mkdir(join(harness, 'manuscript'), { recursive: true })
-  let mode = 'valid', calls = 0
+  let mode = 'valid', calls = 0, reviewCalls = 0
  const requests=[]
   async function select(value = cases[0]) {
     mode = value.fake
@@ -21,7 +21,7 @@ export async function createReviewFixture() {
       let data = ''; for await (const chunk of req) data += chunk
       mode = JSON.parse(data).mode; res.end('{}'); return
     }
-    if (req.url === '/stats') { res.end(JSON.stringify({ calls })); return }
+    if (req.url === '/stats') { res.end(JSON.stringify({ calls, reviewCalls })); return }
     if (req.url !== '/v1/chat/completions') { res.writeHead(404).end(); return }
     calls++
     let body = ''; for await (const chunk of req) body += chunk
@@ -35,6 +35,7 @@ export async function createReviewFixture() {
  res.setHeader('Content-Type','application/json');res.end(JSON.stringify({choices:[{finish_reason:'stop',message:{content}}],usage:{prompt_tokens:150,completion_tokens:100}}));return
  }
  if(!input?.sources){res.writeHead(200,{'Content-Type':'text/event-stream'});res.end('data: '+JSON.stringify({id:'thinking',object:'chat.completion.chunk',model:request.model,choices:[{index:0,delta:{role:'assistant',content:'合成思考回复'},finish_reason:'stop'}],usage:{prompt_tokens:20,completion_tokens:10}})+'\n\ndata: [DONE]\n\n');return}
+    reviewCalls++
     const selectedMode = mode
     if (selectedMode === 'slow') await new Promise((resolve) => setTimeout(resolve, 1800))
     if (selectedMode === 'failure') { res.writeHead(503).end('private-provider-message'); return }
@@ -52,7 +53,7 @@ export async function createReviewFixture() {
   })
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
   const origin = `http://127.0.0.1:${server.address().port}`
-  return { directory, harness, state, origin, requests, select, get calls() { return calls },
+  return { directory, harness, state, origin, requests, select, get calls() { return calls }, get reviewCalls() { return reviewCalls },
     async sourceBytes() { return Promise.all(['CH-003', 'CH-008'].map((id) => readFile(join(harness, `manuscript/${id}.md`), 'utf8'))) },
     async close() { server.closeAllConnections(); await new Promise((resolve) => server.close(resolve)); await rm(directory, { recursive: true, force: true }) },
   }

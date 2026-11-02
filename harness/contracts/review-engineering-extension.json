@@ -906,8 +906,7 @@
       "required": [
         "revisionId",
         "contentHash",
-        "reviewTypes",
-        "consent"
+        "reviewTypes"
       ],
       "additionalProperties": false
     },
