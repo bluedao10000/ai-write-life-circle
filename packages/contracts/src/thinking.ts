@@ -51,7 +51,7 @@ export const thinkingRecoverySchema = z.object({
   continuationContext: z.string().trim().min(1).max(12000).optional(),
 }).strict();
 export const thinkingFailureSchema = z.object({
-  code: z.enum(["PROVIDER_TIMEOUT", "PROVIDER_UNAVAILABLE", "RATE_LIMITED", "CONTEXT_OVERFLOW", "TOOL_TIMEOUT", "TOOL_EXECUTION_FAILED", "SESSION_INTERRUPTED", "SESSION_EXPIRED", "AUTHORIZATION_REQUIRED", "MODEL_CONFIGURATION_ERROR", "BUDGET_EXCEEDED", "INTERNAL_ERROR"]),
+  code: z.enum(["STORY_CONTEXT_UNAVAILABLE", "PROVIDER_TIMEOUT", "PROVIDER_UNAVAILABLE", "RATE_LIMITED", "CONTEXT_OVERFLOW", "TOOL_TIMEOUT", "TOOL_EXECUTION_FAILED", "SESSION_INTERRUPTED", "SESSION_EXPIRED", "AUTHORIZATION_REQUIRED", "MODEL_CONFIGURATION_ERROR", "BUDGET_EXCEEDED", "INTERNAL_ERROR"]),
   retryable: z.boolean(), autoRecoverable: z.boolean(),
   userAction: z.enum(["retry", "continue", "reauthorize", "provide_context", "new_session", "contact_support"]),
   contextRetained: z.literal(true), mayHaveIncurredCost: z.boolean(),
@@ -137,6 +137,12 @@ export const thinkingEventSchema = z
     usage: thinkingUsageSchema.optional(),
   })
   .strict();
+export const thinkingStoryRecordingSchema = z.object({
+  status: z.enum(["saving", "applied", "offered", "undone", "failed", "unknown"]),
+  changeCount: z.number().int().nonnegative(),
+  changeId: z.string().optional(),
+  code: z.string().optional(),
+}).strict();
 export const thinkingMessageSchema = z
   .object({
     id: z.string(),
@@ -156,6 +162,7 @@ export const thinkingMessageSchema = z
     sources: z.array(thinkingSourceSchema),
     createdAt: z.string(),
     errorCode: z.string().optional(),
+    storyRecording: thinkingStoryRecordingSchema.optional(),
     usage: thinkingUsageSchema.optional(),
   })
   .strict();
@@ -249,6 +256,7 @@ export const thinkingToolRequestSchema = z
       "compare_plan_with_manuscript",
       "request_turn_organize",
       "record_story_changes",
+      "offer_story_changes",
       "update_discussion_focus",
       "get_discussion_source",
     ]),

@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   storyContextSchema, storyChangeListSchema, storyChangeReceiptSchema,
   creativeSettingsSchema, dialogueRecordingInputSchema,
+  discussionFocusSchema, authorDiscussionFocusInputSchema,
 } from "../../packages/contracts/src/creative.js";
 
 const types = {
@@ -11,6 +12,8 @@ const types = {
   storyChangeReceipt: storyChangeReceiptSchema,
   creativeSettings: creativeSettingsSchema,
   dialogueRecordingInput: dialogueRecordingInputSchema,
+  discussionFocus: discussionFocusSchema,
+  authorDiscussionFocusInput: authorDiscussionFocusInputSchema,
   emptyInput: z.object({}).strict(),
 };
 const schemas = Object.fromEntries(Object.entries(types).map(([key, value]) => [
@@ -54,6 +57,14 @@ const doc = {
     [base + "/changes/{changeId}/undo"]: {
       parameters: [param("bookId"), param("changeId")],
       post: op("undoStoryChange", "storyChangeReceipt", "emptyInput"),
+    },
+    [base + "/changes/{changeId}/apply"]: {
+      parameters: [param("bookId"), param("changeId")],
+      post: op("applyStoryChange", "storyChangeReceipt", "emptyInput"),
+    },
+    [base + "/discussion-focus"]: {
+      parameters: [param("bookId")],
+      post: op("editDiscussionFocus", "discussionFocus", "authorDiscussionFocusInput"),
     },
     [base + "/settings/recording"]: {
       parameters: [param("bookId")],

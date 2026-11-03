@@ -91,9 +91,32 @@ func TestStoryRoutesSettingsOwnershipReceiptsAndUndo(t *testing.T) {
 	if asset.Asset.Version != 2 || asset.Asset.Status != "archived" {
 		t.Fatal(asset)
 	}
+	call("POST", "/settings/recording", `{"dialogueRecording":false}`, "recording:off", 200)
+	focusBody := `{"sessionId":"` + session + `","goal":"讨论父亲来信","assetIds":[],"questionIds":[],"suggestedNextStep":"决定寄信人"}`
+	focus := call("POST", "/discussion-focus", focusBody, "focus:manual", 200)
+	if focus["version"] != float64(1) || focus["updatedFromMessageId"] != "" {
+		t.Fatal(focus)
+	}
+	call("POST", "/discussion-focus", focusBody, "focus:stale", 409)
+	call("POST", "/discussion-focus", strings.Replace(focusBody, session, "th-00000000-0000-4000-8000-000000000002", 1), "focus:foreign", 404)
+	call("POST", "/discussion-focus", strings.Replace(focusBody, `"goal":`, `"messageId":"forged","goal":`, 1), "focus:forged", 422)
+	name = "北城"
+	offered, err := service.OfferStoryChanges(ctx, owner, "story:m2", session, "m2", creative.RecordStoryChangesInput{Changes: []creative.StoryChangeInput{{Intent: "decide", Kind: "place", Patch: creative.Patch{Name: &name}, Evidence: []creative.StoryEvidence{{MessageID: "m2", Quote: "北城"}}}}}, []creative.TurnMessage{{ID: "m2", Role: "user", Text: "北城"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	apply := "/changes/" + offered.ChangeID + "/apply"
+	call("POST", apply, `{}`, "", 422)
+	call("POST", apply, `{"messageId":"forged"}`, "apply:forged", 422)
+	applied := call("POST", apply, `{}`, "apply:manual", 200)
+	if applied["status"] != "applied" || applied["changeId"] != offered.ChangeID || applied["undoable"] != true {
+		t.Fatal(applied)
+	}
+	call("POST", apply, `{}`, "apply:manual", 200)
 	actor = &application.Actor{ID: "other", Role: "author"}
 	call("GET", "/story-context", "", "", 404)
 	call("POST", undo, `{}`, compat.UUID(), 404)
+	call("POST", apply, `{}`, compat.UUID(), 404)
 	actor = nil
 	call("GET", "/changes", "", "", 401)
 }

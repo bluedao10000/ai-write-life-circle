@@ -1,4 +1,4 @@
-import {manageDiscussion, memoryInstruction, providerInput, inputTokenBound, discussionText, type MeasuredInput, type ProviderInput} from "./context-management.js";
+import {manageDiscussion, memoryInstruction, providerInput, inputTokenBound, inputBytes, discussionText, type MeasuredInput, type ProviderInput} from "./context-management.js";
 import { failureFor, traceRun } from "./reliability.js";
 import { canonicalJSON, modelIdentity } from "./fingerprint.js";
 import {configuredModel,boundedModelFetch,completionUsage} from "./model-gateway.js";
@@ -24,8 +24,8 @@ import type {
 import { modelEntries, modelId, type Config } from "../config.js";
 import { Store, type Saved } from "../sessions/store.js";
 import { tools, authorize } from "../tools/registry.js";
-import {readStoryContext, storyContextText, discussionMessageIndex} from "../tools/story-context.js";
-import { sourceAccessInstruction, systemPrompt, storyRecordingInstruction } from "../agents/thinking/prompt.js";
+import {readStoryContext, readStoryChangeReceipt, storyContextText, discussionMessageIndex} from "../tools/story-context.js";
+import { sourceAccessInstruction, systemPrompt, storyRecordingInstruction, storyOfferingInstruction } from "../agents/thinking/prompt.js";
 /** Discussion-memory summaries per reply; a summary that needs more is not safe to trust. */
 const MAX_MEMORY_CALLS = 3;
 /** Same relative weights as Go billing.PointsFor (output tokens cost 4× input). */
@@ -50,7 +50,7 @@ export const safeCode = (e: unknown) =>
   e instanceof AgentError
     ? e.code
     : e instanceof Error &&
-        /^(AUTHORIZATION_REVOKED|SESSION_INTERRUPTED|TOOL_RESULT_TOO_LARGE|TOOL_TIMEOUT|TOOL_EXECUTION_FAILED|PROVIDER_UNAVAILABLE|INPUT_BUDGET_EXCEEDED|CONTEXT_SUMMARY_FAILED)$/.test(e.message)
+        /^(AUTHORIZATION_REVOKED|SESSION_INTERRUPTED|STORY_CONTEXT_UNAVAILABLE|TOOL_RESULT_TOO_LARGE|TOOL_TIMEOUT|TOOL_EXECUTION_FAILED|PROVIDER_UNAVAILABLE|INPUT_BUDGET_EXCEEDED|CONTEXT_SUMMARY_FAILED)$/.test(e.message)
       ? e.message
       : "AGENT_EXECUTION_FAILED";
 export function loader(prompt = systemPrompt): ResourceLoader {
@@ -400,13 +400,20 @@ export class PiHost {
       const storyContext = creative ? await readStoryContext(cfg, id, input.text, capability, active.abort.signal) : undefined;
       alive();
       if (storyContext && storyContext.bookId !== s.view.bookId) throw new AgentError("GRANT_MISMATCH",403);
-      if (storyContext?.dialogueRecording && cfg.model.toolCalling !== false) prompt += "\n\n" + storyRecordingInstruction;
+      if (storyContext && cfg.model.toolCalling !== false) prompt += "\n\n" + (storyContext.dialogueRecording ? storyRecordingInstruction : storyOfferingInstruction);
       const storyWrites = s.checkpoint!.storyWrites ??= {};
-      // Receipts can be undone while a failed reply waits for recovery. Keep the
-      // exact batch, but re-read its result through Go if the model retries it.
-      if (input.recovery) for (const write of Object.values(storyWrites)) delete write.result;
+      const authorMessage = s.view.messages.find(m => m.id === run.messageId && m.role === "user")!;
+      // Re-read authoritative results before recovery: an applied or undone
+      // receipt is never submitted again, even if its tool response was lost.
+      if (input.recovery && creative && storyWrites.record_story_changes) {
+        const current=await readStoryChangeReceipt(cfg,id,run.messageId,capability,active.abort.signal);
+        alive();
+        if(current){storyWrites.record_story_changes.result=current.text;authorMessage.storyRecording={status:current.receipt.status,changeId:current.receipt.changeId,changeCount:current.receipt.changes.length};}
+        else delete storyWrites.record_story_changes.result;
+        checkpoint("tool");
+      }
       const originals = s.view.messages.slice(0, s.view.messages.findIndex(m => m.id === run.messageId) + 1);
-      const freshContext = storyContext ? [storyContextText(storyContext, Math.min(12000,Math.floor(limit.maxInputTokens / 3))), discussionMessageIndex(originals, run.messageId), Object.keys(storyWrites).length ? "Existing write attempts for this same author message. Reuse the original arguments for an unresolved request; completed results are already recorded:\n" + JSON.stringify(storyWrites) : ""].filter(Boolean).join("\n\n") : "";
+      const storyAnnotations = storyContext ? [discussionMessageIndex(originals, run.messageId), Object.keys(storyWrites).length ? "Existing write attempts for this same author message. Reuse original arguments for unresolved requests. Results are authoritative: offered awaits author action, applied is saved, undone must remain undone. Do not submit a completed batch again:\n" + JSON.stringify(storyWrites) : ""].filter(Boolean).join("\n\n") : "";
       const {runtime,model}=await configuredModel(cfg.model.endpoint,cfg.model.model,cfg.key,cfg.model.contextWindow ?? limit.maxInputTokens + limit.maxOutputTokens,limit.maxOutputTokens);
       const original = runtime.streamSimple.bind(runtime);
       let measuredInput: MeasuredInput | undefined;
@@ -568,12 +575,17 @@ export class PiHost {
           return ++calls <= limit.maxToolCalls;
         },
         s.view.scopes,
-        {messageId:run.messageId,runId:run.runId,dialogueRecording:storyContext?.dialogueRecording === true,writes:storyWrites,persist:() => checkpoint("tool")},
+        {messageId:run.messageId,runId:run.runId,dialogueRecording:storyContext?.dialogueRecording === true,writes:storyWrites,persist:() => checkpoint("tool"),onStoryRecording:state=>{authorMessage.storyRecording=state}},
       );
       const custom = cfg.model.toolCalling === false ? [] : allowedTools;
       // Tool definitions travel with every reply turn; the history budget must leave room for them.
       const toolSchemas = custom.length ? JSON.stringify(custom.map(t => ({name: t.name, description: t.description, parameters: t.parameters}))) + CLOSING_INSTRUCTION : "";
       const history = s.view.messages.slice(0, input.recovery ? s.view.messages.findIndex(m => m.id === s.checkpoint!.messageId) : -2);
+      // Story state shares the actual input budget with tool schemas and the
+      // two exchanges compaction retains. Admit context items only if they fit
+      // beside that fixed input; larger books remain available through tools.
+      const contextFits = (text:string) => inputBytes({system:prompt+input.text+toolSchemas+text+"\n\n"+storyAnnotations,memory:history.length>4 ? " ".repeat(3000) : s.discussionMemory?.summary,history:discussionText(history.slice(-4))}) <= limit.maxInputTokens * 0.8;
+      const freshContext = storyContext ? storyContextText(storyContext,12000,contextFits)+"\n\n"+storyAnnotations : "";
       const memory = await manageDiscussion(input.recovery?.continuationContext ? [] : history, input.recovery?.continuationContext ? undefined : s.discussionMemory, limit.maxInputTokens,
         prompt + input.text + toolSchemas + freshContext, async quoted => {
           persist({type:"compaction",text:"正在整理讨论上下文。"});
@@ -751,6 +763,8 @@ export class PiHost {
       clearTimeout(deadline);
       session?.dispose();
       if (!this.store.isDeleted(id) && this.store.read(id,false)?.view.run?.runId === run.runId) {
+        const authorMessage=s.view.messages.find(m=>m.id===run.messageId && m.role==="user");
+        if(authorMessage?.storyRecording?.status==="saving") authorMessage.storyRecording={...authorMessage.storyRecording,status:"unknown",code:"OUTCOME_UNKNOWN"};
         delete s.executionLease;
         s.epoch = Math.max(s.epoch ?? 0,this.store.read(id)?.epoch ?? 0);
         run.durationMs = Math.max(0,performance.now()-started); run.updatedAt = new Date().toISOString();

@@ -148,6 +148,10 @@ func (s *Service) PrivateHandler() http.Handler {
 			s.storyContextHandler(w, r, rec)
 			return
 		}
+		if r.URL.Path == "/internal/v1/agent/story-change-receipt" {
+			s.storyChangeReceiptHandler(w, r, rec)
+			return
+		}
 		if r.URL.Path != "/internal/v1/agent/tools/execute" {
 			reply(w, nil, fail(404, "NOT_FOUND"), 0)
 			return
@@ -168,7 +172,7 @@ func (s *Service) PrivateHandler() http.Handler {
 			return
 		}
 		var args toolArgs
-		story := in.Tool == "record_story_changes" || in.Tool == "update_discussion_focus" || in.Tool == "get_discussion_source"
+		story := in.Tool == "record_story_changes" || in.Tool == "offer_story_changes" || in.Tool == "update_discussion_focus" || in.Tool == "get_discussion_source"
 		if !story {
 			d := json.NewDecoder(bytes.NewReader(in.Args))
 			d.DisallowUnknownFields()

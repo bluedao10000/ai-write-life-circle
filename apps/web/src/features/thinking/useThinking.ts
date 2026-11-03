@@ -269,6 +269,12 @@ export function useThinking(book: string, enabled: boolean) {
     try {const result = await api.setPreferences(book,value);if(e === epoch.current) {setScopes(result.scopes);setError("")};return true}
     catch(err) {if(e === epoch.current) setError(errorText(err));return false}
   };
+  const refreshSession = async () => {
+    if (!selected) return;
+    const e = epoch.current, id = selected;
+    try {const value = await api.get(book,id);if(e === epoch.current && selectedRef.current === id) acceptSnapshot(value)}
+    catch(err) {if(e === epoch.current && selectedRef.current === id) setError(errorText(err))}
+  };
   const resume = (input: ThinkingRecovery) => {
     if (!selected || busy || session?.status === "running") return;
     const id = selected;
@@ -322,5 +328,5 @@ export function useThinking(book: string, enabled: boolean) {
       choices.current[selected] = choice;saveBrowserState(choicesKey,choices.current);setModelChoice(choice);
     }
   };
-  return {historyBusy,historyError,loadHistory,cancellationPending,requestFailure,resume,reconnecting,pendingDelivery,outgoing,models,modelChoice,chooseModel,modelAvailable,modelNotice,retryPending,scopes,saveScopes,sessions,model,selected,session,error:reconnecting ? "连接中断，正在重新连接。已接受的消息会从服务端恢复。" : error,busy,tool,steps,draft,setDraft,select,reload,create,send,cancel,remove};
+  return {historyBusy,historyError,loadHistory,refreshSession,cancellationPending,requestFailure,resume,reconnecting,pendingDelivery,outgoing,models,modelChoice,chooseModel,modelAvailable,modelNotice,retryPending,scopes,saveScopes,sessions,model,selected,session,error:reconnecting ? "连接中断，正在重新连接。已接受的消息会从服务端恢复。" : error,busy,tool,steps,draft,setDraft,select,reload,create,send,cancel,remove};
 }

@@ -9,6 +9,7 @@ import {
   recordStoryChangesInputSchema,
   discussionFocusInputSchema,
   type ThinkingSource,
+  type ThinkingMessage,
 } from "@writer-agent/contracts";
 import type { Config } from "../config.js";
 export const storyNames = [
@@ -28,11 +29,13 @@ export const storyNames = [
   "request_turn_organize",
   "get_discussion_source",
   "record_story_changes",
+  "offer_story_changes",
   "update_discussion_focus",
 ] as const;
-const mutationNames = new Set(["record_story_changes", "update_discussion_focus"]);
-export type StoryWrites = Record<string, { arguments: unknown; result?: string }>;
-export type StoryExecution = {messageId: string; runId: string; dialogueRecording: boolean; writes: StoryWrites; persist: () => void};
+const mutationNames = new Set(["record_story_changes", "offer_story_changes", "update_discussion_focus"]);
+const storyChangeNames = new Set(["record_story_changes", "offer_story_changes"]);
+export type StoryWrites = Record<string, { arguments: unknown; tool?: string; result?: string }>;
+export type StoryExecution = {messageId: string; runId: string; dialogueRecording: boolean; writes: StoryWrites; persist: () => void; onStoryRecording?: (state: NonNullable<ThinkingMessage["storyRecording"]>) => void};
 const creativeNames = new Set<string>([
   "list_creative_assets",
   "get_creative_asset",
@@ -43,6 +46,7 @@ const creativeNames = new Set<string>([
   "request_turn_organize",
   "get_discussion_source",
   "record_story_changes",
+  "offer_story_changes",
   "update_discussion_focus",
 ]);
 const descriptions: Partial<Record<(typeof storyNames)[number], string>> = {
@@ -55,6 +59,7 @@ const descriptions: Partial<Record<(typeof storyNames)[number], string>> = {
   request_turn_organize: "Queue organizing this turn into proposals for author review. Only when the author asks.",
   get_discussion_source: "Read an original message by sessionId and messageId from this author's book. Author words, assistant proposals and character viewpoints have different authority.",
   record_story_changes: "Record one complete batch for this author turn. decide=explicit author decision; explore=unconfirmed alternative; reject=discarded idea; defer=question parked until revisited. Cite exact original messages including current author message. Use asset baseVersion for edits. Never writes manuscript. A receipt confirms the actual result.",
+  offer_story_changes: "Offer one complete change batch for this author turn for manual recording. Does not change story settings. Use decide/explore/reject/defer and cite exact original messages including the current author. The returned offered receipt means awaiting author action, never saved.",
   update_discussion_focus: "Remember this discussion's current goal, related assetIds, questionIds and optional next step. One update per author turn; use focus baseVersion when present. Does not confirm story facts.",
 };
 export async function authorize(
@@ -94,6 +99,7 @@ export function tools(
   };
   const mutations = {
     record_story_changes: Type.Unsafe(z.toJSONSchema(recordStoryChangesInputSchema, {io:"input"})),
+    offer_story_changes: Type.Unsafe(z.toJSONSchema(recordStoryChangesInputSchema, {io:"input"})),
     update_discussion_focus: Type.Unsafe(z.toJSONSchema(discussionFocusInputSchema, {io:"input"})),
   };
   const empty = Type.Object({}, { additionalProperties: false });
@@ -108,7 +114,7 @@ export function tools(
     },
     { additionalProperties: false },
   );
-  const granted = storyNames.filter((name) => (!mutationNames.has(name) || execution?.dialogueRecording) && scopes.includes(creativeNames.has(name) ? "creative" : name === "get_author_notes" ? "notes" : ["read_chapter", "find_related_chapters"].includes(name) ? "chapters" : "knowledge"));
+  const granted = storyNames.filter((name) => (!mutationNames.has(name) || (execution && (name === "update_discussion_focus" || (name === "record_story_changes" ? execution.dialogueRecording : !execution.dialogueRecording)))) && scopes.includes(creativeNames.has(name) ? "creative" : name === "get_author_notes" ? "notes" : ["read_chapter", "find_related_chapters"].includes(name) ? "chapters" : "knowledge"));
   return [
     ...granted.map(
       (name) =>
@@ -122,13 +128,27 @@ export function tools(
           async execute(_id, args) {
             if (!onCall()) return budgetSpent();
             const mutation = mutationNames.has(name);
+            const storyChange = storyChangeNames.has(name);
+            // Both automatic and offered batches share the same logical-message receipt.
+            const writeKey = storyChange ? "record_story_changes" : name;
+            const changeCount = storyChange ? (args as {changes:unknown[]}).changes.length : 0;
+            const report = (status: NonNullable<ThinkingMessage["storyRecording"]>["status"], code?:string, changeId?:string, count=changeCount) => {
+              if (storyChange) execution?.onStoryRecording?.({status,changeCount:count,...(code?{code}:{}),...(changeId?{changeId}:{})});
+            };
+            const reportReceipt = (text:string) => {
+              if (!storyChange) return;
+              const receipt = JSON.parse(text) as {status:"applied"|"offered"|"undone";changeId:string;changes?:unknown[]};
+              report(receipt.status,undefined,receipt.changeId,receipt.changes?.length ?? changeCount);
+            };
             const fingerprint = canonicalJSON([name, args]);
             if (mutation && execution) {
-              const previous = execution.writes[name];
-              if (previous?.result) return toolText(previous.result, {alreadyRecorded: true});
+              const previous = execution.writes[writeKey];
+              if (previous?.result) {reportReceipt(previous.result);execution.persist();return toolText(previous.result, {alreadyRecorded: true});}
+              if (previous && (previous.tool ?? writeKey) !== name) return feedback("PENDING_STORY_CHANGE", "The unresolved request used a different recording mode. Do not change the original operation; re-read its outcome before offering or recording a new batch.");
               if (previous && canonicalJSON(previous.arguments) !== canonicalJSON(args)) return feedback("PENDING_STORY_CHANGE", "The previous request has no confirmed outcome. Retry only its exact arguments; do not submit a different batch.", {arguments: previous.arguments});
               if (uncertain.has(name)) return feedback("OUTCOME_UNKNOWN", "The save outcome is unknown. Do not claim it was saved or issue another batch this reply; the original request is retained for recovery.");
-              execution.writes[name] = {arguments: args};
+              execution.writes[writeKey] = {arguments: args,tool:name};
+              report("saving");
               execution.persist();
             } else if (seen.has(fingerprint)) return {content: [{type: "text" as const, text: "This exact lookup was already attempted. Do not repeat it. Answer using available information and explain any gaps."}], details: {duplicate: true}};
             seen.add(fingerprint);
@@ -161,23 +181,28 @@ export function tools(
               throw Error(deadline.aborted && !signal.aborted ? "TOOL_TIMEOUT" : "TOOL_EXECUTION_FAILED");
             });
             } catch (error) {
-              if (!mutation || signal.aborted) throw error;
+              if (!mutation) throw error;
+              report("unknown","OUTCOME_UNKNOWN");
+              if (signal.aborted) throw error;
+              execution?.persist();
               uncertain.add(name);
               return feedback("OUTCOME_UNKNOWN", "The save outcome is unknown. Do not claim it was saved or issue another batch this reply; the original request is retained for recovery.");
             }
             if (!res.ok) {
               if (mutation && execution && [409,422].includes(res.status)) {
-                delete execution.writes[name]; execution.persist();
                 const problem = JSON.parse(text) as {code?:string; detail?:string};
+                delete execution.writes[writeKey];report("failed",problem.code ?? "INVALID_STORY_CHANGE");execution.persist();
                 return feedback(problem.code ?? "INVALID_STORY_CHANGE", problem.detail ?? "The change was not applied. Read the latest asset/version or correct the evidence, then retry the batch.");
               }
               if (mutation && res.status >= 500) {
                 uncertain.add(name);
+                report("unknown","OUTCOME_UNKNOWN");execution?.persist();
                 return feedback("OUTCOME_UNKNOWN", "The save outcome is unknown. Do not claim success. Keep the original batch for recovery.");
               }
+              report("failed","TOOL_EXECUTION_FAILED");execution?.persist();
               throw Error("TOOL_EXECUTION_FAILED");
             }
-            if (mutation && execution) {execution.writes[name] = {arguments: args, result: text}; execution.persist();}
+            if (mutation && execution) {execution.writes[writeKey] = {arguments: args,tool:name,result: text};reportReceipt(text);execution.persist();}
             const value = JSON.parse(text) as { sources?: unknown[] };
             const sources = (value.sources ?? []).flatMap((src) => {
               const result = thinkingSourceSchema.safeParse(src);

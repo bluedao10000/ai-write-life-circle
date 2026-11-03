@@ -25,6 +25,9 @@ type Failure struct {
 func recoveryFailure(code, detail string) Failure {
 	f := Failure{Code: "INTERNAL_ERROR", UserAction: "contact_support", ContextRetained: true, RetryMayIncurCost: true, Message: detail}
 	switch {
+	case code == "STORY_CONTEXT_UNAVAILABLE":
+		f.Code = "STORY_CONTEXT_UNAVAILABLE"
+		f.UserAction = "retry"
 	case strings.Contains(code, "TOOL_TIMEOUT"):
 		f.Code = "TOOL_TIMEOUT"
 		f.UserAction = "retry"

@@ -50,6 +50,9 @@ const codeMessages: Record<string, string> = {
   DIVERGENCE_SUPERSEDED: '已有更新的核对结果。',
   STORY_UNDO_CONFLICT: '这些设定在之后的讨论中又有修改，无法直接撤销。请在「当前故事」中查看最新内容后调整。',
   STORY_CHANGE_CONFLICT: '这些设定在之后的讨论中又有修改，无法直接撤销。请在「当前故事」中查看最新内容后调整。',
+  STORY_APPLY_CONFLICT: '无法直接记下这批变化。请查看当前状态后继续讨论。',
+  STORY_SOURCE_DELETED: '原讨论已删除，不能再记下这批变化。已有设定不受影响。',
+  FOCUS_VERSION_CONFLICT: '讨论焦点已经更新。请重新读取当前故事，再保存你的修改。',
 }
 
 export function creativeError(e: unknown) {

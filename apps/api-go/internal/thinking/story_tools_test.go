@@ -120,4 +120,24 @@ func TestDiscussionSourceIsSameBookOriginalAndRecordingIsOptIn(t *testing.T) {
 	if out["code"] != "DIALOGUE_RECORDING_DISABLED" {
 		t.Fatal(out)
 	}
+	offer := strings.Replace(body, "record_story_changes", "offer_story_changes", 1)
+	out = call(t, s, rec, "/internal/v1/agent/tools/execute", offer, 200)
+	if out["status"] != "offered" {
+		t.Fatal(out)
+	}
+	app, _ := s.Management.Resolve(application.Actor{ID: rec.Owner, Role: "author"}, rec.Book)
+	assets, err := creative.New(app, llm.Config{}, nil).Assets(ctx, creative.AssetQuery{Limit: 20})
+	if err != nil || len(assets.Items) != 0 {
+		t.Fatal("offering changed the story", assets, err)
+	}
+	stored := call(t, s, rec, "/internal/v1/agent/story-change-receipt", fmt.Sprintf(`{"sessionId":%q,"messageId":"current"}`, rec.ID), 200)
+	if stored["changeId"] != out["changeId"] || stored["status"] != "offered" {
+		t.Fatal(stored, out)
+	}
+	call(t, s, rec, "/internal/v1/agent/tools/execute", strings.Replace(offer, `"messageId":"current","runId"`, `"messageId":"old","runId"`, 1), 409)
+	focus := fmt.Sprintf(`{"sessionId":%q,"tool":"update_discussion_focus","messageId":"current","runId":"run","arguments":{"goal":"探索人物动机","assetIds":[],"questionIds":[]}}`, rec.ID)
+	out = call(t, s, rec, "/internal/v1/agent/tools/execute", focus, 200)
+	if out["goal"] != "探索人物动机" {
+		t.Fatal(out)
+	}
 }

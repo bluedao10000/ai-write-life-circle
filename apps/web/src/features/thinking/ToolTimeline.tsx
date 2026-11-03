@@ -17,6 +17,10 @@ export const toolLabel: Record<string, string> = {
   get_writing_context: "整理本章设定",
   compare_plan_with_manuscript: "对照计划与正文",
   request_turn_organize: "安排整理本轮",
+  offer_story_changes: "准备可记下的变化",
+  record_story_changes: "记下故事变化",
+  update_discussion_focus: "更新本次讨论焦点",
+  get_discussion_source: "查看先前讨论",
 };
 export const labelOf = (tool: string) => toolLabel[tool] ?? "作品资料";
 

@@ -371,7 +371,7 @@ function Group({ title, count, children, single }: { title: string; count: numbe
   )
 }
 
-function AssetDrawer({
+export function AssetDrawer({
   bookId,
   id,
   chapters,

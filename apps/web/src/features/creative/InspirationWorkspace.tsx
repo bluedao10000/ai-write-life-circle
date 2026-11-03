@@ -16,7 +16,8 @@ import type { useStudioController } from '../vnext/useStudioController'
 import CreativeConsent from './CreativeConsent'
 import { creativeError } from './labels'
 import { useCreativeOverview } from './useCreativeOverview'
-import { StoryDrawer, StoryReceipt } from './StoryContinuity'
+import { STORY_STARTERS, StoryDrawer, StoryReceipt, StoryRecordingStatus } from './StoryContinuity'
+import { AssetDrawer } from './AssetLibrary'
 import { Composer, ComposerQuote, ModelPicker, Notice } from '../inspiration/Composer'
 import History from '../inspiration/History'
 import { AiMsg, AuthorMsg, Failure, Pending } from '../inspiration/Messages'
@@ -27,6 +28,7 @@ import { reducedMotion, useKeyboard, useMedia, useSafeArea } from '../inspiratio
 type Studio = ReturnType<typeof useStudioController>
 const POLL_MS = 3000
 const SIDE = 'story2u.idea.side'
+const STORY = (book: string) => `story2u.idea.story.${book}`
 const activeTurn = (t: CreativeTurn) => t.status === 'awaiting' || t.status === 'queued'
 const unfinished = (m: ThinkingMessage) => m.role === 'assistant' && (m.status === 'accepted' || m.status === 'running')
 const questionOf = (answerId: string) => answerId.replace(/-answer(-\d+)?$/, '')
@@ -42,8 +44,10 @@ const SUGGEST: { icon: IconName; label: string; fill: string }[] = [
 export default function InspirationWorkspace({ studio }: { studio: Studio }) {
   const t = studio.thinking
   const book = studio.workspace.projectId
+  const chapterTitles = useMemo(() => new Map(studio.chapters.map((chapter) => [chapter.id, chapter.title])), [studio.chapters])
   const management = useManagement()
   const wide = useMedia('(min-width: 768px)')
+  const dockable = useMedia('(min-width: 1280px)')
   const kb = useKeyboard(!wide)
   useSafeArea(!wide)
   const { overview, refresh: refreshOverview } = useCreativeOverview(book, true)
@@ -59,8 +63,9 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
   const [nav, setNav] = useState(false)
   const [menu, setMenu] = useState(false)
   const [review, setReview] = useState(false)
-  const [storyOpen, setStoryOpen] = useState(false)
-  const [story, setStory] = useState<{ book: string; sessionId?: string; context: StoryContext | null; receipts: StoryChangeReceipt[]; error: string } | null>(null)
+  const [storyOpen, setStoryOpenRaw] = useState(() => { try { return dockable && localStorage.getItem(STORY(book)) === '1' } catch { return false } })
+  const [storyAsset, setStoryAsset] = useState<{ book: string; id: string } | null>(null)
+  const [story, setStory] = useState<{ book: string; sessionId?: string; context: StoryContext | null; receipts: StoryChangeReceipt[]; receiptsRead: boolean; error: string } | null>(null)
   const [recordingBusy, setRecordingBusy] = useState<string | null>(null)
   const [recordingError, setRecordingError] = useState<{ book: string; message: string } | null>(null)
   const currentBook = useRef(book)
@@ -102,8 +107,19 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
   const sending = !!t.outgoing
   const title = session?.title ?? t.sessions.find((s) => s.sessionId === t.selected)?.title ?? '新的讨论'
   const storyState = story?.book === book && story.sessionId === sessionId ? story : null
+  const storyContext = storyState?.context
+  const blankStory = storyContext && !storyState?.error && !storyContext.truncated && ![storyContext.intent, storyContext.confirmed, storyContext.alternatives, storyContext.rejected, storyContext.questions].some((items) => items.length)
+  const suggestions = blankStory ? STORY_STARTERS : SUGGEST
   const recording = (story?.book === book ? story.context?.dialogueRecording : undefined) ?? settings?.dialogueRecording ?? false
   const storyLoadError = storyState?.error ? (storyState.context || storyState.receipts.length ? '故事记录暂时无法更新，当前显示上次读取的内容。' : '暂时无法读取故事记录，仍可继续对话。') : ''
+  const setStoryOpen = (value: boolean) => {
+    setStoryOpenRaw(value)
+    if (dockable) try { localStorage.setItem(STORY(book), value ? '1' : '0') } catch { /* optional preference */ }
+  }
+  useEffect(() => {
+    try { setStoryOpenRaw(dockable && localStorage.getItem(STORY(book)) === '1') } catch { setStoryOpenRaw(false) }
+    setStoryAsset(null)
+  }, [book, dockable])
 
   const setSide = (v: boolean) => {
     setSideRaw(v)
@@ -140,6 +156,7 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
           book, sessionId,
           context: context.status === 'fulfilled' ? context.value : same?.context ?? null,
           receipts: receipts.status === 'fulfilled' ? receipts.value.items : same?.receipts ?? [],
+          receiptsRead: receipts.status === 'fulfilled',
           error: context.status === 'rejected' ? creativeError(context.reason) : receipts.status === 'rejected' ? creativeError(receipts.reason) : '',
         }
       })
@@ -184,7 +201,7 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
     }
   }
 
-  const onUndone = (receipt: StoryChangeReceipt) => {
+  const onReceiptChanged = (receipt: StoryChangeReceipt) => {
     if (currentBook.current !== book) return
     setStory((previous) => previous?.book === book && previous.sessionId === receipt.sessionId ? { ...previous, receipts: previous.receipts.map((item) => item.changeId === receipt.changeId ? receipt : item) } : previous)
     reloadCreative()
@@ -333,6 +350,16 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
     t.setDraft(text)
     focusInput(text.length)
   }
+  const fillFromStory = (text: string) => {
+    if (!dockable) setStoryOpen(false)
+    setStoryAsset(null)
+    fill(text)
+  }
+  const openStoryAsset = (id: string) => {
+    if (!dockable) setStoryOpen(false)
+    setStoryAsset({ book, id })
+  }
+  const rereadStory = () => { setTick((value) => value + 1); void t.refreshSession() }
   const ask = (answer: ThinkingMessage) => {
     const index = messages.findIndex((m) => m.id === answer.id)
     const question = messages.slice(0, index).reverse().find((m) => m.role === 'user')
@@ -415,6 +442,8 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
     </ComposerQuote>
   ) : undefined
   const picker = <ModelPicker models={t.models} value={t.modelChoice} onPick={t.chooseModel} disabled={t.busy || running} wide={wide} />
+  const storyLabel = `当前故事 · ${recording ? '随聊记录中' : '已暂停记录'}`
+  const storyEntry = wide ? <Btn size="sm" pressed={storyOpen} onClick={() => setStoryOpen(!storyOpen)} ariaLabel={storyLabel}><Icon name="target" className="h-3.5 w-3.5" />当前故事{recording ? <span className="flex items-center gap-1 text-micro text-ok"><span className="h-1.5 w-1.5 rounded-full bg-ok" />记录中</span> : <span className="h-1.5 w-1.5 rounded-full bg-ink-4" />}</Btn> : <span className="relative"><IconBtn icon="target" label={storyLabel} active={storyOpen} onClick={() => setStoryOpen(true)} className="min-h-11 min-w-11" /><span aria-hidden className={`pointer-events-none absolute top-2.5 right-2.5 h-1.5 w-1.5 rounded-full ${recording ? 'bg-ok' : 'bg-ink-4'}`} /></span>
   const composer = (
     <Composer
       value={shown}
@@ -436,7 +465,6 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
           <span className="truncate">{t.scopes.length ? scopeSummary(t.scopes) : '作品资料未开启'}</span>
           <Icon name="chevronDown" className="h-3 w-3" />
         </Btn>
-        <Btn size="sm" pressed={storyOpen} onClick={() => setStoryOpen(true)} className="text-ink-3 max-md:min-h-11"><Icon name="layers" className="h-3.5 w-3.5" />当前故事{recording && <span className="text-micro">· 随聊记录中</span>}</Btn>
         </div>
       }
       disabled={t.busy && !running}
@@ -574,6 +602,7 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
         </div>
       )}
       <div className="ml-auto flex items-center gap-1">
+        {storyEntry}
         {organized.length > 0 && (
           <Btn size="sm" pressed={review} onClick={() => setReview(true)} title="这次讨论整理出的候选设定">
             <Icon name="layers" className="h-3.5 w-3.5" />
@@ -594,6 +623,7 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
         <div className="truncate text-micro text-ink-3">{landing ? studio.workspace.projectTitle : `story2u · ${studio.workspace.projectTitle}`}</div>
       </div>
       <IconBtn icon="plus" label="新对话" onClick={newChat} className="min-h-11 min-w-11" />
+      {storyEntry}
       {more}
     </header>
   )
@@ -616,7 +646,7 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
         )}
         {!kb && (
           <ul aria-label="可以从这里开始" className={`grid grid-cols-2 gap-2 md:flex md:flex-wrap md:justify-center ${wide ? 'rise-later mt-5' : 'rise-late mt-10'}`}>
-            {SUGGEST.map((s) => (
+            {suggestions.map((s) => (
               <li key={s.label} className="min-w-0">
                 <Btn variant="outline" onClick={() => fill(s.fill)} className="h-auto min-h-11 w-full justify-start py-2 text-left text-ink-2 md:min-h-9 md:w-auto md:rounded-full">
                   <Icon name={s.icon} className="text-ink-3" />
@@ -638,6 +668,7 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
     // A retried question keeps its earlier, unfinished attempt; only the latest one offers recovery.
     const retried = failed && messages.slice(i + 1).some((x) => x.role === 'assistant' && questionOf(x.id) === questionOf(m.id))
     if (retried && !m.text.trim()) return <p className="border-l-2 border-line pl-4 text-ui-sm text-ink-3">这次尝试没有完成，已在下方重新回复。</p>
+    const saved = storyState?.receipts.some((receipt) => receipt.messageId === questionOf(m.id) && receipt.status === 'applied')
     return (
       <AiMsg
         m={m}
@@ -650,7 +681,7 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
           retried ? (
             <p className="mt-4 border-l-2 border-line pl-4 text-ui-sm text-ink-3">这次尝试没有完整生成，已在下方重新回复。</p>
           ) : failed ? (
-            <Failure m={m} run={run} busy={t.busy || running} recent={recent} onResume={t.resume} onAsk={() => ask(m)} onScopes={() => setAccess(true)} onNewTopic={newChat} />
+            <Failure m={m} run={run} storySaved={saved} busy={t.busy || running} recent={recent} onResume={t.resume} onAsk={() => ask(m)} onScopes={() => setAccess(true)} onNewTopic={newChat} />
           ) : undefined
         }
         organize={
@@ -699,10 +730,10 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
       <ol aria-label="对话记录" className="space-y-10">
         {messages.map((m, i) => (
           <li key={m.id} id={`msg-${m.id}`} className={`scroll-mt-6 rounded-lg transition-shadow duration-500 ${lit === m.id ? 'ring-1 ring-accent/40 ring-offset-8 ring-offset-page' : ''}`}>
-            {m.role === 'user' ? <AuthorMsg m={m} fresh={fresh === m.id} /> : <>
-              {reply(m, i)}
-              {!messages.slice(0, i).some((previous) => previous.role === 'assistant' && questionOf(previous.id) === questionOf(m.id)) && storyState?.receipts.filter((receipt) => receipt.messageId === questionOf(m.id)).map((receipt) => <StoryReceipt key={`${book}:${receipt.changeId}`} bookId={book} receipt={receipt} onUndone={onUndone} />)}
-            </>}
+            {m.role === 'user' ? <AuthorMsg m={m} fresh={fresh === m.id} note={<>
+              {storyState?.receipts.filter((receipt) => receipt.messageId === m.id).map((receipt) => <StoryReceipt key={`${book}:${receipt.changeId}`} bookId={book} receipt={receipt} chapterTitles={chapterTitles} onChanged={onReceiptChanged} onReread={rereadStory} onAsset={openStoryAsset} onStory={() => setStoryOpen(true)} />)}
+              {!storyState?.receipts.some((receipt) => receipt.messageId === m.id) && m.storyRecording && m.storyRecording.changeCount > 0 && <StoryRecordingStatus status={m.storyRecording} onRead={rereadStory} onContinue={!running && storyState?.receiptsRead ? () => fillFromStory(m.storyRecording?.status === 'failed' ? `关于我上次说的「${m.text.slice(0, 4000)}」，我想调整：` : `请核对当前故事，确认我上次说的「${m.text.slice(0, 4000)}」是否已记下；缺少的部分再记下。`) : undefined} onRetry={session?.run?.messageId === m.id && session.run.resumable && !t.busy && !running ? () => t.resume({ runId: session.run!.runId, confirmAdditionalCost: true, ...(recent ? { continuationContext: recent } : {}) }) : undefined} />}
+            </>} /> : reply(m, i)}
           </li>
         ))}
         {outgoing && (
@@ -726,7 +757,7 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
       <div className="mx-auto w-full max-w-chat">
         {notices}
         {composer}
-        {wide && recording && <p className="mt-2 text-center text-micro text-ink-3">明确的决定会记入设定，尝试中的想法保留为候选。记录可在回复下查看和撤销。</p>}
+        {wide && recording && <p className="mt-2 text-center text-micro text-ink-3">明确的决定会记入设定，尝试中的想法保留为候选。记录可在原话下查看和撤销。</p>}
       </div>
     </div>
   )
@@ -734,7 +765,7 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
   return (
     <div className="flex h-full min-h-0 flex-1 overflow-hidden">
       {wide && (
-        <aside aria-label="历史会话" inert={!side} className={`shrink-0 overflow-hidden bg-paper transition-[width] duration-300 ease-calm ${side ? 'w-64 border-r border-line-soft' : 'w-0'}`}>
+        <aside aria-label="历史会话" inert={!side || (storyOpen && !dockable)} className={`shrink-0 overflow-hidden bg-paper transition-[width] duration-300 ease-calm ${side ? 'w-64 border-r border-line-soft' : 'w-0'}`}>
           <div className="h-full w-64">{history(false)}</div>
         </aside>
       )}
@@ -747,7 +778,7 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
         </>
       )}
 
-      <main aria-label="灵感对话" className="relative flex min-w-0 flex-1 flex-col">
+      <main aria-label="灵感对话" inert={storyOpen && !dockable} className="relative flex min-w-0 flex-1 flex-col">
         {wide ? desktopBar : mobileBar}
         <div ref={scroller} onScroll={onScroll} onWheel={release} onTouchMove={release} onKeyDown={release} className="scroll min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain [overflow-anchor:none]">
           {landing ? landingView : thread}
@@ -755,7 +786,8 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
         {(!landing || !wide) && dock}
       </main>
 
-      {storyOpen && <StoryDrawer key={book} context={storyState?.context ?? null} error={(recordingError?.book === book ? recordingError.message : '') || storyLoadError} recording={recording} recordingBusy={recordingBusy === book} onRecording={(value) => void setRecording(value)} onClose={() => setStoryOpen(false)} onProposal={(proposal) => { setStoryOpen(false); setDrawer(proposal) }} />}
+      {storyOpen && <StoryDrawer key={`${book}:${sessionId ?? ''}`} mode={dockable ? 'dock' : wide ? 'drawer' : 'sheet'} bookId={book} workTitle={studio.workspace.projectTitle} sessionId={sessionId} messages={messages} receipts={storyState?.receipts ?? []} context={storyState?.context ?? null} error={(recordingError?.book === book ? recordingError.message : '') || storyLoadError} unknown={messages.some((message) => message.storyRecording?.status === 'unknown' && !storyState?.receipts.some((receipt) => receipt.messageId === message.id))} recording={recording} recordingBusy={recordingBusy === book} organized={organized.length} covered={!!storyAsset || !!drawer || review} onRecording={(value) => void setRecording(value)} onRead={rereadStory} onClose={() => setStoryOpen(false)} onFill={fillFromStory} onAsset={openStoryAsset} onMessage={(sid, mid) => { if (!dockable) setStoryOpen(false); toMessage(sid, mid) }} onReview={() => setReview(true)} onBook={() => { setStoryOpen(false); studio.setBookNav({ section: 'people' }); studio.setView('book') }} onFocusSaved={(focus) => setStory((previous) => previous?.book === book && previous.sessionId === focus.sessionId && previous.context ? { ...previous, context: { ...previous.context, focus } } : previous)} />}
+      {storyAsset?.book === book && <><div className="fade fixed inset-0 z-50 bg-scrim" onClick={() => setStoryAsset(null)} aria-hidden /><aside role="dialog" aria-modal="true" aria-label="设定详情" className="slide-r fixed inset-y-0 right-0 z-50 w-full border-l border-line-soft shadow-soft sm:max-w-drawer"><AssetDrawer key={`${book}:${storyAsset.id}`} bookId={book} id={storyAsset.id} chapters={studio.chapters} chapterTitle={chapterTitles} onClose={() => setStoryAsset(null)} onChanged={reloadCreative} onDiscuss={fillFromStory} onChapter={(id) => { setStoryAsset(null); studio.workspace.switchChapter(id); studio.setView('read') }} onSession={(sid, mid) => { setStoryAsset(null); toMessage(sid, mid) }} /></aside></>}
       {review && (
         <ReviewDrawer
           settings={settings}

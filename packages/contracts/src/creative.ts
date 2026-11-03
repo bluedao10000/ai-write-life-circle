@@ -419,6 +419,7 @@ export const discussionFocusSchema = discussionFocusInputSchema.omit({baseVersio
   version: z.number().int().positive(),
   updatedAt: z.string(),
 }).strict();
+export const authorDiscussionFocusInputSchema = discussionFocusInputSchema.extend({sessionId: z.string().max(128)}).strict();
 export const storyChangeIntentSchema = z.enum(["decide", "explore", "reject", "defer"]);
 export const storyChangeInputSchema = z.object({
   intent: storyChangeIntentSchema,
@@ -436,7 +437,7 @@ export const storyChangeReceiptSchema = z.object({
   sessionId: z.string(),
   messageId: z.string(),
   createdAt: z.string(),
-  status: z.enum(["applied", "undone"]),
+  status: z.enum(["offered", "applied", "undone"]),
   changes: z.array(z.object({
     intent: storyChangeIntentSchema,
     name: z.string(),
@@ -444,8 +445,12 @@ export const storyChangeReceiptSchema = z.object({
     proposalId: z.string().optional(),
     before: creativeAssetSchema.optional(),
     after: creativeAssetSchema.optional(),
+    proposalBefore: creativeProposalSchema.optional(),
+    proposalAfter: creativeProposalSchema.optional(),
   }).strict()),
   undoneAt: z.string().optional(),
+  undoable: z.boolean().optional(),
+  undoConflict: z.string().optional(),
 }).strict();
 export const storyChangeListSchema = z.object({items: z.array(storyChangeReceiptSchema)}).strict();
 export const storyContextSchema = z.object({

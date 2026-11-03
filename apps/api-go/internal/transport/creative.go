@@ -157,6 +157,30 @@ func handleCreative(o Options, w http.ResponseWriter, r *http.Request, path stri
 	}
 	ctx := r.Context()
 	switch {
+	case r.Method == "POST" && suffix == "discussion-focus":
+		var in struct {
+			SessionID string `json:"sessionId"`
+			creative.DiscussionFocusInput
+		}
+		if !decode(&in) {
+			return true
+		}
+		if !sessionIDRE.MatchString(in.SessionID) {
+			problem(w, application.Fail(422, "VALIDATION_FAILED", "sessionId required."), "")
+			return true
+		}
+		if e := ownedSession(o, *actor, book, in.SessionID); e != nil {
+			problem(w, application.AsError(e), "")
+			return true
+		}
+		v, e := s.EditDiscussionFocus(ctx, *actor, key, in.SessionID, in.DiscussionFocusInput)
+		respond(v, e, 200)
+	case r.Method == "POST" && len(rest) == 3 && rest[0] == "changes" && storyChangeIDRE.MatchString(rest[1]) && rest[2] == "apply":
+		var in struct{}
+		if decode(&in) {
+			v, e := s.ApplyStoryChange(ctx, *actor, key, rest[1])
+			respond(v, e, 200)
+		}
 	case r.Method == "POST" && len(rest) == 3 && rest[0] == "changes" && storyChangeIDRE.MatchString(rest[1]) && rest[2] == "undo":
 		var in struct{}
 		if decode(&in) {

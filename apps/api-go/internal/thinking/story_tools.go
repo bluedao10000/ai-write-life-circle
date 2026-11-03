@@ -46,6 +46,64 @@ func (s *Service) storyContextHandler(w http.ResponseWriter, r *http.Request, re
 	reply(w, out, err, 200)
 }
 
+func (s *Service) storyChangeReceiptHandler(w http.ResponseWriter, r *http.Request, rec Record) {
+	var in struct {
+		Session string `json:"sessionId"`
+		Message string `json:"messageId"`
+	}
+	if err := decode(w, r, &in); err != nil {
+		reply(w, nil, err, 0)
+		return
+	}
+	if in.Session != rec.ID {
+		reply(w, nil, fail(403, "CAPABILITY_MISMATCH"), 0)
+		return
+	}
+	if !contains(rec.Scopes, "creative") {
+		reply(w, nil, fail(403, "SCOPE_FORBIDDEN"), 0)
+		return
+	}
+	if in.Message == "" || len(in.Message) > 128 {
+		reply(w, nil, fail(422, "INVALID_TOOL_ARGUMENTS"), 0)
+		return
+	}
+	app, err := s.Management.Resolve(application.Actor{ID: rec.Owner, Role: "author"}, rec.Book)
+	if err != nil {
+		reply(w, nil, err, 0)
+		return
+	}
+	items, err := creative.New(app, llm.Config{}, nil).StoryChanges(r.Context(), rec.ID)
+	var out any
+	for _, item := range items {
+		if item.MessageID == in.Message {
+			out = compactStoryReceipt(item)
+			break
+		}
+	}
+	if err == nil {
+		_, err = s.authorize(Bearer(r))
+	}
+	reply(w, out, err, 200)
+}
+
+func compactStoryReceipt(receipt creative.StoryChangeReceipt) any {
+	items := []map[string]any{}
+	for _, change := range receipt.Changes {
+		item := map[string]any{"intent": change.Intent, "name": change.Name}
+		if change.AssetID != "" {
+			item["assetId"] = change.AssetID
+		}
+		if change.ProposalID != "" {
+			item["proposalId"] = change.ProposalID
+		}
+		if change.After != nil {
+			item["version"] = change.After.Version
+		}
+		items = append(items, item)
+	}
+	return map[string]any{"changeId": receipt.ChangeID, "sessionId": receipt.SessionID, "messageId": receipt.MessageID, "status": receipt.Status, "changes": items}
+}
+
 type storySnapshot struct {
 	creative.Snapshot
 	Run struct {
@@ -177,7 +235,7 @@ func (s *Service) executeStoryTool(ctx context.Context, rec Record, name, messag
 	}
 	var changes creative.RecordStoryChangesInput
 	var focus creative.DiscussionFocusInput
-	if name == "record_story_changes" {
+	if name == "record_story_changes" || name == "offer_story_changes" {
 		if err := strictStoryArgs(raw, &changes); err != nil {
 			return nil, err
 		}
@@ -211,26 +269,16 @@ func (s *Service) executeStoryTool(ctx context.Context, rec Record, name, messag
 			return fail(403, "CAPABILITY_REVOKED")
 		}
 		var e error
-		if name == "record_story_changes" {
+		if name == "record_story_changes" || name == "offer_story_changes" {
 			var receipt creative.StoryChangeReceipt
-			receipt, e = c.RecordStoryChanges(ctx, actor, "story:"+message, rec.ID, message, changes, messages)
+			if name == "offer_story_changes" {
+				receipt, e = c.OfferStoryChanges(ctx, actor, "story:"+message, rec.ID, message, changes, messages)
+			} else {
+				receipt, e = c.RecordStoryChanges(ctx, actor, "story:"+message, rec.ID, message, changes, messages)
+			}
 			// Full before/after versions remain available through the public receipt
 			// API; the model only needs the committed result and current versions.
-			items := []map[string]any{}
-			for _, change := range receipt.Changes {
-				item := map[string]any{"intent": change.Intent, "name": change.Name}
-				if change.AssetID != "" {
-					item["assetId"] = change.AssetID
-				}
-				if change.ProposalID != "" {
-					item["proposalId"] = change.ProposalID
-				}
-				if change.After != nil {
-					item["version"] = change.After.Version
-				}
-				items = append(items, item)
-			}
-			out = map[string]any{"changeId": receipt.ChangeID, "sessionId": receipt.SessionID, "messageId": receipt.MessageID, "status": receipt.Status, "changes": items}
+			out = compactStoryReceipt(receipt)
 		} else {
 			out, e = c.UpdateDiscussionFocus(ctx, actor, "focus:"+message, rec.ID, message, focus)
 		}

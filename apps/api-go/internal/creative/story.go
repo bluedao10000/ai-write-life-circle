@@ -3,7 +3,6 @@ package creative
 import (
 	"context"
 	"encoding/json"
-	"reflect"
 	"sort"
 	"strings"
 
@@ -27,21 +26,25 @@ type RecordStoryChangesInput struct {
 	Changes []StoryChangeInput `json:"changes"`
 }
 type StoryChange struct {
-	Intent     string `json:"intent"`
-	Name       string `json:"name"`
-	AssetID    string `json:"assetId,omitempty"`
-	ProposalID string `json:"proposalId,omitempty"`
-	Before     *Asset `json:"before,omitempty"`
-	After      *Asset `json:"after,omitempty"`
+	Intent         string        `json:"intent"`
+	Name           string        `json:"name"`
+	AssetID        string        `json:"assetId,omitempty"`
+	ProposalID     string        `json:"proposalId,omitempty"`
+	Before         *Asset        `json:"before,omitempty"`
+	After          *Asset        `json:"after,omitempty"`
+	ProposalBefore *ProposalView `json:"proposalBefore,omitempty"`
+	ProposalAfter  *ProposalView `json:"proposalAfter,omitempty"`
 }
 type StoryChangeReceipt struct {
-	ChangeID  string        `json:"changeId"`
-	SessionID string        `json:"sessionId"`
-	MessageID string        `json:"messageId"`
-	CreatedAt string        `json:"createdAt"`
-	Status    string        `json:"status"`
-	Changes   []StoryChange `json:"changes"`
-	UndoneAt  string        `json:"undoneAt,omitempty"`
+	ChangeID     string        `json:"changeId"`
+	SessionID    string        `json:"sessionId"`
+	MessageID    string        `json:"messageId"`
+	CreatedAt    string        `json:"createdAt"`
+	Status       string        `json:"status"`
+	Changes      []StoryChange `json:"changes"`
+	UndoneAt     string        `json:"undoneAt,omitempty"`
+	Undoable     *bool         `json:"undoable,omitempty"`
+	UndoConflict string        `json:"undoConflict,omitempty"`
 }
 type proposalChange struct {
 	Before *Proposal `json:"before,omitempty"`
@@ -49,7 +52,12 @@ type proposalChange struct {
 }
 type storedStoryChange struct {
 	StoryChangeReceipt
-	Proposals map[string]proposalChange `json:"proposals,omitempty"`
+	Proposals     map[string]proposalChange `json:"proposals,omitempty"`
+	Input         *RecordStoryChangesInput  `json:"input,omitempty"`
+	Evidence      [][]Evidence              `json:"evidence,omitempty"`
+	UndoAssets    map[string]Asset          `json:"undoAssets"`
+	UndoProposals map[string]Proposal       `json:"undoProposals"`
+	SourceDeleted bool                      `json:"sourceDeleted,omitempty"`
 }
 type DiscussionFocusInput struct {
 	Goal              string   `json:"goal"`
@@ -124,109 +132,19 @@ func storyEvidence(in []StoryEvidence, current string, messages []TurnMessage) (
 
 // RecordStoryChanges commits one atomic batch per logical author message.
 func (s *Service) RecordStoryChanges(ctx context.Context, actor application.Actor, key, session, message string, in RecordStoryChangesInput, messages []TurnMessage) (StoryChangeReceipt, error) {
-	var changeID string
-	if actor.Role != "author" {
-		return StoryChangeReceipt{}, application.Fail(403, "AUTHOR_DECISION_REQUIRED", "Only the owning author may change creative assets.")
-	}
-	if !application.SafeKey(key) {
-		return StoryChangeReceipt{}, application.Fail(422, "IDEMPOTENCY_KEY_REQUIRED", "Idempotency-Key required.")
-	}
-	priorState, loadErr := s.load()
-	if loadErr != nil {
-		return StoryChangeReceipt{}, loadErr
-	}
-	for _, prior := range priorState.StoryChanges {
-		if prior.SessionID == session && prior.MessageID == message {
-			return prior.StoryChangeReceipt, nil
-		}
-	}
-	if session == "" || message == "" || len(session) > 128 || len(message) > 128 {
-		return StoryChangeReceipt{}, validation("A conversation and current message are required.")
-	}
-	if len(in.Changes) < 1 || len(in.Changes) > 8 {
-		return StoryChangeReceipt{}, validation("Record 1-8 changes in one batch.")
-	}
-	evidence := make([][]Evidence, len(in.Changes))
-	for i, c := range in.Changes {
-		var err error
-		evidence[i], err = storyEvidence(c.Evidence, message, messages)
-		if err != nil {
-			return StoryChangeReceipt{}, err
-		}
-		if c.Intent != "decide" && c.Intent != "explore" && c.Intent != "reject" && c.Intent != "defer" {
-			return StoryChangeReceipt{}, validation("Unknown story change intent.")
-		}
-	}
-	err := s.idempotent(ctx, actor, "story.record:"+session+":"+message, key, in, &changeID, func(st *State) error {
-		for _, r := range st.StoryChanges {
-			if r.SessionID == session && r.MessageID == message {
-				changeID = r.ChangeID
-				return nil
-			}
-		}
-		if e := recordingEnabled(st); e != nil {
-			return e
-		}
-		if len(st.StoryChanges) >= MaxTurns {
-			return application.Fail(429, "CREATIVE_TURN_LIMIT", "Story change history is full.")
-		}
-		now := s.stamp()
-		r := storedStoryChange{StoryChangeReceipt: StoryChangeReceipt{ChangeID: "sc-" + newID(), SessionID: session, MessageID: message, CreatedAt: now, Status: "applied", Changes: []StoryChange{}}, Proposals: map[string]proposalChange{}}
-		beforeProposals := map[string]Proposal{}
-		for id, p := range st.Proposals {
-			beforeProposals[id] = p
-		}
-		touched := map[string]bool{}
-		for i, c := range in.Changes {
-			change, e := s.applyStoryChange(st, actor, session, message, now, c, evidence[i])
-			if e != nil {
-				return e
-			}
-			for _, id := range []string{change.AssetID, change.ProposalID, c.TargetProposalID} {
-				if id == "" {
-					continue
-				}
-				if touched[id] {
-					return validation("Combine changes to the same target in one patch.")
-				}
-			}
-			for _, id := range []string{change.AssetID, change.ProposalID, c.TargetProposalID} {
-				if id != "" {
-					touched[id] = true
-				}
-			}
-			r.Changes = append(r.Changes, change)
-		}
-		for id, p := range st.Proposals {
-			prior, ok := beforeProposals[id]
-			if ok && reflect.DeepEqual(prior, p) {
-				continue
-			}
-			item := proposalChange{After: p}
-			if ok {
-				item.Before = &prior
-			}
-			r.Proposals[id] = item
-		}
-		st.StoryChanges[r.ChangeID] = r
-		changeID = r.ChangeID
-		return nil
-	})
-	if err != nil {
-		return StoryChangeReceipt{}, err
-	}
-	st, err := s.load()
-	if err != nil {
-		return StoryChangeReceipt{}, err
-	}
-	return st.StoryChanges[changeID].StoryChangeReceipt, nil
+	return s.saveStoryChanges(ctx, actor, key, session, message, in, messages, false)
+}
+
+// OfferStoryChanges saves a validated preview without changing story settings.
+func (s *Service) OfferStoryChanges(ctx context.Context, actor application.Actor, key, session, message string, in RecordStoryChangesInput, messages []TurnMessage) (StoryChangeReceipt, error) {
+	return s.saveStoryChanges(ctx, actor, key, session, message, in, messages, true)
 }
 
 func hasStoryPatch(p Patch) bool {
 	return p.Name != nil || p.Summary != nil || len(p.AddAliases) > 0 || len(p.SetFields) > 0 || len(p.RemoveFields) > 0 || p.Plan != nil || p.QuestionStatus != nil
 }
 
-func (s *Service) applyStoryChange(st *State, actor application.Actor, session, message, now string, c StoryChangeInput, evidence []Evidence) (StoryChange, error) {
+func (s *Service) applyStoryChange(st *State, actor application.Actor, session, message, now string, c StoryChangeInput, evidence []Evidence, planned *StoryChange) (StoryChange, error) {
 	out := StoryChange{Intent: c.Intent}
 	src := ConversationSource{Type: "conversation", SessionID: session, MessageID: message, BookID: st.BookID, CapturedAt: now, Strategy: "dialogue-story-v1"}
 	var candidate *Proposal
@@ -237,7 +155,7 @@ func (s *Service) applyStoryChange(st *State, actor application.Actor, session, 
 		if !ok {
 			return out, application.Fail(404, "NOT_FOUND", "Proposal not found.")
 		}
-		if p.Status != "proposed" {
+		if p.Status != "proposed" && !(c.Intent == "explore" && p.Status == "rejected") {
 			return out, conflict("PROPOSAL_NOT_PENDING", "The candidate was already decided or replaced.", map[string]any{"proposalId": p.ID, "status": p.Status})
 		}
 		if p.Operation != "CREATE" && p.Operation != "UPDATE" && p.Operation != "SUPERSEDE" {
@@ -289,6 +207,19 @@ func (s *Service) applyStoryChange(st *State, actor application.Actor, session, 
 		return out, validation("A supported setting kind is required.")
 	}
 
+	if c.Intent == "reject" && target != nil && kind == "plot_line" && !hasStoryPatch(c.Patch) {
+		a := *target
+		a.Status = "archived"
+		a.Version++
+		a.UpdatedAt = now
+		st.Assets[a.ID] = a
+		appendVersion(st, a, Version{ActorID: actor.ID, At: now, Origin: "dialogue_decision", Source: &src, Evidence: evidence})
+		out.Name = a.Name
+		out.AssetID = a.ID
+		out.Before = target
+		out.After = &a
+		return out, nil
+	}
 	if c.Intent == "reject" && (target == nil || !hasStoryPatch(c.Patch)) {
 		return out, validation("Reject a candidate or explicitly patch the retracted setting fields.")
 	}
@@ -331,7 +262,11 @@ func (s *Service) applyStoryChange(st *State, actor application.Actor, session, 
 		if len(st.Proposals) >= MaxProposals {
 			return out, application.Fail(429, "CREATIVE_PROPOSAL_LIMIT", "Proposal limit reached.")
 		}
-		p := Proposal{ID: "cp-" + newID(), BookID: st.BookID, Operation: "CREATE", Kind: kind, Stance: "author_hypothesis", Exploratory: true, Status: "proposed", Draft: &content, Evidence: evidence, Source: src, CreatedAt: now}
+		proposalID := "cp-" + newID()
+		if planned != nil && planned.ProposalID != "" {
+			proposalID = planned.ProposalID
+		}
+		p := Proposal{ID: proposalID, BookID: st.BookID, Operation: "CREATE", Kind: kind, Stance: "author_hypothesis", Exploratory: true, Status: "proposed", Draft: &content, Evidence: evidence, Source: src, CreatedAt: now}
 		if kind == "open_question" {
 			p.Stance = "author_question"
 		}
@@ -371,7 +306,11 @@ func (s *Service) applyStoryChange(st *State, actor application.Actor, session, 
 		if len(st.Assets) >= MaxAssets {
 			return out, application.Fail(429, "CREATIVE_ASSET_LIMIT", "Asset limit reached.")
 		}
-		asset = Asset{ID: "ca-" + newID(), BookID: st.BookID, Kind: kind, Content: content, Status: "accepted", Origin: "conversation", Version: 1, CreatedAt: now, UpdatedAt: now}
+		assetID := "ca-" + newID()
+		if planned != nil && planned.AssetID != "" {
+			assetID = planned.AssetID
+		}
+		asset = Asset{ID: assetID, BookID: st.BookID, Kind: kind, Content: content, Status: "accepted", Origin: "conversation", Version: 1, CreatedAt: now, UpdatedAt: now}
 	}
 	st.Assets[asset.ID] = asset
 	proposalID := ""
@@ -420,14 +359,23 @@ func proposalName(p Proposal, assets map[string]Asset) string {
 }
 
 func (s *Service) UpdateDiscussionFocus(ctx context.Context, actor application.Actor, key, session, message string, in DiscussionFocusInput) (DiscussionFocus, error) {
+	if message == "" {
+		return DiscussionFocus{}, validation("A current author message is required.")
+	}
+	return s.editDiscussionFocus(ctx, actor, key, session, message, in)
+}
+
+// EditDiscussionFocus saves the author's session note without conversation provenance.
+func (s *Service) EditDiscussionFocus(ctx context.Context, actor application.Actor, key, session string, in DiscussionFocusInput) (DiscussionFocus, error) {
+	return s.editDiscussionFocus(ctx, actor, key, session, "", in)
+}
+
+func (s *Service) editDiscussionFocus(ctx context.Context, actor application.Actor, key, session, message string, in DiscussionFocusInput) (DiscussionFocus, error) {
 	var out DiscussionFocus
-	if session == "" || message == "" || len(session) > 128 || len(message) > 128 || runes(in.Goal) > 500 || runes(in.SuggestedNextStep) > 500 || len(in.AssetIDs) > 12 || len(in.QuestionIDs) > 12 {
+	if session == "" || len(session) > 128 || len(message) > 128 || runes(in.Goal) > 500 || runes(in.SuggestedNextStep) > 500 || len(in.AssetIDs) > 12 || len(in.QuestionIDs) > 12 {
 		return out, validation("Invalid discussion focus.")
 	}
 	err := s.idempotent(ctx, actor, "story.focus:"+session+":"+message, key, in, &out, func(st *State) error {
-		if e := recordingEnabled(st); e != nil {
-			return e
-		}
 		prior := st.Focuses[session]
 		expected := 0
 		if in.BaseVersion != nil {
@@ -465,7 +413,7 @@ func storyReceipts(st State, session string) []StoryChangeReceipt {
 	out := []StoryChangeReceipt{}
 	for _, r := range st.StoryChanges {
 		if session == "" || r.SessionID == session {
-			out = append(out, r.StoryChangeReceipt)
+			out = append(out, storyReceiptView(st, r))
 		}
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -475,76 +423,6 @@ func storyReceipts(st State, session string) []StoryChangeReceipt {
 		return out[i].ChangeID < out[j].ChangeID
 	})
 	return out
-}
-
-func (s *Service) UndoStoryChange(ctx context.Context, actor application.Actor, key, id string) (StoryChangeReceipt, error) {
-	var out StoryChangeReceipt
-	err := s.idempotent(ctx, actor, "story.undo:"+id, key, struct{}{}, &out, func(st *State) error {
-		r, ok := st.StoryChanges[id]
-		if !ok {
-			return application.Fail(404, "NOT_FOUND", "Story change receipt not found.")
-		}
-		if r.Status == "undone" {
-			out = r.StoryChangeReceipt
-			return nil
-		}
-		for _, c := range r.Changes {
-			if c.After == nil {
-				continue
-			}
-			a, ok := st.Assets[c.AssetID]
-			if !ok || a.Version != c.After.Version {
-				return conflict("STORY_UNDO_CONFLICT", "A setting was edited after this change. Keep the later edits and review it manually.", map[string]any{"assetId": c.AssetID, "version": a.Version})
-			}
-		}
-		for id, p := range r.Proposals {
-			if !reflect.DeepEqual(st.Proposals[id], p.After) {
-				return conflict("STORY_UNDO_CONFLICT", "A candidate was changed after this receipt.", map[string]any{"proposalId": id})
-			}
-		}
-		now := s.stamp()
-		for _, c := range r.Changes {
-			if c.After == nil {
-				continue
-			}
-			a := st.Assets[c.AssetID]
-			if c.Before == nil {
-				a.Status = "archived"
-			} else {
-				a.Content = c.Before.Content
-				a.Status = c.Before.Status
-				a.SupersededBy = c.Before.SupersededBy
-			}
-			a.Version++
-			a.UpdatedAt = now
-			st.Assets[a.ID] = a
-			appendVersion(st, a, Version{ActorID: actor.ID, At: now, Origin: "dialogue_undo"})
-		}
-		for id, p := range r.Proposals {
-			next := p.After
-			if p.Before != nil {
-				next = *p.Before
-			} else {
-				next.Status = "rejected"
-				next.Decision = &Decision{Action: "reject", ActorID: actor.ID, At: now}
-				next.StatusReason = "DIALOGUE_CHANGE_UNDONE"
-			}
-			if next.Status == "proposed" && next.TargetAssetID != "" {
-				for _, c := range r.Changes {
-					if c.AssetID == next.TargetAssetID && c.Before != nil {
-						next.BaseVersion = st.Assets[c.AssetID].Version
-					}
-				}
-			}
-			st.Proposals[id] = next
-		}
-		r.Status = "undone"
-		r.UndoneAt = now
-		st.StoryChanges[id] = r
-		out = r.StoryChangeReceipt
-		return nil
-	})
-	return out, err
 }
 
 // StoryContext keeps current author state and unconfirmed alternatives separate.

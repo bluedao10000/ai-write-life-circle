@@ -251,7 +251,11 @@ try {
   assert.equal((await call(chapterPath)).headRevision.revisionId, saved.revisionId, "manuscript must not change");
   // Returning to the inspiration session still works after writing.
   const m3 = await say("写完第一章了，我们聊聊他为什么留下。", "m3");
-  assert.equal((await organized(m3)).status, "no_change");
+  const thirdTurn = await organized(m3);
+  if (thirdTurn.status !== "no_change") {
+    const current = await call(sessionPath);
+    assert.fail(JSON.stringify({ turn: thirdTurn, answer: current.messages.find((m) => m.id === thirdTurn.answerId) }));
+  }
   // Scenario F: idempotent replay and deletion invalidating derived work.
   const replay = await call(sessionPath + "/messages", { method: "POST", key: "m3", status: 202, body: { text: "写完第一章了，我们聊聊他为什么留下。" } });
   assert.equal(replay.messageId, m3);

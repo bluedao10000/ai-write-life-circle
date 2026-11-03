@@ -318,13 +318,13 @@ describe('private creative asset proxy',()=>{
    return Response.json({})
   });stubAPI(upstream)
   const change='sc-11111111-1111-4111-8111-111111111111'
-  for(const [path,method] of [[root,'GET'],[root+'/assets','GET'],[root+'/assets/'+asset,'GET'],[root+'/assets/'+asset,'PATCH'],[root+'/proposals/decide','POST'],[root+'/settings/enable','POST'],[root+'/turns','GET'],[root+'/story-context?sessionId=th-1','GET'],[root+'/changes?sessionId=th-1','GET'],[root+'/changes/'+change+'/undo','POST'],[root+'/settings/recording','POST']] as const)
+  for(const [path,method] of [[root,'GET'],[root+'/assets','GET'],[root+'/assets/'+asset,'GET'],[root+'/assets/'+asset,'PATCH'],[root+'/proposals/decide','POST'],[root+'/settings/enable','POST'],[root+'/turns','GET'],[root+'/story-context?sessionId=th-1','GET'],[root+'/changes?sessionId=th-1','GET'],[root+'/changes/'+change+'/undo','POST'],[root+'/settings/recording','POST'],[root+'/changes/'+change+'/apply','POST'],[root+'/discussion-focus','POST']] as const)
    expect((await handleRequest(request(path,method,method==='GET'?undefined:'{}'),env)).status).toBe(200)
-  expect(forwarded).toHaveLength(11)
-  for(const [path,method] of [[root+'/assets/'+asset,'DELETE'],[root+'/settings/raw','POST'],[root+'/assets/../knowledge','GET'],[root+'/proposals','POST'],[root+'/state','GET'],[root+'/story-context','POST'],[root+'/changes/'+change+'/undo','GET'],[root+'/changes/'+change+'/record','POST']] as const)
+  expect(forwarded).toHaveLength(13)
+  for(const [path,method] of [[root+'/assets/'+asset,'DELETE'],[root+'/settings/raw','POST'],[root+'/assets/../knowledge','GET'],[root+'/proposals','POST'],[root+'/state','GET'],[root+'/story-context','POST'],[root+'/changes/'+change+'/undo','GET'],[root+'/changes/'+change+'/record','POST'],[root+'/changes/'+change+'/apply','GET'],[root+'/discussion-focus','GET']] as const)
    expect((await handleRequest(request(path,method,method==='GET'?undefined:'{}'),env)).status).toBe(404)
   expect((await handleRequest(request(root+'/proposals/decide','POST','{}',{origin:'https://evil.example'}),env)).status).toBe(403)
-  expect(forwarded).toHaveLength(11)
+  expect(forwarded).toHaveLength(13)
  })
 })
 

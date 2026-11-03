@@ -1,4 +1,5 @@
 const messages: Record<string, string> = {
+  STORY_CONTEXT_UNAVAILABLE: '没能读取当前故事。你的消息已保存，可以重新读取后继续回复。',
   NETWORK_OFFLINE: '网络已断开，问题还没有发出。输入已保留，恢复连接后再发送。',
   NETWORK_ERROR: '网络中断了，暂时不确定问题有没有送到。输入已保留，稍后再发送也不会重复提交。',
   HTTP_502: '灵感服务暂时无法连接。输入已保留，请稍后再试。',

@@ -57,7 +57,7 @@ export function AuthorMsg({ m, fresh, note }: { m: Pick<ThinkingMessage, 'text'>
 export function Pending({ tool, steps }: { tool: string; steps: ToolStep[] }) {
   const [details, setDetails] = useState(false)
   // Only real events: a tool that is running, or discussion memory being organized.
-  const label = !tool ? '正在思考…' : /[\u4e00-\u9fff]/.test(tool) ? tool.replace(/。$/, '…') : `正在参考作品资料：${labelOf(tool)}…`
+  const label = !tool ? '正在思考…' : /[\u4e00-\u9fff]/.test(tool) ? tool.replace(/。$/, '…') : ['offer_story_changes', 'record_story_changes', 'update_discussion_focus'].includes(tool) ? `正在${labelOf(tool)}…` : `正在参考作品资料：${labelOf(tool)}…`
   return (
     <div className="msg-in">
       <div role="status" aria-live="polite" className="flex items-center gap-3 py-1 text-ui text-ink-3">
@@ -95,13 +95,14 @@ const authorize = new Set(['AUTHORIZATION_REQUIRED', 'AUTHORIZATION_REVOKED', 'S
  * duplicate question) and is the author's explicit consent to another paid call;
  * otherwise the question returns to the composer as a new message.
  */
-export function Failure({ m, run, busy, recent, onResume, onAsk, onScopes, onNewTopic }: {
+export function Failure({ m, run, busy, recent, storySaved, onResume, onAsk, onScopes, onNewTopic }: {
   m: ThinkingMessage
   /** The session's current run when it belongs to this reply. */
   run?: ThinkingRun
   busy: boolean
   /** Recent visible discussion used to resume an interrupted reply. */
   recent: string
+  storySaved?: boolean
   onResume: (input: ThinkingRecovery) => void
   onAsk: () => void
   onScopes: () => void
@@ -113,7 +114,7 @@ export function Failure({ m, run, busy, recent, onResume, onAsk, onScopes, onNew
   const failure = run?.failure
   const resumable = !!run && !!failure?.retryable && run.resumable && ['failed', 'interrupted'].includes(run.status)
   const needsContext = failure?.code === 'CONTEXT_OVERFLOW'
-  const title = stopped ? '已停止回复。' : m.text.trim() ? '这次回复没有完整生成，已收到的内容已保留。' : '这次回复未能完成，你的问题已保存。'
+  const title = storySaved ? '设定已经保存，但回答中断。' : stopped ? '已停止回复。' : m.text.trim() ? '这次回复没有完整生成，已收到的内容已保留。' : '这次回复未能完成，你的问题已保存。'
   // The code-specific explanation is the most precise; the run's category text covers unknown codes.
   const specific = thinkingError(code)
   const explanation = specific === thinkingError() && failure?.message ? failure.message : specific
@@ -126,7 +127,7 @@ export function Failure({ m, run, busy, recent, onResume, onAsk, onScopes, onNew
         {resumable && (
           <Btn size="sm" variant="outline" disabled={busy} onClick={resume} className="max-md:min-h-11">
             <Icon name="refresh" className="h-3 w-3" />
-            {run!.status === 'interrupted' || needsContext ? '继续回复' : '重新尝试'}
+            {storySaved || run!.status === 'interrupted' || needsContext ? '继续回复' : '重新尝试'}
           </Btn>
         )}
         {!resumable && (

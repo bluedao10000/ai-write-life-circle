@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {setTimeout as delay} from "node:timers/promises";
 import {startThinkingFixture} from "./lib/thinking-fixture.mjs";
 import {storyContextSchema, storyChangeListSchema} from "../packages/contracts/dist/creative.js";
+import {thinkingSessionSchema} from "../packages/contracts/dist/thinking.js";
 
 // Synthetic model choices exercise the real Pi SDK, private tool boundary and
 // durable Go state. Intent classification quality needs separate model review.
@@ -41,7 +42,7 @@ try {
   const changes = async session => storyChangeListSchema.parse(await f.call(creative + "/changes?sessionId=" + session.sessionId)).items;
   const wait = async session => {
     for (let i = 0; i < 250; i++) {
-      const view = await f.call(path(session));
+      const view = thinkingSessionSchema.parse(await f.call(path(session)));
       if (view.status === "idle") {
         if (providerError) throw providerError;
         return view;
@@ -146,10 +147,41 @@ try {
   assert.equal(hero.fields.find(v => v.key === "动机").value,"替父亲洗清冤屈");
   await f.call(creative + "/settings/recording", {method:"POST",key:"disable-recording",body:{dialogueRecording:false}});
   await send(second,"总结一下当前设定。",[body => {
-    assert(!(body.tools ?? []).some(t => ["record_story_changes","update_discussion_focus"].includes(t.function?.name)));
+    assert(!(body.tools ?? []).some(t => t.function?.name === "record_story_changes"));
+    assert((body.tools ?? []).some(t => t.function?.name === "offer_story_changes"));
     assert(textOf(body).includes("法医"),"read context remains fresh while recording is disabled");
     return done(body);
   }]);
+  // Paused recording keeps a durable offer; only an explicit author apply writes it.
+  const manualText = "配角叫沈栀，是邮递员。";
+  const manual = await send(second,manualText,[body => tool("offer_story_changes",{changes:[{
+    intent:"decide",kind:"character",patch:{name:"沈栀",setFields:[{key:"职业",value:"邮递员"}]},
+    evidence:[{messageId:currentID(body),quote:manualText}],
+  }]}),done]);
+  const offered = (await changes(second)).find(r => r.messageId === manual.receipt.messageId);
+  assert.equal(offered.status,"offered");
+  assert(!((await context(second)).confirmed.some(a => a.name === "沈栀")));
+  assert.equal(manual.view.messages.find(m => m.id === manual.receipt.messageId).storyRecording.status,"offered");
+  await f.restartAPI();
+  assert.equal((await changes(second)).find(r => r.changeId === offered.changeId).status,"offered");
+  const count = f.calls.length;
+  const applied = await f.call(creative + "/changes/" + offered.changeId + "/apply",{method:"POST",key:"manual-apply",body:{}});
+  assert.equal(applied.changeId,offered.changeId);
+  assert.equal(applied.status,"applied");
+  assert((await context(second)).confirmed.some(a => a.name === "沈栀"));
+  assert.deepEqual(await f.call(creative + "/changes/" + offered.changeId + "/apply",{method:"POST",key:"manual-apply",body:{}}),applied);
+  await f.call(creative + "/changes/" + offered.changeId + "/undo",{method:"POST",key:"manual-undo",body:{}});
+  assert(!((await context(second)).confirmed.some(a => a.name === "沈栀")));
+  const reapplied = await f.call(creative + "/changes/" + offered.changeId + "/apply",{method:"POST",key:"manual-reapply",body:{}});
+  assert.equal(reapplied.status,"applied");
+  assert.equal((await context(second)).confirmed.filter(a => a.name === "沈栀").length,1);
+  const customFocus = await f.call(creative + "/discussion-focus",{method:"POST",key:"edit-discussion-focus",body:{sessionId:second.sessionId,goal:"讨论记者与邮递员如何合作",assetIds:[hero.assetId],questionIds:[],suggestedNextStep:"决定第一次见面的场景",baseVersion:0}});
+  assert.equal(customFocus.updatedFromMessageId,"");
+  assert.equal((await context(second)).focus.goal,"讨论记者与邮递员如何合作");
+  assert.equal((await context(first)).focus.goal,"确定林舟的动机");
+  await f.call(creative + "/discussion-focus",{method:"POST",key:"stale-focus",body:{sessionId:second.sessionId,goal:"过期的修改",assetIds:[],questionIds:[],baseVersion:0},status:409});
+  assert.equal((await context(second)).dialogueRecording,false,"manual save does not enable automatic recording");
+  assert.equal(f.calls.length,count,"manual apply/focus operations do not invoke a model");
   console.log("Story continuity: real Go + Pi context, decisions, candidates, focus, resume and undo passed (synthetic model).");
 } finally {
   await f.close();

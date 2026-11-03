@@ -289,25 +289,44 @@ func (s *Service) CancelSession(ctx context.Context, session string) error {
 			delete(st.Focuses, session)
 			changed = true
 		}
+		scrubProposal := func(p *Proposal) {
+			if p == nil || p.Source.SessionID != session {
+				return
+			}
+			p.Source.Deleted = true
+			if p.Status == "proposed" {
+				p.Status = "expired"
+				p.StatusReason = "SESSION_DELETED"
+			}
+			for i := range p.Evidence {
+				p.Evidence[i].Quote = ""
+			}
+			changed = true
+		}
 		for id, r := range st.StoryChanges {
+			if r.SessionID == session {
+				r.Input = nil
+				r.Evidence = nil
+				r.SourceDeleted = true
+				changed = true
+			}
 			for pid, p := range r.Proposals {
-				scrub := func(p *Proposal) {
-					if p == nil || p.Source.SessionID != session {
-						return
-					}
-					p.Source.Deleted = true
-					if p.Status == "proposed" {
-						p.Status = "expired"
-						p.StatusReason = "SESSION_DELETED"
-					}
-					for i := range p.Evidence {
-						p.Evidence[i].Quote = ""
-					}
-					changed = true
-				}
-				scrub(p.Before)
-				scrub(&p.After)
+				scrubProposal(p.Before)
+				scrubProposal(&p.After)
 				r.Proposals[pid] = p
+			}
+			for pid, p := range r.UndoProposals {
+				scrubProposal(&p)
+				r.UndoProposals[pid] = p
+			}
+			for i, c := range r.Changes {
+				if c.ProposalBefore != nil {
+					scrubProposal(&c.ProposalBefore.Proposal)
+				}
+				if c.ProposalAfter != nil {
+					scrubProposal(&c.ProposalAfter.Proposal)
+				}
+				r.Changes[i] = c
 			}
 			st.StoryChanges[id] = r
 		}

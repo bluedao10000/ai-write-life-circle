@@ -1419,6 +1419,7 @@
           "code": {
             "type": "string",
             "enum": [
+              "STORY_CONTEXT_UNAVAILABLE",
               "PROVIDER_TIMEOUT",
               "PROVIDER_UNAVAILABLE",
               "RATE_LIMITED",
@@ -1756,6 +1757,38 @@
                 "errorCode": {
                   "type": "string"
                 },
+                "storyRecording": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "saving",
+                        "applied",
+                        "offered",
+                        "undone",
+                        "failed",
+                        "unknown"
+                      ]
+                    },
+                    "changeCount": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "changeId": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "changeCount"
+                  ],
+                  "additionalProperties": false
+                },
                 "usage": {
                   "type": "object",
                   "properties": {
@@ -2030,6 +2063,38 @@
           },
           "errorCode": {
             "type": "string"
+          },
+          "storyRecording": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "saving",
+                  "applied",
+                  "offered",
+                  "undone",
+                  "failed",
+                  "unknown"
+                ]
+              },
+              "changeCount": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "changeId": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "status",
+              "changeCount"
+            ],
+            "additionalProperties": false
           },
           "usage": {
             "type": "object",
@@ -2657,6 +2722,7 @@
               "code": {
                 "type": "string",
                 "enum": [
+                  "STORY_CONTEXT_UNAVAILABLE",
                   "PROVIDER_TIMEOUT",
                   "PROVIDER_UNAVAILABLE",
                   "RATE_LIMITED",
@@ -3016,6 +3082,38 @@
                 "errorCode": {
                   "type": "string"
                 },
+                "storyRecording": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "saving",
+                        "applied",
+                        "offered",
+                        "undone",
+                        "failed",
+                        "unknown"
+                      ]
+                    },
+                    "changeCount": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "changeId": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "changeCount"
+                  ],
+                  "additionalProperties": false
+                },
                 "usage": {
                   "type": "object",
                   "properties": {
@@ -3187,6 +3285,7 @@
                   "code": {
                     "type": "string",
                     "enum": [
+                      "STORY_CONTEXT_UNAVAILABLE",
                       "PROVIDER_TIMEOUT",
                       "PROVIDER_UNAVAILABLE",
                       "RATE_LIMITED",
@@ -3365,6 +3464,39 @@
           "startUTF16",
           "endUTF16",
           "validity"
+        ],
+        "additionalProperties": false
+      },
+      "thinkingStoryRecording": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "saving",
+              "applied",
+              "offered",
+              "undone",
+              "failed",
+              "unknown"
+            ]
+          },
+          "changeCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "changeId": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "changeCount"
         ],
         "additionalProperties": false
       },
@@ -3573,6 +3705,7 @@
               "compare_plan_with_manuscript",
               "request_turn_organize",
               "record_story_changes",
+              "offer_story_changes",
               "update_discussion_focus",
               "get_discussion_source"
             ]

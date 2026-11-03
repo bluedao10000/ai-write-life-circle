@@ -142,7 +142,7 @@ function studio(thinking: Partial<Studio['thinking']>) {
     sessions: [], selected: null, session: null, models, modelChoice: 'deepseek', modelAvailable: true, model: { provider: 'deepseek' }, scopes: [], busy: false,
     outgoing: '', draft: '', error: '', modelNotice: '', tool: '', steps: [], cancellationPending: false, pendingDelivery: undefined, requestFailure: null,
     reconnecting: false, historyBusy: false, historyError: '',
-    setDraft: vi.fn(), send: vi.fn(), select: vi.fn(), chooseModel: vi.fn(), cancel: vi.fn(), resume: vi.fn(), remove: vi.fn(), retryPending: vi.fn(), saveScopes: vi.fn(), loadHistory: vi.fn(),
+    setDraft: vi.fn(), send: vi.fn(), select: vi.fn(), chooseModel: vi.fn(), cancel: vi.fn(), resume: vi.fn(), remove: vi.fn(), retryPending: vi.fn(), saveScopes: vi.fn(), loadHistory: vi.fn(), refreshSession: vi.fn(),
     ...thinking,
   }
   return {
@@ -162,15 +162,30 @@ describe('灵感 workspace', () => {
     vi.spyOn(creativeApi, 'storyContext').mockImplementation(async (bookId) => storyContext(bookId))
     vi.spyOn(creativeApi, 'changes').mockResolvedValue({ items: [] })
   })
-  it('lands on the Figma question page; a starter only fills the composer', async () => {
+  it('offers story starters only after the empty story loads; a starter only fills the composer', async () => {
     setWide(true)
     const s = studio({})
     render(<InspirationWorkspace studio={s} />)
     expect(screen.getByRole('heading', { name: '从哪里开始聊起？' })).toBeVisible()
+    expect(screen.queryByRole('button', { name: '一个人物' })).toBeNull()
+    await userEvent.click(await screen.findByRole('button', { name: '一个人物' }))
+    expect(s.thinking.setDraft).toHaveBeenCalledWith('主角叫')
+    expect(s.thinking.send).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: '发送' })).toBeDisabled()
+  })
+  it.each(['existing', 'truncated', 'unavailable'] as const)('keeps discussion suggestions when story context is %s', async (state) => {
+    setWide(true)
+    const context = storyContext()
+    if (state === 'existing') context.confirmed = [storyAsset('阿宁', '调查记者')]
+    if (state === 'truncated') context.truncated = true
+    if (state === 'unavailable') vi.mocked(creativeApi.storyContext).mockRejectedValue(new Error('temporarily unavailable'))
+    else vi.mocked(creativeApi.storyContext).mockResolvedValue(context)
+    const s = studio({})
+    await act(async () => { render(<InspirationWorkspace studio={s} />) })
+    expect(screen.queryByRole('button', { name: '一个人物' })).toBeNull()
     await userEvent.click(screen.getByRole('button', { name: '探索一个人物的内心' }))
     expect(s.thinking.setDraft).toHaveBeenCalledWith('有个角色我还没完全想透：')
     expect(s.thinking.send).not.toHaveBeenCalled()
-    expect(screen.getByRole('button', { name: '发送' })).toBeDisabled()
   })
   it.each([true, false])('shows source access by the composer and saves only selected material (wide=%s)', async (wide) => {
     setWide(wide)
@@ -239,15 +254,17 @@ describe('灵感 workspace', () => {
     })
     const session = { sessionId: 'th-1', bookId: 'book-a', title: '阿宁的身份', status: 'failed', messages: [message({ id: 'q1', role: 'user', text: '改成渔村孤女' }), message({ status: 'failed', text: '' })], run: run() } as unknown as ThinkingSession
     render(<InspirationWorkspace studio={studio({ selected: 'th-1', session })} />)
-    expect(await screen.findByText('故事记录已保存')).toBeVisible()
-    expect(screen.getByText('这次回复未能完成，你的问题已保存。')).toBeVisible()
-    await userEvent.click(screen.getByText('查看变更'))
+    expect(await screen.findByText('已记下 1 项变化')).toBeVisible()
+    expect(screen.getByText('设定已经保存，但回答中断。')).toBeVisible()
+    await userEvent.click(screen.getByRole('button', { name: '查看' }))
     expect(screen.getByText('流亡公主')).toBeVisible()
     expect(screen.getByText('渔村孤女')).toBeVisible()
-    await userEvent.click(screen.getByRole('button', { name: '撤销这次记录' }))
-    expect(await screen.findByText('连接中断，请重试。')).toBeVisible()
-    await userEvent.click(screen.getByRole('button', { name: '撤销这次记录' }))
-    expect(await screen.findByText('已撤销这次记录')).toBeVisible()
+    await userEvent.click(screen.getByRole('button', { name: '撤销' }))
+    expect(await screen.findByText('操作结果尚未确认，请重新读取故事记录。')).toBeVisible()
+    await userEvent.click(screen.getByRole('button', { name: '重新读取' }))
+    await screen.findByRole('button', { name: '撤销' })
+    await userEvent.click(screen.getByRole('button', { name: '撤销' }))
+    expect(await screen.findByText('已撤销 1 项变化')).toBeVisible()
     expect(undo.mock.calls[0][2]).toBeTruthy()
     expect(undo.mock.calls[0][2]).toBe(undo.mock.calls[1][2])
   })
@@ -258,10 +275,10 @@ describe('灵感 workspace', () => {
     vi.spyOn(creativeApi, 'undoChange').mockRejectedValue(new ApiProblemError('conflict', 409, 'STORY_UNDO_CONFLICT'))
     const session = { sessionId: 'th-1', bookId: 'book-a', title: '阿宁的身份', status: 'idle', messages: [message({ id: 'q1', role: 'user', text: '改成渔村孤女' }), message({ text: '已讨论。' })] } as unknown as ThinkingSession
     render(<InspirationWorkspace studio={studio({ selected: 'th-1', session })} />)
-    await userEvent.click(await screen.findByRole('button', { name: '撤销这次记录' }))
+    await userEvent.click(await screen.findByRole('button', { name: '撤销' }))
     expect(await screen.findByText(/这些设定在之后的讨论中又有修改/)).toBeVisible()
-    expect(screen.getByText('故事记录已保存')).toBeVisible()
-    expect(screen.queryByText('已撤销这次记录')).toBeNull()
+    expect(screen.getByText('已记下 1 项变化')).toBeVisible()
+    expect(screen.queryByText('已撤销 1 项变化')).toBeNull()
   })
 
   it('opts into recording with creative read access and keeps saved story when switched off', async () => {
@@ -274,7 +291,7 @@ describe('灵感 workspace', () => {
       return { dialogueRecording: current.dialogueRecording } as never
     })
     render(<InspirationWorkspace studio={studio({ saveScopes, scopes: ['chapters'] })} />)
-    await userEvent.click(screen.getByRole('button', { name: '当前故事' }))
+    await userEvent.click(screen.getByRole('button', { name: /^当前故事/ }))
     const toggle = await screen.findByRole('switch', { name: '随聊记录设定' })
     await waitFor(() => expect(toggle).toBeEnabled())
     expect(toggle).not.toBeChecked()
@@ -293,7 +310,7 @@ describe('灵感 workspace', () => {
     setWide(true)
     const settings = vi.spyOn(creativeApi, 'settings')
     render(<InspirationWorkspace studio={studio({ saveScopes: vi.fn().mockResolvedValue(false) })} />)
-    await userEvent.click(screen.getByRole('button', { name: '当前故事' }))
+    await userEvent.click(screen.getByRole('button', { name: /^当前故事/ }))
     const toggle = screen.getByRole('switch', { name: '随聊记录设定' })
     await waitFor(() => expect(toggle).toBeEnabled())
     await userEvent.click(toggle)
@@ -307,28 +324,29 @@ describe('灵感 workspace', () => {
     const oldResolvers: Array<(value: StoryContext) => void> = []
     vi.mocked(creativeApi.storyContext).mockImplementation((bookId) => bookId === 'book-a' ? new Promise((resolve) => oldResolvers.push(resolve)) : Promise.resolve({ ...storyContext(bookId), confirmed: [{ ...storyAsset('新书人物', '新书设定'), bookId }] }))
     const { rerender } = render(<InspirationWorkspace studio={studio({})} />)
-    await userEvent.click(screen.getByRole('button', { name: '当前故事' }))
+    await userEvent.click(screen.getByRole('button', { name: /^当前故事/ }))
     await waitFor(() => expect(oldResolvers.length).toBeGreaterThan(0))
     const next = studio({})
     next.workspace.projectId = 'book-b'
     rerender(<InspirationWorkspace studio={next} />)
+    await userEvent.click(screen.getByRole('button', { name: /^当前故事/ }))
     expect(await screen.findByText('新书设定')).toBeVisible()
     await act(async () => oldResolvers.forEach((resolve) => resolve({ ...storyContext(), confirmed: [storyAsset('旧书人物', '旧书设定')] })))
     expect(screen.queryByText('旧书设定')).toBeNull()
     expect(screen.getByText('新书设定')).toBeVisible()
   })
 
-  it('keeps the saved receipt at the original reply when the same question resumes', async () => {
+  it('keeps the saved receipt under the author message when the same question resumes', async () => {
     setWide(true)
     vi.mocked(creativeApi.changes).mockResolvedValue({ items: [storyReceipt()] })
     const original = [message({ id: 'q1', role: 'user', text: '改成渔村孤女' }), message({ status: 'failed', text: '' })]
     const session = { sessionId: 'th-1', bookId: 'book-a', title: '阿宁的身份', status: 'idle', messages: original } as unknown as ThinkingSession
     const { rerender } = render(<InspirationWorkspace studio={studio({ selected: 'th-1', session })} />)
-    expect(await screen.findByText('故事记录已保存')).toBeVisible()
+    expect(await screen.findByText('已记下 1 项变化')).toBeVisible()
     rerender(<InspirationWorkspace studio={studio({ selected: 'th-1', session: { ...session, messages: [...original, message({ id: 'q1-answer-1', text: '按这个身份继续。' })] } })} />)
     expect(screen.getAllByRole('region', { name: '本轮故事记录' })).toHaveLength(1)
-    expect(screen.getByRole('region', { name: '本轮故事记录' }).closest('li')).toHaveAttribute('id', 'msg-q1-answer')
-    expect(document.getElementById('msg-q1-answer-1')).not.toHaveTextContent('故事记录已保存')
+    expect(screen.getByRole('region', { name: '本轮故事记录' }).closest('li')).toHaveAttribute('id', 'msg-q1')
+    expect(document.getElementById('msg-q1-answer-1')).not.toHaveTextContent('已记下 1 项变化')
   })
 
   it('keeps the book switch on while replacing session focus with fresh context', async () => {
@@ -360,14 +378,14 @@ describe('灵感 workspace', () => {
     const original = [message({ id: 'q1', role: 'user', text: '改成渔村孤女' }), message({ text: '按这个身份继续。' })]
     const session = { sessionId: 'th-1', bookId: 'book-a', title: '阿宁的身份', status: 'idle', messages: original } as unknown as ThinkingSession
     const { rerender } = render(<InspirationWorkspace studio={studio({ selected: 'th-1', session })} />)
-    expect(await screen.findByText('故事记录已保存')).toBeVisible()
+    expect(await screen.findByText('已记下 1 项变化')).toBeVisible()
     vi.mocked(creativeApi.changes).mockRejectedValueOnce(new Error('failed to fetch'))
     rerender(<InspirationWorkspace studio={studio({ selected: 'th-1', session: { ...session, messages: [...original, message({ id: 'q2', role: 'user', text: '再聊动机' })] } })} />)
     expect(await screen.findByText('故事记录暂时无法更新，当前显示上次读取的内容。')).toBeVisible()
-    expect(screen.getByText('故事记录已保存')).toBeVisible()
+    expect(screen.getByText('已记下 1 项变化')).toBeVisible()
     vi.mocked(creativeApi.changes).mockResolvedValue({ items: [{ ...storyReceipt(), status: 'undone' }] })
     await userEvent.click(screen.getByRole('button', { name: '重新读取故事' }))
-    expect(await screen.findByText('已撤销这次记录')).toBeVisible()
+    expect(await screen.findByText('已撤销 1 项变化')).toBeVisible()
     expect(screen.queryByText('故事记录暂时无法更新，当前显示上次读取的内容。')).toBeNull()
   })
 
@@ -375,8 +393,38 @@ describe('灵感 workspace', () => {
     setWide(true)
     vi.mocked(creativeApi.storyContext).mockResolvedValue({ ...storyContext(), truncated: true })
     render(<InspirationWorkspace studio={studio({})} />)
-    await userEvent.click(screen.getByRole('button', { name: '当前故事' }))
+    await userEvent.click(screen.getByRole('button', { name: /^当前故事/ }))
     expect(await screen.findByText('这里只展示相关内容，可到设定页查看全部。')).toBeVisible()
     expect(screen.queryByText('从一个想法开始聊，逐步确定故事方向、人物和还待解决的问题。')).toBeNull()
+  })
+
+  it('keeps dock preference per book and leaves mobile sheets closed on entry', async () => {
+    setWide(true)
+    const first = render(<InspirationWorkspace studio={studio({})} />)
+    await userEvent.click(screen.getByRole('button', { name: /^当前故事/ }))
+    expect(localStorage.getItem('story2u.idea.story.book-a')).toBe('1')
+    first.unmount()
+    const next = studio({}); next.workspace.projectId = 'book-b'
+    const second = render(<InspirationWorkspace studio={next} />)
+    expect(screen.queryByRole('complementary', { name: '当前故事' })).toBeNull()
+    second.unmount()
+    const restored = render(<InspirationWorkspace studio={studio({})} />)
+    expect(screen.getByRole('complementary', { name: '当前故事' })).toBeVisible()
+    restored.unmount()
+    setWide(false)
+    render(<InspirationWorkspace studio={studio({})} />)
+    expect(screen.queryByRole('dialog', { name: '当前故事' })).toBeNull()
+  })
+
+  it.each(['failed', 'unknown'] as const)('offers a draft-only continuation when %s recording has no receipt or resumable run', async (status) => {
+    setWide(true)
+    const session = { sessionId: 'th-1', bookId: 'book-a', title: '记录', status: 'idle', messages: [message({ id: 'q1', role: 'user', text: '主角改成记者', storyRecording: { status, changeCount: 1 } }), message({ text: '我们接着聊。' })] } as unknown as ThinkingSession
+    const s = studio({ selected: 'th-1', session })
+    render(<InspirationWorkspace studio={s} />)
+    const continuation = await screen.findByRole('button', { name: status === 'failed' ? '调整后继续讨论' : '继续讨论这次记录' })
+    await userEvent.click(continuation)
+    expect(s.thinking.setDraft).toHaveBeenCalledWith(expect.stringContaining('主角改成记者'))
+    expect(s.thinking.send).not.toHaveBeenCalled()
+    expect(s.thinking.resume).not.toHaveBeenCalled()
   })
 })

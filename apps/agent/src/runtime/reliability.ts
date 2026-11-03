@@ -3,7 +3,8 @@ import type { ThinkingFailure, ThinkingRun } from "@writer-agent/contracts";
 // Stable public classification; provider bodies and SDK stacks never cross this boundary.
 export function failureFor(code: string, mayHaveIncurredCost: boolean): ThinkingFailure {
   let category: ThinkingFailure["code"] = "INTERNAL_ERROR";
-  if (/TIMEOUT|DURATION_EXCEEDED/.test(code)) category = code.startsWith("TOOL") ? "TOOL_TIMEOUT" : "PROVIDER_TIMEOUT";
+  if (code === "STORY_CONTEXT_UNAVAILABLE") category = "STORY_CONTEXT_UNAVAILABLE";
+  else if (/TIMEOUT|DURATION_EXCEEDED/.test(code)) category = code.startsWith("TOOL") ? "TOOL_TIMEOUT" : "PROVIDER_TIMEOUT";
   else if (/RATE_LIMITED/.test(code)) category = "RATE_LIMITED";
   else if (/CONTEXT_OVERFLOW|INPUT_BUDGET_EXCEEDED|CONTEXT_SUMMARY_FAILED/.test(code)) category = "CONTEXT_OVERFLOW";
   else if (/TOOL_/.test(code) && !/BUDGET/.test(code)) category = "TOOL_EXECUTION_FAILED";
@@ -21,6 +22,7 @@ export function failureFor(code: string, mayHaveIncurredCost: boolean): Thinking
     CONTEXT_OVERFLOW: "讨论内容较长，点击继续回复后会自动整理上下文。",
     TOOL_TIMEOUT: "读取资料超时，本轮已停止。",
     TOOL_EXECUTION_FAILED: "本轮资料读取未完成，已保留对话。",
+    STORY_CONTEXT_UNAVAILABLE: "没能读取当前故事，你的消息已保存。请重新读取后继续回复。",
     SESSION_INTERRUPTED: "执行已中断，对话已保留，可以继续。",
     SESSION_EXPIRED: "本次讨论已达存储上限，请新开话题并带上续谈要点。",
     AUTHORIZATION_REQUIRED: "资料授权已变化，请确认 AI 资料范围后继续。",

@@ -424,6 +424,23 @@ func (s *Service) complete(ctx context.Context, c *ClaimedJob, org *organizeCont
 // A replaced proposal that is no longer pending is not overwritten: the new
 // proposal stays independent so the author sees both.
 func commitOrganize(st *State, r *organizeResult, now string) {
+	changes := []StoryChange{}
+	for _, receipt := range st.StoryChanges {
+		if receipt.SessionID == r.ChangeSet.SessionID && receipt.MessageID == r.ChangeSet.MessageID {
+			changes = append(changes, receipt.Changes...)
+		}
+	}
+	kept := []Proposal{}
+	r.ChangeSet.Proposals = []string{}
+	for _, p := range r.Proposals {
+		if !representedStoryProposal(changes, p) {
+			kept = append(kept, p)
+			r.ChangeSet.Proposals = append(r.ChangeSet.Proposals, p.ID)
+		}
+	}
+	r.Proposals = kept
+	r.ChangeSet.NoChange = len(kept) == 0
+
 	for i, p := range r.Proposals {
 		if p.Replaces != "" {
 			old, ok := st.Proposals[p.Replaces]

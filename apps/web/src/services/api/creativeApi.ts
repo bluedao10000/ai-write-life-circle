@@ -19,6 +19,9 @@ import {
   storyContextSchema,
   storyChangeListSchema,
   storyChangeReceiptSchema,
+  authorDiscussionFocusInputSchema,
+  discussionFocusSchema,
+  type DiscussionFocusInput,
   type CreativeAssetInput,
   type CreativeAssetUpdate,
   type CreativeDecisionInput,
@@ -89,6 +92,12 @@ export const creativeApi = {
   },
   async undoChange(book: string, changeId: string, key: string) {
     return parse(storyChangeReceiptSchema, await postJson(`${root(book)}/changes/${encodeURIComponent(changeId)}/undo`, {}, key))
+  },
+  async applyChange(book: string, changeId: string, key: string) {
+    return parse(storyChangeReceiptSchema, await postJson(`${root(book)}/changes/${encodeURIComponent(changeId)}/apply`, {}, key))
+  },
+  async saveDiscussionFocus(book: string, input: DiscussionFocusInput & { sessionId: string }, key: string) {
+    return parse(discussionFocusSchema, await postJson(`${root(book)}/discussion-focus`, authorDiscussionFocusInputSchema.parse(input), key))
   },
   async excerpt(book: string, sessionId: string, messageId: string, signal?: AbortSignal) {
     const params = new URLSearchParams({ sessionId, messageId })

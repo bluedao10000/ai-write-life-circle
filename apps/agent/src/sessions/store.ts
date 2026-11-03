@@ -210,6 +210,8 @@ export class Store implements ExecutionAuthority {
       if (s.view.status !== "running") continue;
       s = this.read(id)!;
       const run = s.view.run;
+      const authorMessage = s.view.messages.find(m=>m.id===run?.messageId && m.role==="user");
+      if(authorMessage?.storyRecording?.status==="saving") authorMessage.storyRecording={...authorMessage.storyRecording,status:"unknown",code:"OUTCOME_UNKNOWN"};
       const answerId = run ? run.messageId + "-answer" + (run.attempt > 1 ? "-" + run.attempt : "") : undefined;
       const answer = answerId ? s.view.messages.find(m=>m.role==="assistant" && m.id===answerId) : [...s.view.messages].reverse().find(m=>m.role==="assistant");
       const completed = answer?.status === "completed" || run?.status === "completed" ||

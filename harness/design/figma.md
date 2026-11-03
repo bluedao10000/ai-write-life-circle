@@ -1,12 +1,22 @@
 # Figma 设计来源与同步状态
 
-最新读取：2026-10-24（Writer Studio V2.1「书」页）。
+最新读取：2026-11-03（V3.1「当前故事与随聊记录设定」）。
 
 ## 来源
 
 来源：[Writer Agent UI/UX Design](https://www.figma.com/make/kWBOdcae5utBZ6VtBHHXui/Writer-Agent-UI-UX-Design)。fileKey `kWBOdcae5utBZ6VtBHHXui`，node `0:1`，React / TypeScript。
 
-UI 权威是当前 src/site、src/index.css 与 site handoff。旧 V0.4 文档带历史标记，只作背景。
+UI 权威是当前导出源码、样式 tokens 与对应页面的 handoff；各批次的入口文件见下文。旧 V0.4 文档带历史标记，只作背景。
+
+## V3.1 当前故事与随聊记录（2026-11-03）
+
+设计来源为作者更新的 `/Users/bruce/git/story/Writer Agent UI_UX Design`，以 `docs/design/vnext-handoff.md` §0.1、`StoryDrawer.tsx`、`ChangeReceipt.tsx`、`Chat.tsx` 与 `Inspiration.tsx` 为准。
+
+实现包括“当前故事”入口、宽屏停靠 / 平板抽屉 / 手机底部面板、按作品保存宽屏开关、讨论焦点与下一步编辑、分类查看完整设定、候选方向与问题操作。讨论操作填入可编辑草稿，作者决定何时发送。变化回执位于作者原话下方，展开显示实际字段变化，可手动记下、撤销和重新记下。
+
+数据接入 Go 的真实故事状态与 Pi 工具回执。关闭随聊记录时保存待记下预览；手动记下以整轮变化为原子批次，按钮标明数量。保存失败、结果未知和回复中断分别处理，重新读取用于确认未知结果。领域行为见 [故事连续性](../architecture/story-continuity.md)。
+
+验证覆盖 Go 竞态测试、Agent 与 Web 单测、公开契约、生产构建，以及真实 Go + Pi + 合成模型的多轮创作流程。浏览器检查了 1440 / 1024 / 390px、浅色与深色、草稿操作、焦点恢复和横向溢出；没有执行 Figma 服务端截图像素差分。
 
 ## 已同步
 
