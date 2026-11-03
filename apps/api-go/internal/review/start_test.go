@@ -29,7 +29,6 @@ func TestStartWithoutPreviewConsent(t *testing.T) {
 
 func TestQueuedReviewSurvivesRuntimeSettings(t *testing.T) {
 	s, fake := testService(t, nil)
-	s.DisableLocalExecution = true
 	s.App.Owner = testAuthor.ID
 	s.App.Meter = &billing.Ledger{State: s.App.State}
 	p := plan(t, s)

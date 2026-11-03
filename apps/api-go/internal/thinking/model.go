@@ -1,4 +1,4 @@
-// Package thinking owns author/session grants and a private read-only Story Tool boundary.
+// Package thinking owns author/session grants and the private Story Tool boundary.
 package thinking
 
 import (

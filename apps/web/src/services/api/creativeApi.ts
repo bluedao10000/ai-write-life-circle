@@ -16,6 +16,9 @@ import {
   creativeTurnListSchema,
   creativeTurnSchema,
   creativeWritingContextSchema,
+  storyContextSchema,
+  storyChangeListSchema,
+  storyChangeReceiptSchema,
   type CreativeAssetInput,
   type CreativeAssetUpdate,
   type CreativeDecisionInput,
@@ -77,6 +80,16 @@ export const creativeApi = {
   async turns(book: string, sessionId: string, signal?: AbortSignal) {
     return parse(creativeTurnListSchema, await get(`${root(book)}/turns?sessionId=${encodeURIComponent(sessionId)}`, signal))
   },
+  async storyContext(book: string, sessionId?: string, signal?: AbortSignal) {
+    const params = new URLSearchParams(sessionId ? { sessionId } : {})
+    return parse(storyContextSchema, await get(`${root(book)}/story-context?${params}`, signal))
+  },
+  async changes(book: string, sessionId: string, signal?: AbortSignal) {
+    return parse(storyChangeListSchema, await get(`${root(book)}/changes?${new URLSearchParams({ sessionId })}`, signal))
+  },
+  async undoChange(book: string, changeId: string, key: string) {
+    return parse(storyChangeReceiptSchema, await postJson(`${root(book)}/changes/${encodeURIComponent(changeId)}/undo`, {}, key))
+  },
   async excerpt(book: string, sessionId: string, messageId: string, signal?: AbortSignal) {
     const params = new URLSearchParams({ sessionId, messageId })
     return parse(creativeTurnSchema, await get(`${root(book)}/turns/excerpt?${params}`, signal))
@@ -96,7 +109,7 @@ export const creativeApi = {
   async decideDivergence(book: string, id: string, action: 'update_plan' | 'adjust_future' | 'intentional' | 'dismiss', note = '', key = crypto.randomUUID()) {
     return parse(creativeDivergenceSchema, await postJson(`${root(book)}/divergences/${encodeURIComponent(id)}/decide`, note ? { action, note } : { action }, key))
   },
-  async settings(book: string, action: 'enable' | 'pause' | 'resume' | 'auto', input: Record<string, unknown> = {}, key = crypto.randomUUID()) {
+  async settings(book: string, action: 'enable' | 'pause' | 'resume' | 'auto' | 'recording', input: Record<string, unknown> = {}, key = crypto.randomUUID()) {
     return parse(creativeSettingsSchema, await postJson(`${root(book)}/settings/${action}`, input, key))
   },
 }

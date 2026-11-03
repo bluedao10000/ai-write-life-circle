@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { CreativeProposal } from '@writer-agent/contracts'
 import ProposalCard from '../features/creative/ProposalCard'
 import ProposalList from '../features/creative/ProposalList'
+import AssetEditor from '../features/creative/AssetEditor'
 import { diffContent } from '../features/creative/labels'
 import { readCompose, readView } from '../features/vnext/useStudioController'
 
@@ -25,6 +26,16 @@ afterEach(() => {
 })
 
 describe('creative proposals', () => {
+  it('preserves deferred questions when editing and supports resolving them', async () => {
+    const submit = vi.fn()
+    render(<AssetEditor title="编辑问题" kind="open_question" initial={{ name: '结局', summary: '暂缓讨论结局', fields: [], aliases: [], questionStatus: 'deferred' }} submitLabel="保存问题" chapters={[]} onClose={() => {}} onSubmit={submit} />)
+    expect(screen.getByRole('combobox', { name: '问题状态' })).toHaveValue('deferred')
+    await userEvent.click(screen.getByRole('button', { name: '保存问题' }))
+    expect(submit.mock.calls[0][0].content.questionStatus).toBe('deferred')
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: '问题状态' }), 'resolved')
+    await userEvent.click(screen.getByRole('button', { name: '保存问题' }))
+    expect(submit.mock.calls[1][0].content.questionStatus).toBe('resolved')
+  })
   it('diffs fields so negated settings are visible before acceptance', () => {
     const changes = diffContent(
       { name: '阿宁', aliases: [], summary: '', fields: [{ key: '身份', value: '流亡公主' }, { key: '年龄', value: '十七' }] },

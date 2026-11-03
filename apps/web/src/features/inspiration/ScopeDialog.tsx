@@ -1,4 +1,4 @@
-// 本作品的 AI 资料范围: the only data authorization in 灵感. Ordinary chat needs
+// 本作品的 AI 资料范围 controls reading. Ordinary chat needs
 // none — it sends only the author's messages and this conversation. Each scope
 // is an explicit, revocable per-work grant stored by the server (Go re-signs
 // the capability for every turn and revokes old grants on change).
@@ -10,7 +10,7 @@ type Scope = ThinkingSession['scopes'][number]
 const rows: { key: Scope; label: string; hint: string }[] = [
   { key: 'chapters', label: '本作品已保存章节', hint: '讨论需要时按段读取，并附上可核对的原文。' },
   { key: 'knowledge', label: '本作品知识库', hint: '从已保存章节整理的人物、地点与时间线。' },
-  { key: 'creative', label: '创作设定与待确认候选', hint: '已确认设定、草稿与候选会被区分对待。' },
+  { key: 'creative', label: '创作设定与待确认候选', hint: '读取已确认设定、草稿与候选。自动记录由「当前故事」中的「随聊记录设定」单独控制。' },
   { key: 'notes', label: '私人作者笔记（额外授权）', hint: '你的私人笔记。只有单独勾选才会读取。' },
 ]
 export const scopeSummary = (scopes: Scope[]) => (scopes.length ? `已开启 ${scopes.length} 项作品资料` : '仅限对话内容')

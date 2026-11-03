@@ -4,6 +4,7 @@
 import { useState, type ReactNode } from 'react'
 import type { CreativeAsset, CreativeContent, CreativeKind, CreativeProposal } from '@writer-agent/contracts'
 import { Btn, Dot, Icon, type IconName } from '../../components/vnext/ui'
+import { questionStatusLabels } from './labels'
 
 /** Design status vocabulary. Proposal stance/lifecycle and asset status map onto it. */
 export type DesignStatus = 'suggested' | 'pending' | 'confirmed' | 'conflict' | 'rejected' | 'draft' | 'retired'
@@ -66,7 +67,7 @@ export const kindsOf: Record<DesignKind, CreativeKind[]> = {
   person: ['character', 'character_arc'],
   world: ['world_rule', 'place', 'organization'],
   event: ['event'],
-  plot: ['plot_line', 'open_question'],
+  plot: ['story_intent', 'plot_line', 'open_question'],
   thread: ['foreshadowing'],
 }
 export const designKind = (k: CreativeKind): DesignKind => DESIGN_KINDS.find((d) => kindsOf[d].includes(k)) ?? 'plot'
@@ -91,6 +92,7 @@ export function DiffView({ before, after, labels = ['当前版本', '新版本']
     return (
       <div className="rounded-lg border border-line-soft bg-paper px-3.5 py-3">
         <div className="mb-1.5 text-micro text-ok">新增</div>
+        {after.questionStatus && <p className="mb-1.5 text-micro text-ink-3">{questionStatusLabels[after.questionStatus]}</p>}
         {after.summary && <p className="font-prose text-ui-lg text-ink">{after.summary}</p>}
         <Facets fields={after.fields} className={after.summary ? 'mt-3' : ''} />
       </div>
@@ -100,6 +102,10 @@ export function DiffView({ before, after, labels = ['当前版本', '新版本']
   const rows: [string, string | undefined, string | undefined][] = [
     ['名称', before.name, after.name],
     ['概要', before.summary || undefined, after.summary || undefined],
+    ['别名', before.aliases.join('、') || undefined, after.aliases.join('、') || undefined],
+    ['问题状态', before.questionStatus && questionStatusLabels[before.questionStatus], after.questionStatus && questionStatusLabels[after.questionStatus]],
+    ['计划章节', before.plan?.chapterId, after.plan?.chapterId],
+    ['回收章节', before.plan?.payoffChapterId, after.plan?.payoffChapterId],
     ...keys.map((k) => [k, val(before, k), val(after, k)] as [string, string | undefined, string | undefined]),
   ]
   const changed = rows.filter(([, b, a]) => b !== a)

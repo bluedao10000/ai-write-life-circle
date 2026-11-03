@@ -411,7 +411,7 @@ func (s *Service) WritingContext(ctx context.Context, chapter string) (WritingCo
 		if a.Status == "accepted" && a.Kind == "world_rule" && !selected[a.ID] && len(out.Rules) < 12 {
 			out.Rules = append(out.Rules, a)
 		}
-		if a.Kind == "open_question" && (a.Status == "accepted" || a.Status == "draft") && len(out.Questions) < 8 {
+		if a.Kind == "open_question" && a.QuestionStatus != "resolved" && (a.Status == "accepted" || a.Status == "draft") && len(out.Questions) < 8 {
 			out.Questions = append(out.Questions, a)
 		}
 	}

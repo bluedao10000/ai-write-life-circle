@@ -125,7 +125,7 @@ export function TurnOrganize({ turn, proposals, enabled, busy, onOrganize, onOpe
       </div>
     )
   }
-  if (turn.status === 'no_change') return <p className="mt-5 text-micro text-ink-3">本轮没有新的设定{turn.summary ? ` · ${turn.summary}` : ''}</p>
+  if (turn.status === 'no_change') return null
   return (
     <p className="mt-5 flex flex-wrap items-center gap-2 text-micro text-ink-3">
       {turnStatusLabels[turn.status]}

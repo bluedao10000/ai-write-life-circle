@@ -285,6 +285,39 @@ func (s *Service) CancelSession(ctx context.Context, session string) error {
 			}
 			st.Versions[id] = versions
 		}
+		if _, ok := st.Focuses[session]; ok {
+			delete(st.Focuses, session)
+			changed = true
+		}
+		for id, r := range st.StoryChanges {
+			for pid, p := range r.Proposals {
+				scrub := func(p *Proposal) {
+					if p == nil || p.Source.SessionID != session {
+						return
+					}
+					p.Source.Deleted = true
+					if p.Status == "proposed" {
+						p.Status = "expired"
+						p.StatusReason = "SESSION_DELETED"
+					}
+					for i := range p.Evidence {
+						p.Evidence[i].Quote = ""
+					}
+					changed = true
+				}
+				scrub(p.Before)
+				scrub(&p.After)
+				r.Proposals[pid] = p
+			}
+			st.StoryChanges[id] = r
+		}
+		for id, r := range st.Requests {
+			if strings.Contains(r.Result, session) {
+				r.Result = ""
+				st.Requests[id] = r
+				changed = true
+			}
+		}
 		return changed, nil
 	})
 }

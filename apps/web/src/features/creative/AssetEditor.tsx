@@ -49,6 +49,7 @@ export default function AssetEditor({
   const [chapterId, setChapterId] = useState(initial?.plan?.chapterId ?? '')
   const [payoffChapterId, setPayoffChapterId] = useState(initial?.plan?.payoffChapterId ?? '')
   const [status, setStatus] = useState<'draft' | 'accepted'>('accepted')
+  const [questionStatus, setQuestionStatus] = useState<NonNullable<CreativeContent['questionStatus']>>(initial?.questionStatus ?? 'pending')
   const isPlan = planKinds.includes(kind)
   const submit = () => {
     const plan = isPlan && (chapterId || payoffChapterId) ? { ...(chapterId ? { chapterId } : {}), ...(payoffChapterId ? { payoffChapterId } : {}) } : undefined
@@ -61,6 +62,7 @@ export default function AssetEditor({
         summary: summary.trim(),
         fields: fields.map((f) => ({ key: f.key.trim(), value: f.value.trim() })).filter((f) => f.key && f.value),
         ...(plan ? { plan } : {}),
+        ...(kind === 'open_question' ? { questionStatus } : {}),
       },
     })
   }
@@ -121,6 +123,7 @@ export default function AssetEditor({
           </div>
         )}
         {isPlan && <p className="text-micro text-ink-3">规划只表示作者意图，不代表正文已经发生。</p>}
+        {kind === 'open_question' && <Select label="问题状态" value={questionStatus} onChange={(v) => setQuestionStatus(v as typeof questionStatus)} options={[{ value: 'pending', label: '待讨论' }, { value: 'deferred', label: '暂缓' }, { value: 'resolved', label: '已解决' }]} />}
         {showStatus && (
           <Select label="保存为" value={status} onChange={(v) => setStatus(v as 'draft' | 'accepted')} options={[{ value: 'accepted', label: '已确认设定' }, { value: 'draft', label: '草稿（尚未确定）' }]} />
         )}

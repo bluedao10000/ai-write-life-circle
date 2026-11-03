@@ -1,12 +1,13 @@
 import { act, render, renderHook, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ThinkingMessage, ThinkingModelOption, ThinkingRun, ThinkingSession } from '@writer-agent/contracts'
+import type { CreativeAsset, StoryChangeReceipt, StoryContext, ThinkingMessage, ThinkingModelOption, ThinkingRun, ThinkingSession } from '@writer-agent/contracts'
 import InspirationWorkspace from '../features/creative/InspirationWorkspace'
 import { ModelPicker, hostNote } from '../features/inspiration/Composer'
 import { AiMsg, Failure, Pending, Rich, readable } from '../features/inspiration/Messages'
 import { useKeyboard } from '../features/inspiration/media'
 import { creativeApi } from '../services/api/creativeApi'
+import { ApiProblemError } from '../services/writerAgent'
 import type { useStudioController } from '../features/vnext/useStudioController'
 
 const models: ThinkingModelOption[] = [
@@ -151,9 +152,15 @@ function studio(thinking: Partial<Studio['thinking']>) {
   } as unknown as Studio
 }
 
+const storyContext = (bookId = 'book-a'): StoryContext => ({ bookId, stateVersion: 1, dialogueRecording: false, focus: null, intent: [], confirmed: [], alternatives: [], rejected: [], questions: [], recentChanges: [] })
+const storyAsset = (name: string, summary: string): CreativeAsset => ({ assetId: 'ca-1', bookId: 'book-a', kind: 'character', name, aliases: [], summary, fields: [], status: 'accepted', origin: 'conversation', version: 1, createdAt: 'now', updatedAt: 'now' })
+const storyReceipt = (): StoryChangeReceipt => ({ changeId: 'sc-1', sessionId: 'th-1', messageId: 'q1', createdAt: 'now', status: 'applied', changes: [{ intent: 'decide', name: '阿宁', assetId: 'ca-1', before: storyAsset('阿宁', '流亡公主'), after: { ...storyAsset('阿宁', '渔村孤女'), version: 2 } }] })
+
 describe('灵感 workspace', () => {
   beforeEach(() => {
     vi.spyOn(creativeApi, 'overview').mockResolvedValue({ settings: { enabled: false, needsModelConsent: false, autoOrganize: false, available: false, paused: false }, counts: {}, pendingProposals: 0 } as never)
+    vi.spyOn(creativeApi, 'storyContext').mockImplementation(async (bookId) => storyContext(bookId))
+    vi.spyOn(creativeApi, 'changes').mockResolvedValue({ items: [] })
   })
   it('lands on the Figma question page; a starter only fills the composer', async () => {
     setWide(true)
@@ -219,5 +226,157 @@ describe('灵感 workspace', () => {
     expect(screen.getByRole('button', { name: /选择回复模型/ })).toBeDisabled()
     await userEvent.click(screen.getByRole('button', { name: '历史会话与导航' }))
     await waitFor(() => expect(screen.getByRole('complementary', { name: '历史会话与导航' })).toBeVisible())
+  })
+
+  it('shows persisted decisions after a failed reply and undoes using a stable request key', async () => {
+    setWide(true)
+    const receipt = storyReceipt()
+    vi.mocked(creativeApi.changes).mockResolvedValue({ items: [receipt] })
+    const undo = vi.spyOn(creativeApi, 'undoChange').mockRejectedValueOnce(new Error('连接中断，请重试。')).mockImplementation(async () => {
+      const undone: StoryChangeReceipt = { ...receipt, status: 'undone', undoneAt: 'now' }
+      vi.mocked(creativeApi.changes).mockResolvedValue({ items: [undone] })
+      return undone
+    })
+    const session = { sessionId: 'th-1', bookId: 'book-a', title: '阿宁的身份', status: 'failed', messages: [message({ id: 'q1', role: 'user', text: '改成渔村孤女' }), message({ status: 'failed', text: '' })], run: run() } as unknown as ThinkingSession
+    render(<InspirationWorkspace studio={studio({ selected: 'th-1', session })} />)
+    expect(await screen.findByText('故事记录已保存')).toBeVisible()
+    expect(screen.getByText('这次回复未能完成，你的问题已保存。')).toBeVisible()
+    await userEvent.click(screen.getByText('查看变更'))
+    expect(screen.getByText('流亡公主')).toBeVisible()
+    expect(screen.getByText('渔村孤女')).toBeVisible()
+    await userEvent.click(screen.getByRole('button', { name: '撤销这次记录' }))
+    expect(await screen.findByText('连接中断，请重试。')).toBeVisible()
+    await userEvent.click(screen.getByRole('button', { name: '撤销这次记录' }))
+    expect(await screen.findByText('已撤销这次记录')).toBeVisible()
+    expect(undo.mock.calls[0][2]).toBeTruthy()
+    expect(undo.mock.calls[0][2]).toBe(undo.mock.calls[1][2])
+  })
+
+  it('explains later-edit undo conflicts without claiming the record was removed', async () => {
+    setWide(true)
+    vi.mocked(creativeApi.changes).mockResolvedValue({ items: [storyReceipt()] })
+    vi.spyOn(creativeApi, 'undoChange').mockRejectedValue(new ApiProblemError('conflict', 409, 'STORY_UNDO_CONFLICT'))
+    const session = { sessionId: 'th-1', bookId: 'book-a', title: '阿宁的身份', status: 'idle', messages: [message({ id: 'q1', role: 'user', text: '改成渔村孤女' }), message({ text: '已讨论。' })] } as unknown as ThinkingSession
+    render(<InspirationWorkspace studio={studio({ selected: 'th-1', session })} />)
+    await userEvent.click(await screen.findByRole('button', { name: '撤销这次记录' }))
+    expect(await screen.findByText(/这些设定在之后的讨论中又有修改/)).toBeVisible()
+    expect(screen.getByText('故事记录已保存')).toBeVisible()
+    expect(screen.queryByText('已撤销这次记录')).toBeNull()
+  })
+
+  it('opts into recording with creative read access and keeps saved story when switched off', async () => {
+    setWide(true)
+    const saveScopes = vi.fn().mockResolvedValue(true)
+    let current = { ...storyContext(), confirmed: [storyAsset('阿宁', '渔村孤女')] }
+    vi.mocked(creativeApi.storyContext).mockImplementation(async () => current)
+    const settings = vi.spyOn(creativeApi, 'settings').mockImplementation(async (_book, _action, value) => {
+      current = { ...current, dialogueRecording: Boolean(value?.dialogueRecording) }
+      return { dialogueRecording: current.dialogueRecording } as never
+    })
+    render(<InspirationWorkspace studio={studio({ saveScopes, scopes: ['chapters'] })} />)
+    await userEvent.click(screen.getByRole('button', { name: '当前故事' }))
+    const toggle = await screen.findByRole('switch', { name: '随聊记录设定' })
+    await waitFor(() => expect(toggle).toBeEnabled())
+    expect(toggle).not.toBeChecked()
+    await userEvent.click(toggle)
+    await waitFor(() => expect(toggle).toBeChecked())
+    expect(saveScopes).toHaveBeenCalledWith(['chapters', 'creative'])
+    expect(settings).toHaveBeenCalledWith('book-a', 'recording', { dialogueRecording: true })
+    await waitFor(() => expect(toggle).toBeEnabled())
+    await userEvent.click(toggle)
+    await waitFor(() => expect(toggle).not.toBeChecked())
+    expect(settings).toHaveBeenLastCalledWith('book-a', 'recording', { dialogueRecording: false })
+    expect(screen.getByText('渔村孤女')).toBeVisible()
+  })
+
+  it('does not enable recording if the read scope was not saved', async () => {
+    setWide(true)
+    const settings = vi.spyOn(creativeApi, 'settings')
+    render(<InspirationWorkspace studio={studio({ saveScopes: vi.fn().mockResolvedValue(false) })} />)
+    await userEvent.click(screen.getByRole('button', { name: '当前故事' }))
+    const toggle = screen.getByRole('switch', { name: '随聊记录设定' })
+    await waitFor(() => expect(toggle).toBeEnabled())
+    await userEvent.click(toggle)
+    expect(await screen.findByText('作品设定的读取范围尚未保存，请重试。')).toBeVisible()
+    expect(settings).not.toHaveBeenCalled()
+    expect(toggle).not.toBeChecked()
+  })
+
+  it('ignores old-book story responses after switching books', async () => {
+    setWide(true)
+    const oldResolvers: Array<(value: StoryContext) => void> = []
+    vi.mocked(creativeApi.storyContext).mockImplementation((bookId) => bookId === 'book-a' ? new Promise((resolve) => oldResolvers.push(resolve)) : Promise.resolve({ ...storyContext(bookId), confirmed: [{ ...storyAsset('新书人物', '新书设定'), bookId }] }))
+    const { rerender } = render(<InspirationWorkspace studio={studio({})} />)
+    await userEvent.click(screen.getByRole('button', { name: '当前故事' }))
+    await waitFor(() => expect(oldResolvers.length).toBeGreaterThan(0))
+    const next = studio({})
+    next.workspace.projectId = 'book-b'
+    rerender(<InspirationWorkspace studio={next} />)
+    expect(await screen.findByText('新书设定')).toBeVisible()
+    await act(async () => oldResolvers.forEach((resolve) => resolve({ ...storyContext(), confirmed: [storyAsset('旧书人物', '旧书设定')] })))
+    expect(screen.queryByText('旧书设定')).toBeNull()
+    expect(screen.getByText('新书设定')).toBeVisible()
+  })
+
+  it('keeps the saved receipt at the original reply when the same question resumes', async () => {
+    setWide(true)
+    vi.mocked(creativeApi.changes).mockResolvedValue({ items: [storyReceipt()] })
+    const original = [message({ id: 'q1', role: 'user', text: '改成渔村孤女' }), message({ status: 'failed', text: '' })]
+    const session = { sessionId: 'th-1', bookId: 'book-a', title: '阿宁的身份', status: 'idle', messages: original } as unknown as ThinkingSession
+    const { rerender } = render(<InspirationWorkspace studio={studio({ selected: 'th-1', session })} />)
+    expect(await screen.findByText('故事记录已保存')).toBeVisible()
+    rerender(<InspirationWorkspace studio={studio({ selected: 'th-1', session: { ...session, messages: [...original, message({ id: 'q1-answer-1', text: '按这个身份继续。' })] } })} />)
+    expect(screen.getAllByRole('region', { name: '本轮故事记录' })).toHaveLength(1)
+    expect(screen.getByRole('region', { name: '本轮故事记录' }).closest('li')).toHaveAttribute('id', 'msg-q1-answer')
+    expect(document.getElementById('msg-q1-answer-1')).not.toHaveTextContent('故事记录已保存')
+  })
+
+  it('keeps the book switch on while replacing session focus with fresh context', async () => {
+    setWide(true)
+    let resolveNext!: (value: StoryContext) => void
+    const focus = (sessionId: string, goal: string) => ({ sessionId, goal, assetIds: [], questionIds: [], updatedFromMessageId: 'q1', version: 1, updatedAt: 'now' })
+    vi.mocked(creativeApi.storyContext).mockImplementation(async (_book, id) => id === 'th-1'
+      ? { ...storyContext(), dialogueRecording: true, focus: focus('th-1', '明确主角动机') }
+      : new Promise((resolve) => { resolveNext = resolve }))
+    const first = { sessionId: 'th-1', bookId: 'book-a', title: '主角', status: 'idle', messages: [] } as unknown as ThinkingSession
+    const { rerender } = render(<InspirationWorkspace studio={studio({ selected: 'th-1', session: first })} />)
+    await userEvent.click(screen.getByRole('button', { name: /^当前故事/ }))
+    expect(await screen.findByText('明确主角动机')).toBeVisible()
+    rerender(<InspirationWorkspace studio={studio({ selected: 'th-2', session: null })} />)
+    const toggle = screen.getByRole('switch', { name: '随聊记录设定' })
+    expect(toggle).toBeChecked()
+    expect(toggle).toBeDisabled()
+    expect(screen.queryByText('明确主角动机')).toBeNull()
+    await waitFor(() => expect(resolveNext).toBeDefined())
+    await act(async () => resolveNext({ ...storyContext(), dialogueRecording: true, focus: focus('th-2', '讨论结局代价') }))
+    expect(await screen.findByText('讨论结局代价')).toBeVisible()
+    expect(toggle).toBeChecked()
+    expect(toggle).toBeEnabled()
+  })
+
+  it('shows a refresh failure outside the drawer and reloads durable receipts on retry', async () => {
+    setWide(true)
+    vi.mocked(creativeApi.changes).mockResolvedValue({ items: [storyReceipt()] })
+    const original = [message({ id: 'q1', role: 'user', text: '改成渔村孤女' }), message({ text: '按这个身份继续。' })]
+    const session = { sessionId: 'th-1', bookId: 'book-a', title: '阿宁的身份', status: 'idle', messages: original } as unknown as ThinkingSession
+    const { rerender } = render(<InspirationWorkspace studio={studio({ selected: 'th-1', session })} />)
+    expect(await screen.findByText('故事记录已保存')).toBeVisible()
+    vi.mocked(creativeApi.changes).mockRejectedValueOnce(new Error('failed to fetch'))
+    rerender(<InspirationWorkspace studio={studio({ selected: 'th-1', session: { ...session, messages: [...original, message({ id: 'q2', role: 'user', text: '再聊动机' })] } })} />)
+    expect(await screen.findByText('故事记录暂时无法更新，当前显示上次读取的内容。')).toBeVisible()
+    expect(screen.getByText('故事记录已保存')).toBeVisible()
+    vi.mocked(creativeApi.changes).mockResolvedValue({ items: [{ ...storyReceipt(), status: 'undone' }] })
+    await userEvent.click(screen.getByRole('button', { name: '重新读取故事' }))
+    expect(await screen.findByText('已撤销这次记录')).toBeVisible()
+    expect(screen.queryByText('故事记录暂时无法更新，当前显示上次读取的内容。')).toBeNull()
+  })
+
+  it('explains a partial story context without suggesting the story is empty', async () => {
+    setWide(true)
+    vi.mocked(creativeApi.storyContext).mockResolvedValue({ ...storyContext(), truncated: true })
+    render(<InspirationWorkspace studio={studio({})} />)
+    await userEvent.click(screen.getByRole('button', { name: '当前故事' }))
+    expect(await screen.findByText('这里只展示相关内容，可到设定页查看全部。')).toBeVisible()
+    expect(screen.queryByText('从一个想法开始聊，逐步确定故事方向、人物和还待解决的问题。')).toBeNull()
   })
 })

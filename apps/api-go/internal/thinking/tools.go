@@ -144,6 +144,10 @@ func (s *Service) PrivateHandler() http.Handler {
 			reply(w, map[string]any{"sessionId": rec.ID, "authorizationVersion": rec.AuthorizationVersion, "authorId": rec.Owner, "bookId": rec.Book, "model": rec.Model, "scopes": rec.Scopes}, nil, 200)
 			return
 		}
+		if r.URL.Path == "/internal/v1/agent/story-context" {
+			s.storyContextHandler(w, r, rec)
+			return
+		}
 		if r.URL.Path != "/internal/v1/agent/tools/execute" {
 			reply(w, nil, fail(404, "NOT_FOUND"), 0)
 			return
@@ -152,6 +156,8 @@ func (s *Service) PrivateHandler() http.Handler {
 			Session string          `json:"sessionId"`
 			Tool    string          `json:"tool"`
 			Args    json.RawMessage `json:"arguments"`
+			Message string          `json:"messageId,omitempty"`
+			Run     string          `json:"runId,omitempty"`
 		}
 		if e = decode(w, r, &in); e != nil {
 			reply(w, nil, e, 0)
@@ -162,11 +168,14 @@ func (s *Service) PrivateHandler() http.Handler {
 			return
 		}
 		var args toolArgs
-		d := json.NewDecoder(bytes.NewReader(in.Args))
-		d.DisallowUnknownFields()
-		if d.Decode(&args) != nil || len(args.Query) > 256 || len(args.Asset) > 128 || len(args.Kind) > 40 {
-			reply(w, nil, fail(422, "INVALID_TOOL_ARGUMENTS"), 0)
-			return
+		story := in.Tool == "record_story_changes" || in.Tool == "update_discussion_focus" || in.Tool == "get_discussion_source"
+		if !story {
+			d := json.NewDecoder(bytes.NewReader(in.Args))
+			d.DisallowUnknownFields()
+			if d.Decode(&args) != nil || len(args.Query) > 256 || len(args.Asset) > 128 || len(args.Kind) > 40 {
+				reply(w, nil, fail(422, "INVALID_TOOL_ARGUMENTS"), 0)
+				return
+			}
 		}
 		e = s.tx(r.Context(), func(st *registry) error {
 			v := st.Sessions[rec.ID]
@@ -184,7 +193,12 @@ func (s *Service) PrivateHandler() http.Handler {
 			reply(w, nil, e, 0)
 			return
 		}
-		out, e := s.execute(r.Context(), rec, in.Tool, args)
+		var out any
+		if story {
+			out, e = s.executeStoryTool(r.Context(), rec, in.Tool, in.Message, in.Run, in.Args)
+		} else {
+			out, e = s.execute(r.Context(), rec, in.Tool, args)
+		}
 		if e == nil {
 			raw, _ := json.Marshal(out)
 			if len(raw) > rec.Model.Limits.ResultBytes {

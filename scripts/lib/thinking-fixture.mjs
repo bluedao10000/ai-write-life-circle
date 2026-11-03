@@ -20,8 +20,9 @@ const free = async () => {
 };
 // chatReply(body) may return synthetic Markdown for chat-model fixtures (visual
 // checks); chatDelayMs paces its streamed chunks; chatStatus(body) may return an
-// HTTP status to fail that provider call. Defaults keep the canned reply.
-export async function startThinkingFixture({ live = false, taskProtocol = false, chatModels = false, maxOutputTokens = "1024", allowLocalLiveTransport = false, completionCrash = false, chatReply, chatDelayMs = 100, chatStatus } = {}) {
+// HTTP status to fail that provider call; chatDelta(body) can script tool calls.
+// Defaults keep the canned reply.
+export async function startThinkingFixture({ live = false, taskProtocol = false, chatModels = false, maxOutputTokens = "1024", allowLocalLiveTransport = false, completionCrash = false, chatReply, chatDelayMs = 100, chatStatus, chatDelta } = {}) {
   if (completionCrash && live) throw Error("CRASH_FIXTURE_MUST_USE_MOCK_PROVIDER");
   // Go runs in production mode, so every author call carries a signed user.
   const identity = identityFixture();
@@ -81,7 +82,8 @@ export async function startThinkingFixture({ live = false, taskProtocol = false,
     const related = results.find((r) => r.items),
       sources = results.flatMap((r) => r.sources ?? []);
     let delta;
-    if (config.unknown)
+    if (chatDelta) delta = await chatDelta(body);
+    else if (config.unknown)
       delta = {
         tool_calls: [
           {

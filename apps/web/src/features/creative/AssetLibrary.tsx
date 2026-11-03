@@ -10,7 +10,7 @@ import AssetEditor, { type EditorResult } from './AssetEditor'
 import ManuscriptMatches from './ManuscriptMatches'
 import ProposalList from './ProposalList'
 import { DiffView, Disclosure, EmptyState, Facets, OriginTag, StatusTag, assetOrigin, assetStatus, kindsOf, proposalStatus, type DesignKind } from './kit'
-import { creativeError, kindLabels } from './labels'
+import { creativeError, kindLabels, questionStatusLabels } from './labels'
 import { useCreativeOverview } from './useCreativeOverview'
 
 const designOf: Record<AssetSection, DesignKind> = { people: 'person', world: 'world', timeline: 'event', plot: 'plot', threads: 'thread' }
@@ -449,6 +449,7 @@ function AssetDrawer({
               <StatusTag status={assetStatus(a)} />
               <OriginTag origin={assetOrigin(a)} />
               <span className="text-micro text-ink-3">版本 {a.version}</span>
+              {a.kind === 'open_question' && <span className="text-micro text-ink-3">{questionStatusLabels[a.questionStatus ?? 'pending']}</span>}
             </div>
             <Heading level={1} className="mt-2 break-words">
               {a.name}
@@ -481,7 +482,7 @@ function AssetDrawer({
             {a.fields.length > 0 && (
               <section className="mt-8">
                 <Heading level={3} className="mb-3">
-                  {{ character: '人物档案', character_arc: '人物轨迹', event: '事件', plot_line: '剧情结构', foreshadowing: '伏笔计划', open_question: '问题' }[a.kind as string] ?? '设定'}
+                  {{ story_intent: '作品方向', character: '人物档案', character_arc: '人物轨迹', event: '事件', plot_line: '剧情结构', foreshadowing: '伏笔计划', open_question: '问题' }[a.kind as string] ?? '设定'}
                 </Heading>
                 <Facets fields={a.fields} />
               </section>

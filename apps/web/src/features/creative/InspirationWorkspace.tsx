@@ -7,7 +7,7 @@
 // simulated and no success is shown before the server confirms it.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { flushSync } from 'react-dom'
-import type { CreativeProposal, CreativeTurn, ThinkingMessage, ThinkingSource } from '@writer-agent/contracts'
+import type { CreativeProposal, CreativeTurn, StoryChangeReceipt, StoryContext, ThinkingMessage, ThinkingSource } from '@writer-agent/contracts'
 import { Btn, Dialog, Heading, Icon, IconBtn, Row, Seg, type IconName } from '../../components/vnext/ui'
 import { creativeApi } from '../../services/api/creativeApi'
 import BookMenu from '../management/BookMenu'
@@ -16,6 +16,7 @@ import type { useStudioController } from '../vnext/useStudioController'
 import CreativeConsent from './CreativeConsent'
 import { creativeError } from './labels'
 import { useCreativeOverview } from './useCreativeOverview'
+import { StoryDrawer, StoryReceipt } from './StoryContinuity'
 import { Composer, ComposerQuote, ModelPicker, Notice } from '../inspiration/Composer'
 import History from '../inspiration/History'
 import { AiMsg, AuthorMsg, Failure, Pending } from '../inspiration/Messages'
@@ -47,6 +48,7 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
   useSafeArea(!wide)
   const { overview, refresh: refreshOverview } = useCreativeOverview(book, true)
   const settings = overview?.settings
+  const organizingEnabled = !!settings?.enabled
   const [side, setSideRaw] = useState(() => {
     try {
       return localStorage.getItem(SIDE) !== '0'
@@ -57,6 +59,12 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
   const [nav, setNav] = useState(false)
   const [menu, setMenu] = useState(false)
   const [review, setReview] = useState(false)
+  const [storyOpen, setStoryOpen] = useState(false)
+  const [story, setStory] = useState<{ book: string; sessionId?: string; context: StoryContext | null; receipts: StoryChangeReceipt[]; error: string } | null>(null)
+  const [recordingBusy, setRecordingBusy] = useState<string | null>(null)
+  const [recordingError, setRecordingError] = useState<{ book: string; message: string } | null>(null)
+  const currentBook = useRef(book)
+  currentBook.current = book
   const [access, setAccess] = useState(false)
   const [organizeConsent, setOrganizeConsent] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -78,8 +86,8 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
   const anchor = useRef<{ top: number; height: number } | null>(null)
   const sentAt = useRef<{ text: string; questions: number } | null>(null)
   const pin = useRef<string | null>(null)
-  const session = t.session
-  const sessionId = session?.sessionId
+  const session = t.session?.bookId === book ? t.session : null
+  const sessionId = session?.sessionId ?? t.selected ?? undefined
   const running = session?.status === 'running'
   const seed = studio.thinkingSeed
   const messages = useMemo(() => session?.messages ?? [], [session?.messages])
@@ -93,6 +101,9 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
   const loading = !!t.selected && !session
   const sending = !!t.outgoing
   const title = session?.title ?? t.sessions.find((s) => s.sessionId === t.selected)?.title ?? '新的讨论'
+  const storyState = story?.book === book && story.sessionId === sessionId ? story : null
+  const recording = (story?.book === book ? story.context?.dialogueRecording : undefined) ?? settings?.dialogueRecording ?? false
+  const storyLoadError = storyState?.error ? (storyState.context || storyState.receipts.length ? '故事记录暂时无法更新，当前显示上次读取的内容。' : '暂时无法读取故事记录，仍可继续对话。') : ''
 
   const setSide = (v: boolean) => {
     setSideRaw(v)
@@ -110,41 +121,74 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
       if (end !== undefined) el.setSelectionRange(end, end)
     })
 
-  // Organizing state for this conversation; refreshes while work is in flight.
+  // One refresh loop for saved story state and organizing, including failed replies.
   useEffect(() => {
-    if (!settings?.enabled) {
-      setTurns([])
-      setMine([])
-      return
-    }
-    let alive = true
+    const abort = new AbortController()
     let timer: number | undefined
     const load = async () => {
-      try {
-        const [pending, list] = await Promise.all([
-          creativeApi.proposals(book, { status: 'proposed', limit: 100 }),
-          sessionId ? creativeApi.turns(book, sessionId) : Promise.resolve({ items: [] as CreativeTurn[] }),
-        ])
-        const own = sessionId ? await creativeApi.proposals(book, { sessionId, limit: 100 }) : { items: [] }
-        if (!alive) return
-        setAllPending(pending.items)
-        setTurns(list.items)
-        setMine(own.items)
-        if ((list.items.some(activeTurn) || running) && document.visibilityState === 'visible') timer = window.setTimeout(() => void load(), POLL_MS)
-      } catch (e) {
-        if (alive) setLocalError(creativeError(e))
+      const [context, receipts, pending, list, own] = await Promise.allSettled([
+        creativeApi.storyContext(book, sessionId, abort.signal),
+        sessionId ? creativeApi.changes(book, sessionId, abort.signal) : Promise.resolve({ items: [] as StoryChangeReceipt[] }),
+        organizingEnabled ? creativeApi.proposals(book, { status: 'proposed', limit: 100 }, abort.signal) : Promise.resolve({ items: [] as CreativeProposal[] }),
+        organizingEnabled && sessionId ? creativeApi.turns(book, sessionId, abort.signal) : Promise.resolve({ items: [] as CreativeTurn[] }),
+        organizingEnabled && sessionId ? creativeApi.proposals(book, { sessionId, limit: 100 }, abort.signal) : Promise.resolve({ items: [] as CreativeProposal[] }),
+      ])
+      if (abort.signal.aborted) return
+      setStory((previous) => {
+        const same = previous?.book === book && previous.sessionId === sessionId ? previous : null
+        return {
+          book, sessionId,
+          context: context.status === 'fulfilled' ? context.value : same?.context ?? null,
+          receipts: receipts.status === 'fulfilled' ? receipts.value.items : same?.receipts ?? [],
+          error: context.status === 'rejected' ? creativeError(context.reason) : receipts.status === 'rejected' ? creativeError(receipts.reason) : '',
+        }
+      })
+      if (pending.status === 'fulfilled') setAllPending(pending.value.items)
+      if (list.status === 'fulfilled') setTurns(list.value.items)
+      if (own.status === 'fulfilled') setMine(own.value.items)
+      const failure = [pending, list, own].find((result) => result.status === 'rejected')
+      if (failure?.status === 'rejected') setLocalError(creativeError(failure.reason))
+      if ((running || (list.status === 'fulfilled' && list.value.items.some(activeTurn))) && document.visibilityState === 'visible') {
+        timer = window.setTimeout(() => void load(), POLL_MS)
       }
     }
     void load()
     return () => {
-      alive = false
+      abort.abort()
       window.clearTimeout(timer)
     }
-  }, [book, sessionId, settings?.enabled, running, messages.length, tick])
+  }, [book, sessionId, organizingEnabled, running, messages.length, tick])
   const reloadCreative = useCallback(() => {
     setTick((n) => n + 1)
     refreshOverview()
   }, [refreshOverview])
+
+  const setRecording = async (value: boolean) => {
+    if (recordingBusy === book) return
+    setRecordingBusy(book)
+    setRecordingError(null)
+    try {
+      if (value && !t.scopes.includes('creative')) {
+        const saved = await t.saveScopes([...t.scopes, 'creative'])
+        if (!saved) throw new Error('作品设定的读取范围尚未保存，请重试。')
+      }
+      if (currentBook.current !== book) return
+      const result = await creativeApi.settings(book, 'recording', { dialogueRecording: value })
+      if (currentBook.current !== book) return
+      setStory((previous) => previous?.book === book && previous.context ? { ...previous, context: { ...previous.context, dialogueRecording: result.dialogueRecording }, error: '' } : previous)
+      reloadCreative()
+    } catch (e) {
+      if (currentBook.current === book) setRecordingError({ book, message: creativeError(e) })
+    } finally {
+      setRecordingBusy((pending) => pending === book ? null : pending)
+    }
+  }
+
+  const onUndone = (receipt: StoryChangeReceipt) => {
+    if (currentBook.current !== book) return
+    setStory((previous) => previous?.book === book && previous.sessionId === receipt.sessionId ? { ...previous, receipts: previous.receipts.map((item) => item.changeId === receipt.changeId ? receipt : item) } : previous)
+    reloadCreative()
+  }
 
   // Scroll intent (Figma): opening a conversation jumps to the end; a sent question
   // scrolls to the end; when a reply starts, its question settles at the top so the
@@ -386,11 +430,14 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
       wide={wide}
       picker={picker}
       sourceAccess={
+        <div className="flex flex-wrap items-center gap-1">
         <Btn size="sm" onClick={() => setAccess(true)} ariaLabel={`选择作品资料，${scopeSummary(t.scopes)}`} className="max-w-full text-ink-3 max-md:min-h-11">
           <Icon name="book" className="h-3.5 w-3.5" />
           <span className="truncate">{t.scopes.length ? scopeSummary(t.scopes) : '作品资料未开启'}</span>
           <Icon name="chevronDown" className="h-3 w-3" />
         </Btn>
+        <Btn size="sm" pressed={storyOpen} onClick={() => setStoryOpen(true)} className="text-ink-3 max-md:min-h-11"><Icon name="layers" className="h-3.5 w-3.5" />当前故事{recording && <span className="text-micro">· 随聊记录中</span>}</Btn>
+        </div>
       }
       disabled={t.busy && !running}
     />
@@ -400,6 +447,7 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
     <>
       {offline && !error && <Notice icon="offline">暂时无法连接创作伙伴。你写下的问题会保留在输入框里，恢复后再发送。</Notice>}
       {t.modelNotice && <Notice icon="alert">{t.modelNotice}</Notice>}
+      {storyLoadError && <Notice icon="alert" action={<Btn size="sm" className="-my-1" onClick={() => setTick((value) => value + 1)}>重新读取故事</Btn>}>{storyLoadError}</Notice>}
       {error && (
         <Notice
           icon={t.reconnecting ? 'offline' : 'alert'}
@@ -558,7 +606,7 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
           <Heading level={1} className="rise relative text-center tracking-wide whitespace-pre-line max-md:text-display md:text-headline">
             从哪里开始聊起？
           </Heading>
-          {!kb && <p className="rise relative mt-4 text-center text-ui-lg text-ink-3">可以是一个人的处境、一条世界规矩，或一幕还没头绪的戏。聊出的设定会整理进「本次整理」，随时挑有用的收进「书」里。</p>}
+          {!kb && <p className="rise relative mt-4 text-center text-ui-lg text-ink-3">可以是一个人的处境、一条世界规矩，或一幕还没头绪的戏。在「当前故事」里查看已定设定、候选方向和待解的问题。</p>}
         </div>
         {wide && (
           <div className="rise-late mt-10">
@@ -651,7 +699,10 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
       <ol aria-label="对话记录" className="space-y-10">
         {messages.map((m, i) => (
           <li key={m.id} id={`msg-${m.id}`} className={`scroll-mt-6 rounded-lg transition-shadow duration-500 ${lit === m.id ? 'ring-1 ring-accent/40 ring-offset-8 ring-offset-page' : ''}`}>
-            {m.role === 'user' ? <AuthorMsg m={m} fresh={fresh === m.id} /> : reply(m, i)}
+            {m.role === 'user' ? <AuthorMsg m={m} fresh={fresh === m.id} /> : <>
+              {reply(m, i)}
+              {!messages.slice(0, i).some((previous) => previous.role === 'assistant' && questionOf(previous.id) === questionOf(m.id)) && storyState?.receipts.filter((receipt) => receipt.messageId === questionOf(m.id)).map((receipt) => <StoryReceipt key={`${book}:${receipt.changeId}`} bookId={book} receipt={receipt} onUndone={onUndone} />)}
+            </>}
           </li>
         ))}
         {outgoing && (
@@ -675,7 +726,7 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
       <div className="mx-auto w-full max-w-chat">
         {notices}
         {composer}
-        {wide && <p className="mt-2 text-center text-micro text-ink-3">仅作讨论与整理，不会改动正文或已定设定。</p>}
+        {wide && recording && <p className="mt-2 text-center text-micro text-ink-3">明确的决定会记入设定，尝试中的想法保留为候选。记录可在回复下查看和撤销。</p>}
       </div>
     </div>
   )
@@ -704,6 +755,7 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
         {(!landing || !wide) && dock}
       </main>
 
+      {storyOpen && <StoryDrawer key={book} context={storyState?.context ?? null} error={(recordingError?.book === book ? recordingError.message : '') || storyLoadError} recording={recording} recordingBusy={recordingBusy === book} onRecording={(value) => void setRecording(value)} onClose={() => setStoryOpen(false)} onProposal={(proposal) => { setStoryOpen(false); setDrawer(proposal) }} />}
       {review && (
         <ReviewDrawer
           settings={settings}

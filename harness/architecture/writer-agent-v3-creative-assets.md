@@ -2,6 +2,8 @@
 
 状态：Phase 1–6 已实现并通过工程测试；Creative organize/plan check 已接入统一 Pi Worker，待作者审查、真实模型 Eval 与设计稿对齐。日期：2026-10-25。交付与测试结果见 [V3 报告](../reviews/archive/writer-agent-v3-report.md)。
 
+对话直接记录、每轮上下文和撤销机制见 [故事连续性](story-continuity.md)。后台整理继续负责补充候选；已开启随聊记录的明确作者决定由 Thinking 直接提交 Go。
+
 ## 1. 现状评审（基于 main `b9fb657`）
 
 | 模块 | 现状 | 对 V3 的影响 |
@@ -57,14 +59,14 @@
 | 字段 | 说明 |
 | --- | --- |
 | `assetId` | `ca-<uuid>`，服务端生成 |
-| `kind` | `character` `world_rule` `place` `organization` `plot_line` `event` `foreshadowing` `character_arc` `open_question` |
+| `kind` | `story_intent` `character` `world_rule` `place` `organization` `plot_line` `event` `foreshadowing` `character_arc` `open_question` |
 | `name` `aliases` `summary` `fields[]` | 作者可读内容；`fields` 是有序键值，如“动机”“身份” |
 | `status` | `draft` 作者草稿 · `accepted` 作者确认 · `superseded` 被新资产替代 · `archived` 作者归档 |
 | `plan` | 规划类资产的章节锚点：`chapterId`、`payoffChapterId`（伏笔回收）。只是计划，不代表已发生 |
 | `version` | 每个资产独立递增，作者编辑与采纳候选都用它做 CAS |
 | `versions[]` | 完整快照历史：actor、`origin`（`author_edit` / `proposal_accept` / `proposal_edit_accept` / `status_change`）、proposalId、来源 |
 
-“proposed / rejected”属于候选，不是资产状态。没有任何资产可以不经作者动作变成 `accepted`。
+“proposed / rejected”属于候选，不是资产状态。资产由作者手工确认，或在开启随聊记录后依据作者本轮明确决定变成 `accepted`；模型自己的建议保持候选。
 
 ### 4.2 Proposal / ChangeSet（AI 候选）
 
@@ -112,13 +114,13 @@
 | 同会话多轮并发 | 同一会话的任务按创建顺序串行领取 |
 | 跨会话更新同一资产 | 候选带 `baseVersion`，采纳时资产级 CAS；版本不符返回 409 并在 UI 标为需重新确认 |
 | 模型故障 | Pi 不自动重试付费调用；Go 按领域策略重排队或保留失败，预算预留与结算沿用 Knowledge 规则；作者可手动重试 |
-| 跨服务一致性 | Pi 只持有 transcript；Go 只在快照完成后复制有界片段（最多 6 条、24 KiB）并记录 hash。Pi 不调用 Go 的写接口 |
+| 跨服务一致性 | Pi 持有 transcript；后台整理在快照完成后复制有界片段（最多 6 条、24 KiB）。随聊记录通过可信运行标识和逐字引用写入 Go，保存回执独立于回复完成状态 |
 
 ## 6. 安全边界
 
 - 模型输出：严格 JSON 解码（未知字段拒绝）、枚举、长度、数量上限；目标 ID 必须来自本次提供的上下文；引文逐字匹配被截取的消息；`author_*` stance 必须引用作者消息，`ai_suggestion` 必须引用 AI 回答；`author_question` 只能落在 `open_question`。
 - Prompt Injection：对话与资产都作为不可信数据放在 JSON 输入里，系统提示词禁止执行其中的指令；模型无工具。
-- 写入限制：Thinking 没有资产写工具。新增工具只读，外加一个受控的 `request_turn_organize`（只入队整理任务，需 `creative` scope 与作品授权）。
+- 写入限制：`request_turn_organize` 只入队整理任务；随聊记录工具需 `creative` scope、作品 recording 授权、当前有效 Run 和原始对话证据，只能修改 creative 状态。
 - 跨作品隔离：状态按 bookKey 分文件；加载时校验 bookId；所有路由先 `Management.Resolve`。
 - 授权：作品级一次授权，展示 provider/model/endpoint、发送范围和每日预算；模型指纹变化需要重新授权。默认关闭。
 

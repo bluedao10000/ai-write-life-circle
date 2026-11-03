@@ -5,7 +5,8 @@
 //
 // Authority rules enforced here:
 //   - Only an author action creates or changes an asset version.
-//   - Model output can only become a Proposal with status "proposed".
+//   - Background model output becomes an unconfirmed Proposal.
+//   - Dialogue tools record author decisions with current-message evidence.
 //   - Proposal status (review lifecycle) and stance/source (where content came
 //     from) are modelled separately.
 package creative
@@ -34,6 +35,7 @@ const (
 
 // Asset kinds. open_question holds an author's undecided question.
 var Kinds = map[string]string{
+	"story_intent":  "创作意图",
 	"character":     "人物",
 	"world_rule":    "世界规则",
 	"place":         "地点",
@@ -76,11 +78,12 @@ type Plan struct {
 
 // Content is the author-visible body of an asset, shared by assets, versions and drafts.
 type Content struct {
-	Name    string   `json:"name"`
-	Aliases []string `json:"aliases"`
-	Summary string   `json:"summary"`
-	Fields  []Field  `json:"fields"`
-	Plan    *Plan    `json:"plan,omitempty"`
+	Name           string   `json:"name"`
+	Aliases        []string `json:"aliases"`
+	Summary        string   `json:"summary"`
+	Fields         []Field  `json:"fields"`
+	Plan           *Plan    `json:"plan,omitempty"`
+	QuestionStatus string   `json:"questionStatus,omitempty"`
 }
 
 type Asset struct {
@@ -151,12 +154,13 @@ type Link struct {
 
 // Patch is a field-level change against an existing asset.
 type Patch struct {
-	Name         *string  `json:"name,omitempty"`
-	Summary      *string  `json:"summary,omitempty"`
-	AddAliases   []string `json:"addAliases,omitempty"`
-	SetFields    []Field  `json:"setFields,omitempty"`
-	RemoveFields []string `json:"removeFields,omitempty"`
-	Plan         *Plan    `json:"plan,omitempty"`
+	Name           *string  `json:"name,omitempty"`
+	Summary        *string  `json:"summary,omitempty"`
+	AddAliases     []string `json:"addAliases,omitempty"`
+	SetFields      []Field  `json:"setFields,omitempty"`
+	RemoveFields   []string `json:"removeFields,omitempty"`
+	Plan           *Plan    `json:"plan,omitempty"`
+	QuestionStatus *string  `json:"questionStatus,omitempty"`
 }
 
 type LinkDraft struct {
@@ -298,6 +302,7 @@ type Divergence struct {
 }
 
 type Settings struct {
+	DialogueRecording bool          `json:"dialogueRecording"`
 	Enabled           bool          `json:"enabled"`
 	Paused            bool          `json:"paused"`
 	AutoOrganize      bool          `json:"autoOrganize"`
@@ -315,21 +320,23 @@ type receipt struct {
 }
 
 type State struct {
-	BookID         string                `json:"bookId"`
-	SchemaVersion  int                   `json:"schemaVersion"`
-	Version        int                   `json:"version"`
-	Settings       Settings              `json:"settings"`
-	Assets         map[string]Asset      `json:"assets"`
-	Versions       map[string][]Version  `json:"versions"`
-	Links          map[string]Link       `json:"links"`
-	Proposals      map[string]Proposal   `json:"proposals"`
-	ChangeSets     map[string]ChangeSet  `json:"changeSets"`
-	Turns          map[string]Turn       `json:"turns"`
-	Jobs           []Job                 `json:"jobs"`
-	Divergences    map[string]Divergence `json:"divergences"`
-	Requests       map[string]receipt    `json:"requests"`
-	BudgetDay      string                `json:"budgetDay"`
-	BudgetTokens   int                   `json:"budgetTokens"`
-	BudgetAttempts int                   `json:"budgetAttempts"`
-	MutationTimes  []string              `json:"mutationTimes,omitempty"`
+	Focuses        map[string]DiscussionFocus   `json:"focuses"`
+	StoryChanges   map[string]storedStoryChange `json:"storyChanges"`
+	BookID         string                       `json:"bookId"`
+	SchemaVersion  int                          `json:"schemaVersion"`
+	Version        int                          `json:"version"`
+	Settings       Settings                     `json:"settings"`
+	Assets         map[string]Asset             `json:"assets"`
+	Versions       map[string][]Version         `json:"versions"`
+	Links          map[string]Link              `json:"links"`
+	Proposals      map[string]Proposal          `json:"proposals"`
+	ChangeSets     map[string]ChangeSet         `json:"changeSets"`
+	Turns          map[string]Turn              `json:"turns"`
+	Jobs           []Job                        `json:"jobs"`
+	Divergences    map[string]Divergence        `json:"divergences"`
+	Requests       map[string]receipt           `json:"requests"`
+	BudgetDay      string                       `json:"budgetDay"`
+	BudgetTokens   int                          `json:"budgetTokens"`
+	BudgetAttempts int                          `json:"budgetAttempts"`
+	MutationTimes  []string                     `json:"mutationTimes,omitempty"`
 }

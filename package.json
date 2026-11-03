@@ -9,15 +9,15 @@
     "build": "pnpm build:api:go && pnpm build:agent && pnpm --filter @writer-agent/web build",
     "typecheck": "pnpm --filter @writer-agent/contracts typecheck && pnpm --filter @writer-agent/web typecheck && pnpm typecheck:agent",
     "lint": "pnpm --filter @writer-agent/web lint && ./apps/web/node_modules/.bin/eslint --config apps/web/eslint.config.js packages/contracts/src && pnpm --filter @writer-agent/agent lint",
-    "test": "pnpm test:api:go && pnpm test:webhook && pnpm --filter @writer-agent/web test && pnpm test:agent && pnpm test:thinking && pnpm openapi:check && pnpm style:check",
-    "verify": "pnpm test:api:go && pnpm test:webhook && pnpm test:review && pnpm test:publication && pnpm test:knowledge && pnpm --filter @writer-agent/web test && pnpm test:agent && pnpm test:style && pnpm test:thinking && pnpm test:creative && pnpm test:agent:tasks && pnpm test:pi:worker && pnpm test:pi:knowledge",
+    "test": "pnpm test:api:go && pnpm test:webhook && pnpm --filter @writer-agent/web test && pnpm test:agent && pnpm test:thinking && pnpm openapi:check && pnpm style:check && pnpm test:story",
+    "verify": "pnpm test:api:go && pnpm test:webhook && pnpm test:review && pnpm test:publication && pnpm test:knowledge && pnpm --filter @writer-agent/web test && pnpm test:agent && pnpm test:style && pnpm test:thinking && pnpm test:creative && pnpm test:agent:tasks && pnpm test:pi:worker && pnpm test:pi:knowledge && pnpm test:story",
     "openapi:generate": "pnpm exec tsx scripts/build-openapi.mts",
     "openapi:check": "pnpm exec tsx scripts/build-openapi.mts --check",
     "style:sync": "node scripts/sync-agent-reply-style.mjs",
     "style:check": "node scripts/sync-agent-reply-style.mjs --check",
     "style:eval": "node scripts/eval-agent-reply-style.mjs --check",
     "test:style": "node --test scripts/test-agent-reply-style.mjs && node scripts/eval-agent-reply-style.mjs --check && pnpm --filter @writer-agent/agent exec tsx --test test/reply-style.test.ts",
-    "openapi:lint": "pnpm exec redocly lint harness/contracts/api-spec-v0.4.0-proposed.yaml && pnpm exec redocly lint harness/contracts/publication-api-v1.json && pnpm exec redocly lint harness/contracts/management-api-v1.json && pnpm exec redocly lint harness/contracts/knowledge-api-v1.json && pnpm exec redocly lint harness/contracts/thinking-api-v1.json && pnpm exec redocly lint harness/contracts/agent-tasks-v1.json",
+    "openapi:lint": "pnpm exec redocly lint harness/contracts/api-spec-v0.4.0-proposed.yaml && pnpm exec redocly lint harness/contracts/publication-api-v1.json && pnpm exec redocly lint harness/contracts/management-api-v1.json && pnpm exec redocly lint harness/contracts/knowledge-api-v1.json && pnpm exec redocly lint harness/contracts/thinking-api-v1.json && pnpm exec redocly lint harness/contracts/agent-tasks-v1.json && pnpm exec redocly lint harness/contracts/story-context-api-v1.json",
     "dev:api": "pnpm dev:api:go",
     "harness:rebuild": "go run -C apps/api-go ./cmd/harness",
     "test:e2e": "pnpm --filter @writer-agent/web test:e2e",
@@ -55,7 +55,8 @@
     "eval:pi:review:live": "pnpm build:api:go && pnpm build:agent:control && pnpm build:agent && node scripts/eval-pi-live.mjs",
     "eval:pi:knowledge:live": "pnpm build:api:go && pnpm build:agent:control && pnpm build:agent && node scripts/eval-pi-live.mjs --knowledge",
     "eval:reliability": "pnpm --filter @writer-agent/contracts build && node scripts/eval-agent-reliability.mjs",
-    "test:reliability": "pnpm eval:reliability"
+    "test:reliability": "pnpm eval:reliability",
+    "test:story": "pnpm build:api:go && pnpm build:agent && node scripts/test-story-continuity.mjs"
   },
   "devDependencies": {
     "@redocly/cli": "2.63.0",

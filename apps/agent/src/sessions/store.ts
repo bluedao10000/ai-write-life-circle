@@ -23,6 +23,7 @@ import {
 } from "@writer-agent/contracts";
 import { failureFor } from "../runtime/reliability.js";
 import {archivePlan,readEventArchive,type ArchiveManifest} from "./event-archive.js";
+import type {StoryWrites} from "../tools/registry.js";
 export type ExecutionFence = {runId:string;owner:string;epoch:number};
 export type ExecutionAuthority = {
   executionStatus(id:string, fence:ExecutionFence, now?:number): "current" | "expired" | "stale" | "deleted";
@@ -33,7 +34,7 @@ export type Saved = {
   epoch?: number;
   executionLease?: {owner:string;epoch:number;expiresAt:number};
   runs?: ThinkingRun[];
-  checkpoint?: { input: ThinkingExecutionInput; entries: FileEntry[]; messageId: string };
+  checkpoint?: { input: ThinkingExecutionInput; entries: FileEntry[]; messageId: string; storyWrites?: StoryWrites };
   schema: 1;
   accountingVersion?: 2;
   owner: string;

@@ -1,0 +1,3195 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Writer Agent Story Context v1",
+    "version": "1.0.0",
+    "description": "Book-wide author settings, per-discussion focus and durable, undoable dialogue changes. Recording is independent of background organization. Agent write tools remain private capability-bound endpoints."
+  },
+  "servers": [
+    {
+      "url": "/v1"
+    }
+  ],
+  "paths": {
+    "/studio/books/{bookId}/creative/story-context": {
+      "parameters": [
+        {
+          "name": "bookId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "sessionId",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "q",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getStoryContext",
+        "summary": "getStoryContext",
+        "tags": [
+          "Story context"
+        ],
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current author-owned story state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/storyContext"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Author session required"
+          },
+          "404": {
+            "description": "Unknown or unowned book, discussion or change"
+          },
+          "409": {
+            "description": "A later edit prevents undo, or idempotency key was reused"
+          },
+          "422": {
+            "description": "Invalid request"
+          }
+        }
+      }
+    },
+    "/studio/books/{bookId}/creative/changes": {
+      "parameters": [
+        {
+          "name": "bookId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "sessionId",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "listStoryChanges",
+        "summary": "listStoryChanges",
+        "tags": [
+          "Story context"
+        ],
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current author-owned story state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/storyChangeList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Author session required"
+          },
+          "404": {
+            "description": "Unknown or unowned book, discussion or change"
+          },
+          "409": {
+            "description": "A later edit prevents undo, or idempotency key was reused"
+          },
+          "422": {
+            "description": "Invalid request"
+          }
+        }
+      }
+    },
+    "/studio/books/{bookId}/creative/changes/{changeId}/undo": {
+      "parameters": [
+        {
+          "name": "bookId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "changeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "undoStoryChange",
+        "summary": "undoStoryChange",
+        "tags": [
+          "Story context"
+        ],
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/emptyInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Current author-owned story state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/storyChangeReceipt"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Author session required"
+          },
+          "404": {
+            "description": "Unknown or unowned book, discussion or change"
+          },
+          "409": {
+            "description": "A later edit prevents undo, or idempotency key was reused"
+          },
+          "422": {
+            "description": "Invalid request"
+          }
+        }
+      }
+    },
+    "/studio/books/{bookId}/creative/settings/recording": {
+      "parameters": [
+        {
+          "name": "bookId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "setDialogueRecording",
+        "summary": "setDialogueRecording",
+        "tags": [
+          "Story context"
+        ],
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/dialogueRecordingInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Current author-owned story state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/creativeSettings"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Author session required"
+          },
+          "404": {
+            "description": "Unknown or unowned book, discussion or change"
+          },
+          "409": {
+            "description": "A later edit prevents undo, or idempotency key was reused"
+          },
+          "422": {
+            "description": "Invalid request"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "authorBearer": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    },
+    "schemas": {
+      "storyContext": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "bookId": {
+            "type": "string"
+          },
+          "stateVersion": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "dialogueRecording": {
+            "type": "boolean"
+          },
+          "focus": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "goal": {
+                    "type": "string",
+                    "maxLength": 500
+                  },
+                  "assetIds": {
+                    "maxItems": 12,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 128
+                    }
+                  },
+                  "questionIds": {
+                    "maxItems": 12,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 128
+                    }
+                  },
+                  "suggestedNextStep": {
+                    "type": "string",
+                    "maxLength": 500
+                  },
+                  "sessionId": {
+                    "type": "string"
+                  },
+                  "updatedFromMessageId": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "updatedAt": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "goal",
+                  "assetIds",
+                  "questionIds",
+                  "sessionId",
+                  "updatedFromMessageId",
+                  "version",
+                  "updatedAt"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "intent": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "assetId": {
+                  "type": "string"
+                },
+                "bookId": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "story_intent",
+                    "character",
+                    "world_rule",
+                    "place",
+                    "organization",
+                    "plot_line",
+                    "event",
+                    "foreshadowing",
+                    "character_arc",
+                    "open_question"
+                  ]
+                },
+                "name": {
+                  "type": "string"
+                },
+                "aliases": {
+                  "anyOf": [
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "fields": {
+                  "anyOf": [
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "key": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 40
+                          },
+                          "value": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 2000
+                          }
+                        },
+                        "required": [
+                          "key",
+                          "value"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "plan": {
+                  "type": "object",
+                  "properties": {
+                    "chapterId": {
+                      "type": "string"
+                    },
+                    "payoffChapterId": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "questionStatus": {
+                  "type": "string",
+                  "enum": [
+                    "pending",
+                    "deferred",
+                    "resolved"
+                  ]
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "draft",
+                    "accepted",
+                    "superseded",
+                    "archived"
+                  ]
+                },
+                "supersededBy": {
+                  "type": "string"
+                },
+                "origin": {
+                  "type": "string",
+                  "enum": [
+                    "author",
+                    "conversation"
+                  ]
+                },
+                "version": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "updatedAt": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "assetId",
+                "bookId",
+                "kind",
+                "name",
+                "summary",
+                "status",
+                "origin",
+                "version",
+                "createdAt",
+                "updatedAt"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "confirmed": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "assetId": {
+                  "type": "string"
+                },
+                "bookId": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "story_intent",
+                    "character",
+                    "world_rule",
+                    "place",
+                    "organization",
+                    "plot_line",
+                    "event",
+                    "foreshadowing",
+                    "character_arc",
+                    "open_question"
+                  ]
+                },
+                "name": {
+                  "type": "string"
+                },
+                "aliases": {
+                  "anyOf": [
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "fields": {
+                  "anyOf": [
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "key": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 40
+                          },
+                          "value": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 2000
+                          }
+                        },
+                        "required": [
+                          "key",
+                          "value"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "plan": {
+                  "type": "object",
+                  "properties": {
+                    "chapterId": {
+                      "type": "string"
+                    },
+                    "payoffChapterId": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "questionStatus": {
+                  "type": "string",
+                  "enum": [
+                    "pending",
+                    "deferred",
+                    "resolved"
+                  ]
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "draft",
+                    "accepted",
+                    "superseded",
+                    "archived"
+                  ]
+                },
+                "supersededBy": {
+                  "type": "string"
+                },
+                "origin": {
+                  "type": "string",
+                  "enum": [
+                    "author",
+                    "conversation"
+                  ]
+                },
+                "version": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "updatedAt": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "assetId",
+                "bookId",
+                "kind",
+                "name",
+                "summary",
+                "status",
+                "origin",
+                "version",
+                "createdAt",
+                "updatedAt"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "alternatives": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "proposalId": {
+                  "type": "string"
+                },
+                "bookId": {
+                  "type": "string"
+                },
+                "changeSetId": {
+                  "type": "string"
+                },
+                "operation": {
+                  "type": "string",
+                  "enum": [
+                    "CREATE",
+                    "UPDATE",
+                    "LINK",
+                    "SUPERSEDE"
+                  ]
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "story_intent",
+                    "character",
+                    "world_rule",
+                    "place",
+                    "organization",
+                    "plot_line",
+                    "event",
+                    "foreshadowing",
+                    "character_arc",
+                    "open_question"
+                  ]
+                },
+                "stance": {
+                  "type": "string",
+                  "enum": [
+                    "author_decision",
+                    "author_hypothesis",
+                    "author_question",
+                    "author_rejection",
+                    "ai_suggestion"
+                  ]
+                },
+                "exploratory": {
+                  "type": "boolean"
+                },
+                "alternativeGroup": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "proposed",
+                    "accepted",
+                    "rejected",
+                    "superseded",
+                    "expired"
+                  ]
+                },
+                "targetAssetId": {
+                  "type": "string"
+                },
+                "baseVersion": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "draft": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "aliases": {
+                      "anyOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "summary": {
+                      "type": "string"
+                    },
+                    "fields": {
+                      "anyOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "key": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 40
+                              },
+                              "value": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 2000
+                              }
+                            },
+                            "required": [
+                              "key",
+                              "value"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "plan": {
+                      "type": "object",
+                      "properties": {
+                        "chapterId": {
+                          "type": "string"
+                        },
+                        "payoffChapterId": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "questionStatus": {
+                      "type": "string",
+                      "enum": [
+                        "pending",
+                        "deferred",
+                        "resolved"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "summary"
+                  ],
+                  "additionalProperties": false
+                },
+                "patch": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "summary": {
+                      "type": "string"
+                    },
+                    "addAliases": {
+                      "anyOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "setFields": {
+                      "anyOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "key": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 40
+                              },
+                              "value": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 2000
+                              }
+                            },
+                            "required": [
+                              "key",
+                              "value"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "removeFields": {
+                      "anyOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "plan": {
+                      "type": "object",
+                      "properties": {
+                        "chapterId": {
+                          "type": "string"
+                        },
+                        "payoffChapterId": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "questionStatus": {
+                      "type": "string",
+                      "enum": [
+                        "pending",
+                        "deferred",
+                        "resolved"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "link": {
+                  "type": "object",
+                  "properties": {
+                    "toAssetId": {
+                      "type": "string"
+                    },
+                    "toProposalId": {
+                      "type": "string"
+                    },
+                    "relation": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "relation"
+                  ],
+                  "additionalProperties": false
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "evidence": {
+                  "anyOf": [
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "messageId": {
+                            "type": "string"
+                          },
+                          "role": {
+                            "type": "string",
+                            "enum": [
+                              "user",
+                              "assistant"
+                            ]
+                          },
+                          "quote": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "messageId",
+                          "role",
+                          "quote"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "source": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "conversation"
+                    },
+                    "sessionId": {
+                      "type": "string"
+                    },
+                    "messageId": {
+                      "type": "string"
+                    },
+                    "answerId": {
+                      "type": "string"
+                    },
+                    "bookId": {
+                      "type": "string"
+                    },
+                    "capturedAt": {
+                      "type": "string"
+                    },
+                    "excerptHash": {
+                      "type": "string"
+                    },
+                    "model": {
+                      "type": "object",
+                      "properties": {
+                        "provider": {
+                          "type": "string"
+                        },
+                        "model": {
+                          "type": "string"
+                        },
+                        "endpoint": {
+                          "type": "string"
+                        },
+                        "execution": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "provider",
+                        "model",
+                        "endpoint",
+                        "execution"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "strategy": {
+                      "type": "string"
+                    },
+                    "sessionDeleted": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "sessionId",
+                    "messageId",
+                    "answerId",
+                    "bookId",
+                    "capturedAt",
+                    "excerptHash",
+                    "model",
+                    "strategy"
+                  ],
+                  "additionalProperties": false
+                },
+                "replacesProposalId": {
+                  "type": "string"
+                },
+                "replacedByProposalId": {
+                  "type": "string"
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "decision": {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string"
+                    },
+                    "actorId": {
+                      "type": "string"
+                    },
+                    "at": {
+                      "type": "string"
+                    },
+                    "note": {
+                      "type": "string"
+                    },
+                    "edited": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "actorId",
+                    "at"
+                  ],
+                  "additionalProperties": false
+                },
+                "resultAssetId": {
+                  "type": "string"
+                },
+                "resultVersion": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "statusReason": {
+                  "type": "string"
+                },
+                "stale": {
+                  "type": "boolean"
+                },
+                "targetName": {
+                  "type": "string"
+                },
+                "currentVersion": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "current": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "aliases": {
+                      "anyOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "summary": {
+                      "type": "string"
+                    },
+                    "fields": {
+                      "anyOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "key": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 40
+                              },
+                              "value": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 2000
+                              }
+                            },
+                            "required": [
+                              "key",
+                              "value"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "plan": {
+                      "type": "object",
+                      "properties": {
+                        "chapterId": {
+                          "type": "string"
+                        },
+                        "payoffChapterId": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "questionStatus": {
+                      "type": "string",
+                      "enum": [
+                        "pending",
+                        "deferred",
+                        "resolved"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "summary"
+                  ],
+                  "additionalProperties": false
+                },
+                "result": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "aliases": {
+                      "anyOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "summary": {
+                      "type": "string"
+                    },
+                    "fields": {
+                      "anyOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "key": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 40
+                              },
+                              "value": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 2000
+                              }
+                            },
+                            "required": [
+                              "key",
+                              "value"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "plan": {
+                      "type": "object",
+                      "properties": {
+                        "chapterId": {
+                          "type": "string"
+                        },
+                        "payoffChapterId": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "questionStatus": {
+                      "type": "string",
+                      "enum": [
+                        "pending",
+                        "deferred",
+                        "resolved"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "summary"
+                  ],
+                  "additionalProperties": false
+                },
+                "linkTargetName": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "proposalId",
+                "bookId",
+                "changeSetId",
+                "operation",
+                "kind",
+                "stance",
+                "exploratory",
+                "status",
+                "reason",
+                "source",
+                "createdAt",
+                "stale"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "rejected": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "proposalId": {
+                  "type": "string"
+                },
+                "bookId": {
+                  "type": "string"
+                },
+                "changeSetId": {
+                  "type": "string"
+                },
+                "operation": {
+                  "type": "string",
+                  "enum": [
+                    "CREATE",
+                    "UPDATE",
+                    "LINK",
+                    "SUPERSEDE"
+                  ]
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "story_intent",
+                    "character",
+                    "world_rule",
+                    "place",
+                    "organization",
+                    "plot_line",
+                    "event",
+                    "foreshadowing",
+                    "character_arc",
+                    "open_question"
+                  ]
+                },
+                "stance": {
+                  "type": "string",
+                  "enum": [
+                    "author_decision",
+                    "author_hypothesis",
+                    "author_question",
+                    "author_rejection",
+                    "ai_suggestion"
+                  ]
+                },
+                "exploratory": {
+                  "type": "boolean"
+                },
+                "alternativeGroup": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "proposed",
+                    "accepted",
+                    "rejected",
+                    "superseded",
+                    "expired"
+                  ]
+                },
+                "targetAssetId": {
+                  "type": "string"
+                },
+                "baseVersion": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "draft": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "aliases": {
+                      "anyOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "summary": {
+                      "type": "string"
+                    },
+                    "fields": {
+                      "anyOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "key": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 40
+                              },
+                              "value": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 2000
+                              }
+                            },
+                            "required": [
+                              "key",
+                              "value"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "plan": {
+                      "type": "object",
+                      "properties": {
+                        "chapterId": {
+                          "type": "string"
+                        },
+                        "payoffChapterId": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "questionStatus": {
+                      "type": "string",
+                      "enum": [
+                        "pending",
+                        "deferred",
+                        "resolved"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "summary"
+                  ],
+                  "additionalProperties": false
+                },
+                "patch": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "summary": {
+                      "type": "string"
+                    },
+                    "addAliases": {
+                      "anyOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "setFields": {
+                      "anyOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "key": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 40
+                              },
+                              "value": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 2000
+                              }
+                            },
+                            "required": [
+                              "key",
+                              "value"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "removeFields": {
+                      "anyOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "plan": {
+                      "type": "object",
+                      "properties": {
+                        "chapterId": {
+                          "type": "string"
+                        },
+                        "payoffChapterId": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "questionStatus": {
+                      "type": "string",
+                      "enum": [
+                        "pending",
+                        "deferred",
+                        "resolved"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "link": {
+                  "type": "object",
+                  "properties": {
+                    "toAssetId": {
+                      "type": "string"
+                    },
+                    "toProposalId": {
+                      "type": "string"
+                    },
+                    "relation": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "relation"
+                  ],
+                  "additionalProperties": false
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "evidence": {
+                  "anyOf": [
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "messageId": {
+                            "type": "string"
+                          },
+                          "role": {
+                            "type": "string",
+                            "enum": [
+                              "user",
+                              "assistant"
+                            ]
+                          },
+                          "quote": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "messageId",
+                          "role",
+                          "quote"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "source": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "conversation"
+                    },
+                    "sessionId": {
+                      "type": "string"
+                    },
+                    "messageId": {
+                      "type": "string"
+                    },
+                    "answerId": {
+                      "type": "string"
+                    },
+                    "bookId": {
+                      "type": "string"
+                    },
+                    "capturedAt": {
+                      "type": "string"
+                    },
+                    "excerptHash": {
+                      "type": "string"
+                    },
+                    "model": {
+                      "type": "object",
+                      "properties": {
+                        "provider": {
+                          "type": "string"
+                        },
+                        "model": {
+                          "type": "string"
+                        },
+                        "endpoint": {
+                          "type": "string"
+                        },
+                        "execution": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "provider",
+                        "model",
+                        "endpoint",
+                        "execution"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "strategy": {
+                      "type": "string"
+                    },
+                    "sessionDeleted": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "sessionId",
+                    "messageId",
+                    "answerId",
+                    "bookId",
+                    "capturedAt",
+                    "excerptHash",
+                    "model",
+                    "strategy"
+                  ],
+                  "additionalProperties": false
+                },
+                "replacesProposalId": {
+                  "type": "string"
+                },
+                "replacedByProposalId": {
+                  "type": "string"
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "decision": {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string"
+                    },
+                    "actorId": {
+                      "type": "string"
+                    },
+                    "at": {
+                      "type": "string"
+                    },
+                    "note": {
+                      "type": "string"
+                    },
+                    "edited": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "actorId",
+                    "at"
+                  ],
+                  "additionalProperties": false
+                },
+                "resultAssetId": {
+                  "type": "string"
+                },
+                "resultVersion": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "statusReason": {
+                  "type": "string"
+                },
+                "stale": {
+                  "type": "boolean"
+                },
+                "targetName": {
+                  "type": "string"
+                },
+                "currentVersion": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "current": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "aliases": {
+                      "anyOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "summary": {
+                      "type": "string"
+                    },
+                    "fields": {
+                      "anyOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "key": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 40
+                              },
+                              "value": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 2000
+                              }
+                            },
+                            "required": [
+                              "key",
+                              "value"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "plan": {
+                      "type": "object",
+                      "properties": {
+                        "chapterId": {
+                          "type": "string"
+                        },
+                        "payoffChapterId": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "questionStatus": {
+                      "type": "string",
+                      "enum": [
+                        "pending",
+                        "deferred",
+                        "resolved"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "summary"
+                  ],
+                  "additionalProperties": false
+                },
+                "result": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "aliases": {
+                      "anyOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "summary": {
+                      "type": "string"
+                    },
+                    "fields": {
+                      "anyOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "key": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 40
+                              },
+                              "value": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 2000
+                              }
+                            },
+                            "required": [
+                              "key",
+                              "value"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "plan": {
+                      "type": "object",
+                      "properties": {
+                        "chapterId": {
+                          "type": "string"
+                        },
+                        "payoffChapterId": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "questionStatus": {
+                      "type": "string",
+                      "enum": [
+                        "pending",
+                        "deferred",
+                        "resolved"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "summary"
+                  ],
+                  "additionalProperties": false
+                },
+                "linkTargetName": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "proposalId",
+                "bookId",
+                "changeSetId",
+                "operation",
+                "kind",
+                "stance",
+                "exploratory",
+                "status",
+                "reason",
+                "source",
+                "createdAt",
+                "stale"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "questions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "assetId": {
+                  "type": "string"
+                },
+                "bookId": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "story_intent",
+                    "character",
+                    "world_rule",
+                    "place",
+                    "organization",
+                    "plot_line",
+                    "event",
+                    "foreshadowing",
+                    "character_arc",
+                    "open_question"
+                  ]
+                },
+                "name": {
+                  "type": "string"
+                },
+                "aliases": {
+                  "anyOf": [
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "fields": {
+                  "anyOf": [
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "key": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 40
+                          },
+                          "value": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 2000
+                          }
+                        },
+                        "required": [
+                          "key",
+                          "value"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "plan": {
+                  "type": "object",
+                  "properties": {
+                    "chapterId": {
+                      "type": "string"
+                    },
+                    "payoffChapterId": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "questionStatus": {
+                  "type": "string",
+                  "enum": [
+                    "pending",
+                    "deferred",
+                    "resolved"
+                  ]
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "draft",
+                    "accepted",
+                    "superseded",
+                    "archived"
+                  ]
+                },
+                "supersededBy": {
+                  "type": "string"
+                },
+                "origin": {
+                  "type": "string",
+                  "enum": [
+                    "author",
+                    "conversation"
+                  ]
+                },
+                "version": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "updatedAt": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "assetId",
+                "bookId",
+                "kind",
+                "name",
+                "summary",
+                "status",
+                "origin",
+                "version",
+                "createdAt",
+                "updatedAt"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "recentChanges": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "changeId": {
+                  "type": "string"
+                },
+                "sessionId": {
+                  "type": "string"
+                },
+                "messageId": {
+                  "type": "string"
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "applied",
+                    "undone"
+                  ]
+                },
+                "changes": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "intent": {
+                        "type": "string",
+                        "enum": [
+                          "decide",
+                          "explore",
+                          "reject",
+                          "defer"
+                        ]
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "assetId": {
+                        "type": "string"
+                      },
+                      "proposalId": {
+                        "type": "string"
+                      },
+                      "before": {
+                        "type": "object",
+                        "properties": {
+                          "assetId": {
+                            "type": "string"
+                          },
+                          "bookId": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "story_intent",
+                              "character",
+                              "world_rule",
+                              "place",
+                              "organization",
+                              "plot_line",
+                              "event",
+                              "foreshadowing",
+                              "character_arc",
+                              "open_question"
+                            ]
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "aliases": {
+                            "anyOf": [
+                              {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "summary": {
+                            "type": "string"
+                          },
+                          "fields": {
+                            "anyOf": [
+                              {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "key": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 40
+                                    },
+                                    "value": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 2000
+                                    }
+                                  },
+                                  "required": [
+                                    "key",
+                                    "value"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "plan": {
+                            "type": "object",
+                            "properties": {
+                              "chapterId": {
+                                "type": "string"
+                              },
+                              "payoffChapterId": {
+                                "type": "string"
+                              }
+                            },
+                            "additionalProperties": false
+                          },
+                          "questionStatus": {
+                            "type": "string",
+                            "enum": [
+                              "pending",
+                              "deferred",
+                              "resolved"
+                            ]
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "draft",
+                              "accepted",
+                              "superseded",
+                              "archived"
+                            ]
+                          },
+                          "supersededBy": {
+                            "type": "string"
+                          },
+                          "origin": {
+                            "type": "string",
+                            "enum": [
+                              "author",
+                              "conversation"
+                            ]
+                          },
+                          "version": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "updatedAt": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "assetId",
+                          "bookId",
+                          "kind",
+                          "name",
+                          "summary",
+                          "status",
+                          "origin",
+                          "version",
+                          "createdAt",
+                          "updatedAt"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "after": {
+                        "type": "object",
+                        "properties": {
+                          "assetId": {
+                            "type": "string"
+                          },
+                          "bookId": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "story_intent",
+                              "character",
+                              "world_rule",
+                              "place",
+                              "organization",
+                              "plot_line",
+                              "event",
+                              "foreshadowing",
+                              "character_arc",
+                              "open_question"
+                            ]
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "aliases": {
+                            "anyOf": [
+                              {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "summary": {
+                            "type": "string"
+                          },
+                          "fields": {
+                            "anyOf": [
+                              {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "key": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 40
+                                    },
+                                    "value": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 2000
+                                    }
+                                  },
+                                  "required": [
+                                    "key",
+                                    "value"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "plan": {
+                            "type": "object",
+                            "properties": {
+                              "chapterId": {
+                                "type": "string"
+                              },
+                              "payoffChapterId": {
+                                "type": "string"
+                              }
+                            },
+                            "additionalProperties": false
+                          },
+                          "questionStatus": {
+                            "type": "string",
+                            "enum": [
+                              "pending",
+                              "deferred",
+                              "resolved"
+                            ]
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "draft",
+                              "accepted",
+                              "superseded",
+                              "archived"
+                            ]
+                          },
+                          "supersededBy": {
+                            "type": "string"
+                          },
+                          "origin": {
+                            "type": "string",
+                            "enum": [
+                              "author",
+                              "conversation"
+                            ]
+                          },
+                          "version": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "updatedAt": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "assetId",
+                          "bookId",
+                          "kind",
+                          "name",
+                          "summary",
+                          "status",
+                          "origin",
+                          "version",
+                          "createdAt",
+                          "updatedAt"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "intent",
+                      "name"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "undoneAt": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "changeId",
+                "sessionId",
+                "messageId",
+                "createdAt",
+                "status",
+                "changes"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "bookId",
+          "stateVersion",
+          "dialogueRecording",
+          "focus",
+          "intent",
+          "confirmed",
+          "alternatives",
+          "rejected",
+          "questions",
+          "recentChanges"
+        ],
+        "additionalProperties": false
+      },
+      "storyChangeList": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "changeId": {
+                  "type": "string"
+                },
+                "sessionId": {
+                  "type": "string"
+                },
+                "messageId": {
+                  "type": "string"
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "applied",
+                    "undone"
+                  ]
+                },
+                "changes": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "intent": {
+                        "type": "string",
+                        "enum": [
+                          "decide",
+                          "explore",
+                          "reject",
+                          "defer"
+                        ]
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "assetId": {
+                        "type": "string"
+                      },
+                      "proposalId": {
+                        "type": "string"
+                      },
+                      "before": {
+                        "type": "object",
+                        "properties": {
+                          "assetId": {
+                            "type": "string"
+                          },
+                          "bookId": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "story_intent",
+                              "character",
+                              "world_rule",
+                              "place",
+                              "organization",
+                              "plot_line",
+                              "event",
+                              "foreshadowing",
+                              "character_arc",
+                              "open_question"
+                            ]
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "aliases": {
+                            "anyOf": [
+                              {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "summary": {
+                            "type": "string"
+                          },
+                          "fields": {
+                            "anyOf": [
+                              {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "key": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 40
+                                    },
+                                    "value": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 2000
+                                    }
+                                  },
+                                  "required": [
+                                    "key",
+                                    "value"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "plan": {
+                            "type": "object",
+                            "properties": {
+                              "chapterId": {
+                                "type": "string"
+                              },
+                              "payoffChapterId": {
+                                "type": "string"
+                              }
+                            },
+                            "additionalProperties": false
+                          },
+                          "questionStatus": {
+                            "type": "string",
+                            "enum": [
+                              "pending",
+                              "deferred",
+                              "resolved"
+                            ]
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "draft",
+                              "accepted",
+                              "superseded",
+                              "archived"
+                            ]
+                          },
+                          "supersededBy": {
+                            "type": "string"
+                          },
+                          "origin": {
+                            "type": "string",
+                            "enum": [
+                              "author",
+                              "conversation"
+                            ]
+                          },
+                          "version": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "updatedAt": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "assetId",
+                          "bookId",
+                          "kind",
+                          "name",
+                          "summary",
+                          "status",
+                          "origin",
+                          "version",
+                          "createdAt",
+                          "updatedAt"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "after": {
+                        "type": "object",
+                        "properties": {
+                          "assetId": {
+                            "type": "string"
+                          },
+                          "bookId": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "story_intent",
+                              "character",
+                              "world_rule",
+                              "place",
+                              "organization",
+                              "plot_line",
+                              "event",
+                              "foreshadowing",
+                              "character_arc",
+                              "open_question"
+                            ]
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "aliases": {
+                            "anyOf": [
+                              {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "summary": {
+                            "type": "string"
+                          },
+                          "fields": {
+                            "anyOf": [
+                              {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "key": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 40
+                                    },
+                                    "value": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 2000
+                                    }
+                                  },
+                                  "required": [
+                                    "key",
+                                    "value"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "plan": {
+                            "type": "object",
+                            "properties": {
+                              "chapterId": {
+                                "type": "string"
+                              },
+                              "payoffChapterId": {
+                                "type": "string"
+                              }
+                            },
+                            "additionalProperties": false
+                          },
+                          "questionStatus": {
+                            "type": "string",
+                            "enum": [
+                              "pending",
+                              "deferred",
+                              "resolved"
+                            ]
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "draft",
+                              "accepted",
+                              "superseded",
+                              "archived"
+                            ]
+                          },
+                          "supersededBy": {
+                            "type": "string"
+                          },
+                          "origin": {
+                            "type": "string",
+                            "enum": [
+                              "author",
+                              "conversation"
+                            ]
+                          },
+                          "version": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "updatedAt": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "assetId",
+                          "bookId",
+                          "kind",
+                          "name",
+                          "summary",
+                          "status",
+                          "origin",
+                          "version",
+                          "createdAt",
+                          "updatedAt"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "intent",
+                      "name"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "undoneAt": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "changeId",
+                "sessionId",
+                "messageId",
+                "createdAt",
+                "status",
+                "changes"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false
+      },
+      "storyChangeReceipt": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "changeId": {
+            "type": "string"
+          },
+          "sessionId": {
+            "type": "string"
+          },
+          "messageId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "applied",
+              "undone"
+            ]
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "intent": {
+                  "type": "string",
+                  "enum": [
+                    "decide",
+                    "explore",
+                    "reject",
+                    "defer"
+                  ]
+                },
+                "name": {
+                  "type": "string"
+                },
+                "assetId": {
+                  "type": "string"
+                },
+                "proposalId": {
+                  "type": "string"
+                },
+                "before": {
+                  "type": "object",
+                  "properties": {
+                    "assetId": {
+                      "type": "string"
+                    },
+                    "bookId": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "story_intent",
+                        "character",
+                        "world_rule",
+                        "place",
+                        "organization",
+                        "plot_line",
+                        "event",
+                        "foreshadowing",
+                        "character_arc",
+                        "open_question"
+                      ]
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "aliases": {
+                      "anyOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "summary": {
+                      "type": "string"
+                    },
+                    "fields": {
+                      "anyOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "key": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 40
+                              },
+                              "value": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 2000
+                              }
+                            },
+                            "required": [
+                              "key",
+                              "value"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "plan": {
+                      "type": "object",
+                      "properties": {
+                        "chapterId": {
+                          "type": "string"
+                        },
+                        "payoffChapterId": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "questionStatus": {
+                      "type": "string",
+                      "enum": [
+                        "pending",
+                        "deferred",
+                        "resolved"
+                      ]
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "draft",
+                        "accepted",
+                        "superseded",
+                        "archived"
+                      ]
+                    },
+                    "supersededBy": {
+                      "type": "string"
+                    },
+                    "origin": {
+                      "type": "string",
+                      "enum": [
+                        "author",
+                        "conversation"
+                      ]
+                    },
+                    "version": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "assetId",
+                    "bookId",
+                    "kind",
+                    "name",
+                    "summary",
+                    "status",
+                    "origin",
+                    "version",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "additionalProperties": false
+                },
+                "after": {
+                  "type": "object",
+                  "properties": {
+                    "assetId": {
+                      "type": "string"
+                    },
+                    "bookId": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "story_intent",
+                        "character",
+                        "world_rule",
+                        "place",
+                        "organization",
+                        "plot_line",
+                        "event",
+                        "foreshadowing",
+                        "character_arc",
+                        "open_question"
+                      ]
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "aliases": {
+                      "anyOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "summary": {
+                      "type": "string"
+                    },
+                    "fields": {
+                      "anyOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "key": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 40
+                              },
+                              "value": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 2000
+                              }
+                            },
+                            "required": [
+                              "key",
+                              "value"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "plan": {
+                      "type": "object",
+                      "properties": {
+                        "chapterId": {
+                          "type": "string"
+                        },
+                        "payoffChapterId": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "questionStatus": {
+                      "type": "string",
+                      "enum": [
+                        "pending",
+                        "deferred",
+                        "resolved"
+                      ]
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "draft",
+                        "accepted",
+                        "superseded",
+                        "archived"
+                      ]
+                    },
+                    "supersededBy": {
+                      "type": "string"
+                    },
+                    "origin": {
+                      "type": "string",
+                      "enum": [
+                        "author",
+                        "conversation"
+                      ]
+                    },
+                    "version": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "assetId",
+                    "bookId",
+                    "kind",
+                    "name",
+                    "summary",
+                    "status",
+                    "origin",
+                    "version",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "intent",
+                "name"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "undoneAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "changeId",
+          "sessionId",
+          "messageId",
+          "createdAt",
+          "status",
+          "changes"
+        ],
+        "additionalProperties": false
+      },
+      "creativeSettings": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "paused": {
+            "type": "boolean"
+          },
+          "autoOrganize": {
+            "type": "boolean"
+          },
+          "dialogueRecording": {
+            "default": false,
+            "type": "boolean"
+          },
+          "consentAt": {
+            "type": "string"
+          },
+          "model": {
+            "type": "object",
+            "properties": {
+              "provider": {
+                "type": "string"
+              },
+              "model": {
+                "type": "string"
+              },
+              "endpoint": {
+                "type": "string"
+              },
+              "execution": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "provider",
+              "model",
+              "endpoint",
+              "execution"
+            ],
+            "additionalProperties": false
+          },
+          "configFingerprint": {
+            "type": "string"
+          },
+          "dailyTokenBudget": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "dailyJobBudget": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "available": {
+            "type": "boolean"
+          },
+          "currentModel": {
+            "type": "object",
+            "properties": {
+              "provider": {
+                "type": "string"
+              },
+              "model": {
+                "type": "string"
+              },
+              "endpoint": {
+                "type": "string"
+              },
+              "execution": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "provider",
+              "model",
+              "endpoint",
+              "execution"
+            ],
+            "additionalProperties": false
+          },
+          "needsModelConsent": {
+            "type": "boolean"
+          },
+          "disclosure": {
+            "type": "string"
+          },
+          "reserveTokens": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "budgetDay": {
+            "type": "string"
+          },
+          "budgetTokens": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "budgetAttempts": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "enabled",
+          "paused",
+          "autoOrganize",
+          "model",
+          "dailyTokenBudget",
+          "dailyJobBudget",
+          "available",
+          "currentModel",
+          "needsModelConsent",
+          "disclosure",
+          "reserveTokens",
+          "budgetDay",
+          "budgetTokens",
+          "budgetAttempts"
+        ],
+        "additionalProperties": false
+      },
+      "dialogueRecordingInput": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "dialogueRecording": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "dialogueRecording"
+        ],
+        "additionalProperties": false
+      },
+      "emptyInput": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    }
+  }
+}

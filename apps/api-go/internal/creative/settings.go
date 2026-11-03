@@ -8,11 +8,12 @@ import (
 )
 
 type SettingsInput struct {
-	Consent          bool           `json:"consent,omitempty"`
-	Model            *llm.ModelInfo `json:"model,omitempty"`
-	DailyTokenBudget int            `json:"dailyTokenBudget,omitempty"`
-	DailyJobBudget   int            `json:"dailyJobBudget,omitempty"`
-	AutoOrganize     *bool          `json:"autoOrganize,omitempty"`
+	DialogueRecording *bool          `json:"dialogueRecording,omitempty"`
+	Consent           bool           `json:"consent,omitempty"`
+	Model             *llm.ModelInfo `json:"model,omitempty"`
+	DailyTokenBudget  int            `json:"dailyTokenBudget,omitempty"`
+	DailyJobBudget    int            `json:"dailyJobBudget,omitempty"`
+	AutoOrganize      *bool          `json:"autoOrganize,omitempty"`
 }
 
 func (s *Service) contextLimit() int {
@@ -41,7 +42,7 @@ func consentRequired(detail string) error {
 func (s *Service) Configure(ctx context.Context, a application.Actor, action, key string, in SettingsInput) (SettingsView, error) {
 	var out SettingsView
 	switch action {
-	case "enable", "pause", "resume", "auto":
+	case "enable", "pause", "resume", "auto", "recording":
 	default:
 		return out, application.Fail(404, "NOT_FOUND", "Unknown creative setting action.")
 	}
@@ -68,7 +69,7 @@ func (s *Service) Configure(ctx context.Context, a application.Actor, action, ke
 			if in.AutoOrganize != nil {
 				auto = *in.AutoOrganize
 			}
-			st.Settings = Settings{Enabled: true, AutoOrganize: auto, ConsentAt: now, Model: *in.Model, ConfigFingerprint: s.Config.Fingerprint(), DailyTokenBudget: in.DailyTokenBudget, DailyJobBudget: in.DailyJobBudget}
+			st.Settings = Settings{DialogueRecording: st.Settings.DialogueRecording, Enabled: true, AutoOrganize: auto, ConsentAt: now, Model: *in.Model, ConfigFingerprint: s.Config.Fingerprint(), DailyTokenBudget: in.DailyTokenBudget, DailyJobBudget: in.DailyJobBudget}
 		case "pause":
 			st.Settings.Paused = true
 			for i, j := range st.Jobs {
@@ -83,6 +84,11 @@ func (s *Service) Configure(ctx context.Context, a application.Actor, action, ke
 				return consentRequired("The model changed. Confirm the current disclosure.")
 			}
 			st.Settings.Paused = false
+		case "recording":
+			if in.DialogueRecording == nil {
+				return validation("dialogueRecording is required.")
+			}
+			st.Settings.DialogueRecording = *in.DialogueRecording
 		case "auto":
 			if in.AutoOrganize == nil {
 				return validation("autoOrganize is required.")

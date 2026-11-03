@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { systemPrompt } from "../src/agents/thinking/prompt.js";
+import { systemPrompt, storyRecordingInstruction } from "../src/agents/thinking/prompt.js";
 import {
   replyStyleInstruction,
   replyStylePolicy,
@@ -12,10 +12,11 @@ test("Thinking runtime injects the generated RAS-001 instruction without weakeni
   assert(systemPrompt.includes(replyStyleInstruction));
   assert.equal(loader().getSystemPrompt(), systemPrompt);
   assert(!systemPrompt.includes("Offer alternatives and questions to the author."));
-  assert(systemPrompt.includes("Present mutually exclusive options as alternatives and ask"));
-  assert(systemPrompt.includes("Use only registered read-only tools."));
+  assert(systemPrompt.includes("Present mutually exclusive options as alternatives"));
+  assert(systemPrompt.includes("Use only registered tools."));
   assert(systemPrompt.includes("Never invent citations"));
-  assert(systemPrompt.includes("only the author accepts proposals"));
+  assert(storyRecordingInstruction.includes("explicit author decisions"));
+  assert(systemPrompt.includes("never change manuscript chapters"));
   assert(systemPrompt.includes("untrusted quoted data"));
 });
 

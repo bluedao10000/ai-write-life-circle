@@ -25,6 +25,8 @@ export const assetStatusLabels = {
   archived: '已归档',
 } as const
 
+export const questionStatusLabels = { pending: '待讨论', deferred: '暂缓', resolved: '已解决' } as const
+
 export const turnStatusLabels: Record<string, string> = {
   awaiting: '等待回复完成',
   queued: '正在整理',
@@ -46,6 +48,8 @@ const codeMessages: Record<string, string> = {
   CREATIVE_CONSENT_REQUIRED: '请先启用灵感整理并确认模型范围。',
   CREATIVE_RATE_LIMIT: '操作太频繁，请稍后再试。',
   DIVERGENCE_SUPERSEDED: '已有更新的核对结果。',
+  STORY_UNDO_CONFLICT: '这些设定在之后的讨论中又有修改，无法直接撤销。请在「当前故事」中查看最新内容后调整。',
+  STORY_CHANGE_CONFLICT: '这些设定在之后的讨论中又有修改，无法直接撤销。请在「当前故事」中查看最新内容后调整。',
 }
 
 export function creativeError(e: unknown) {

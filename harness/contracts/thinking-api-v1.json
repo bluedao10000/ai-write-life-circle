@@ -3547,6 +3547,14 @@
           "sessionId": {
             "type": "string"
           },
+          "messageId": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "runId": {
+            "type": "string",
+            "maxLength": 128
+          },
           "tool": {
             "type": "string",
             "enum": [
@@ -3563,44 +3571,273 @@
               "list_open_questions",
               "get_writing_context",
               "compare_plan_with_manuscript",
-              "request_turn_organize"
+              "request_turn_organize",
+              "record_story_changes",
+              "update_discussion_focus",
+              "get_discussion_source"
             ]
           },
           "arguments": {
-            "type": "object",
-            "properties": {
-              "query": {
-                "type": "string",
-                "maxLength": 256
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "changes": {
+                    "minItems": 1,
+                    "maxItems": 8,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "intent": {
+                          "type": "string",
+                          "enum": [
+                            "decide",
+                            "explore",
+                            "reject",
+                            "defer"
+                          ]
+                        },
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "story_intent",
+                            "character",
+                            "world_rule",
+                            "place",
+                            "organization",
+                            "plot_line",
+                            "event",
+                            "foreshadowing",
+                            "character_arc",
+                            "open_question"
+                          ]
+                        },
+                        "targetAssetId": {
+                          "type": "string",
+                          "maxLength": 128
+                        },
+                        "targetProposalId": {
+                          "type": "string",
+                          "maxLength": 128
+                        },
+                        "baseVersion": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "patch": {
+                          "type": "object",
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "summary": {
+                              "type": "string"
+                            },
+                            "addAliases": {
+                              "anyOf": [
+                                {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "setFields": {
+                              "anyOf": [
+                                {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "key": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 40
+                                      },
+                                      "value": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 2000
+                                      }
+                                    },
+                                    "required": [
+                                      "key",
+                                      "value"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "removeFields": {
+                              "anyOf": [
+                                {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "plan": {
+                              "type": "object",
+                              "properties": {
+                                "chapterId": {
+                                  "type": "string"
+                                },
+                                "payoffChapterId": {
+                                  "type": "string"
+                                }
+                              },
+                              "additionalProperties": false
+                            },
+                            "questionStatus": {
+                              "type": "string",
+                              "enum": [
+                                "pending",
+                                "deferred",
+                                "resolved"
+                              ]
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "evidence": {
+                          "minItems": 1,
+                          "maxItems": 4,
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "messageId": {
+                                "type": "string",
+                                "maxLength": 128
+                              },
+                              "quote": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 1000
+                              }
+                            },
+                            "required": [
+                              "messageId",
+                              "quote"
+                            ],
+                            "additionalProperties": false
+                          }
+                        }
+                      },
+                      "required": [
+                        "intent",
+                        "patch",
+                        "evidence"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "changes"
+                ],
+                "additionalProperties": false
               },
-              "quote": {
-                "type": "string",
-                "maxLength": 4000
+              {
+                "type": "object",
+                "properties": {
+                  "goal": {
+                    "type": "string",
+                    "maxLength": 500
+                  },
+                  "assetIds": {
+                    "maxItems": 12,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 128
+                    }
+                  },
+                  "questionIds": {
+                    "maxItems": 12,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 128
+                    }
+                  },
+                  "suggestedNextStep": {
+                    "type": "string",
+                    "maxLength": 500
+                  },
+                  "baseVersion": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "goal",
+                  "assetIds",
+                  "questionIds"
+                ],
+                "additionalProperties": false
               },
-              "chapterId": {
-                "type": "string"
-              },
-              "revisionId": {
-                "type": "string"
-              },
-              "entityId": {
-                "type": "string"
-              },
-              "startUTF16": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 9007199254740991
-              },
-              "assetId": {
-                "type": "string",
-                "maxLength": 128
-              },
-              "kind": {
-                "type": "string",
-                "maxLength": 40
+              {
+                "type": "object",
+                "properties": {
+                  "sessionId": {
+                    "type": "string",
+                    "maxLength": 128
+                  },
+                  "messageId": {
+                    "type": "string",
+                    "maxLength": 128
+                  },
+                  "query": {
+                    "type": "string",
+                    "maxLength": 256
+                  },
+                  "quote": {
+                    "type": "string",
+                    "maxLength": 4000
+                  },
+                  "chapterId": {
+                    "type": "string"
+                  },
+                  "revisionId": {
+                    "type": "string"
+                  },
+                  "entityId": {
+                    "type": "string"
+                  },
+                  "startUTF16": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "assetId": {
+                    "type": "string",
+                    "maxLength": 128
+                  },
+                  "kind": {
+                    "type": "string",
+                    "maxLength": 40
+                  }
+                },
+                "additionalProperties": false
               }
-            },
-            "additionalProperties": false
+            ]
           }
         },
         "required": [

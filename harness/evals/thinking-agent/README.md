@@ -1,5 +1,7 @@
 # Thinking Eval
 
+主场景的对话连续性工程回归运行 `pnpm test:story`。该测试以合成模型选择驱动真实 Go/Pi，覆盖设定写入和跨会话读取，不验证意图判断质量。`story-continuity.json` 提供多轮人工复核语料，包含明确决定、假设、暂缓、否定、视角和纯分析要求。
+
 隔离的三章人物关系材料，永远不从真实作品目录取数据。Fixture 的实际保存由 `scripts/lib/thinking-fixture.mjs` 创建，顺序分别代表第1/5/12章；章节标签只是合成元数据，不代表已实现全书推理。
 
 - `pnpm eval:thinking`：真实 Pi SDK、Go 进程、HTTP 替身。测试工程与来源定位，不测试模型智能。

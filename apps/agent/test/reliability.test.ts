@@ -37,6 +37,7 @@ async function fixture({scopes=[] as string[],duration=3000}={}) {
     res.setHeader("content-type","application/json");
     if(revoked) {res.writeHead(403);res.end('{}');return}
     if(req.url?.endsWith("/authorize")) res.end(JSON.stringify({sessionId:id,authorId:"a",bookId:"b",authorizationVersion,model,scopes}));
+    else if(req.url?.endsWith("/story-context")) res.end(JSON.stringify({bookId:"b",stateVersion:0,dialogueRecording:false,focus:null,intent:[],confirmed:[],alternatives:[],rejected:[],questions:[],recentChanges:[]}));
     else {toolCalls++;if(mode==="toolhang"){res.flushHeaders();return}if(mode==="sideeffect"){mode="500";res.end('{"items":[],"sources":[]}')}else{res.writeHead(500);res.end('{}')}}
   });
   const config:Config={state,port:1,version:"test",key:"synthetic-only",token:"synthetic-only",model,storyOrigin:await listen(story)};

@@ -41,6 +41,9 @@ func validation(detail string) error { return application.Fail(422, "VALIDATION_
 
 // cleanContent trims and validates author-visible text. It never invents content.
 func cleanContent(kind string, c Content) (Content, error) {
+	if c.QuestionStatus != "" && (kind != "open_question" || (c.QuestionStatus != "pending" && c.QuestionStatus != "deferred" && c.QuestionStatus != "resolved")) {
+		return c, validation("questionStatus must be pending, deferred or resolved on an open question.")
+	}
 	c.Name = compat.Trim(c.Name)
 	c.Summary = compat.Trim(c.Summary)
 	if c.Name == "" || runes(c.Name) > 80 {
@@ -317,6 +320,9 @@ func matchAsset(st *State, kind, name string, aliases []string) (Asset, bool) {
 // applyPatch returns new content; it never touches status or provenance.
 func applyPatch(kind string, c Content, p Patch) (Content, error) {
 	next := c
+	if p.QuestionStatus != nil {
+		next.QuestionStatus = *p.QuestionStatus
+	}
 	next.Aliases = append([]string{}, c.Aliases...)
 	next.Fields = append([]Field{}, c.Fields...)
 	if p.Name != nil {

@@ -10,6 +10,7 @@
 | 写后同步 | [ingest](workflows/ingest.md) | 目标正文、notes/、proposals/ |
 | 连续性审查 | [review](workflows/review.md) | 正文、风格基线、审查范围 |
 | 灵感整理 / 创作资产（V3） | [ADR](architecture/writer-agent-v3-creative-assets.md) | apps/api-go/internal/creative/、apps/agent/src/agents/creative/、apps/web/src/features/creative/、[交付报告](reviews/archive/writer-agent-v3-report.md) |
+| 灵感对话的故事上下文 / 随聊记录 / 撤销 | [故事连续性](architecture/story-continuity.md) | creative/story.go、thinking/story_tools.go、agent/src/tools/、StoryContinuity.tsx |
 | Pi Thinking Agent | [pi-agent](workflows/pi-agent.md) | [ADR](architecture/adr/pi-agent-runtime.md)、[回复风格 RAS-001](architecture/agent-reply-style.md)、[私有协议](contracts/thinking-internal-v1.md)、apps/agent/ |
 | Agent 回复风格 / Eval | [RAS-001](architecture/agent-reply-style.md) | scripts/sync-agent-reply-style.mjs、scripts/eval-agent-reply-style.mjs、harness/evals/agent-reply-style/ |
 | Pi 后台 Review / Knowledge / Creative | [pi-worker](workflows/pi-worker.md) | [统一 Runtime ADR](architecture/pi-unified-agent-runtime.md)、[任务协议](contracts/agent-tasks-v1.md)、[迁移报告](reviews/archive/pi-worker-migration-report.md) |

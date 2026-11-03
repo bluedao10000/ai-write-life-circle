@@ -25,15 +25,16 @@ const assetNotice = "status=accepted is author-confirmed canon; status=draft is 
 const proposalNotice = "UNCONFIRMED AI proposals awaiting author review. Use them only as labelled possibilities for brainstorming, never as decided canon."
 
 type toolAsset struct {
-	ID      string           `json:"assetId"`
-	Kind    string           `json:"kind"`
-	Name    string           `json:"name"`
-	Aliases []string         `json:"aliases,omitempty"`
-	Status  string           `json:"status"`
-	Summary string           `json:"summary,omitempty"`
-	Fields  []creative.Field `json:"fields,omitempty"`
-	Plan    *creative.Plan   `json:"plan,omitempty"`
-	Version int              `json:"version"`
+	ID             string           `json:"assetId"`
+	Kind           string           `json:"kind"`
+	Name           string           `json:"name"`
+	Aliases        []string         `json:"aliases,omitempty"`
+	Status         string           `json:"status"`
+	Summary        string           `json:"summary,omitempty"`
+	Fields         []creative.Field `json:"fields,omitempty"`
+	Plan           *creative.Plan   `json:"plan,omitempty"`
+	QuestionStatus string           `json:"questionStatus,omitempty"`
+	Version        int              `json:"version"`
 }
 
 func compactAsset(a creative.Asset) toolAsset {
@@ -41,7 +42,7 @@ func compactAsset(a creative.Asset) toolAsset {
 	if len(fields) > 12 {
 		fields = fields[:12]
 	}
-	return toolAsset{ID: a.ID, Kind: a.Kind, Name: a.Name, Aliases: a.Aliases, Status: a.Status, Summary: a.Summary, Fields: fields, Plan: a.Plan, Version: a.Version}
+	return toolAsset{ID: a.ID, Kind: a.Kind, Name: a.Name, Aliases: a.Aliases, Status: a.Status, Summary: a.Summary, Fields: fields, Plan: a.Plan, QuestionStatus: a.QuestionStatus, Version: a.Version}
 }
 
 func compactAssets(list []creative.Asset) []toolAsset {
@@ -121,7 +122,7 @@ func (s *Service) creativeTool(ctx context.Context, rec Record, app *application
 			}
 			list := []creative.Asset{}
 			for _, a := range q.Items {
-				if a.Status == "accepted" || a.Status == "draft" {
+				if (a.Status == "accepted" || a.Status == "draft") && a.QuestionStatus != "resolved" {
 					list = append(list, a.Asset)
 				}
 			}

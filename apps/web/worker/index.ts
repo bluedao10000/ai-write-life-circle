@@ -22,9 +22,9 @@ function allowedRoute(path: string, method: string, project: string) {
   if (path === creative) return method === 'GET'
   if (path.startsWith(creative + '/')) {
     const suffix = path.slice(creative.length + 1)
-    if (method === 'GET') return /^(?:assets|proposals|turns|turns\/excerpt|context|divergences|assets\/ca-[a-f0-9-]{36})$/.test(suffix)
+    if (method === 'GET') return /^(?:assets|proposals|turns|turns\/excerpt|context|story-context|changes|divergences|assets\/ca-[a-f0-9-]{36})$/.test(suffix)
     if (method === 'PATCH') return /^assets\/ca-[a-f0-9-]{36}$/.test(suffix)
-    if (method === 'POST') return /^(?:assets|links|links\/cl-[a-f0-9-]{36}\/remove|proposals\/decide|organize|plan-checks|divergences\/cd-[a-f0-9-]{36}\/decide|settings\/(?:enable|pause|resume|auto))$/.test(suffix)
+    if (method === 'POST') return /^(?:assets|links|links\/cl-[a-f0-9-]{36}\/remove|proposals\/decide|organize|plan-checks|divergences\/cd-[a-f0-9-]{36}\/decide|changes\/sc-[a-f0-9-]{36}\/undo|settings\/(?:enable|pause|resume|auto|recording))$/.test(suffix)
     return false
   }
   const memory = `/v1/studio/books/${encodeURIComponent(project)}/knowledge`

@@ -6,7 +6,7 @@ const schemas = Object.fromEntries(
     .filter(([key]) => key.endsWith("Schema"))
     .map(([key, value]) => [
       key.replace("Schema", ""),
-      z.toJSONSchema(value as z.ZodType, { target: "draft-2020-12" }),
+      z.toJSONSchema(value as z.ZodType, { target: "draft-2020-12", io: "input" }),
     ]),
 );
 const param = (name: string) => ({

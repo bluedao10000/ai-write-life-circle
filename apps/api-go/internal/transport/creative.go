@@ -12,6 +12,7 @@ import (
 )
 
 var creativeIDRE = regexp.MustCompile(`^(ca|cl|cd)-[a-f0-9-]{36}$`)
+var storyChangeIDRE = regexp.MustCompile(`^sc-[a-f0-9-]{36}$`)
 var sessionIDRE = regexp.MustCompile(`^th-[a-f0-9-]{36}$`)
 
 // handleCreative serves /v1/studio/books/:book/creative/... for the owning author.
@@ -74,6 +75,25 @@ func handleCreative(o Options, w http.ResponseWriter, r *http.Request, path stri
 		case suffix == "":
 			v, e := s.Overview(r.Context())
 			respond(v, e, 200)
+		case suffix == "story-context" || suffix == "changes":
+			session := q.Get("sessionId")
+			if session != "" {
+				if !sessionIDRE.MatchString(session) {
+					problem(w, application.Fail(422, "VALIDATION_FAILED", "Invalid sessionId."), "")
+					return true
+				}
+				if e := ownedSession(o, *actor, book, session); e != nil {
+					problem(w, application.AsError(e), "")
+					return true
+				}
+			}
+			if suffix == "story-context" {
+				v, e := s.StoryContext(r.Context(), session, q.Get("q"))
+				respond(v, e, 200)
+			} else {
+				v, e := s.StoryChanges(r.Context(), session)
+				respond(map[string]any{"items": v}, e, 200)
+			}
 		case suffix == "assets":
 			v, e := s.Assets(r.Context(), creative.AssetQuery{Kind: q.Get("kind"), Status: q.Get("status"), Q: q.Get("q"), Offset: offset, Limit: limit})
 			respond(v, e, 200)
@@ -137,6 +157,12 @@ func handleCreative(o Options, w http.ResponseWriter, r *http.Request, path stri
 	}
 	ctx := r.Context()
 	switch {
+	case r.Method == "POST" && len(rest) == 3 && rest[0] == "changes" && storyChangeIDRE.MatchString(rest[1]) && rest[2] == "undo":
+		var in struct{}
+		if decode(&in) {
+			v, e := s.UndoStoryChange(ctx, *actor, key, rest[1])
+			respond(v, e, 200)
+		}
 	case r.Method == "POST" && suffix == "assets":
 		var in creative.AssetInput
 		if decode(&in) {

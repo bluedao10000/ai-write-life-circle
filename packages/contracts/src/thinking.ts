@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { discussionFocusInputSchema, recordStoryChangesInputSchema } from "./creative.js";
 export const thinkingProtocol = "thinking-v1" as const;
 export const thinkingScopeSchema = z.enum([
   "chapters",
@@ -230,6 +231,8 @@ export const thinkingGrantSchema = z
 export const thinkingToolRequestSchema = z
   .object({
     sessionId: z.string(),
+    messageId: z.string().max(128).optional(),
+    runId: z.string().max(128).optional(),
     tool: z.enum([
       "search_knowledge",
       "read_chapter",
@@ -245,9 +248,14 @@ export const thinkingToolRequestSchema = z
       "get_writing_context",
       "compare_plan_with_manuscript",
       "request_turn_organize",
+      "record_story_changes",
+      "update_discussion_focus",
+      "get_discussion_source",
     ]),
-    arguments: z
+    arguments: z.union([recordStoryChangesInputSchema, discussionFocusInputSchema, z
       .object({
+        sessionId: z.string().max(128).optional(),
+        messageId: z.string().max(128).optional(),
         query: z.string().max(256).optional(),
         quote: z.string().max(4000).optional(),
         chapterId: z.string().optional(),
@@ -257,7 +265,7 @@ export const thinkingToolRequestSchema = z
         assetId: z.string().max(128).optional(),
         kind: z.string().max(40).optional(),
       })
-      .strict(),
+      .strict()]),
   })
   .strict();
 export const thinkingPrivateCreateSchema = thinkingGrantSchema

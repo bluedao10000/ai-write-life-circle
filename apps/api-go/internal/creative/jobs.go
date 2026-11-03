@@ -295,7 +295,7 @@ func (s *Service) complete(ctx context.Context, c *ClaimedJob, org *organizeCont
 		out, err = decodeOrganize(resp.Text)
 		if err == nil {
 			result = s.buildOrganize(org, j, out, now)
-			if len(out.Changes) > 0 && len(result.Proposals) == 0 {
+			if len(out.Changes) > 0 && len(result.Proposals) == 0 && result.Discarded > 0 {
 				err = errors.New("LLM_INVALID_EVIDENCE")
 			}
 		}

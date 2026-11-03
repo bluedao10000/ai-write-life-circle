@@ -18,6 +18,7 @@ const model = z
   .strict();
 
 export const creativeKindSchema = z.enum([
+  "story_intent",
   "character",
   "world_rule",
   "place",
@@ -71,6 +72,7 @@ export const creativeContentSchema = z
     summary: z.string(),
     fields: list(creativeFieldSchema),
     plan: creativePlanSchema.optional(),
+    questionStatus: z.enum(["pending", "deferred", "resolved"]).optional(),
   })
   .strict();
 export const creativeAssetSchema = z
@@ -83,6 +85,7 @@ export const creativeAssetSchema = z
     summary: z.string(),
     fields: list(creativeFieldSchema),
     plan: creativePlanSchema.optional(),
+    questionStatus: z.enum(["pending", "deferred", "resolved"]).optional(),
     status: creativeAssetStatusSchema,
     supersededBy: z.string().optional(),
     origin: z.enum(["author", "conversation"]),
@@ -130,6 +133,8 @@ export const creativeVersionSchema = z
       "proposal_accept",
       "proposal_edit_accept",
       "status_change",
+      "dialogue_decision",
+      "dialogue_undo",
     ]),
     proposalId: z.string().optional(),
     source: conversationSourceSchema.optional(),
@@ -175,6 +180,7 @@ export const creativePatchSchema = z
     setFields: list(creativeFieldSchema).optional(),
     removeFields: list(z.string()).optional(),
     plan: creativePlanSchema.optional(),
+    questionStatus: z.enum(["pending", "deferred", "resolved"]).optional(),
   })
   .strict();
 export const creativeProposalSchema = z
@@ -225,6 +231,7 @@ export const creativeSettingsSchema = z
     enabled: z.boolean(),
     paused: z.boolean(),
     autoOrganize: z.boolean(),
+    dialogueRecording: z.boolean().optional().default(false),
     consentAt: z.string().optional(),
     model,
     configFingerprint: z.string().optional(),
@@ -399,6 +406,68 @@ export const creativeDecisionInputSchema = z
   })
   .strict();
 
+export const discussionFocusInputSchema = z.object({
+  goal: z.string().max(500),
+  assetIds: z.array(z.string().max(128)).max(12),
+  questionIds: z.array(z.string().max(128)).max(12),
+  suggestedNextStep: z.string().max(500).optional(),
+  baseVersion: z.number().int().nonnegative().optional(),
+}).strict();
+export const discussionFocusSchema = discussionFocusInputSchema.omit({baseVersion: true}).extend({
+  sessionId: z.string(),
+  updatedFromMessageId: z.string(),
+  version: z.number().int().positive(),
+  updatedAt: z.string(),
+}).strict();
+export const storyChangeIntentSchema = z.enum(["decide", "explore", "reject", "defer"]);
+export const storyChangeInputSchema = z.object({
+  intent: storyChangeIntentSchema,
+  kind: creativeKindSchema.optional(),
+  targetAssetId: z.string().max(128).optional(),
+  targetProposalId: z.string().max(128).optional(),
+  baseVersion: z.number().int().positive().optional(),
+  patch: creativePatchSchema,
+  evidence: z.array(z.object({messageId: z.string().max(128), quote: z.string().min(1).max(1000)}).strict()).min(1).max(4),
+}).strict();
+export const recordStoryChangesInputSchema = z.object({changes: z.array(storyChangeInputSchema).min(1).max(8)}).strict();
+export const dialogueRecordingInputSchema = z.object({dialogueRecording: z.boolean()}).strict();
+export const storyChangeReceiptSchema = z.object({
+  changeId: z.string(),
+  sessionId: z.string(),
+  messageId: z.string(),
+  createdAt: z.string(),
+  status: z.enum(["applied", "undone"]),
+  changes: z.array(z.object({
+    intent: storyChangeIntentSchema,
+    name: z.string(),
+    assetId: z.string().optional(),
+    proposalId: z.string().optional(),
+    before: creativeAssetSchema.optional(),
+    after: creativeAssetSchema.optional(),
+  }).strict()),
+  undoneAt: z.string().optional(),
+}).strict();
+export const storyChangeListSchema = z.object({items: z.array(storyChangeReceiptSchema)}).strict();
+export const storyContextSchema = z.object({
+  bookId: z.string(),
+  stateVersion: z.number().int().nonnegative(),
+  truncated: z.boolean().optional(),
+  dialogueRecording: z.boolean(),
+  focus: discussionFocusSchema.nullable(),
+  intent: z.array(creativeAssetSchema),
+  confirmed: z.array(creativeAssetSchema),
+  alternatives: z.array(creativeProposalSchema),
+  rejected: z.array(creativeProposalSchema),
+  questions: z.array(creativeAssetSchema),
+  recentChanges: z.array(storyChangeReceiptSchema),
+}).strict();
+export type DiscussionFocus = z.infer<typeof discussionFocusSchema>;
+export type DiscussionFocusInput = z.infer<typeof discussionFocusInputSchema>;
+export type StoryChangeInput = z.infer<typeof storyChangeInputSchema>;
+export type RecordStoryChangesInput = z.infer<typeof recordStoryChangesInputSchema>;
+export type StoryChangeReceipt = z.infer<typeof storyChangeReceiptSchema>;
+export type StoryContext = z.infer<typeof storyContextSchema>;
+
 export type CreativeKind = z.infer<typeof creativeKindSchema>;
 export type CreativeAsset = z.infer<typeof creativeAssetSchema>;
 export type CreativeAssetSummary = z.infer<typeof creativeAssetSummarySchema>;
@@ -418,6 +487,7 @@ export type CreativeVersion = z.infer<typeof creativeVersionSchema>;
 export type CreativeLink = z.infer<typeof creativeLinkSchema>;
 
 export const creativeKindLabels: Record<CreativeKind, string> = {
+  story_intent: "作品方向",
   character: "人物",
   world_rule: "世界规则",
   place: "地点",

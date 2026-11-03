@@ -51,16 +51,18 @@ func (s *Service) path() string {
 func empty(book string) State {
 	return State{
 		BookID: book, SchemaVersion: SchemaVersion,
-		Settings:    Settings{DailyTokenBudget: 100000000, DailyJobBudget: 200, AutoOrganize: true},
-		Assets:      map[string]Asset{},
-		Versions:    map[string][]Version{},
-		Links:       map[string]Link{},
-		Proposals:   map[string]Proposal{},
-		ChangeSets:  map[string]ChangeSet{},
-		Turns:       map[string]Turn{},
-		Jobs:        []Job{},
-		Divergences: map[string]Divergence{},
-		Requests:    map[string]receipt{},
+		Settings:     Settings{DailyTokenBudget: 100000000, DailyJobBudget: 200, AutoOrganize: true},
+		Assets:       map[string]Asset{},
+		Focuses:      map[string]DiscussionFocus{},
+		StoryChanges: map[string]storedStoryChange{},
+		Versions:     map[string][]Version{},
+		Links:        map[string]Link{},
+		Proposals:    map[string]Proposal{},
+		ChangeSets:   map[string]ChangeSet{},
+		Turns:        map[string]Turn{},
+		Jobs:         []Job{},
+		Divergences:  map[string]Divergence{},
+		Requests:     map[string]receipt{},
 	}
 }
 
@@ -88,6 +90,12 @@ func (s *Service) load() (State, error) {
 	}
 	if st.Assets == nil || st.Versions == nil || st.Links == nil || st.Proposals == nil || st.ChangeSets == nil || st.Turns == nil || st.Divergences == nil || st.Requests == nil {
 		return st, invalid("Creative state is incomplete.")
+	}
+	if st.Focuses == nil {
+		st.Focuses = map[string]DiscussionFocus{}
+	}
+	if st.StoryChanges == nil {
+		st.StoryChanges = map[string]storedStoryChange{}
 	}
 	if st.Jobs == nil {
 		st.Jobs = []Job{}
