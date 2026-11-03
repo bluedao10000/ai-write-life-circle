@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Editor } from '@tiptap/react'
 import { studioEntry, rememberResume, readResume } from '../../services/workspaceResume'
-import type { AuthorNote, WorkspaceSnapshot, WorkspaceResume } from '@writer-agent/contracts'
+import type { AuthorNote, ThinkingSource, WorkspaceSnapshot, WorkspaceResume } from '@writer-agent/contracts'
 import type { WriterAgentAdapter } from '../../services/writerAgent'
 import {
   useWorkspaceController,
@@ -329,6 +329,44 @@ export function useStudioController(
     setConflictId(null)
     setFlash({ paraIndex: matches[0], quote: source.quote, nonce: Date.now() })
   }
+  /**
+   * 灵感 evidence: a verified quote opens its chapter at the quoted paragraph. A quote
+   * from an older revision, or one that no longer occurs exactly once, never jumps
+   * to a guessed paragraph; the author is told to check it instead.
+   */
+  const [evidence, setEvidence] = useState<{ chapterId: string; quote: string } | null>(null)
+  const openEvidence = (src: Pick<ThinkingSource, 'chapterId' | 'quote' | 'validity'>) => {
+    if (!src.chapterId || src.validity === 'unavailable') {
+      toast('这段原文已不可用，无法定位。')
+      return
+    }
+    // Locate by the first substantial line; a multi-paragraph quote cannot match one paragraph.
+    const line = src.quote.split(/\n+/).map((s) => s.replace(/[*_`#>]/g, '').trim()).find((s) => s.length >= 2) ?? ''
+    setBackTo(null)
+    setConflictId(null)
+    switchChapter(src.chapterId)
+    if (src.validity === 'stale' || !line) {
+      setFlash(null)
+      toast('这段引文来自旧版本正文，章节已经修改。已打开当前章节，请自行核对。')
+      return
+    }
+    setFlash({ paraIndex: 0, quote: line, nonce: Date.now() })
+    setEvidence({ chapterId: src.chapterId, quote: line })
+  }
+  // Once the chapter has loaded, confirm the quote occurs exactly once; otherwise say so.
+  const evidenceMarkdown = evidence ? workspace.markdownByChapter?.[evidence.chapterId] : undefined
+  useEffect(() => {
+    if (!evidence || current !== evidence.chapterId || workspace.chapterLoadState.status !== 'loaded') return
+    // API mode keeps the saved Markdown; the demo keeps plain paragraphs.
+    const saved = evidenceMarkdown?.replace(/[*_`#>]/g, '')
+    if (saved === undefined && !doc[evidence.chapterId]) return
+    const count = saved !== undefined ? saved.split(evidence.quote).length - 1 : (doc[evidence.chapterId] ?? []).reduce((n, p) => n + p.split(evidence.quote).length - 1, 0)
+    if (count !== 1) {
+      setFlash(null)
+      toast(count ? '这段引文在章节中出现多处，已打开章节，请手动核对。' : '原文已改动，已打开章节，但没有找到这段引文。')
+    }
+    setEvidence(null)
+  }, [evidence, evidenceMarkdown, current, workspace.chapterLoadState.status, doc, toast])
   const downloadLocalDraft = () => {
     const text = workspace.exportLocalDraft()
     if (text === null) return
@@ -515,6 +553,7 @@ export function useStudioController(
     openThink,
     switchChapter,
     openSource,
+    openEvidence,
     downloadLocalDraft,
     annotations,
     selectMargin,

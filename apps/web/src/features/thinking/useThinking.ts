@@ -1,18 +1,38 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ThinkingCreate, ThinkingMessageInput, ThinkingModel, ThinkingModelOption, ThinkingRecovery, ThinkingSession } from "@writer-agent/contracts";
 import { thinkingApi as api } from "../../services/api/thinkingApi";
-import { thinkingError } from "./errors";
+import { requestError, thinkingError } from "./errors";
 import { scopedKey } from "../../services/storageScope";
 import { applyToolEvents, type ToolStep } from "./toolActivity";
 import { emptyOutbox, readChoices, readOutbox, saveBrowserState } from "./conversationState";
 type Summary = Pick<ThinkingSession, "sessionId" | "bookId" | "title" | "createdAt" | "model" | "scopes" | "status">;
-const errorText = (e: unknown) => thinkingError((e as {code?:string})?.code);
+// fetch() rejects with a TypeError and no problem code when the network is down.
+const failureCode = (e: unknown) => (e as {code?:string})?.code ?? (e instanceof TypeError ? (typeof navigator !== "undefined" && navigator.onLine === false ? "NETWORK_OFFLINE" : "NETWORK_ERROR") : undefined);
+const errorText = (e: unknown) => requestError(failureCode(e), e instanceof Error ? e.message : undefined);
 const readText = (key: string) => {try {return sessionStorage.getItem(key) ?? ""} catch {return ""}};
 const modelID = (s: ThinkingSession) => s.model.modelId ?? "default";
 const sameInput = (a: ThinkingMessageInput, b: ThinkingMessageInput) => JSON.stringify(a) === JSON.stringify(b);
 export function useThinking(book: string, enabled: boolean) {
   const partition = scopedKey(book), outboxKey = "thinking-outbox:" + partition,
-    choicesKey = "thinking-models:" + partition, draftKey = "thinking-draft:" + partition;
+    choicesKey = "thinking-models:" + partition, legacyDraftKey = "thinking-draft:" + partition;
+  // One unsent draft per conversation (account + work + session); "new" is the next topic.
+  const draftKey = useCallback((id: string | null) => "thinking-draft:" + partition + ":" + (id ?? "new"), [partition]);
+  const readDraft = useCallback((id: string | null) => {
+    // The former work-wide draft belongs to the conversation that was open when it was typed.
+    const legacy = readText(legacyDraftKey);
+    if (legacy) {
+      try {if(!sessionStorage.getItem(draftKey(id))) sessionStorage.setItem(draftKey(id), legacy);sessionStorage.removeItem(legacyDraftKey)} catch { /* optional */ }
+    }
+    return readText(draftKey(id));
+  }, [draftKey, legacyDraftKey]);
+  const writeDraft = useCallback((id: string | null, value: string) => {
+    try {if(value) sessionStorage.setItem(draftKey(id), value);else sessionStorage.removeItem(draftKey(id))} catch { /* optional */ }
+  }, [draftKey]);
+  /** Clears a delivered question's draft only if that conversation still holds exactly that question. */
+  const clearDraft = useCallback((id: string, text: string) => {
+    if (readText(draftKey(id)).trim() === text.trim()) writeDraft(id, "");
+    if (selectedRef.current === id) setDraftRaw(old => old.trim() === text.trim() ? "" : old);
+  }, [draftKey, writeDraft]);
   const [outgoing, setOutgoing] = useState("");
   const [models, setModels] = useState<ThinkingModelOption[]>([]);
   const [modelChoice, setModelChoice] = useState("");
@@ -24,7 +44,7 @@ export function useThinking(book: string, enabled: boolean) {
     [requestFailure,setRequestFailure] = useState<{code:string;traceId?:string} | null>(null),
     [reconnecting, setReconnecting] = useState(false),
     [busy, setBusy] = useState(false), [tool, setTool] = useState(""),
-    [steps, setSteps] = useState<ToolStep[]>([]), [draft, setDraftRaw] = useState(() => readText(draftKey));
+    [steps, setSteps] = useState<ToolStep[]>([]), [draft, setDraftRaw] = useState(() => readDraft(readText("thinking-v1:" + partition) || null));
   const [historyBusy,setHistoryBusy]=useState(false),[historyError,setHistoryError]=useState("");
   const actionFailed = useRef(false);
   const stepId = useRef(0), epoch = useRef(0), request = useRef(0), operation = useRef(0),
@@ -33,7 +53,7 @@ export function useThinking(book: string, enabled: boolean) {
   catalogue.current = models;
   const setDraft = (value: string) => {
     setDraftRaw(value);
-    try {sessionStorage.setItem(draftKey, value)} catch { /* optional */ }
+    writeDraft(selectedRef.current, value);
   };
   useEffect(() => {
     const generation = ++epoch.current;
@@ -45,31 +65,28 @@ export function useThinking(book: string, enabled: boolean) {
     setModelChoice(id ? choices.current[id] ?? "" : choices.current.new ?? "");
     actionFailed.current=false;setCancellationPending(false);setRequestFailure(null);setReconnecting(false);
     setHistoryError("");
-    setDraftRaw(readText(draftKey)); setScopes([]); setOutgoing(""); setBusy(false); setError("");
+    setDraftRaw(readDraft(id)); setScopes([]); setOutgoing(""); setBusy(false); setError("");
     sending.current = new Set();
     return () => {epoch.current = generation + 1};
-  }, [partition, outboxKey, choicesKey, draftKey]);
+  }, [partition, outboxKey, choicesKey, readDraft]);
   const select = useCallback((id: string | null) => {
     request.current++; operation.current++; selectedRef.current = id;
     setBusy(false); setSelected(id); setSession(null); setOutgoing(""); setTool(""); setSteps([]); setError("");setHistoryError("");actionFailed.current=false;setCancellationPending(false);setRequestFailure(null);setReconnecting(false);
+    setDraftRaw(readDraft(id));
     if (id) setModelChoice(choices.current[id] ?? "");
     else {
       const preferred = choices.current.new;
       setModelChoice(catalogue.current.some(m => m.modelId === preferred && m.enabled) ? preferred : catalogue.current.find(m => m.enabled)?.modelId ?? "");
     }
     try {if(id) sessionStorage.setItem("thinking-v1:" + partition, id);else sessionStorage.removeItem("thinking-v1:" + partition)} catch { /* optional */ }
-  }, [partition]);
+  }, [partition, readDraft]);
   // A server-confirmed receipt, not matching prose, proves delivery. An old server
   // without requestKey is safely reconciled by replaying the SAME key on retry.
   const acceptSnapshot = useCallback((value: ThinkingSession) => {
     const pending = outbox.current.pending[value.sessionId];
     if (pending && value.messages.some(m => m.role === "user" && (m.requestKey === pending.key || (pending.messageId && m.id === pending.messageId)))) {
       delete outbox.current.pending[value.sessionId]; saveBrowserState(outboxKey, outbox.current);
-      setDraftRaw(old => {
-        if (old.trim() !== pending.input.text.trim()) return old;
-        try {sessionStorage.removeItem(draftKey)} catch { /* optional */ }
-        return "";
-      });
+      clearDraft(value.sessionId, pending.input.text);
     }
     setReconnecting(false);
     setCancellationPending(value.cancellationPending ?? false);
@@ -78,7 +95,7 @@ export function useThinking(book: string, enabled: boolean) {
     setSession(old=>old?.sessionId===value.sessionId && value.history?.hasMore ? {...value,messages:[...old.messages.filter(m=>!value.messages.some(n=>n.id===m.id)),...value.messages],history:old.history ? {...old.history,totalMessages:value.history.totalMessages} : value.history} : value);
     setSessions(old => old.some(s => s.sessionId === value.sessionId) ? old.map(s => s.sessionId === value.sessionId ? {...s,title:value.title,model:value.model,status:value.status} : s) : [value,...old]);
     setModelChoice(choices.current[value.sessionId] ?? modelID(value));
-  }, [outboxKey, draftKey]);
+  }, [outboxKey, clearDraft]);
   const reload = useCallback(async (signal?: AbortSignal) => {
     const e = epoch.current, current = () => e === epoch.current && !signal?.aborted;
     const results = await Promise.allSettled([
@@ -148,8 +165,8 @@ export function useThinking(book: string, enabled: boolean) {
     try {const v = await fn();if(e === epoch.current && r === request.current) apply(v)}
     catch(err) {if(e === epoch.current && r === request.current) {
       actionFailed.current=true;setError(errorText(err));
-      const p = err as {code?:string;requestId?:string};
-      setRequestFailure({code:/^[A-Z_]{1,80}$/.test(p?.code ?? "") ? p.code! : "INTERNAL_ERROR",...(/^[a-f0-9-]{36}$/.test(p?.requestId ?? "")?{traceId:p.requestId}:{})});
+      const p = err as {code?:string;requestId?:string}, code = failureCode(err) ?? "";
+      setRequestFailure({code:/^[A-Z][A-Z0-9_]{0,79}$/.test(code) ? code : "INTERNAL_ERROR",...(/^[a-f0-9-]{36}$/.test(p?.requestId ?? "")?{traceId:p.requestId}:{})});
     }}
     finally {if(e === epoch.current && op === operation.current) setBusy(false)}
   };
@@ -184,6 +201,8 @@ export function useThinking(book: string, enabled: boolean) {
         if(e !== epoch.current || r !== request.current) return null;
         id = created.sessionId; selectedRef.current = id; setSelected(id); setSession(created);
         choices.current[id] = modelChoice; saveBrowserState(choicesKey, choices.current);
+        // The new topic's draft now belongs to this conversation (kept if delivery fails).
+        writeDraft(id, readText(draftKey(null)) || input.text); writeDraft(null, "");
         setSessions(old => [created, ...old.filter(s => s.sessionId !== id)]);
         try {sessionStorage.setItem("thinking-v1:" + partition,id)} catch { /* optional */ }
         outbox.current.creating = null;
@@ -231,7 +250,7 @@ export function useThinking(book: string, enabled: boolean) {
     }, result => {
       if(!result) return;
       acceptSnapshot(result);
-      setDraftRaw(old => {if(old.trim() !== input.text.trim()) return old;try {sessionStorage.removeItem(draftKey)} catch { /* optional */ }return ""});
+      clearDraft(result.sessionId, input.text);
       setSteps([]);
     }).finally(() => {if(e === epoch.current) {sending.current.delete(slot);if(r === request.current) setOutgoing("")}});
   };
@@ -280,7 +299,7 @@ export function useThinking(book: string, enabled: boolean) {
     } else acceptSnapshot(value);
   })};
   const remove = () => {if(selected) void action(() => api.delete(book,selected),() => {
-    delete outbox.current.pending[selected];delete choices.current[selected];saveBrowserState(outboxKey,outbox.current);saveBrowserState(choicesKey,choices.current);
+    delete outbox.current.pending[selected];delete choices.current[selected];saveBrowserState(outboxKey,outbox.current);saveBrowserState(choicesKey,choices.current);writeDraft(selected,"");
     setSessions(old => old.filter(s => s.sessionId !== selected));select(null);
   })};
   const pendingDelivery = selected ? outbox.current.pending[selected] : undefined;

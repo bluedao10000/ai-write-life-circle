@@ -49,6 +49,9 @@ func TestProductionSizedChineseChapterPreserved(t *testing.T) {
 
 func TestEmptyKnowledgeStateUsesBackfillDefaults(t *testing.T) {
 	s, _, _, _ := setup(t)
+	s.Config.ResponseFormat = "none"
+	s.Config.TokenParameter = "max_tokens"
+	s.Config.MaxResponseBytes = 256 * 1024
 	st, err := s.load()
 	if err != nil {
 		t.Fatal(err)
@@ -56,8 +59,8 @@ func TestEmptyKnowledgeStateUsesBackfillDefaults(t *testing.T) {
 	if st.Settings.DailyTokenBudget != 100000000 || st.Settings.DailyJobBudget != 200 {
 		t.Fatalf("unexpected initial budget: %+v", st.Settings)
 	}
-	if st.Settings.Enabled {
-		t.Fatal("empty state must remain disabled until the author consents")
+	if !st.Settings.Enabled || st.Settings.Model != s.Config.Info() {
+		t.Fatal("configured knowledge maintenance must be enabled by default")
 	}
 }
 

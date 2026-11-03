@@ -76,7 +76,7 @@ export default function AuthGate() {
     </main>
   )
   return (
-    <div className={window.location.pathname==='/studio/publish'?'flex min-h-dvh flex-col bg-page text-ink':'authenticated-workspace flex h-dvh flex-col bg-page text-ink'}>
+    <div className={window.location.pathname==='/studio/publish'?'flex min-h-dvh flex-col bg-page text-ink':'authenticated-workspace flex h-app flex-col bg-page text-ink'}>
       <div className="flex shrink-0 flex-wrap items-center justify-end gap-3 border-b border-line px-3 py-1 text-xs text-ink-2">
         {message && <><p role="alert" className="mr-auto text-danger">{message}</p><button type="button" disabled={busy} onClick={() => void signIn()}>重新登录</button></>}
         <span>{user.email}</span><button type="button" disabled={busy} onClick={() => void signOut()}>退出登录</button>

@@ -106,7 +106,7 @@ test("real Pi SDK tool loop, durable multi-turn context, replay, cancellation an
             ],
           }
         : readCalled
-          ? { content: "争执也可能源于保护性的隐瞒。[[source:src-fixture]]" }
+          ? { content: `争执也可能源于保护性的隐瞒。${mode === 'uncited' ? '' : mode === 'fullwidth' ? '【src-fixture】' : '[[source:src-fixture]]'}` }
           : {
               tool_calls: [
                 {
@@ -225,6 +225,7 @@ test("real Pi SDK tool loop, durable multi-turn context, replay, cancellation an
     cacheHit=90; // conflicting aliases must not discount the next turn
     await host.close();
     host = new PiHost(config, new Store(state));
+    mode = "fullwidth";
     await host.accept(
       id,
       { text: "继续解释刚才的关系。" },
@@ -233,9 +234,18 @@ test("real Pi SDK tool loop, durable multi-turn context, replay, cancellation an
     );
     await host.active.get(id)?.done;
     assert.equal(host.get(id).view.usage.cachedInput,previousCached);
+    assert.equal(host.get(id).view.messages.at(-1)?.sources.length, 1);
+    assert.match(host.get(id).view.messages.at(-1)!.text, /【src-fixture】/);
     assert(
       JSON.stringify(prompts.at(-1)).includes("林舟与父亲的关系变化是否合理"),
     );
+    mode = "uncited";
+    await host.accept(id,{text:"依据刚才的章节解释人物的选择"},"uncited","fixture");
+    await host.active.get(id)?.done;
+    const uncited = host.get(id).view.messages.at(-1)!;
+    assert.equal(uncited.status, "completed");
+    assert.equal(uncited.sources.length, 1, "passages read this turn remain available without model citation markers");
+    assert.doesNotMatch(uncited.text, /src-fixture/);
     mode = "oldsource";
     grantScopes = ["knowledge"];
     await host.accept(id,{text:"章节权限已撤销，不能复用历史卡片"},"revoked-chapters","fixture");
@@ -265,7 +275,7 @@ test("real Pi SDK tool loop, durable multi-turn context, replay, cancellation an
       host.get(id).view.messages.at(-1)?.errorCode,
       "TOOL_EXECUTION_FAILED",
     );
-    assert.equal(toolCalls, 2, "new turn re-fetches evidence instead of replaying old tool payloads");
+    assert.equal(toolCalls, 3, "each new turn re-fetches evidence instead of replaying old tool payloads");
     revoked = true;
     await assert.rejects(host.accept(id, { text: "越权" }, "fifth", "fixture"));
     revoked = false;

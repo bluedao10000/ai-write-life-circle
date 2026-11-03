@@ -13,12 +13,12 @@ export function failureFor(code: string, mayHaveIncurredCost: boolean): Thinking
   else if (/RESTARTED|INTERRUPTED|CANCELLED/.test(code)) category = "SESSION_INTERRUPTED";
   else if (/MODEL_UNAVAILABLE|MODEL_REAUTHORIZATION_REQUIRED|MODEL_CONFIGURATION_ERROR/.test(code)) category = "MODEL_CONFIGURATION_ERROR";
   else if (/PROVIDER_UNAVAILABLE|MODEL_REQUEST_FAILED|MODEL_EMPTY_RESPONSE|MODEL_OUTPUT_INCOMPLETE/.test(code)) category = "PROVIDER_UNAVAILABLE";
-  const action: ThinkingFailure["userAction"] = category === "CONTEXT_OVERFLOW" ? "provide_context" : category === "AUTHORIZATION_REQUIRED" || category === "MODEL_CONFIGURATION_ERROR" ? "reauthorize" : category === "BUDGET_EXCEEDED" || category === "SESSION_EXPIRED" ? "new_session" : category === "INTERNAL_ERROR" ? "contact_support" : category === "SESSION_INTERRUPTED" ? "continue" : "retry";
+  const action: ThinkingFailure["userAction"] = category === "CONTEXT_OVERFLOW" ? "continue" : category === "AUTHORIZATION_REQUIRED" || category === "MODEL_CONFIGURATION_ERROR" ? "reauthorize" : category === "BUDGET_EXCEEDED" || category === "SESSION_EXPIRED" ? "new_session" : category === "INTERNAL_ERROR" ? "contact_support" : category === "SESSION_INTERRUPTED" ? "continue" : "retry";
   const messages: Record<ThinkingFailure["code"], string> = {
     PROVIDER_TIMEOUT: "模型回复超时，已收到的内容已保留。",
     PROVIDER_UNAVAILABLE: "模型暂时无法完成回复，对话已保留。",
     RATE_LIMITED: "模型请求较多，请稍后重试。",
-    CONTEXT_OVERFLOW: "讨论内容超过本轮容量。请确认续谈要点后继续，完整历史仍然保留。",
+    CONTEXT_OVERFLOW: "讨论内容较长，点击继续回复后会自动整理上下文。",
     TOOL_TIMEOUT: "读取资料超时，本轮已停止。",
     TOOL_EXECUTION_FAILED: "本轮资料读取未完成，已保留对话。",
     SESSION_INTERRUPTED: "执行已中断，对话已保留，可以继续。",

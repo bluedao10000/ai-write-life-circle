@@ -73,7 +73,8 @@ type BookDialog =
   | { kind: 'shelf' }
   | { kind: 'rename' | 'delete'; bookId: string; returnTo?: 'shelf' }
 
-export default function BookMenu() {
+/** `wide`: always show the title (the 灵感 mobile drawer has room; the header does not). */
+export default function BookMenu({ wide = false }: { wide?: boolean } = {}) {
   const management = useManagement()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -218,7 +219,7 @@ export default function BookMenu() {
         >
           {management.book.title.slice(0, 1) || '无'}
         </span>
-        <span className="min-w-0 truncate font-prose text-ui text-ink max-sm:hidden">
+        <span className={`min-w-0 truncate font-prose text-ui text-ink ${wide ? '' : 'max-sm:hidden'}`}>
           {management.book.title}
         </span>
         <Icon name="chevronDown" className="text-ink-3" />

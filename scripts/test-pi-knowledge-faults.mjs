@@ -9,8 +9,8 @@ try{
  async function save(text){const c=await f.call(path);return f.call(path+'/revisions',{method:'POST',status:201,body:{baseRevisionId:c.headRevision.revisionId,markdown:text}})}
  async function mode(value){await fetch(f.origin+'/control',{method:'POST',body:JSON.stringify({mode:value})})}
  const done=async count=>until(async()=>{const j=await jobs();return j.filter(x=>x.status==='completed').length>=count&&j},'Knowledge domain completion',30000);
- await save('林舟与父亲争执。');node=f.start('pi-worker');await ready(node);
- let page=await view();await mode('usage-missing');await mutate('enable',{consent:true,model:page.model,dailyTokenBudget:1000000,dailyJobBudget:1});await done(1);page=await view();assert.ok(page.budgetTokens>=34048,'unknown model usage must remain conservatively charged');assert.equal(page.budgetAttempts,1);
+ await save('林舟与父亲争执。');
+ let page=await view();await mode('usage-missing');await mutate('enable',{consent:true,model:page.model,dailyTokenBudget:1000000,dailyJobBudget:1});node=f.start('pi-worker');await ready(node);await done(1);page=await view();assert.ok(page.budgetTokens>=34048,'unknown model usage must remain conservatively charged');assert.equal(page.budgetAttempts,1);
  // Pause races with provider completion: no candidate can commit while paused.
  await mode('knowledge-slow');await mutate('enable',{consent:true,model:page.model,dailyTokenBudget:1000000,dailyJobBudget:20});let before=f.calls;await mutate('rebuild',{chapterId:chapter});await until(()=>f.calls>before,'provider entered');await mutate('pause');await sleep(2100);assert.equal((await jobs()).filter(j=>j.status==='completed').length,0);
  await f.stop(node);await f.expireKnowledge(id);await mode('knowledge-empty');await mutate('resume');node=f.start('pi-worker');await ready(node);await done(1);

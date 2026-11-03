@@ -63,8 +63,20 @@ test('45 Chinese turns compact through real Pi sessions, retain history, switch 
   } finally {await host.close();provider.closeAllConnections();story.closeAllConnections();provider.close();story.close();rmSync(state,{recursive:true,force:true})}
 });
 
-import { manageDiscussion, inputBytes, discussionText } from '../src/runtime/context-management.js';
+import { manageDiscussion, inputBytes, discussionText, providerInput, inputTokenBound } from '../src/runtime/context-management.js';
 import { SessionManager } from '@earendil-works/pi-coding-agent';
+
+test('measured input applies only to an unchanged provider prefix and tool definitions', () => {
+  const tools = [{type: 'function', function: {name: 'read_chapter'}}];
+  const messages = [{role: 'user', content: '分析林舟'}];
+  const measured = {input: providerInput({messages, tools}), tokens: 120};
+  const next = providerInput({messages: [...messages, {role: 'tool', content: '原文'.repeat(2400)}], tools});
+  assert.ok(inputTokenBound(next, measured) < inputTokenBound(next));
+  const changedQuestion = providerInput({messages: [{role: 'user', content: '新的长问题'.repeat(4000)}], tools});
+  assert.equal(inputTokenBound(changedQuestion, measured), inputTokenBound(changedQuestion));
+  const changedTools = {...next, tools: '[]'};
+  assert.equal(inputTokenBound(changedTools, measured), inputTokenBound(changedTools));
+});
 
 test('oversized UTF-8 history reproduces the old guard; summary failure preserves originals', async () => {
   const messages = Array.from({length:80},(_,i)=>({id:String(i),role:i%2?'assistant' as const:'user' as const,text:'人物林舟，作者尚未确认，父亲失踪仍待调查。'.repeat(12),status:'completed' as const,sources:[],createdAt:new Date().toISOString()}));

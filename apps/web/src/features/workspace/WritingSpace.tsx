@@ -2,7 +2,6 @@ import { recordTimeToWriting } from '../../observability/authorExperience'
 import ManagedDirectory from '../management/ManagedDirectory'
 import { useManagement } from '../management/ManagedStudio'
 import type { useStudioController } from '../vnext/useStudioController'
-import { ReviewConsentDialog } from '../reviews/ReviewConsentDialog'
 import { ReviewMarginPanel } from '../reviews/ReviewMarginPanel'
 import ChapterDrawer from '../../components/vnext/ChapterDrawer'
 import StoryConflictView from '../../components/vnext/StoryConflictView'
@@ -95,15 +94,6 @@ export default function WritingSpace({
   )
   return (
     <>
-      {adapter.mode === 'api' && (
-        <ReviewConsentDialog
-          review={reviews}
-          onStarted={() => {
-            setRightTab('margin')
-            setLayout((prior) => ({ ...prior, rightOpen: true, focus: false }))
-          }}
-        />
-      )}
       <div
         hidden={view !== 'read'}
         className={view === 'read' ? 'relative flex min-h-0 flex-1' : ''}
@@ -240,10 +230,11 @@ export default function WritingSpace({
                 scrollRef={scroll}
                 annotations={adapter.mode === 'api' ? reviewAnnotations : annotations}
                 flash={
+                  // A current review anchor wins; otherwise a verified evidence quote (from 灵感 or 书).
                   adapter.mode === 'api'
-                    ? !reviews.stale && reviewFlash?.runId === reviews.run?.runId
+                    ? reviewFlash && !reviews.stale && reviewFlash.runId === reviews.run?.runId
                       ? reviewFlash
-                      : null
+                      : flash
                     : flash
                 }
                 downloadLocalDraft={downloadLocalDraft}

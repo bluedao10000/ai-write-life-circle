@@ -7,8 +7,8 @@ import type { useReviewController } from './useReviewController'
 
 const failureMessage = (code: string | null) => ({
   LLM_TIMEOUT: '等待审查超时，请稍后再试。', LLM_INCOMPLETE_OUTPUT: '审查内容没有完整返回，请稍后重试。',
-  REVIEW_CONFIG_CHANGED: '审查服务或范围已变化，请重新确认发送范围。', REVIEW_CONTEXT_CHANGED: '引用的正文或资料已变化，请保存后重新审查。',
-  BILLING_RESERVATION_EXPIRED: '本次审查预留已过期，请重新发起。', PLAN_FEATURE_REQUIRED: '方案已变化，请重新预览本次审查。',
+  REVIEW_CONFIG_CHANGED: '审查服务已变化，请重新审查。', REVIEW_CONTEXT_CHANGED: '引用的正文或资料已变化，请保存后重新审查。',
+  BILLING_RESERVATION_EXPIRED: '本次审查预留已过期，请重新发起。', PLAN_FEATURE_REQUIRED: '方案已变化，请重新审查。',
 }[code ?? ''] ?? '本次审查未能完成，请稍后重试。')
 const statuses = { queued: '排队中', running: '审查中', completed: '已完成', failed: '审查失败', cancelled: '已取消' }
 export function ReviewMarginPanel({ review, locate, select, saveNote, marksHidden, setMarksHidden, emptyChapter, authorNotes = [], notesError, onAddNote, notesEnabled }: {
@@ -27,7 +27,7 @@ export function ReviewMarginPanel({ review, locate, select, saveNote, marksHidde
     feedback[finding.findingId] = finding.feedback?.choice
     return { id: finding.findingId, chapterId: run!.chapterId, para: 0, quote: finding.anchor.quote, tone: 'ai', title: finding.title,
       inference: finding.inference, question: finding.question, alternativeExplanation: finding.alternativeExplanation,
-      locationLabel: finding.anchor.status === 'ambiguous' ? '原文匹配多处，暂不能定位' : '固定版本原文引用',
+      locationLabel: finding.anchor.status === 'ambiguous' ? '原文匹配多处，暂不能定位' : '原文出处',
       state: review.stale ? 'stale' : 'fresh', facts: finding.evidence.map((evidence): Source => {
         const ref = run!.sources.find((item) => item.sourceId === evidence.sourceId)
         return { label: `${ref?.title ?? '来源'} · ${ref?.kind === 'confirmed_knowledge' ? '确认知识' : '正文快照'}`, quote: evidence.quote,
@@ -43,19 +43,27 @@ export function ReviewMarginPanel({ review, locate, select, saveNote, marksHidde
     <section className="space-y-3 border-b border-line px-5 pb-4">
       <div className="flex items-center gap-2"><h2 className="flex-1 text-ui font-medium">本章连续性审查</h2><Btn size="sm" disabled={!!review.busy} onClick={review.refresh}>刷新记录</Btn></div>
       {!review.available && <p className="text-ui-sm text-ink-3">真实审查不可用：服务端尚未配置可用模型，或此后端不支持审查。历史记录仍可查看。</p>}
+      <div role="group" aria-label="审查类型" className="flex gap-2">
+        {([['character_consistency', '人物'], ['timeline_consistency', '时间线']] as const).map(([type, label]) => (
+          <Btn key={type} size="sm" pressed={review.types.includes(type)} disabled={!!review.busy || run?.status === 'running' || run?.status === 'queued'} onClick={() => {
+            const next = review.types.includes(type) ? review.types.filter((item) => item !== type) : [...review.types, type]
+            if (next.length) review.setTypes(next)
+          }}>{label}</Btn>
+        ))}
+      </div>
       <Btn size="sm" variant="outline" disabled={exhausted || !review.available || !!review.busy || emptyChapter || (run?.status === 'running' || run?.status === 'queued')} onClick={() => void review.prepare()}>{run?.status === 'completed' ? '重新审查' : '审查本章'}</Btn>
       {quota && !quota.unlimited && <p className="text-ui-sm text-ink-3">本月免费审查剩余 {quota.remaining} / {quota.limit} 次{quota.reserved > 0 ? `（${quota.reserved} 次已预留）` : ''}，{new Date(quota.resetsAt).toLocaleDateString('zh-CN', { timeZone: 'UTC' })}重置。{exhausted ? '可下月继续，或在账号方案中升级；已有结果仍可查看。' : '写作、阅读和保存不消耗 AI 点数。'}</p>}
       {review.runs.length > 0 && <label className="block text-ui-sm text-ink-3">审查记录<select aria-label="审查记录" className="mt-1 w-full rounded-md bg-surface-2 px-2 py-1.5 text-ui text-ink" value={run?.runId ?? ''} disabled={!!review.busy} onChange={(event) => void review.choose(event.target.value)}>{review.runs.map((item) => <option key={item.runId} value={item.runId}>{new Date(item.startedAt).toLocaleString('zh-CN')} · {statuses[item.status]}</option>)}</select></label>}
-      {run && <p role="status" className="text-ui-sm text-ink-3">{statuses[run.status]}</p>}
+      {review.busy === 'start' && <p role="status" className="text-ui-sm text-ink-3">审查中…</p>}
+      {review.busy !== 'start' && run && <p role="status" className="text-ui-sm text-ink-3">{statuses[run.status]}</p>}
       {(run?.status === 'running' || run?.status === 'queued') && <div className="rounded-lg border border-line p-3.5" aria-live="polite">
         <div className="flex items-center gap-2 text-ui text-ink"><span className="dot h-1.5 w-1.5 rounded-full bg-ai" aria-hidden />{statuses[run.status]}</div>
         <p className="mt-2 text-ui-sm text-ink-3">{run.status === 'queued' ? '正在等待后台审查。你可以继续写作，也可取消排队。' : '正在核对固定版本。你可以继续写作，结果完成后按需查看。'}</p>
         <Btn size="sm" variant="outline" className="mt-3" disabled={!!review.busy} onClick={() => void review.cancel()}>取消审查</Btn>
       </div>}
-      {run?.status === 'failed' && <p role="alert" className="flex items-start gap-2 rounded-lg border border-danger bg-danger-soft px-3.5 py-2.5 text-ui-sm text-ink"><Icon name="alert" className="mt-0.5 text-danger" /><span>{failureMessage(run.failureCode)}正文和正式资料保持不变。</span></p>}
-      {review.stale && <p role="alert" className="flex items-start gap-2 rounded-lg border border-warn bg-warn-soft px-3.5 py-2.5 text-ui-sm text-ink"><Icon name="clock" className="mt-0.5 text-warn" /><span>正文或历史证据已变化。这份结果基于旧快照，不能定位到当前正文；可以重新审查。</span></p>}
-      {run?.status === 'completed' && run.findings.length === 0 && <p className="text-ui-sm text-ink-2">没有发现可证实的冲突。{run.rejectedCount ? '部分模型候选未通过引用核验，没有作为注记展示。' : '本次仅覆盖已确认的发送范围。'}</p>}
-      {run && run.rejectedCount > 0 && <p className="text-micro text-ink-3">有 {run.rejectedCount} 项候选引用未通过核验。</p>}
+      {run?.status === 'failed' && <p role="alert" className="flex items-start gap-2 rounded-lg border border-danger bg-danger-soft px-3.5 py-2.5 text-ui-sm text-ink"><Icon name="alert" className="mt-0.5 text-danger" /><span>{failureMessage(run.failureCode)}</span></p>}
+      {review.stale && <p role="alert" className="flex items-start gap-2 rounded-lg border border-warn bg-warn-soft px-3.5 py-2.5 text-ui-sm text-ink"><Icon name="clock" className="mt-0.5 text-warn" /><span>正文或资料已更新，可以重新审查后定位原文。</span></p>}
+      {run?.status === 'completed' && run.findings.length === 0 && <p className="text-ui-sm text-ink-2">未发现明显的前后矛盾。</p>}
       {(review.error || noteError) && <p role="alert" className="text-ui-sm text-warn">{review.error || noteError}</p>}
     </section>
     <section aria-label="作者注记" className="space-y-2 border-b border-line px-5 py-4">
@@ -66,7 +74,7 @@ export function ReviewMarginPanel({ review, locate, select, saveNote, marksHidde
     </section>
     <MarginPanel margins={live} ignored={ignored} activeId={review.activeId} onSelect={select}
       onSource={(ref) => setSourceId(ref.reviewSourceId ?? null)} onIgnore={(id) => void review.feedback(id, 'ignored')} onRestore={() => {}}
-      onNote={(item) => { setNoteError(''); void saveNote(`AI 推断（未经作者确认）：${item.title}\n${item.inference}\n其他可能解释：${item.alternativeExplanation ?? ''}\n作者问题：${item.question}\n审查记录：${run?.runId ?? ''}`).catch((e: unknown) => setNoteError(e instanceof Error ? e.message : '笔记保存失败')) }}
+      onNote={(item) => { setNoteError(''); void saveNote(`页边批注：${item.title}\n${item.inference}\n其他可能解释：${item.alternativeExplanation ?? ''}\n作者问题：${item.question}\n审查记录：${run?.runId ?? ''}`).catch((e: unknown) => setNoteError(e instanceof Error ? e.message : '笔记保存失败')) }}
       onConflict={() => {}} onThink={() => {}} marksHidden={marksHidden} setMarksHidden={setMarksHidden} emptyChapter={emptyChapter}
       review={{ feedback, busy: !!review.busy, onFeedback: (id, choice) => void review.feedback(id, choice), onLocate: locate,
         locateDisabled: (id) => review.stale || review.finding(id)?.anchor.status !== 'unique' }} />

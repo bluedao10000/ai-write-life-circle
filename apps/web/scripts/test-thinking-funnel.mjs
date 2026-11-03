@@ -224,9 +224,12 @@ try {
   await page.getByRole("tab", { name: "灵感", exact: true }).click();
   // Synthetic author pre-approved the scopes above; first send uses the real admission path.
   const talk = page.getByRole("main", { name: "灵感对话" });
-  const turns = talk.locator("ol > li");
+  const turns = talk.getByRole("list", { name: "对话记录" }).locator(":scope > li");
   const send = () => page.getByRole("button", { name: "发送", exact: true }).click();
-  const input = page.getByLabel("说说你的想法");
+  const input = page.getByLabel("说说你正在思考的问题");
+  // Only real Pi events drive the pending line: thinking, a running Story Tool, or context memory.
+  const pending = talk.getByRole("status").filter({ hasText: /正在思考|正在参考作品资料|正在整理讨论上下文/ });
+  const done = () => expect(turns.last().getByRole("button", { name: "复制", exact: true })).toBeVisible({ timeout: 20000 });
   await expect(input).toBeVisible();
   await input.fill("林舟与父亲的关系变化是否合理？");
   await send();
@@ -237,15 +240,22 @@ try {
     }),
   ).toBeVisible({ timeout: 20000 });
   // Evidence stays inspectable: verified source quotes behind a disclosure.
-  await talk.locator("details").first().locator("summary").click();
+  await talk.getByRole("button", { name: /已参考作品中的 \d+ 处原文/ }).first().click();
   await expect(talk.getByText(/原文位置已核验/).first()).toBeVisible();
+  // 查看原文 lands on the exact quoted paragraph in 阅读, not just the chapter.
+  const firstQuote = (await talk.locator("blockquote").first().innerText()).trim();
+  await talk.getByRole("button", { name: "查看原文" }).first().click();
+  await expect(page.getByLabel("正文编辑器")).toBeVisible();
+  await expect(page.locator(".ann-flash")).toHaveCount(1);
+  await expect(page.locator(".ann-flash")).toContainText(firstQuote.split("\n")[0]);
+  await page.getByRole("tab", { name: "灵感", exact: true }).click();
+  await expect(input).toBeVisible();
   await input.fill("那么父亲还有什么其他解释？");
   await expect(page.getByRole("button", { name: "发送", exact: true })).toBeEnabled();
   await send();
   await expect(turns).toHaveCount(4, { timeout: 20000 });
-  await expect(talk.getByText("正在想…")).toHaveCount(0, { timeout: 20000 });
-  await expect(turns.last()).not.toContainText(/· (已接受|思考中|未完成|已取消|已中断)/, { timeout: 20000 });
-  await expect(turns.last()).not.toContainText("正在思考…");
+  await expect(pending).toHaveCount(0, { timeout: 20000 });
+  await done();
   await page.reload();
   await page.getByRole("tab", { name: "灵感", exact: true }).click();
   await expect(turns).toHaveCount(4);
@@ -253,41 +263,42 @@ try {
   fixture.config.hang = true;
   let callsBefore=fixture.calls.length;
   await input.fill("断网与重启恢复的合成问题");await send();await fixture.waitForProviderCall(callsBefore);
-  await expect(talk.getByText("正在想…")).toBeVisible();
+  await expect(pending).toBeVisible();
   offlineThinking=true;
   await page.reload();
   await page.getByRole("tab", { name: "灵感", exact: true }).click();
-  await expect(page.getByRole("alert").first()).toContainText("连接中断");
+  await expect(talk.getByRole("status").filter({ hasText: "连接中断" }).first()).toBeVisible();
   offlineThinking=false;
   await page.evaluate(()=>window.dispatchEvent(new Event("online")));
-  await expect(talk.getByText("正在想…")).toBeVisible();
+  await expect(pending).toBeVisible();
   console.log("Browser: SIGKILL and explicit Resume");
   await fixture.stopAgent("SIGKILL");await fixture.restartAgent();fixture.config.hang=false;
-  await expect(page.getByRole("button",{name:"继续执行",exact:true})).toBeDisabled();
-  await page.getByRole("checkbox",{name:/我确认再次调用本轮原模型/}).check();
-  await page.getByRole("button",{name:"继续执行",exact:true}).click();
-  await expect(talk.getByText("正在想…")).toHaveCount(0,{timeout:20000});
-  await expect(turns.last()).not.toContainText(/· (已接受|思考中|未完成|已取消|已中断)/,{timeout:20000});
+  // Resume is an explicit author action; the visible note states that it calls the model again.
+  await expect(talk.getByText(/再次请求原模型，按实际用量计入 AI 点数/)).toBeVisible({timeout:20000});
+  await talk.getByRole("button",{name:/^(继续回复|重新尝试)$/}).click();
+  await expect(pending).toHaveCount(0,{timeout:20000});
+  await done();
   await expect(turns.filter({hasText:"断网与重启恢复的合成问题"})).toHaveCount(1);
   console.log("Browser: cancel after recovery");
   fixture.config.hang = true;callsBefore=fixture.calls.length;
   await input.fill("取消这次思考");
   await send();
   await fixture.waitForProviderCall(callsBefore);
-  await expect(page.getByRole("button", { name: "停止", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "停止回复", exact: true })).toBeVisible();
   await fixture.stopAgent("SIGKILL");
-  await page.getByRole("button", { name: "停止", exact: true }).click();
-  await expect(page.getByText("取消已记录，服务恢复后会同步停止状态。不会恢复已取消的任务。")).toBeVisible();
-  await expect(turns.last()).toContainText("已取消");
+  await page.getByRole("button", { name: "停止回复", exact: true }).click();
+  await expect(page.getByText("取消已记录，服务恢复后会同步停止状态。不会恢复已取消的回复。")).toBeVisible();
+  await expect(turns.last()).toContainText("已停止回复。");
   const callsAfterOfflineCancel=fixture.calls.length;
   fixture.config.hang=false;await fixture.restartAgent();
-  await expect(page.getByText("取消已记录，服务恢复后会同步停止状态。不会恢复已取消的任务。")).toHaveCount(0,{timeout:20000});
+  await expect(page.getByText("取消已记录，服务恢复后会同步停止状态。不会恢复已取消的回复。")).toHaveCount(0,{timeout:20000});
   assert.equal(fixture.calls.length,callsAfterOfflineCancel);
   fixture.config.hang = false;
   await fixture.stopAgent();
   await input.fill("服务离线时不重复接受");
   await send();
-  await expect(page.getByRole("alert").filter({hasText:"输入已保留"})).toBeVisible();
+  await expect(talk.getByRole("status").filter({hasText:"输入已保留"})).toBeVisible();
+  await expect(input).toHaveValue("服务离线时不重复接受");
   await page.getByRole("tab", { name: "阅读", exact: true }).click();
   const editor = page.getByLabel("正文编辑器");
   if ((await editor.getAttribute("contenteditable")) !== "true")
@@ -296,25 +307,24 @@ try {
   await expect(page.getByText(/^已保存 /)).toBeVisible();
   await fixture.restartAgent();
   await page.getByRole("tab", { name: "灵感", exact: true }).click();
-  await page.getByRole("button", { name: "刷新会话", exact: true }).click();
+  // No manual refresh: capabilities are re-read automatically once Pi is back.
+  await expect(page.getByRole("button", { name: "发送", exact: true })).toBeEnabled({ timeout: 20000 });
   const beforeRetry = await turns.count();
   await send();
   await expect(turns).toHaveCount(beforeRetry + 2, { timeout: 20000 });
-  await expect(talk.getByText("正在想…")).toHaveCount(0, { timeout: 20000 });
+  await expect(pending).toHaveCount(0, { timeout: 20000 });
   // These additional fault/recovery turns may cross the conservative context cap.
   // Exercise the real handoff UI rather than enlarging the context limit.
-  const continuation=page.getByLabel("续谈要点");
-  if(await continuation.isVisible()) {
+  const handoff=talk.getByRole("button",{name:"带着续谈要点继续"});
+  if(await handoff.isVisible()) {
     const beforeContext=await turns.count();
-    await continuation.fill("作者确认的续谈要点：讨论林舟与父亲从争执到理解的动机；保护与信息差仍是假设，不是正式设定。重要依据仍需从已授权的保存章节重新核验。");
-    await page.getByRole("checkbox",{name:/我确认再次调用本轮原模型/}).check();
-    await page.getByRole("button",{name:"继续执行",exact:true}).click();
+    await handoff.click();
+    await page.getByLabel("续谈要点").fill("作者确认的续谈要点：讨论林舟与父亲从争执到理解的动机；保护与信息差仍是假设，不是正式设定。重要依据仍需从已授权的保存章节重新核验。");
+    await talk.getByRole("button",{name:"继续回复",exact:true}).click();
     await expect(turns).toHaveCount(beforeContext+1,{timeout:20000});
-    await expect(talk.getByText("正在想…")).toHaveCount(0,{timeout:20000});
+    await expect(pending).toHaveCount(0,{timeout:20000});
   }
-
-  await expect(turns.last()).not.toContainText(/· (已接受|思考中|未完成|已取消|已中断)/, { timeout: 20000 });
-  await expect(turns.last()).not.toContainText("正在思考…");
+  await done();
   const screenshot = resolve("test-results-thinking/thinking-desktop.png");
   await mkdir(resolve("test-results-thinking"), { recursive: true });
   await page.screenshot({ path: screenshot, fullPage: true });
@@ -323,16 +333,18 @@ try {
     path: resolve("test-results-thinking/thinking-mobile.png"),
     fullPage: true,
   });
+  // 灵感 on phones moves the main navigation into its history drawer; continue on desktop.
+  await page.setViewportSize({ width: 1280, height: 800 });
   // History and deletion remain available even when capabilities/snapshot RPC fail.
   await fixture.stopAgent();
   await page.reload();
   await page.getByRole("tab", { name: "灵感", exact: true }).click();
-  const history = page.locator('aside[aria-label="创作探索记录"] li');
+  const history = page.getByRole("navigation", { name: "历史会话" }).locator("li");
   await expect(history).toHaveCount(1);
-  await history.first().locator("[role=button], button").first().dispatchEvent("click");
-  await expect(page.getByRole("button", { name: "删除会话", exact: true })).toBeEnabled();
-  page.once("dialog", (dialog) => dialog.accept());
-  await page.getByRole("button", { name: "删除会话", exact: true }).click();
+  await history.first().getByRole("button").click();
+  await page.getByRole("button", { name: "更多", exact: true }).click();
+  await page.getByRole("group", { name: "更多" }).getByRole("button", { name: "删除这次讨论" }).click();
+  await page.getByRole("dialog", { name: "删除这次讨论" }).getByRole("button", { name: "删除", exact: true }).click();
   await expect(history).toHaveCount(0);
   await fixture.restartAgent();
   assert.deepEqual(errors, []);

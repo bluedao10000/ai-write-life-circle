@@ -17,7 +17,7 @@ Organize only the focus turn (focusMessageIds), using earlier messages and exist
 stance: author_decision only when the author clearly decided; author_hypothesis when the author floats a possibility ("maybe", "what if", "or"); author_question for an undecided question the author raised (kind open_question); author_rejection when the author negates or retracts an earlier idea; ai_suggestion for ideas from the assistant that the author did not explicitly adopt.
 Mutually exclusive options (e.g. three possible endings) must each be a separate change with the same alternativeGroup label and an exploratory stance; never present them as decided.
 Identity: if an existing asset describes the same identity, use UPDATE (new or changed details) or SUPERSEDE (the author replaced or negated an earlier setting) with targetAssetId; never CREATE a duplicate. If a pending proposal describes the same thing, return CREATE with replacesProposalId and the full revised draft (keep earlier details the author did not change; drop details the author negated). Use removeFields to drop negated field keys on UPDATE/SUPERSEDE. LINK connects targetAssetId to link.toAssetId or to link.toRef (the ref of a CREATE in this output).
-Evidence: every change needs 1-4 quotes copied verbatim (max 300 characters) from the supplied messages with their messageId. At least one quote must come from a focus message. author_* stances need a quote from a user message; ai_suggestion needs a quote from an assistant message. Field values and summaries restate the conversation briefly; do not embellish. Use short Chinese field keys such as 身份, 动机, 目标, 关系, 规则, 代价, 时间, 地点. Kinds: character, world_rule, place, organization, plot_line, event, foreshadowing, character_arc, open_question. Schema: `
+Evidence: every change needs 1-4 quotes copied verbatim (max 300 characters) from the supplied messages with their messageId. At least one quote must come from a focus message. author_* stances need a quote from a user message; ai_suggestion needs a quote from an assistant message. Field values and summaries restate the conversation briefly; do not embellish. Use short Chinese field keys such as 身份, 动机, 目标, 关系, 规则, 代价, 时间, 地点. Kinds: character, world_rule, place, organization, plot_line, event, foreshadowing, character_arc, open_question. Write summary, field values and reason in crisp, plain Chinese like author notebook entries (e.g. "户部小吏，寡言，十年未归江宁"), never literary-review prose (avoid 性格复杂, 充满张力, 体现了, 旨在). Schema: `
 
 type outEvidence struct {
 	MessageID string `json:"messageId"`
@@ -92,8 +92,10 @@ func organizePrompt() string {
 	return OrganizePrompt + string(b)
 }
 
-// ExecutionContract identifies prompt and schema for capability checks.
-func ExecutionContract() string { return compat.Hash(organizePrompt() + "\x00" + planPrompt()) }
+// ExecutionContract identifies the supported strategy and output schema versions.
+func ExecutionContract() string {
+	return compat.Hash(Strategy + "creative-organize-candidates-v1" + PlanStrategy + "creative-plan-check-candidates-v1")
+}
 
 type promptAsset struct {
 	ID      string   `json:"assetId"`

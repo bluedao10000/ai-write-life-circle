@@ -25,13 +25,13 @@ test('build settings before any prose, write in compose mode, and keep both', as
   await page.getByRole('textbox', { name: '属性值 1' }).fill('查清父亲出海的真相')
   await page.getByRole('button', { name: '保存', exact: true }).click()
   const detail = page.getByRole('article', { name: '设定：林舟' })
-  await expect(detail).toContainText('已确认')
+  await expect(detail).toContainText('已定')
   await expect(detail).toContainText('版本 1')
   await detail.getByRole('button', { name: '编辑', exact: true }).click()
   await page.getByRole('textbox', { name: '概述' }).fill('北港灯塔的年轻看守人，怕水。')
   await page.getByRole('button', { name: '保存', exact: true }).click()
   await expect(detail).toContainText('版本 2')
-  await expect(detail.getByText('作者修改').first()).toBeVisible()
+  await expect(detail.getByText('修订', { exact: true }).first()).toBeVisible()
 
   // A plan anchored to chapter one: an intention, shown beside the manuscript.
   // Events live in 时间线 (Figma V3 sections); the kind is fixed by the section.

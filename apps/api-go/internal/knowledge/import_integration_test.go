@@ -38,7 +38,7 @@ func importedEPUB(t *testing.T) []byte {
 	return buffer.Bytes()
 }
 
-func TestImportedBookQueuesKnowledgeOnlyAfterConsent(t *testing.T) {
+func TestImportedBookQueuesKnowledgeByDefault(t *testing.T) {
 	ctx := context.Background()
 	actor := application.Actor{ID: "import-author", Role: "author"}
 	managed := application.NewManagement(
@@ -83,22 +83,8 @@ func TestImportedBookQueuesKnowledgeOnlyAfterConsent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if state.Settings.Enabled || len(state.Jobs) != 0 {
-		t.Fatalf("imported prose reached the model queue without consent: %+v", state)
-	}
-	model := config.Info()
-	if _, err := service.Mutate(ctx, actor, "enable", "enable", Mutation{
-		BaseVersion: state.Version, Consent: true, Model: &model,
-		DailyTokenBudget: 1_000_000, DailyJobBudget: 100,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if err := processOneForTest(ctx, service); err != nil {
-		t.Fatal(err)
-	}
-	state, err = service.load()
-	if err != nil {
-		t.Fatal(err)
+	if !state.Settings.Enabled {
+		t.Fatal("configured imported work did not enable knowledge maintenance")
 	}
 	if len(state.Jobs) != 2 || state.Jobs[0].ChapterID != "CH-000001" || state.Jobs[1].ChapterID != "CH-000002" {
 		t.Fatalf("knowledge did not queue imports in chapter order: %+v", state.Jobs)

@@ -22,5 +22,6 @@
 
 - 作者体验 P0（恢复、历史正文、审查与注记、Free 审查额度）：[设计与一致性](architecture/author-experience-p0.md)
 - 灵感对话可用性与多模型：[设计](architecture/inspiration-agent-usability.md)、[实现与验证](reviews/archive/inspiration-agent-usability-report.md)
+- 灵感会话工作台 Figma 集成与收尾预算修订：[交付报告](reviews/inspiration-figma-workbench.md)
 
 - Agent 可靠性：[审查与验证](reviews/archive/agent-reliability-review.md)、[Checkpoint/Resume ADR](architecture/agent-reliability.md)、[Dreaming 候选设计](architecture/dreaming-memory-candidates.md)。

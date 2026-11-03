@@ -14,10 +14,16 @@ export async function loadReplyStylePolicy() {
   if (policy.policy_id !== "RAS-001") throw Error("Unexpected reply style policy ID");
   if (!policy.policy_version || !policy.runtime_instruction?.trim())
     throw Error("RAS-001 requires policy_version and runtime_instruction");
+  if (!policy.fidelity_instruction?.trim())
+    throw Error("RAS-001 requires fidelity_instruction");
   if (!Array.isArray(policy.forbidden_phrases) || !policy.forbidden_phrases.length)
     throw Error("RAS-001 requires forbidden_phrases");
   if (!Array.isArray(policy.conclusion_markers) || !policy.conclusion_markers.length)
     throw Error("RAS-001 requires conclusion_markers");
+  if (!Array.isArray(policy.opening_fillers) || !policy.opening_fillers.length)
+    throw Error("RAS-001 requires opening_fillers");
+  if (!(policy.restatement_overlap > 0 && policy.restatement_overlap <= 1))
+    throw Error("RAS-001 requires restatement_overlap in (0, 1]");
   const limits = policy.default_reply;
   if (
     !limits ||
@@ -32,7 +38,7 @@ export async function loadReplyStylePolicy() {
 export function buildReplyStyleInstruction(policy) {
   const limits = policy.default_reply;
   const questions = policy.max_questions;
-  return `Reply style ${policy.policy_id} v${policy.policy_version}: ${policy.runtime_instruction.trim()} For ordinary discussion, normally ${limits.min_sentences}-${limits.max_sentences} sentences and at most ${limits.max_visible_characters} visible characters. Ask at most ${questions} focused question${questions === 1 ? "" : "s"}.\nNever use these canned phrases or close variants: ${policy.forbidden_phrases.join(" / ")}.`;
+  return `Reply style ${policy.policy_id} v${policy.policy_version}: ${policy.runtime_instruction.trim()} ${policy.fidelity_instruction.trim()} For ordinary discussion, normally ${limits.min_sentences}-${limits.max_sentences} sentences and at most ${limits.max_visible_characters} visible characters. Ask at most ${questions} focused question${questions === 1 ? "" : "s"}.\nNever use these canned phrases or close variants: ${policy.forbidden_phrases.join(" / ")}.`;
 }
 
 export function visibleText(text) {
@@ -62,13 +68,43 @@ export function findForbiddenPhrases(text, phrases) {
   return phrases.filter((phrase) => normalized.includes(phrase.toLocaleLowerCase()));
 }
 
-export function hasConclusionFirst(text, markers) {
-  const first =
-    visibleText(text)
-      .split(/(?:[。！？!?；;]+|[\r\n]+)/)
-      .find((part) => part.trim().length > 0)
-      ?.trim() ?? "";
-  return markers.some((marker) => first.includes(marker));
+export function openingSentence(text) {
+  for (const match of visibleText(text).matchAll(/([^。！？!?；;\r\n]+)([。！？!?；;]*)/g)) {
+    const body = match[1].trim();
+    if (body) return { text: body, endsWithQuestion: /[?？]/.test(match[2]) };
+  }
+  return { text: "", endsWithQuestion: false };
+}
+
+function characterBigrams(text) {
+  const characters = Array.from(String(text).replace(/[\s\p{P}\p{S}]/gu, ""));
+  return characters.slice(1).map((character, index) => characters[index] + character);
+}
+
+// Share of the sentence's character bigrams that also occur in the question.
+export function restatementOverlap(sentence, question) {
+  const grams = characterBigrams(sentence);
+  if (!grams.length || !question) return 0;
+  const asked = new Set(characterBigrams(question));
+  return grams.filter((gram) => asked.has(gram)).length / grams.length;
+}
+
+// Heuristic: the first sentence opens directly with a judgment, a situation or an
+// action. Warm-up fillers, canned phrases and opening questions fail; judgment
+// markers pass; anything else passes unless it mostly restates the question.
+export function hasConclusionFirst(text, markers, options = {}) {
+  const {
+    fillers = [],
+    forbiddenPhrases = [],
+    question = "",
+    restatementThreshold = 0.6,
+  } = options;
+  const first = openingSentence(text);
+  if (!first.text || first.endsWithQuestion) return false;
+  if (fillers.some((filler) => first.text.startsWith(filler))) return false;
+  if (findForbiddenPhrases(first.text, forbiddenPhrases).length) return false;
+  if (markers.some((marker) => first.text.includes(marker))) return true;
+  return restatementOverlap(first.text, question) < restatementThreshold;
 }
 
 export function analyzeReply(sample, policy) {
@@ -76,6 +112,7 @@ export function analyzeReply(sample, policy) {
   const visibleCharacters = countVisibleCharacters(text);
   const sentenceCount = estimateSentenceCount(text);
   const forbiddenPhrases = findForbiddenPhrases(text, policy.forbidden_phrases);
+  if (/不是[^。！？；\n]{1,30}而是/.test(text)) forbiddenPhrases.push("不是…而是");
   const isDefault = sample.kind === "default";
   const lengthPass =
     !isDefault || visibleCharacters <= policy.default_reply.max_visible_characters;
@@ -85,7 +122,12 @@ export function analyzeReply(sample, policy) {
       sentenceCount <= policy.default_reply.max_sentences);
   const questionCount = (text.match(/[?？]/g) ?? []).length;
   const questionPass = questionCount <= policy.max_questions;
-  const conclusionFirst = hasConclusionFirst(text, policy.conclusion_markers);
+  const conclusionFirst = hasConclusionFirst(text, policy.conclusion_markers, {
+    fillers: policy.opening_fillers,
+    forbiddenPhrases: policy.forbidden_phrases,
+    question: sample.question ?? "",
+    restatementThreshold: policy.restatement_overlap,
+  });
   const violations = [];
   if (forbiddenPhrases.length) violations.push("forbidden_phrase");
   if (!lengthPass) violations.push("default_length");

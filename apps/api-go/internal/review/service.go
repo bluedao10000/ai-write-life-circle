@@ -56,7 +56,7 @@ func (s *Service) Start(ctx context.Context, a application.Actor, chapterID, key
 		return Run{}, e
 	}
 	in.Input = normalized
-	if !in.Consent.Confirmed || !validHash(in.Consent.PlanHash) {
+	if in.Consent.PlanHash != "" && (!in.Consent.Confirmed || !validHash(in.Consent.PlanHash)) {
 		return Run{}, failure(422, "REVIEW_CONSENT_REQUIRED", "Confirm the displayed model and exact source scope before reviewing.")
 	}
 	fp := fingerprint(struct {
@@ -93,7 +93,7 @@ func (s *Service) Start(ctx context.Context, a application.Actor, chapterID, key
 	if e != nil {
 		return Run{}, e
 	}
-	if plan.PlanHash != in.Consent.PlanHash {
+	if in.Consent.PlanHash != "" && plan.PlanHash != in.Consent.PlanHash {
 		return Run{}, failure(409, "REVIEW_CONTEXT_CHANGED", "The model or source scope changed. Preview and confirm the scope again.")
 	}
 	var created bool

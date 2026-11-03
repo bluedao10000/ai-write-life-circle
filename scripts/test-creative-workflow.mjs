@@ -70,6 +70,8 @@ const provider = createServer(async (req, res) => {
   } else if (system.startsWith("You compare")) {
     calls.plan++;
     out = planCheck(JSON.parse(userText));
+  } else if (system.startsWith("Extract private novel memory")) {
+    out = { entities: [], assertions: [] };
   } else if (body.stream) {
     calls.chat++;
     const said = typeof userText === "string" ? userText : JSON.stringify(userText);
@@ -188,8 +190,10 @@ try {
   const base = `/v1/studio/books/${book.bookId}`;
   const creative = base + "/creative";
   let overview = await call(creative);
-  assert.equal(overview.settings.enabled, false);
-  await call(creative + "/settings/enable", { method: "POST", key: "enable", body: { consent: true, model: overview.settings.currentModel, dailyTokenBudget: Math.max(overview.settings.reserveTokens * 10, 1000000), dailyJobBudget: 50 } });
+  assert.equal(overview.settings.enabled, true);
+  assert.equal(overview.settings.autoOrganize, true);
+  assert.equal(overview.settings.dailyTokenBudget, 100000000);
+  assert.equal(overview.settings.dailyJobBudget, 200);
   const model = await call(base + "/thinking/capabilities");
   const session = await call(base + "/thinking/sessions", { method: "POST", key: "session", status: 201, body: { consent: true, model, scopes: ["chapters", "knowledge", "creative"] } });
   const sessionPath = `${base}/thinking/sessions/${session.sessionId}`;

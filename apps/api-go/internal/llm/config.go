@@ -39,12 +39,14 @@ func (c Config) Info() ModelInfo {
 	return ModelInfo{c.Provider, c.Model, u.Scheme + "://" + u.Host + u.EscapedPath(), execution}
 }
 
-// Fingerprint identifies the model capability without exposing the API key.
-// It is stable across API and Worker processes so the API can detect model
-// changes that require author re-authorization without holding the credential.
+// Fingerprint identifies the provider, model and endpoint shared by API and Worker.
 func (c Config) Fingerprint() string {
-	c.APIKey = ""
-	b, _ := json.Marshal(c)
+	model := c.Info()
+	b, _ := json.Marshal(struct {
+		Provider string `json:"provider"`
+		Model    string `json:"model"`
+		Endpoint string `json:"endpoint"`
+	}{model.Provider, model.Model, model.Endpoint})
 	return string(b)
 }
 func number(key string, fallback, low, high int) (int, error) {

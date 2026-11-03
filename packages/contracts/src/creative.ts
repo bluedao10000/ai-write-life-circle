@@ -429,9 +429,9 @@ export const creativeKindLabels: Record<CreativeKind, string> = {
   open_question: "待决问题",
 };
 export const creativeStanceLabels: Record<z.infer<typeof creativeStanceSchema>, string> = {
-  author_decision: "作者决定",
-  author_hypothesis: "作者假设",
+  author_decision: "已敲定",
+  author_hypothesis: "试想",
   author_question: "待决问题",
-  author_rejection: "作者否定",
-  ai_suggestion: "AI 建议",
+  author_rejection: "已推翻",
+  ai_suggestion: "提议",
 };

@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 const model=process.env.WRITER_AGENT_E2E_MODEL_ORIGIN!
 const api='http://127.0.0.1:8789/v1/projects/review-fixture'
-test('author consent, real HTTP review, verified snapshots, read-only location, persisted feedback and stale results',async({page,request})=>{
+test('one-click real HTTP review, verified snapshots, read-only location, persisted feedback and stale results',async({page,request})=>{
   let creates=0,saves=0
   page.on('request',(r)=>{if(r.method()==='POST'&&/\/chapters\/[^/]+\/reviews$/.test(r.url()))creates++;if(r.method()==='POST'&&r.url().includes('/revisions'))saves++})
   await page.goto('/?view=read&compose=1')
@@ -11,18 +11,12 @@ test('author consent, real HTTP review, verified snapshots, read-only location, 
   await expect(editor).toContainText('😀林舟到过北港。')
   const before=await editor.innerText()
   const contentBefore=await editor.textContent()
-  const count=(await (await request.get(`${model}/stats`)).json()).calls
+  const count=(await (await request.get(`${model}/stats`)).json()).reviewCalls
   // Figma V3: review lives in the right drawer (注记 / 审查), not the footer.
   await page.getByRole('button',{name:'审查与注记',exact:true}).click()
   await page.getByRole('button',{name:'审查本章',exact:true}).first().click()
-  const consent=page.getByRole('dialog',{name:'确认审查与模型数据发送'})
-  await expect(consent).toBeVisible()
-  await expect(consent).toContainText('历史章节片段')
-  await expect(consent.getByRole('button',{name:'确认并发送审查'})).toBeDisabled()
-  expect(creates).toBe(0)
-  expect((await (await request.get(`${model}/stats`)).json()).calls).toBe(count)
-  await consent.getByRole('checkbox').last().check()
-  await consent.getByRole('button',{name:'确认并发送审查'}).click()
+  await expect(page.getByRole('dialog',{name:'确认审查与模型数据发送'})).toHaveCount(0)
+  await expect.poll(async()=> (await (await request.get(`${model}/stats`)).json()).reviewCalls).toBeGreaterThan(count)
   await expect(page.getByRole('heading',{name:'本章连续性审查'})).toBeVisible()
   await expect(page.getByText('两处记录可能存在差异',{exact:true})).toBeVisible()
   await page.getByText('两处记录可能存在差异',{exact:true}).click()
@@ -51,11 +45,7 @@ test('author consent, real HTTP review, verified snapshots, read-only location, 
   await expect(page.getByText('已标记：有意为之',{exact:true})).toBeVisible()
   const previous=(await (await request.get(`${api}/chapters/CH-008/reviews`)).json()).items[0]
   await page.getByRole('button',{name:'重新审查',exact:true}).first().click()
-  const repeatConsent=page.getByRole('dialog',{name:'确认审查与模型数据发送'})
-  await expect(repeatConsent.getByRole('checkbox').last()).not.toBeChecked()
-  await expect(repeatConsent.getByRole('button',{name:'确认并发送审查'})).toBeDisabled()
-  await repeatConsent.getByRole('checkbox').last().check()
-  await repeatConsent.getByRole('button',{name:'确认并发送审查'}).click()
+  await expect(page.getByRole('dialog',{name:'确认审查与模型数据发送'})).toHaveCount(0)
   await expect(page.getByRole('combobox',{name:'审查记录'}).getByRole('option')).toHaveCount(2)
   await expect(page.getByText('两处记录可能存在差异',{exact:true})).toBeVisible()
   await page.getByText('两处记录可能存在差异',{exact:true}).click()
@@ -72,25 +62,25 @@ test('author consent, real HTTP review, verified snapshots, read-only location, 
   expect(records.items[0].strategyVersion).toBe('continuity-review-v4')
   expect(records.items.find((item: {runId:string})=>item.runId===previous.runId).findings[0].feedback.choice).toBe('intentional')
 })
-test('failed save prevents preview and model calls; no Demo fallback',async({page,request})=>{
+test('failed save prevents review and model calls; no Demo fallback',async({page,request})=>{
   await page.goto('/?view=read&compose=1')
   await expect(page.getByLabel('正文编辑器')).toBeVisible()
-  const before=(await (await request.get(`${model}/stats`)).json()).calls
-  let previews=0
-  page.on('request',(r)=>{if(r.url().includes('/review-preview'))previews++})
+  const before=(await (await request.get(`${model}/stats`)).json()).reviewCalls
+  let creates=0
+  page.on('request',(r)=>{if(r.method()==='POST'&&/\/chapters\/[^/]+\/reviews$/.test(r.url()))creates++})
   await page.route('**/chapters/*/revisions',route=>route.fulfill({status:500,contentType:'application/problem+json',body:JSON.stringify({type:'about:blank',title:'Storage failure',status:500,code:'INTERNAL_ERROR',detail:'Fixture save failure'})}))
   await page.getByLabel('正文编辑器').fill('保存失败的隔离输入。')
   const notesButton=page.getByRole('button',{name:'审查与注记',exact:true})
   if(await notesButton.isVisible()) await notesButton.click()
   await page.getByRole('button',{name:/^(审查本章|重新审查)$/}).first().click()
   await expect(page.getByText('正文尚未安全保存，审查未开始。请先解决保存问题。').first()).toBeVisible()
-  expect(previews).toBe(0)
-  expect((await (await request.get(`${model}/stats`)).json()).calls).toBe(before)
+  expect(creates).toBe(0)
+  expect((await (await request.get(`${model}/stats`)).json()).reviewCalls).toBe(before)
   await expect(page.getByRole('dialog',{name:'确认审查与模型数据发送'})).toHaveCount(0)
   expect(await page.evaluate(()=>localStorage.getItem('writer-agent.v2'))).toBeNull()
 })
 test('missing model capability disables new reviews while retaining real history',async({page,request})=>{
-  const count=(await (await request.get(`${model}/stats`)).json()).calls
+  const count=(await (await request.get(`${model}/stats`)).json()).reviewCalls
   await page.route('**/workspace',async route=>{
     if(route.request().method()!=='GET') { await route.continue();return }
     const response=await route.fetch(),body=await response.json()
@@ -103,6 +93,6 @@ test('missing model capability disables new reviews while retaining real history
   if(await notes.isVisible()) await notes.click()
   await expect(page.getByRole('button',{name:/^(审查本章|重新审查)$/}).first()).toBeDisabled()
   await expect(page.getByText(/真实审查不可用：服务端尚未配置可用模型/)).toBeVisible()
-  expect((await (await request.get(`${model}/stats`)).json()).calls).toBe(count)
+  expect((await (await request.get(`${model}/stats`)).json()).reviewCalls).toBe(count)
   expect(await page.evaluate(()=>localStorage.getItem('writer-agent.v2'))).toBeNull()
 })

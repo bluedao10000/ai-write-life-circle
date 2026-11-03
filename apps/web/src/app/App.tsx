@@ -152,10 +152,11 @@ function WriterStudio({
   } = studio
   return (
     <div
-      className={`${dark ? 'dark' : ''} ${typing ? 'is-typing' : ''}`}
+      className={`h-full ${dark ? 'dark' : ''} ${typing ? 'is-typing' : ''}`}
       onPointerMove={() => setTyping(false)}
     >
-      <div className="flex h-dvh flex-col overflow-hidden bg-page text-ink">
+      {/* h-app follows the visible viewport while the mobile keyboard is open in 灵感. */}
+      <div className="flex h-app flex-col overflow-hidden bg-page text-ink">
         <StudioHeader studio={studio} demo={adapter.mode === 'demo'} />
         <WritingSpace studio={studio} adapter={adapter} />
         <BookSpace studio={studio} adapter={adapter} />

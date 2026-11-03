@@ -322,7 +322,7 @@ export default function ManagedStudio({
     })
   }
   return (
-    <div className="relative h-dvh">
+    <div className="relative h-app">
       {error && (
         <div
           role="alert"

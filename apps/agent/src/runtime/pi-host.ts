@@ -1,6 +1,6 @@
-import {manageDiscussion, memoryInstruction, inputBytes} from "./context-management.js";
+import {manageDiscussion, memoryInstruction, providerInput, inputTokenBound, discussionText, type MeasuredInput, type ProviderInput} from "./context-management.js";
 import { failureFor, traceRun } from "./reliability.js";
-import { canonicalJSON } from "./fingerprint.js";
+import { canonicalJSON, modelIdentity } from "./fingerprint.js";
 import {configuredModel,boundedModelFetch,completionUsage} from "./model-gateway.js";
 import {
   createAgentSession,
@@ -24,7 +24,17 @@ import type {
 import { modelEntries, modelId, type Config } from "../config.js";
 import { Store, type Saved } from "../sessions/store.js";
 import { tools, authorize } from "../tools/registry.js";
-import { systemPrompt } from "../agents/thinking/prompt.js";
+import { sourceAccessInstruction, systemPrompt } from "../agents/thinking/prompt.js";
+/** Discussion-memory summaries per reply; a summary that needs more is not safe to trust. */
+const MAX_MEMORY_CALLS = 3;
+/** Same relative weights as Go billing.PointsFor (output tokens cost 4× input). */
+const weighted = (input: number, output: number) => input + 4 * output;
+const CLOSING_INSTRUCTION = "Stop retrieving. Answer concisely. Ground manuscript facts in retrieved or supplied passages; state gaps instead of guessing. General ideas remain welcome. Do not call tools.";
+/** A closing turn may only answer in prose. Tool calls emitted anyway are discarded, never executed. */
+export function withoutToolCalls(message: AssistantMessage): AssistantMessage {
+  if (!message.content.some((c) => c.type === "toolCall")) return message;
+  return {...message, content: message.content.filter((c) => c.type !== "toolCall"), stopReason: message.stopReason === "toolUse" ? "stop" : message.stopReason};
+}
 const limitConcurrent = (c: Config) => c.maxConcurrentSessions ?? Math.min(8, modelEntries(c).filter(v => v.enabled).reduce((n,v) => n + v.model.limits.maxConcurrentSessions, 0));
 const digest = (v: unknown) => createHash("sha256").update(canonicalJSON(v)).digest("hex");
 export class AgentError extends Error {
@@ -42,7 +52,7 @@ export const safeCode = (e: unknown) =>
         /^(AUTHORIZATION_REVOKED|SESSION_INTERRUPTED|TOOL_RESULT_TOO_LARGE|TOOL_TIMEOUT|TOOL_EXECUTION_FAILED|PROVIDER_UNAVAILABLE|INPUT_BUDGET_EXCEEDED|CONTEXT_SUMMARY_FAILED)$/.test(e.message)
       ? e.message
       : "AGENT_EXECUTION_FAILED";
-export function loader(): ResourceLoader {
+export function loader(prompt = systemPrompt): ResourceLoader {
   return {
     getExtensions: () => ({
       extensions: [],
@@ -53,7 +63,7 @@ export function loader(): ResourceLoader {
     getPrompts: () => ({ prompts: [], diagnostics: [] }),
     getThemes: () => ({ themes: [], diagnostics: [] }),
     getAgentsFiles: () => ({ agentsFiles: [] }),
-    getSystemPrompt: () => systemPrompt,
+    getSystemPrompt: () => prompt,
     getSystemPromptSource: () => undefined,
     getAppendSystemPrompt: () => [],
     getAppendSystemPromptSources: () => [],
@@ -105,8 +115,8 @@ export class PiHost {
       grant.sessionId !== input.sessionId ||
       grant.authorId !== input.authorId ||
       grant.bookId !== input.bookId ||
-      !modelEntries(this.config).some(v => v.enabled && digest(input.model) === digest(v.model)) ||
-      digest(input.model) !== digest(grant.model) ||
+      !modelEntries(this.config).some(v => v.enabled && modelIdentity(input.model) === modelIdentity(v.model)) ||
+      modelIdentity(input.model) !== modelIdentity(grant.model) ||
       digest(input.scopes) !== digest(grant.scopes)
     )
       throw new AgentError("GRANT_MISMATCH", 403);
@@ -175,7 +185,7 @@ export class PiHost {
       grant.bookId !== s.view.bookId
     )
       throw new AgentError("GRANT_MISMATCH", 403);
-    const selected = modelEntries(this.config).find(v => v.enabled && modelId(v.model) === (input.modelId ?? modelId(grant.model)) && digest(v.model) === digest(grant.model));
+    const selected = modelEntries(this.config).find(v => v.enabled && modelId(v.model) === (input.modelId ?? modelId(grant.model)) && modelIdentity(v.model) === modelIdentity(grant.model));
     if (!selected) throw new AgentError("MODEL_UNAVAILABLE", 409);
     // Authorization awaits network. Cancel/delete/another admission must fence this snapshot.
     const latest = this.get(id);
@@ -203,20 +213,22 @@ export class PiHost {
       if (!run || run.runId !== input.recovery.runId || !s.checkpoint ||
           !["failed","interrupted"].includes(run.status) || !run.resumable ||
           !run.failure?.retryable) throw new AgentError("RESUME_NOT_SAFE",409);
-      if (digest(s.view.model) !== digest(selected.model) || digest(s.view.scopes) !== digest(grant.scopes) || (run.authorizationVersion ?? 0) !== (grant.authorizationVersion ?? 0))
+      if (modelIdentity(s.view.model) !== modelIdentity(selected.model) || digest(s.view.scopes) !== digest(grant.scopes) || (run.authorizationVersion ?? 0) !== (grant.authorizationVersion ?? 0))
         throw new AgentError("AUTHORIZATION_REQUIRED",403);
-      if (run.failure.code === "CONTEXT_OVERFLOW" && !input.recovery.continuationContext)
-        throw new AgentError("CONTINUATION_CONTEXT_REQUIRED",422);
-      previousAttempt = run.attempt;
-      s.entries = input.recovery.continuationContext ? [] : structuredClone(s.checkpoint.entries);
       const recovery = {...s.checkpoint.input.recovery,...input.recovery};
+      if (run.failure.code === "CONTEXT_OVERFLOW" && !recovery.continuationContext) {
+        const history = s.view.messages.slice(0, s.view.messages.findIndex(m => m.id === s.checkpoint!.messageId));
+        recovery.continuationContext = [s.discussionMemory?.summary, discussionText(history.slice(-6))].filter(Boolean).join("\n").slice(-6000) || s.checkpoint.input.text.slice(-6000);
+      }
+      previousAttempt = run.attempt;
+      s.entries = recovery.continuationContext ? [] : structuredClone(s.checkpoint.entries);
       input = {...s.checkpoint.input, recovery};
     }
     if (input.compact) throw new AgentError("CONTINUATION_CONTEXT_REQUIRED",422);
     if (input.recovery?.continuationContext && s.checkpoint) s.checkpoint.input = {...s.checkpoint.input, recovery:input.recovery};
     // Tool results were authorized for the old scope/model. Keep visible discussion,
     // but never replay raw private retrieval into a reduced scope or a new host.
-    if (digest(s.view.model) !== digest(selected.model) || s.view.scopes.some(scope => !grant.scopes.includes(scope))) s.entries = [];
+    if (modelIdentity(s.view.model) !== modelIdentity(selected.model) || s.view.scopes.some(scope => !grant.scopes.includes(scope))) s.entries = [];
     s.view.model = selected.model;
     s.view.scopes = grant.scopes;
     const mid = input.recovery ? s.checkpoint!.messageId : randomUUID(),
@@ -331,16 +343,30 @@ export class PiHost {
       message = s.view.messages.at(-1)!,
       sources = new Map<string, ThinkingSource>(),
       run = s.view.run!,
-      usageBefore = {...s.view.usage};
+      usageBefore = {...s.view.usage},
+      prompt = systemPrompt + "\n\n" + sourceAccessInstruction(s.view.scopes, s.view.model.toolCalling);
     const started = performance.now();
     const runUsage = () => ({input:s.view.usage.input-usageBefore.input,output:s.view.usage.output-usageBefore.output,charged:s.view.usage.charged-usageBefore.charged,incomplete:s.view.usage.incomplete});
     // A chat with no allowed tools is a single completion, not a six-turn agent reservation.
     if ((!s.view.scopes.length || s.view.model.toolCalling === false) && !input.compact) limit.maxTurnsPerRequest = Math.min(2, limit.maxTurnsPerRequest);
-    // Historical cards remain on their original messages. A new answer can only
-    // attach sources fetched through this turn's currently authorized Story Tools.
+    // Keep every passage read this turn so the author can check the answer even
+    // when the model omits inline citations. Historical cards stay on their turns.
+    // Reply turns and discussion-memory calls are budgeted separately: summarizing a
+    // long chat must never consume the turns the author's actual answer needs.
+    // Both still reserve and settle usage through the same accounting below.
     let calls = 0,
       turns = 0,
+      memoryCalls = 0,
+      phase: "memory" | "reply" = "memory",
+      spent = 0,
       errorCode: string | undefined;
+    // The message's cost ceiling is Go's reservation: every allowed turn at full input
+    // and output, output weighted 4× as in billing.PointsFor. Calls reserve their
+    // conservative bound and settle to reported usage, so summaries of a long chat
+    // fit beside the reply without ever exceeding what Go reserved.
+    const turnCost = weighted(limit.maxInputTokens, limit.maxOutputTokens),
+      pool = limit.maxTurnsPerRequest * turnCost;
+    const toolsOffered = () => s.view.scopes.length > 0 && s.view.model.toolCalling !== false;
     const alive = () => {
       if (active.abort.signal.aborted) throw active.abort.signal.reason instanceof AgentError ? active.abort.signal.reason : new AgentError("CANCELLED");
       const status=this.store.executionStatus(id,{runId:run.runId,owner:this.instance,epoch:run.epoch});
@@ -364,18 +390,14 @@ export class PiHost {
       () => active.abort.abort(new AgentError(run.stepType === "tool" ? "TOOL_TIMEOUT" : "DURATION_EXCEEDED")),
       limit.maxDurationMs,
     );
-    const revoke = setInterval(() => {
-      void authorize(this.config, capability, active.abort.signal).catch((e) =>
-        active.abort.abort(new AgentError(safeCode(e))),
-      );
-    }, 1000);
     let session: AgentSession | undefined;
     try {
-      const configured = modelEntries(this.config).find(v => v.enabled && digest(v.model) === digest(s.view.model));
+      const configured = modelEntries(this.config).find(v => v.enabled && modelIdentity(v.model) === modelIdentity(s.view.model));
       if (!configured) throw new AgentError("MODEL_UNAVAILABLE");
       const cfg = {...this.config, model: configured.model, key: configured.key};
       const {runtime,model}=await configuredModel(cfg.model.endpoint,cfg.model.model,cfg.key,cfg.model.contextWindow ?? limit.maxInputTokens + limit.maxOutputTokens,limit.maxOutputTokens);
       const original = runtime.streamSimple.bind(runtime);
+      let measuredInput: MeasuredInput | undefined;
       runtime.streamSimple = (model, context, options) => {
         const stream = createAssistantMessageEventStream();
         void (async () => {
@@ -383,30 +405,19 @@ export class PiHost {
             alive();
             await authorize(this.config, capability, active.abort.signal);
             alive();
-            const inputBound =
-                inputBytes(context),
-              reserve = inputBound + limit.maxOutputTokens;
-            if (++turns > limit.maxTurnsPerRequest)
+            const memoryCall = phase === "memory";
+            if (memoryCall) {
+              if (++memoryCalls > MAX_MEMORY_CALLS) throw new AgentError("CONTEXT_SUMMARY_FAILED", 429);
+            } else if (++turns > limit.maxTurnsPerRequest)
               throw new AgentError("TURN_BUDGET_EXCEEDED", 429);
-            if (inputBound > limit.maxInputTokens)
-              throw new AgentError("INPUT_BUDGET_EXCEEDED", 429);
-            if (s.view.usage.charged + reserve > limit.maxSessionTokens)
-              throw new AgentError("SESSION_BUDGET_EXCEEDED", 429);
-            // Reserve before network; never refund unknown/crashed usage. Charged is a
-            // conservative token ceiling, not a currency estimate.
-            s.view.usage.charged += reserve;
-            const hadIncomplete = s.view.usage.incomplete;
-            s.view.usage.incomplete = true;
-            persist({ type: "usage", usage: { ...s.view.usage } });
+            const requestId = run.runId + ":" + (memoryCall ? "memory-" + memoryCalls : turns);
+            let closing = false, reserve = 0, bound = 0, reserved = false, hadIncomplete = false;
+            let requestInput: ProviderInput | undefined, requestError: string | undefined;
             const providerUsage: {reported:ReturnType<typeof completionUsage>;seen:boolean} = {reported:null,seen:false};
-            run.status = "running"; run.stepType = "provider"; run.modelCalls++;
-            run.updatedAt = new Date().toISOString();run.durationMs=Math.max(0,performance.now()-started);
-            persist({type:"usage",usage:{...s.view.usage}});
-            traceRun(id,run,runUsage());
             let transportCode = "";
             const providerStream = original(model, context, {
               ...options,
-              headers:{...options?.headers,"X-Client-Request-Id":run.runId+":"+turns},
+              headers:{...options?.headers,"X-Client-Request-Id":requestId},
               maxTokens: limit.maxOutputTokens,
               maxRetries: 0,
               signal: active.abort.signal,
@@ -414,17 +425,43 @@ export class PiHost {
                 transportCode = code === "LLM_CONTEXT_OVERFLOW" ? "CONTEXT_OVERFLOW" : status === 429 ? "RATE_LIMITED" : status === 401 || status === 403 || status === 404 ? "MODEL_CONFIGURATION_ERROR" : code === "LLM_RESPONSE_TOO_LARGE" ? "MODEL_OUTPUT_INCOMPLETE" : "PROVIDER_UNAVAILABLE";
               }),
               onPayload(value) {
-                const payload = value as Record<string, unknown>;
-                delete payload.max_tokens; delete payload.max_completion_tokens;
-                payload[cfg.model.tokenParameter ?? "max_tokens"] = limit.maxOutputTokens;
-                if (cfg.model.providerOptions === "deepseek") payload.thinking = {type: "disabled"};
-                const finish = s.view.scopes.length > 0 && (turns >= limit.maxTurnsPerRequest || calls >= limit.maxToolCalls);
-                if (finish) {
-                  delete payload.tools;
-                  payload.tool_choice = "none";
-                  if (Array.isArray(payload.messages)) payload.messages.push({role: "system", content: "Stop retrieving. Answer the author's question now from available information, clearly state gaps, and offer a concise useful conclusion. Do not call tools."});
-                }
-                return payload;
+                try {
+                  const payload = value as Record<string, unknown>;
+                  delete payload.max_tokens; delete payload.max_completion_tokens;
+                  payload[cfg.model.tokenParameter ?? "max_tokens"] = limit.maxOutputTokens;
+                  if (cfg.model.providerOptions === "deepseek") payload.thinking = {type: "disabled"};
+                  requestInput = providerInput(payload);
+                  let inputBound = inputTokenBound(requestInput, measuredInput);
+                  bound = weighted(inputBound, limit.maxOutputTokens);
+                  closing = !memoryCall && (!toolsOffered() || turns >= limit.maxTurnsPerRequest || calls >= limit.maxToolCalls || spent + bound + turnCost > pool);
+                  if (closing && toolsOffered()) {
+                    // OpenAI-compatible APIs reject tool_choice without tools, and earlier
+                    // tool messages stay in the history; keep definitions, forbid calls.
+                    if (Array.isArray(payload.tools) && payload.tools.length) payload.tool_choice = "none";
+                    else { delete payload.tools; delete payload.tool_choice; }
+                    if (Array.isArray(payload.messages)) payload.messages.push({role: "system", content: CLOSING_INSTRUCTION});
+                    requestInput = providerInput(payload);
+                    inputBound = inputTokenBound(requestInput, measuredInput);
+                    bound = weighted(inputBound, limit.maxOutputTokens);
+                  }
+                  if (inputBound > limit.maxInputTokens) throw new AgentError("INPUT_BUDGET_EXCEEDED", 429);
+                  if (memoryCall && spent + bound + turnCost > pool) throw new AgentError("CONTEXT_SUMMARY_FAILED", 429);
+                  if (spent + bound > pool) throw new AgentError("TURN_BUDGET_EXCEEDED", 429);
+                  reserve = inputBound + limit.maxOutputTokens;
+                  if (s.view.usage.charged + reserve > limit.maxSessionTokens) throw new AgentError("SESSION_BUDGET_EXCEEDED", 429);
+                  // This hook runs after SDK serialization and before any provider request.
+                  // Unknown/crashed usage retains the reservation; known usage settles below.
+                  spent += bound;
+                  s.view.usage.charged += reserve;
+                  hadIncomplete = s.view.usage.incomplete;
+                  s.view.usage.incomplete = true;
+                  reserved = true;
+                  run.status = "running"; run.stepType = "provider"; run.modelCalls++;
+                  run.updatedAt = new Date().toISOString();run.durationMs=Math.max(0,performance.now()-started);
+                  persist({type:"usage",usage:{...s.view.usage}});
+                  traceRun(id,run,runUsage());
+                  return payload;
+                } catch (e) { requestError = safeCode(e); throw e; }
               },
               onProviderStreamEvent(value, eventModel) {
                 const raw=(value as {usage?:Record<string,unknown>})?.usage;
@@ -440,29 +477,38 @@ export class PiHost {
               if (event.type === "done" || event.type === "error") {
                 const m = event.type === "done" ? event.message : event.error;
                 const reported = providerUsage.reported;
-                if (m.usage.totalTokens > 0 && (!providerUsage.seen || reported)) {
+                if (reserved && m.usage.totalTokens > 0 && (!providerUsage.seen || reported)) {
                   const totalInput=reported?.inputTokens ?? (m.usage.input+m.usage.cacheRead+m.usage.cacheWrite);
                   const cachedInput=reported?.cachedInputTokens ?? m.usage.cacheRead;
                   const output=reported?.outputTokens ?? m.usage.output;
                   const validTotal=Number.isInteger(totalInput)&&totalInput>=0&&totalInput<=1000000&&Number.isInteger(output)&&output>=0&&output<=limit.maxOutputTokens;
                   if(validTotal){
+                    if (requestInput) measuredInput = {input: requestInput, tokens: totalInput};
                     // Settle a known reservation. Unknown/crashed attempts retain the full ceiling.
                     s.view.usage.charged += Math.max(0,totalInput+output) - reserve;
                     s.view.usage.input += totalInput;
                     s.view.usage.cachedInput = (s.view.usage.cachedInput ?? 0) + (Number.isInteger(cachedInput)&&cachedInput>=0&&cachedInput<=totalInput?cachedInput:0);
                     s.view.usage.output += output;
                     s.view.usage.incomplete = hadIncomplete;
+                    spent += weighted(totalInput, output) - bound;
                   }
                 }
                 if (m.stopReason === "length") errorCode = "MODEL_OUTPUT_INCOMPLETE";
                 if (m.stopReason === "error" || m.stopReason === "aborted")
-                  errorCode = transportCode || (/context.{0,30}(length|window|limit)|maximum.{0,15}tokens|context_length_exceeded/i.test(m.errorMessage ?? "") ? "CONTEXT_OVERFLOW" : "MODEL_REQUEST_FAILED");
+                  errorCode = requestError || transportCode || (/context.{0,30}(length|window|limit)|maximum.{0,15}tokens|context_length_exceeded/i.test(m.errorMessage ?? "") ? "CONTEXT_OVERFLOW" : "MODEL_REQUEST_FAILED");
                 if(event.type === "error") m.errorMessage = errorCode ?? "MODEL_REQUEST_FAILED";
-                checkpoint("provider");
+                if (reserved) checkpoint("provider");
+              }
+              if (closing && event.type.startsWith("toolcall_")) continue;
+              if (closing && event.type === "done") {
+                const clean = withoutToolCalls(event.message);
+                stream.push({type: "done", reason: clean.stopReason === "length" ? "length" : "stop", message: clean});
+                continue;
               }
               stream.push(event);
             }
-            stream.end(await providerStream.result());
+            const result = await providerStream.result();
+            stream.end(closing ? withoutToolCalls(result) : result);
           } catch (e) {
             errorCode = safeCode(e);
             const m: AssistantMessage = {
@@ -495,9 +541,28 @@ export class PiHost {
         })();
         return stream;
       };
+      const allowedTools = tools(
+        cfg,
+        id,
+        capability,
+        active.abort.signal,
+        (items) => {
+          for (const src of items) sources.set(src.sourceId, src);
+        },
+        () => {
+          alive();
+          // Over budget (for example several parallel calls in one turn): the tool
+          // is not executed and the next turn becomes the closing turn.
+          return ++calls <= limit.maxToolCalls;
+        },
+        s.view.scopes,
+      );
+      const custom = cfg.model.toolCalling === false ? [] : allowedTools;
+      // Tool definitions travel with every reply turn; the history budget must leave room for them.
+      const toolSchemas = custom.length ? JSON.stringify(custom.map(t => ({name: t.name, description: t.description, parameters: t.parameters}))) + CLOSING_INSTRUCTION : "";
       const history = s.view.messages.slice(0, input.recovery ? s.view.messages.findIndex(m => m.id === s.checkpoint!.messageId) : -2);
       const memory = await manageDiscussion(input.recovery?.continuationContext ? [] : history, input.recovery?.continuationContext ? undefined : s.discussionMemory, limit.maxInputTokens,
-        systemPrompt + input.text, async quoted => {
+        prompt + input.text + toolSchemas, async quoted => {
           persist({type:"compaction",text:"正在整理讨论上下文。"});
           const stream = runtime.streamSimple(model, {systemPrompt:memoryInstruction,messages:[{role:"user",content:quoted,timestamp:Date.now()}]}, {signal:active.abort.signal});
           const result = await stream.result();
@@ -508,6 +573,7 @@ export class PiHost {
       alive();
       await authorize(this.config, capability, active.abort.signal);
       alive();
+      phase = "reply";
       if (memory !== s.discussionMemory) {
         s.discussionMemory = memory;
         persist({type:"compaction",text:"讨论上下文已整理，正在继续回复。"});
@@ -522,26 +588,7 @@ export class PiHost {
         if (previous.role === "user") manager.appendMessage({role:"user",content:previous.text,timestamp});
         else manager.appendMessage({role:"assistant",content:[{type:"text",text:previous.text}],api:"openai-completions",provider:"story2u",model:configured.model.model,usage:{input:0,output:0,cacheRead:0,cacheWrite:0,totalTokens:0,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}},stopReason:"stop",timestamp});
       }
-      if (input.recovery?.continuationContext) manager.appendMessage({role:"user",content:"Author-provided discussion context, not canon:\n"+input.recovery.continuationContext,timestamp:Date.now()});
-      const allowedTools = tools(
-        cfg,
-        id,
-        capability,
-        active.abort.signal,
-        (items) => {
-          for (const src of items) sources.set(src.sourceId, src);
-        },
-        () => {
-          alive();
-          if (++calls > limit.maxToolCalls) {
-            const err = new AgentError("TOOL_BUDGET_EXCEEDED", 429);
-            active.abort.abort(err);
-            throw err;
-          }
-        },
-        s.view.scopes,
-      );
-      const custom = cfg.model.toolCalling === false ? [] : allowedTools;
+      if (input.recovery?.continuationContext) manager.appendMessage({role:"user",content:"Discussion context, not canon:\n"+input.recovery.continuationContext,timestamp:Date.now()});
       const created = await createAgentSession({
         cwd: this.config.state,
         agentDir: this.config.state,
@@ -562,7 +609,7 @@ export class PiHost {
           "mcp__*",
         ],
         customTools: custom,
-        resourceLoader: loader(),
+        resourceLoader: loader(prompt),
         sessionManager: manager,
         settingsManager: SettingsManager.inMemory({
           compaction: { enabled: false },
@@ -594,7 +641,7 @@ export class PiHost {
             return;
           }
           message.text += text;
-          message.sources = [...sources.values()].filter(src=>message.text.includes(`[[source:${src.sourceId}]]`));
+          message.sources = [...sources.values()];
           message.status = "running";
           persist({ type: "text_delta", messageId: message.id, text });
         }
@@ -657,9 +704,7 @@ export class PiHost {
       alive();
       if (errorCode) throw new AgentError(errorCode);
       if (!message.text.trim()) throw new AgentError("MODEL_EMPTY_RESPONSE");
-      message.sources = [...sources.values()].filter((src) =>
-        message.text.includes(`[[source:${src.sourceId}]]`),
-      );
+      message.sources = [...sources.values()];
       // Unrecognized inline markers remain plain prose; only tool-backed cards are evidence.
       message.status = "completed";
       run.status = "completed"; run.stepType = "completed"; run.resumable = false;
@@ -671,7 +716,7 @@ export class PiHost {
       this.event(s, {type:"sources",messageId:message.id,sources:message.sources}, false);
       this.event(s, {type:"message_completed",messageId:message.id}, false);
     } catch (e) {
-      message.sources = [...sources.values()].filter(src=>message.text.includes(`[[source:${src.sourceId}]]`));
+      message.sources = [...sources.values()];
       // Retain accepted input and completed internal messages after a failed turn.
       if (session) s.entries = [session.sessionManager.getHeader(), ...session.sessionManager.getEntries()].filter((v): v is FileEntry => v !== null);
       message.errorCode =
@@ -690,7 +735,6 @@ export class PiHost {
         });
     } finally {
       clearTimeout(deadline);
-      clearInterval(revoke);
       session?.dispose();
       if (!this.store.isDeleted(id) && this.store.read(id,false)?.view.run?.runId === run.runId) {
         delete s.executionLease;

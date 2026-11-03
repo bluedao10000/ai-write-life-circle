@@ -148,6 +148,35 @@ it("model selection changes only next message; persisted draft survives remount"
   expect(send.mock.calls[0][2].modelId).toBe("oss");
 });
 
+it("unsent drafts stay with their own conversation: A → B → A, the new topic and a reload", async () => {
+  const one=setup();await waitFor(()=>expect(one.result.current.models).toHaveLength(2));
+  act(()=>{one.result.current.select("A");one.result.current.setDraft("只属于 A 的想法")});
+  act(()=>one.result.current.select("B"));
+  expect(one.result.current.draft).toBe("");
+  act(()=>one.result.current.setDraft("B 的想法"));
+  act(()=>one.result.current.select(null));
+  expect(one.result.current.draft).toBe("");
+  act(()=>one.result.current.setDraft("新话题的想法"));
+  act(()=>one.result.current.select("A"));
+  expect(one.result.current.draft).toBe("只属于 A 的想法");
+  one.unmount();
+  const two=renderHook(()=>useThinking("book-a",true));
+  await waitFor(()=>expect(two.result.current.session?.sessionId).toBe("A"));
+  expect(two.result.current.draft).toBe("只属于 A 的想法");
+  act(()=>two.result.current.select("B"));expect(two.result.current.draft).toBe("B 的想法");
+  act(()=>two.result.current.select(null));expect(two.result.current.draft).toBe("新话题的想法");
+  // Drafts are partitioned per work as well.
+  const other=renderHook(()=>useThinking("book-b",true));
+  expect(other.result.current.draft).toBe("");
+});
+it("a work-wide draft saved by the previous version moves to the conversation that was open", async () => {
+  sessionStorage.setItem("thinking-v1:book-a","A");sessionStorage.setItem("thinking-draft:book-a","旧版草稿");
+  const {result}=setup();
+  expect(result.current.draft).toBe("旧版草稿");
+  act(()=>result.current.select("B"));expect(result.current.draft).toBe("");
+  act(()=>result.current.select("A"));expect(result.current.draft).toBe("旧版草稿");
+  expect(sessionStorage.getItem("thinking-draft:book-a")).toBeNull();
+});
 it("reload after ambiguous delivery preserves the outbox key instead of charging a second intent", async () => {
   const send=vi.spyOn(api,"send").mockRejectedValueOnce(Error("lost response")).mockResolvedValue({messageId:"accepted"});
   const first=setup();await waitFor(()=>expect(first.result.current.modelChoice).toBe("deepseek"));

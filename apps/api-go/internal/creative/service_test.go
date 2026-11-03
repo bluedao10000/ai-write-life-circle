@@ -371,9 +371,12 @@ func TestScenarioFReliability(t *testing.T) {
 	f := setup(t)
 	ctx := context.Background()
 	session := "th-" + compat.UUID()
-	// Disabled organizing ignores auto turns and refuses manual ones.
+	// Paused organizing ignores auto turns and refuses manual ones.
+	if _, e := f.s.Configure(ctx, author, "pause", compat.UUID(), SettingsInput{}); e != nil {
+		t.Fatal(e)
+	}
 	if turn, e := f.s.AcceptTurn(ctx, session, "m0", "auto"); e != nil || turn.Key != "" {
-		t.Fatalf("auto turn recorded while disabled: %+v %v", turn, e)
+		t.Fatalf("auto turn recorded while paused: %+v %v", turn, e)
 	}
 	if _, e := f.s.AcceptTurn(ctx, session, "m0", "manual"); code(e) != "CREATIVE_CONSENT_REQUIRED" {
 		t.Fatal(e)

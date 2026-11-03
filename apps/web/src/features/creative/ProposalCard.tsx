@@ -94,7 +94,7 @@ export default function ProposalCard({
       ) : (
         p.reason && <p className="mt-1 text-ui-sm text-ink-2">{p.reason}</p>
       )}
-      {p.exploratory && !dense && <p className="mt-2 rounded-md border border-dashed border-ai px-3 py-2 text-ui-sm text-ink-2">◇ 这是讨论中的可能性，不构成作品事实。确认之前，它不会出现在你的设定里。</p>}
+      {p.exploratory && !dense && <p className="mt-2 rounded-md border border-dashed border-ai px-3 py-2 text-ui-sm text-ink-2">◇ 讨论中的方向，采纳后才会记入设定。</p>}
       {quote && (
         <blockquote className={`mt-2 border-l-2 pl-3 font-prose text-ui-sm ${quote.role === 'user' ? 'border-ink-4 text-ink-2' : 'border-ai text-ink-2'}`}>
           <span className="mr-1 text-micro text-ink-3">{quote.role === 'user' ? '你说' : 'AI 说'}</span>

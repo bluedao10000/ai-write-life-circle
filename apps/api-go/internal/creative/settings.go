@@ -37,8 +37,7 @@ func consentRequired(detail string) error {
 	return application.Fail(422, "CREATIVE_CONSENT_REQUIRED", detail)
 }
 
-// Configure is the only path that changes model consent. Enabling requires the
-// author to confirm exactly the model the server will use.
+// Configure changes organizing preferences and the selected model.
 func (s *Service) Configure(ctx context.Context, a application.Actor, action, key string, in SettingsInput) (SettingsView, error) {
 	var out SettingsView
 	switch action {
@@ -55,6 +54,12 @@ func (s *Service) Configure(ctx context.Context, a application.Actor, action, ke
 			}
 			if s.Config.ValidatePublic() != nil {
 				return application.Fail(503, "LLM_NOT_CONFIGURED", "Model not configured.")
+			}
+			if in.DailyTokenBudget == 0 {
+				in.DailyTokenBudget = 100000000
+			}
+			if in.DailyJobBudget == 0 {
+				in.DailyJobBudget = 200
 			}
 			if in.DailyTokenBudget < s.reserve() || in.DailyTokenBudget > 100000000 || in.DailyJobBudget < 1 || in.DailyJobBudget > 1000 {
 				return validation("Set a daily token budget that covers at least one reserved call, and a bounded daily job budget.")
@@ -74,7 +79,7 @@ func (s *Service) Configure(ctx context.Context, a application.Actor, action, ke
 				}
 			}
 		case "resume":
-			if !st.Settings.Enabled || st.Settings.Model != s.Config.Info() || (st.Settings.ConfigFingerprint != "" && st.Settings.ConfigFingerprint != s.Config.Fingerprint()) {
+			if !st.Settings.Enabled || st.Settings.Model != s.Config.Info() {
 				return consentRequired("The model changed. Confirm the current disclosure.")
 			}
 			st.Settings.Paused = false
@@ -91,5 +96,5 @@ func (s *Service) Configure(ctx context.Context, a application.Actor, action, ke
 }
 
 func (s *Service) runnable(st State) bool {
-	return st.Settings.Enabled && !st.Settings.Paused && st.Settings.Model == s.Config.Info() && (st.Settings.ConfigFingerprint == "" || st.Settings.ConfigFingerprint == s.Config.Fingerprint())
+	return st.Settings.Enabled && !st.Settings.Paused && st.Settings.Model == s.Config.Info()
 }

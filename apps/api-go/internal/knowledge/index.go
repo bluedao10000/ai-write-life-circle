@@ -5,7 +5,6 @@ import (
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/agentruntime"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/application"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/compat"
-	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/executorpolicy"
 	"sort"
 	"strings"
 	"time"
@@ -294,8 +293,7 @@ func (s *Service) freshen(ctx context.Context, st *State) {
 }
 
 func (s *Service) view(st State) View {
-	policy, _ := (executorpolicy.Controller{State: s.App.State}).Read()
-	needsConsent := st.Settings.Enabled && ((st.Settings.ConfigFingerprint != "" && st.Settings.ConfigFingerprint != s.Config.Fingerprint()) || (policy.Kinds["knowledge"].Owner == "pi" && st.Settings.ConfigFingerprint == ""))
+	needsConsent := st.Settings.Enabled && st.Settings.Model != s.Config.Info()
 	v := View{NeedsModelConsent: needsConsent, BookID: st.BookID, Version: st.Version, BudgetDay: st.BudgetDay, BudgetTokens: st.BudgetTokens, BudgetAttempts: st.BudgetAttempts, Settings: st.Settings, Available: s.Client != nil || (s.QueueOnly && s.Config.ValidatePublic() == nil), Model: s.Config.Info(), Disclosure: "启用后，本作品已保存及以后保存的正文会逐章发送到所示模型；另包含最多80个人物/地点等名称、别名、身份区分与纠错，不发送历史章节全文。会产生模型费用；可随时暂停。逐字引文核验不代表模型理解正确。"}
 	if s.QueueOnly {
 		status := agentruntime.ReadExecutionStatus(s.App.State, s.Config, "knowledge")

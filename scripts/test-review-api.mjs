@@ -58,12 +58,10 @@ try {
     const before = await fixture.sourceBytes()
     const chapter = await request('/chapters/CH-008')
     const input = { revisionId: chapter.headRevision.revisionId, contentHash: chapter.headRevision.contentHash, reviewTypes: [item.type] }
-    const count = fixture.calls
+    const count = fixture.reviewCalls
     const plan = await request('/chapters/CH-008/review-preview','POST',input,200,'ReviewPlan')
-    assert.equal(fixture.calls,count,'preview must not invoke model')
-    await request('/chapters/CH-008/reviews','POST',{...input,consent:{confirmed:false,planHash:plan.planHash}},422,'Problem')
-    assert.equal(fixture.calls,count,'missing consent invoked model')
-    const key=crypto.randomUUID(), create={...input,consent:{confirmed:true,planHash:plan.planHash}}
+    assert.equal(fixture.reviewCalls,count,'preview must not invoke review model')
+    const key=crypto.randomUUID(), create=input
     const start=await request('/chapters/CH-008/reviews','POST',create,202,'ReviewRun',key)
     const run=await terminal(start.runId)
     assert.equal((await request('/chapters/CH-008/reviews','POST',create,202,'ReviewRun',key)).runId,run.runId)

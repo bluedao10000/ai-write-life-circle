@@ -39,7 +39,7 @@ export const httpReviewsAdapter: ReviewsAdapter = {
   },
   async start(projectId, chapterId, input, key) {
     const value = scoped(run(await postJson(`${chapter(projectId, chapterId)}/reviews`, input, key), projectId), projectId, chapterId)
-    if (value.revisionId !== input.revisionId || value.contentHash !== input.contentHash || value.planHash !== input.consent.planHash) throw new Error('审查没有绑定到已授权的版本和来源范围。')
+    if (value.revisionId !== input.revisionId || value.contentHash !== input.contentHash || (input.consent?.planHash && value.planHash !== input.consent.planHash)) throw new Error('审查响应与请求的正文版本或来源范围不匹配。')
     return value
   },
   async list(projectId, chapterId, signal) {

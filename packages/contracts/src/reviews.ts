@@ -40,7 +40,7 @@ export const reviewPreviewInputSchema = z.object({
   reviewTypes: z.array(reviewTypeSchema).min(1).max(2),
 }).strict()
 export const reviewCreateSchema = reviewPreviewInputSchema.extend({
-  consent: z.object({ confirmed: z.literal(true), planHash: hash }).strict(),
+  consent: z.object({ confirmed: z.literal(true), planHash: hash }).strict().optional(),
 }).strict()
 export const reviewPlanSchema = reviewPreviewInputSchema.extend({
   cost: z.object({ policy: z.literal('free-review-v1'), maxOutputTokens: z.number().int().min(128).max(32768), reservedPoints: z.number().int().positive().max(217) }).optional(),
