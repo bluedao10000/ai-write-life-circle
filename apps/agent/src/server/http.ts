@@ -13,19 +13,7 @@ import {
 import { PiHost, AgentError, safeCode } from "../runtime/pi-host.js";
 import { modelEntries } from "../config.js";
 import { idPattern } from "../sessions/store.js";
-const recentMessages = 40;
-const pageMessages = 80;
-function page(session:ReturnType<PiHost["get"]>,before?:string) {
-  const all=session.view.messages;
-  const end=before ? all.findIndex(message=>message.id===before) : all.length;
-  if(end<0)throw new AgentError("INVALID_HISTORY_CURSOR",422);
-  const start=Math.max(0,end-pageMessages);
-  return {items:all.slice(start,end),...(start>0?{nextBefore:all[start]!.id}:{}),hasMore:start>0,totalMessages:all.length};
-}
-function recent(session:ReturnType<PiHost["get"]>) {
-  if(session.view.messages.length<=recentMessages)return session.view;
-  return {...session.view,messages:session.view.messages.slice(-recentMessages),history:{hasMore:true,oldestMessageId:session.view.messages.at(-recentMessages)!.id,totalMessages:session.view.messages.length}};
-}
+import { fullMessageLimit, historyPageLimit, recentMessageLimit } from "../sessions/projection.js";
 const json = (res: ServerResponse, status: number, value: unknown) => {
   res.writeHead(status, {
     "Content-Type": "application/json",
@@ -102,15 +90,19 @@ export function server(host: PiHost) {
           json(res, 200, await host.cancel(id,b.capability));
           return;
         }
-        const s = action === "history" ? host.get(id) : host.getRecent(id);
+        await host.store.waitPublished(id);
+        const snapshot = host.store.snapshot(id, url.searchParams.get("full") === "1" && !action ? fullMessageLimit : recentMessageLimit);
+        if (!snapshot || snapshot.status === "deleted") throw new AgentError("NOT_FOUND",404);
         if (req.method === "GET" && !action) {
-          json(res, 200, url.searchParams.get("full") === "1" ? s.view : recent(s));
+          json(res, 200, snapshot);
           return;
         }
         if(req.method === "GET" && action === "history") {
           const before=url.searchParams.get("before") ?? undefined;
           if(before && before.length>128)throw new AgentError("INVALID_HISTORY_CURSOR",422);
-          json(res,200,page(s,before));
+          const page = host.store.history(id,before,historyPageLimit);
+          if (!page) throw new AgentError("NOT_FOUND",404);
+          json(res,200,page);
           return;
         }
         if (req.method === "GET" && action === "events") {
@@ -118,7 +110,7 @@ export function server(host: PiHost) {
           if (
             !Number.isSafeInteger(after) ||
             after < 0 ||
-            after > s.view.cursor
+            after > snapshot.cursor
           )
             throw new AgentError("INVALID_CURSOR");
           if (req.headers.accept === "text/event-stream") {
@@ -128,34 +120,45 @@ export function server(host: PiHost) {
               Connection: "keep-alive",
             });
             res.flushHeaders();
-            const tick = () => {
-            const current = host.store.readEvents(id,after);
-              if (!current || current.deleted) {
-                res.end();
-                return;
-              }
-              for (const e of current.events.filter((e) => e.id > after)) {
-                res.write(`id: ${e.id}\ndata: ${JSON.stringify(e)}\n\n`);
-                after = e.id;
-              }
-              if (current.view.status !== "running") res.end();
-              else res.write(": heartbeat\n\n");
+            let ticking = false;
+            const tick = async () => {
+              if(ticking)return;
+              ticking=true;
+              try {
+                await host.store.waitPublished(id);
+                const current = host.store.readEvents(id,after,200);
+                if (!current || current.deleted) {
+                  res.end();
+                  return;
+                }
+                for (const e of current.events.filter((e) => e.id > after)) {
+                  res.write(`id: ${e.id}\ndata: ${JSON.stringify(e)}\n\n`);
+                  after = e.id;
+                }
+                if (current.view.status !== "running" && after >= current.view.cursor) res.end();
+                else res.write(": heartbeat\n\n");
+              } catch { res.end(); } finally {ticking=false;}
             };
             const timer = setInterval(tick, 500);
             res.on("close", () => clearInterval(timer));
             tick();
             return;
           }
-          const items = host.store.readEvents(id,after)?.events.slice(0,200) ?? [];
+          const items = host.store.readEvents(id,after,200)?.events ?? [];
           json(res, 200, {
             items,
             cursor: items.at(-1)?.id ?? after,
-            status: s.view.status,
+            status: snapshot.status,
           });
           return;
         }
         throw new AgentError("NOT_FOUND", 404);
-      } catch (e) {
+      } catch (error) {
+        const e = error instanceof Error && error.message === "INVALID_HISTORY_CURSOR"
+          ? new AgentError("INVALID_HISTORY_CURSOR",422)
+          : error instanceof Error && error.message === "SESSION_HISTORY_LIMIT"
+            ? new AgentError("SESSION_HISTORY_LIMIT",413)
+            : error;
         if (!res.headersSent)
           json(
             res,

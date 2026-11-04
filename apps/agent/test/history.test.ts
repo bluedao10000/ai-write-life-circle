@@ -29,7 +29,7 @@ test("SQLite event history preserves cursor order across reopen and bounds recen
   recent.events.push({id:++recent.view.cursor,type:"session_completed"});
   await store.write(recent);
   expected.push(recent.events.at(-1)!);
-  assert.deepEqual(store.readEvents(id,archiveBatch-10)?.events,expected.filter(event=>event.id>archiveBatch-10));
+  assert.deepEqual(store.readEvents(id,archiveBatch-10,100000)?.events,expected.filter(event=>event.id>archiveBatch-10));
   await store.close();store=new Store(dir);await store.ready;
   assert.deepEqual(store.read(id)?.events,expected);
   const detached=store.read(id)!;detached.events=[];assert.deepEqual(store.read(id)?.events,expected);
@@ -180,14 +180,14 @@ test("legacy segments below 32 MiB import and remain writable when total history
  let store=new Store(dir);
  try {
   await store.ready;
-  assert.deepEqual(store.readEvents(id)?.events,events);
+  assert.deepEqual(store.readEvents(id,0,100000)?.events,events);
   const recent=store.read(id,false)!;
   recent.events.push({id:++recent.view.cursor,type:"session_completed"});
   await store.write(recent);
   assert.equal(readdirSync(dir).some(file=>file.endsWith(".json")),false);
   await store.close();store=new Store(dir);await store.ready;
-  assert.equal(store.readEvents(id)?.events.length,18001);
-  assert.equal(store.readEvents(id,18000)?.events[0]?.type,"session_completed");
+  assert.equal(store.readEvents(id,0,100000)?.events.length,18001);
+  assert.equal(store.readEvents(id,18000,100000)?.events[0]?.type,"session_completed");
   const oversized=store.read(id,false)!;oversized.view.title="x".repeat(limit);
   await assert.rejects(store.write(oversized),/SESSION_STORAGE_LIMIT/);
   assert.equal(store.read(id,false)?.view.title,"Synthetic");

@@ -1,12 +1,12 @@
 # ADR：Thinking 的 Durable 执行与显式恢复
 
-日期：2026-11-04。状态：开发实现，未生产部署。Thinking 使用 Pi Durable / Pi AI 1.5.0，Go 保持业务权威。
+日期：2026-11-04。状态：开发实现，未生产部署。Thinking 使用 Pi Durable / Pi AI 1.5.0，Go 保持业务权威。分层数据模型、事务 outbox、迁移与备份要求见 [Thinking 分层存储 ADR](thinking-layered-storage.md)。
 
 ## 职责与状态
 
 Provider 只做推理；PiHost 负责接收、预算、执行时限、终态、显式恢复与审计，内部由 Durable Harness 执行任务和工具循环。Tool Registry 负责定义和硬权限。Go 保留作者/作品、能力授权、点数、正式写入和受控排队权威。
 
-每个 Thinking Session 使用一份 SQLite 和一个 Harness；每次 Run / attempt 使用独立 Conversation。Session 级 `writer.thinking` 文档保存公共视图、请求回执、费用预留、执行计数、epoch、租约、故事写入意图与回执、事件及投影位置；既往 attempt 的映射与费用预留保存在同一文档中。应用文档与 Durable 任务共用事务提交；Store 内存缓存只暴露已提交状态。
+每个 Thinking Session 使用一个 Harness、`<sessionId>.sqlite` 与 `<sessionId>.events.sqlite`；每次 Run / attempt 使用独立 Conversation。Session 级 `writer.thinking` 文档保存公共视图、请求回执、费用预留、执行计数、epoch、租约、故事写入意图与回执、待投影事件及确认 cursor；既往 attempt 的映射与费用预留保存在同一文档中。已发布事件保存在事件库的追加式索引表，消息页读取同库的消息投影。应用状态与 Durable 任务共用事务提交；Store 在投影和确认提交成功后才发布内存快照。
 
 公共 Session 视图通过 `X-Writer-Agent-Thinking: reliability-v1` 协商 Run 扩展；不带该头时 Go 去掉 run，旧严格解码客户端仍能读取历史。新 Worker 只转发该版本标记，不赋予权限。
 
@@ -14,13 +14,13 @@ Provider 只做推理；PiHost 负责接收、预算、执行时限、终态、�
 
 状态机：accepted → running ↔ checkpointed → completed / failed / interrupted / cancelled。接受时在同一事务写入用户输入、空回复、幂等回执、业务检查点、租约和 Durable 编排任务，提交完成后才返回 202。编排任务取得新授权上下文、执行受预算约束的 `manageDiscussion()`，再提交本 attempt 的 Conversation 输入。模型发送前记录 reserve、incomplete、modelCalls；工具开始/结果边界写 checkpoint，终态写 usage/failure。Run 档案保留在私有 runs 中，公开 view.run 为最近一轮。
 
-公开事件使用独立单调 cursor，接受回执、最终回答、usage 和终态事件均随应用文档持久提交后发布。模型流的增量通过应用文档投影，Durable 的实时 watch 不承担关键状态的持久化边界。客户端断线后通过原有快照与 events 接口补齐结果。
+公开事件使用独立单调 cursor，业务状态与待发布事件在同一 Durable 事务提交。事件库幂等追加成功后，Durable 确认 cursor 并清空 outbox，才发布接受回执、最终回答、usage 和终态。投影尚未完成时 API 等待该提交；投影失败后会话停止读写，重启恢复 outbox。Durable 的实时 watch 不承担持久化边界。客户端断线后通过原有快照与 events 接口补齐结果。默认快照读取最近 40 条消息，历史页 80 条，`full=1` 上限 1,000 条，事件页 200 条；分页不读取完整事件历史。
 
 ## 存储与启动
 
 服务等待存储初始化、旧状态导入和中断清理完成后接收请求。启动先 `inspect()`，逐一撤回旧 queued submissions，并为所有旧 live tasks 持久化取消标记；完成后才调用会启动调度的等待操作。旧业务 Run 变为 interrupted，未知 usage 的费用预留保留。启动清理不重新调用模型。
 
-旧 JSON 会话与事件归档一次性导入 SQLite，保留历史消息、请求回执、事件 cursor、预算、故事写入回执和删除墓碑。旧 SDK entries 不作为 Durable 执行检查点导入。导入提交完成后移除旧 JSON 与事件归档，后续可变状态只写 SQLite。容量按近期状态（最近 4,000 条事件）与历史事件段（每段最多 2,000 条）分别检查 32 MiB 上限，不限制展开历史后的合计大小。
+旧 JSON 会话、manifest 归档及现有 Durable 单文档状态均可迁移。先将旧事件逐段幂等投影，再提交 `layout=2` 的状态和已发布 cursor；迁移中断后重启重投相同 cursor，内容冲突则拒绝启动。迁移成功后才移除旧 JSON 与归档。保留历史消息、请求回执、事件 cursor、预算、故事写入回执和删除墓碑，旧 SDK entries 不作为 Durable 执行检查点导入。Session State 不保存完整事件历史；状态、单条事件与事件段各有 32 MiB 上限，事件段最多 2,000 条，不限制全会话事件合计大小。
 
 ## 租约、栅栏与取消
 

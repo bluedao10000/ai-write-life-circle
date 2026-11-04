@@ -5,7 +5,9 @@ import { AssistantEntry, type Harness, type SubmissionId, type Tx } from "@earen
 import { thinkingSessionSchema, type ThinkingSession, type ThinkingEvent, type ThinkingExecutionInput, type ThinkingRun } from "@writer-agent/contracts";
 import { failureFor } from "../runtime/reliability.js";
 import { durableContext, interruptDurable, openDurable, ThinkingState, type DurableRuntime } from "../runtime/durable.js";
-import { archiveBatch, archiveThreshold, readEventArchive, type ArchiveManifest } from "./event-archive.js";
+import { archiveBatch, archiveThreshold, iterateEventArchive, type ArchiveManifest } from "./event-archive.js";
+import { EventStore } from "./event-store.js";
+import { projectSnapshot, projectHistory } from "./projection.js";
 import type { StoryWrites } from "../tools/registry.js";
 
 export type ExecutionFence = {runId:string;owner:string;epoch:number};
@@ -39,14 +41,18 @@ export type Saved = {
 export const idPattern = /^th-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 
 /** Durable documents own mutable state; this cache exposes only completed commits. */
+export type StoreOptions = {onPhase?: (phase:"state_committed"|"events_appended"|"migration_projected") => void | Promise<void>};
 export class Store implements ExecutionAuthority {
   private lock: string;
   private closed = false;
   private closing?: Promise<void>;
   private readonly saved = new Map<string, Saved>();
   private readonly runtimes = new Map<string, Promise<DurableRuntime>>();
+  private readonly projections = new Map<string, EventStore>();
+  private readonly queues = new Map<string, Promise<unknown>>();
+  private readonly failed = new Set<string>();
   readonly ready: Promise<void>;
-  constructor(readonly dir: string) {
+  constructor(readonly dir: string, private readonly options:StoreOptions = {}) {
     mkdirSync(dir, { recursive: true, mode: 0o700 });
     if (lstatSync(dir).isSymbolicLink() || (lstatSync(dir).mode & 0o077) !== 0)
       throw Error("UNSAFE_STATE_DIRECTORY");
@@ -83,6 +89,7 @@ export class Store implements ExecutionAuthority {
     }
     this.ready = this.initialize().catch(async error => {
       await Promise.allSettled([...this.runtimes.values()].map(async runtime => (await runtime).harness.close(durableContext)));
+      for (const projection of this.projections.values()) projection.close();
       this.closed = true;
       rmSync(this.lock, { force: true });
       throw error;
@@ -134,47 +141,91 @@ export class Store implements ExecutionAuthority {
       value.accountingVersion = 2;
     }
   }
+  private eventStore(id:string) {
+    let projection=this.projections.get(id);
+    if(!projection){projection=new EventStore(join(this.dir,id+".events.sqlite"),id);this.projections.set(id,projection)}
+    return projection;
+  }
+  private checkAvailable(id:string) {
+    if(this.failed.has(id)&&!this.isDeleted(id))throw Error("SESSION_PROJECTION_FAILED");
+  }
+  private correlate(value:Saved) {
+    const keys=new Map(Object.entries(value.requests).map(([key,receipt])=>[receipt.messageId,key]));
+    for(const message of value.view.messages){const key=keys.get(message.id);if(message.role==="user"&&!message.requestKey&&key)message.requestKey=key;}
+  }
   private async initialize() {
     const ids = new Set(readdirSync(this.dir).flatMap(file => {
-      const match = /^(.*)\.(?:sqlite|json)$/.exec(file);
+      const match = /^(.*)\.(?:sqlite|json|json.deleted)$/.exec(file);
       return match && idPattern.test(match[1]!) ? [match[1]!] : [];
     }));
     for (const id of ids) {
       if (this.isDeleted(id)) { await this.purgeSaved(id); continue; }
-      const runtime = await this.runtimeSaved(id);
-      const document = await runtime.harness.snapshot(ThinkingState, durableContext);
-      let value = document?.saved ? structuredClone(document.saved) as unknown as Saved : undefined;
-      if (!value && existsSync(this.legacyPath(id))) {
-        const path = this.legacyPath(id), stat = lstatSync(path);
-        if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 32 * 1024 * 1024) throw Error("SESSION_STORAGE_INVALID");
-        value = JSON.parse(readFileSync(path, "utf8")) as Saved;
-        this.validate(value, id);
-        if (value.archive) value.events = [...readEventArchive(this.dir, id, value.archive), ...value.events];
-        delete value.archive;
-        value.entries = [];
-        if (value.checkpoint) value.checkpoint.entries = [];
-        await this.commitSaved(value);
+      const runtime=await this.runtimeSaved(id),projection=this.eventStore(id);
+      const document=await runtime.harness.snapshot(ThinkingState,durableContext);
+      let value=document?.saved ? structuredClone(document.saved) as unknown as Saved : undefined;
+      if(!value && existsSync(this.legacyPath(id))) {
+        const path=this.legacyPath(id),stat=lstatSync(path);
+        if(!stat.isFile()||stat.isSymbolicLink()||stat.size>32*1024*1024)throw Error("SESSION_STORAGE_INVALID");
+        value=JSON.parse(readFileSync(path,"utf8")) as Saved;
       }
-      if (value) {
-        this.validate(value, id);
-        await this.restoreAnswer(value, runtime.harness);
-        this.saved.set(id, value);
+      if(!value)continue;
+      this.validate(value,id);this.correlate(value);
+      if(value.deleted){this.markDeleted(id);await this.purgeSaved(id);continue}
+      if(document?.layout!==2 || !document.saved) {
+        if(value.archive)for(const events of iterateEventArchive(this.dir,id,value.archive))projection.append(events);
+        for(let start=0;start<value.events.length;start+=archiveBatch)projection.append(value.events.slice(start,start+archiveBatch));
+        projection.project([],value.view.messages);
+        if(projection.cursor()!==value.view.cursor)throw Error("SESSION_EVENT_CURSOR_MISMATCH");
+        await this.options.onPhase?.("migration_projected");
+        value.events=[];delete value.archive;value.entries=[];
+        if(value.checkpoint)value.checkpoint.entries=[];
+        await runtime.harness.commit(async tx=>{
+          const state=await tx.doc(ThinkingState);
+          state.saved=value as unknown as JsonValue;state.layout=2;state.publishedCursor=value.view.cursor;state.outbox=[];
+        },durableContext);
+      } else {
+        await this.publish(id,value,document.outbox??[]);
       }
+      this.saved.set(id,value);
+      // Sources remain available until both databases contain the migrated state.
+      rmSync(this.legacyPath(id),{force:true});this.clearArchive(id);
       await interruptDurable(runtime.harness);
-      // The committed document is the only mutable authority after import.
-      rmSync(this.legacyPath(id), { force: true });
-      this.clearArchive(id);
+      const restored=this.read(id,false)!;
+      await this.restoreAnswer(restored,runtime.harness);
+      this.saved.set(id,{...restored,events:[]});
+      // Recovery needs terminal markers added while reconstructing the answer.
+      if(restored.events.some(event=>event.id>value.view.cursor))await this.commitSaved(restored);
     }
     await this.recoverSaved();
   }
-  read(id: string, withEvents = true): Saved | undefined {
-    this.path(id);
-    const value = this.saved.get(id);
-    if (!value) return;
-    const copy = structuredClone(value);
-    this.validate(copy, id);
-    if (!withEvents) copy.events = copy.events.slice(-archiveThreshold);
+  read(id:string,withEvents=true):Saved|undefined {
+    this.path(id);this.checkAvailable(id);
+    const value=this.saved.get(id);if(!value)return;
+    const copy=structuredClone(value);this.validate(copy,id);
+    if(!copy.deleted)copy.events=this.eventStore(id).read(withEvents?0:Math.max(0,copy.view.cursor-archiveThreshold),withEvents?100000:archiveThreshold,copy.view.cursor);
     return copy;
+  }
+  cursor(id:string) {this.checkAvailable(id);return this.saved.get(id)?.view.cursor??0;}
+  state(id:string):Saved|undefined {
+    this.path(id);this.checkAvailable(id);
+    const value=this.saved.get(id);if(!value)return;
+    const copy=structuredClone(value);this.validate(copy,id);return copy;
+  }
+  async waitPublished(id:string){await this.queues.get(id);this.checkAvailable(id);}
+  snapshot(id:string,limit=40) {
+    if(this.queues.has(id))throw Error("SESSION_PROJECTION_PENDING");
+    this.path(id);this.checkAvailable(id);
+    const value=this.saved.get(id);if(!value||value.deleted||this.isDeleted(id))return;
+    const header={...value.view};
+    // Message rows are read separately without cloning authoritative history.
+    Reflect.deleteProperty(header,"messages");Reflect.deleteProperty(header,"history");
+    return projectSnapshot(header,this.eventStore(id),limit);
+  }
+  history(id:string,before?:string,limit=80) {
+    if(this.queues.has(id))throw Error("SESSION_PROJECTION_PENDING");
+    this.checkAvailable(id);
+    if(!this.saved.has(id)||this.saved.get(id)?.deleted||this.isDeleted(id))return;
+    return projectHistory(this.eventStore(id),before,limit);
   }
   private async restoreAnswer(value: Saved, harness: Harness) {
     if (value.view.status !== "running" || !value.view.run || !value.durable?.submissionId) return;
@@ -198,13 +249,13 @@ export class Store implements ExecutionAuthority {
       value.events.push({ id: ++value.view.cursor, type: "sources", messageId: answer.id, sources: answer.sources });
     }
   }
-  readEvents(id: string, after = 0) {
-    const value = this.read(id, false);
-    if (!value) return;
-    value.events = structuredClone(this.saved.get(id)!.events.filter(event => event.id > after));
-    return value;
+  readEvents(id:string,after=0,limit=200) {
+    this.path(id);this.checkAvailable(id);
+    const value=this.saved.get(id);if(!value)return;
+    return {deleted:value.deleted,view:this.snapshot(id)??structuredClone(value.view),events:value.deleted?[]:this.eventStore(id).read(after,limit,value.view.cursor)};
   }
   executionStatus(id:string, fence:ExecutionFence, now=Date.now()) {
+    this.checkAvailable(id);
     if (this.isDeleted(id)) return "deleted" as const;
     const current = this.saved.get(id);
     if (current?.deleted) return "deleted" as const;
@@ -220,41 +271,59 @@ export class Store implements ExecutionAuthority {
     await this.ready;
     return this.commitSaved(value, mutate, expectedFence);
   }
-  private async commitSaved<T>(value: Saved, mutate?: (tx: Tx) => T | Promise<T>, expectedFence?: ExecutionFence): Promise<T | undefined> {
-    if (this.isDeleted(value.view.sessionId) && !value.deleted) throw Error("SESSION_DELETED");
-    const runtime = await this.runtimeSaved(value.view.sessionId);
-    let committed!: Saved;
-    const result = await runtime.harness.commit(async tx => {
-      if (this.isDeleted(value.view.sessionId) && !value.deleted) throw Error("SESSION_DELETED");
-      const document = await tx.doc(ThinkingState);
-      const previous = document.saved ? JSON.parse(JSON.stringify(document.saved)) as Saved : null;
-      if (expectedFence) {
-        const lease = previous?.executionLease;
-        if (previous?.deleted) throw Error("SESSION_DELETED");
-        if (!previous || previous.view.run?.runId !== expectedFence.runId || previous.epoch !== expectedFence.epoch || lease?.owner !== expectedFence.owner || lease.epoch !== expectedFence.epoch) throw Error("SESSION_INTERRUPTED");
-        if (lease.expiresAt <= Date.now()) throw Error(previous.view.run.stepType === "tool" ? "TOOL_TIMEOUT" : "DURATION_EXCEEDED");
+  private async commitSaved<T>(value:Saved,mutate?:(tx:Tx)=>T|Promise<T>,expectedFence?:ExecutionFence):Promise<T|undefined> {
+    const id=value.view.sessionId;
+    const previous=this.queues.get(id)??Promise.resolve();
+    const pending=previous.catch(()=>{}).then(()=>this.commitState(value,mutate,expectedFence));
+    this.queues.set(id,pending);
+    try{return await pending}finally{if(this.queues.get(id)===pending)this.queues.delete(id)}
+  }
+  private async publish(id:string,value:Saved,events:ThinkingEvent[]) {
+    const projection=this.eventStore(id),runtime=await this.runtimeSaved(id);
+    projection.project(events,value.view.messages);
+    if(projection.cursor()!==value.view.cursor)throw Error("SESSION_EVENT_CURSOR_MISMATCH");
+    await this.options.onPhase?.("events_appended");
+    await runtime.harness.commit(async tx=>{
+      const document=await tx.doc(ThinkingState);
+      document.outbox=[];document.publishedCursor=value.view.cursor;
+    },durableContext);
+  }
+  private async commitState<T>(value:Saved,mutate?:(tx:Tx)=>T|Promise<T>,expectedFence?:ExecutionFence):Promise<T|undefined> {
+    const id=value.view.sessionId;this.checkAvailable(id);
+    if(this.isDeleted(id)&&!value.deleted)throw Error("SESSION_DELETED");
+    const runtime=await this.runtimeSaved(id);
+    let committed!:Saved,pendingEvents:ThinkingEvent[]=[],prepared=false;
+    const result=await runtime.harness.commit(async tx=>{
+      if(this.isDeleted(id)&&!value.deleted)throw Error("SESSION_DELETED");
+      const document=await tx.doc(ThinkingState);
+      const previous=document.saved?JSON.parse(JSON.stringify(document.saved)) as Saved:null;
+      if(expectedFence){
+        const lease=previous?.executionLease;
+        if(previous?.deleted)throw Error("SESSION_DELETED");
+        if(!previous||previous.view.run?.runId!==expectedFence.runId||previous.epoch!==expectedFence.epoch||lease?.owner!==expectedFence.owner||lease.epoch!==expectedFence.epoch)throw Error("SESSION_INTERRUPTED");
+        if(lease.expiresAt<=Date.now())throw Error(previous.view.run.stepType==="tool"?"TOOL_TIMEOUT":"DURATION_EXCEEDED");
       }
-      const result = await mutate?.(tx);
-      committed = JSON.parse(JSON.stringify(value)) as Saved;
-      if (!committed.deleted && previous && committed.events[0]?.id > 1) {
-        const first = committed.events[0]!.id;
-        committed.events = [...previous.events.filter(event => event.id < first), ...committed.events];
+      const result=await mutate?.(tx);
+      // Copy only state and this commit's new events, never the historical event list.
+      const {events,...state}=value;
+      committed=JSON.parse(JSON.stringify({...state,events:[]})) as Saved;
+      delete committed.archive;this.correlate(committed);
+      const cursor=previous?.view.cursor??0;
+      this.eventStore(id).verifyReplay(events.filter(event=>event.id<=cursor));
+      pendingEvents=JSON.parse(JSON.stringify(events.filter(event=>event.id>cursor))) as ThinkingEvent[];
+      if(!committed.deleted){
+        if(pendingEvents.some((event,index)=>event.id!==cursor+index+1)||committed.view.cursor!==cursor+pendingEvents.length)throw Error("SESSION_EVENT_CURSOR_MISMATCH");
       }
-      delete committed.archive;
-      // SQLite retains the complete history; capacity follows the legacy main
-      // document and event segments rather than their combined serialized size.
-      const recentStart = Math.max(0, committed.events.length - archiveThreshold);
-      const withinLimit = (value: unknown) => Buffer.byteLength(JSON.stringify(value)) <= 32 * 1024 * 1024;
-      if (!withinLimit({...committed, events:committed.events.slice(recentStart)})) throw Error("SESSION_STORAGE_LIMIT");
-      for (let start = 0; start < recentStart; start += archiveBatch) {
-        const events = committed.events.slice(start, Math.min(start + archiveBatch, recentStart));
-        if (!withinLimit({schema:1,sessionId:committed.view.sessionId,firstId:events[0]!.id,lastId:events.at(-1)!.id,events}))
-          throw Error("SESSION_STORAGE_LIMIT");
-      }
-      document.saved = committed as unknown as JsonValue;
+      if(Buffer.byteLength(JSON.stringify(committed))>32*1024*1024||Buffer.byteLength(JSON.stringify(pendingEvents))>32*1024*1024)throw Error("SESSION_STORAGE_LIMIT");
+      document.saved=committed as unknown as JsonValue;document.layout=2;document.outbox=pendingEvents;
+      prepared=true;
       return result;
-    }, durableContext);
-    this.saved.set(value.view.sessionId, committed);
+    },durableContext).catch(error=>{if(prepared)this.failed.add(id);throw error});
+    try {
+      await this.options.onPhase?.("state_committed");
+      if(!committed.deleted)await this.publish(id,committed,pendingEvents);
+      this.saved.set(id,committed);
+    } catch(error){this.failed.add(id);throw error}
     return result;
   }
   async recover() {
@@ -286,7 +355,7 @@ export class Store implements ExecutionAuthority {
         continue;
       }
       if (s.view.status !== "running") continue;
-      s = this.read(id)!;
+      s = this.read(id,false)!;
       const run = s.view.run;
       const authorMessage = s.view.messages.find(m=>m.id===run?.messageId && m.role==="user");
       if(authorMessage?.storyRecording?.status==="saving") authorMessage.storyRecording={...authorMessage.storyRecording,status:"unknown",code:"OUTCOME_UNKNOWN"};
@@ -326,12 +395,18 @@ export class Store implements ExecutionAuthority {
     await this.purgeSaved(id);
   }
   private async purgeSaved(id: string) {
+    await this.queues.get(id)?.catch(()=>{});
+    const current=this.saved.get(id);
+    if(current)this.saved.set(id,{schema:1,accountingVersion:2,owner:current.owner,deleted:true,entries:[],events:[],requests:{},view:{...current.view,status:"deleted",messages:[],run:undefined}});
+    this.failed.delete(id);
+    const projection=this.projections.get(id);
+    if(projection){projection.close();this.projections.delete(id)}
     const runtime = this.runtimes.get(id);
     if (runtime) {
       await (await runtime).harness.close(durableContext);
       this.runtimes.delete(id);
     }
-    for (const path of [this.path(id), this.path(id) + "-wal", this.path(id) + "-shm", this.legacyPath(id)]) rmSync(path, { force: true });
+    for (const path of [this.path(id), this.path(id) + "-wal", this.path(id) + "-shm", this.legacyPath(id),join(this.dir,id+".events.sqlite"),join(this.dir,id+".events.sqlite-wal"),join(this.dir,id+".events.sqlite-shm")]) rmSync(path, { force: true });
     this.clearArchive(id);
   }
   close(): Promise<void> {
@@ -341,6 +416,8 @@ export class Store implements ExecutionAuthority {
       this.closed = true;
       await Promise.all([...this.runtimes.values()].map(async runtime => (await runtime).harness.close(durableContext)));
       this.runtimes.clear();
+      for(const projection of this.projections.values())projection.close();
+      this.projections.clear();
       rmSync(this.lock, { force: true });
     })();
     return this.closing;

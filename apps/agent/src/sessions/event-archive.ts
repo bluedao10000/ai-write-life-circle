@@ -18,9 +18,8 @@ function safeSegment(root:string,name:string):EventArchive {
   return segmentSchema.parse(JSON.parse(readFileSync(path,"utf8")));
 }
 
-export function readEventArchive(root:string,id:string,manifest:ArchiveManifest,after=0):ThinkingEvent[] {
+export function* iterateEventArchive(root:string,id:string,manifest:ArchiveManifest,after=0):Generator<ThinkingEvent[]> {
   const available=new Set(readdirSync(root));
-  const out:ThinkingEvent[]=[];
   let previous=0;
   for(const segment of [...manifest.segments].sort((a,b)=>a.firstId-b.firstId)) {
     if(segment.firstId!==previous+1||segment.lastId<segment.firstId)throw Error("SESSION_ARCHIVE_INVALID");
@@ -30,10 +29,9 @@ export function readEventArchive(root:string,id:string,manifest:ArchiveManifest,
     if(!available.has(name))throw Error("SESSION_ARCHIVE_MISSING");
     const archived=safeSegment(root,name);
     if(archived.sessionId!==id||archived.firstId!==segment.firstId||archived.lastId!==segment.lastId)throw Error("SESSION_ARCHIVE_INVALID");
-    out.push(...archived.events.filter(event=>event.id>after));
+    yield archived.events.filter(event=>event.id>after);
   }
   if(previous!==manifest.archivedThrough)throw Error("SESSION_ARCHIVE_INVALID");
-  return out;
 }
 
 export function archivePlan(s:{view:{sessionId:string;status:string};events:ThinkingEvent[];archive?:ArchiveManifest}) {
@@ -46,4 +44,8 @@ export function archivePlan(s:{view:{sessionId:string;status:string};events:Thin
   if(!events.length||events[0]!.id!==1&&events[0]!.id!==firstId||events.some((event,index)=>index>0&&event.id!==events[index-1]!.id+1))throw Error("SESSION_ARCHIVE_SEQUENCE_INVALID");
   const last=events.at(-1)!;
   return {value:{schema:1 as const,sessionId:s.view.sessionId,firstId:events[0]!.id,lastId:last.id,events},name:`${s.view.sessionId}.${events[0]!.id}-${last.id}.events.json`,remaining:pending.slice(archiveBatch)};
+}
+
+export function readEventArchive(root:string,id:string,manifest:ArchiveManifest,after=0):ThinkingEvent[] {
+  return [...iterateEventArchive(root,id,manifest,after)].flat();
 }

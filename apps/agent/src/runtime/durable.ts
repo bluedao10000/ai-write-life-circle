@@ -1,3 +1,4 @@
+import type { ThinkingEvent } from "@writer-agent/contracts";
 import type { Context, JsonValue } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { createModels, type Models } from "@earendil-works/pi-ai";
@@ -5,12 +6,15 @@ import { createRegistry, defineDoc, defineTask, Harness, type ConversationId, ty
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 
 export const durableContext = BACKGROUND_CONTEXT;
-export const ThinkingState = defineDoc<{ saved: JsonValue }>({
+export const ThinkingState = defineDoc<{ saved: JsonValue; layout?:2; publishedCursor?:number; outbox?:ThinkingEvent[] }>({
   kind: "writer.thinking",
   version: 1,
   scope: "session",
-  initial: () => ({ saved: null }),
-  checkpointWhen: (_value, _ops, info) => info.deltasSinceBase >= 64,
+  initial: () => ({ saved: null, layout:2, publishedCursor:0, outbox:[] }),
+  // A layout change must retire the old session-scoped base immediately, so
+  // reopening does not replay the former monolithic event history.
+  checkpointWhen: (_value, ops, info) => info.deltasSinceBase >= 64 ||
+    ops.some(op => op[0] === "s" && op[1].length === 1 && op[1][0] === "layout"),
 });
 
 export type DurableRuntime = {

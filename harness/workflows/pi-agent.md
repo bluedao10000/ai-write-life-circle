@@ -6,7 +6,7 @@
 
 Node >=22.19.0，pnpm 10.15.1。`pnpm install && pnpm build:agent`。
 
-Thinking 使用固定版本 Pi Durable / Pi AI 1.5.0 和 Node 内置 SQLite。每个会话在 StateDirectory 保存一份 `<sessionId>.sqlite`，应用状态与执行任务共用持久化提交。服务完成存储初始化与旧任务中断清理后才接受请求；前端仍使用 `thinking-v1` 的会话、消息和事件接口。
+Thinking 使用固定版本 Pi Durable / Pi AI 1.5.0 和 Node 内置 SQLite。每个会话在 StateDirectory 保存 `<sessionId>.sqlite`（Durable 与业务状态）和 `<sessionId>.events.sqlite`（事件与消息读取投影）。应用状态与执行任务共用持久化提交，事件通过事务 outbox 投影并确认。服务完成存储初始化、投影恢复与旧任务中断清理后才接受请求；前端仍使用 `thinking-v1` 的会话、消息和事件接口。数据布局与失败行为见 [Thinking 分层存储 ADR](../architecture/thinking-layered-storage.md)。
 
 先在工作区之外建立两个不同的随机凭证文件（例如 `openssl rand -hex 32`），权限 0600：服务 Token 供 Go→Pi RPC，能力签名 Key 仅供 Go。不要复用公网 API Token。设置 `scripts/deploy/pi-go.env.example` 中的变量；本地能力 Key 文件和 RPC Token 路径替换为开发路径。Pi 另设 Token 文件、独立 StateDirectory 与 `WRITER_AGENT_PI_LLM_API_KEY`。仅 Pi 需要模型 Key；默认 DeepSeek endpoint/model 为 `https://api.deepseek.com` / `deepseek-flash`。也可显式使用原有 LLM 环境变量；切勿把生产环境文件加载进自动测试。
 
@@ -37,17 +37,17 @@ Thinking 使用固定版本 Pi Durable / Pi AI 1.5.0 和 Node 内置 SQLite。�
 
 ## 回滚与恢复
 
-停止 Pi；私有状态目录做权限保持的完整备份，包含 SQLite、仍存在的 WAL/SHM 文件和删除墓碑。原子切回兼容发布 symlink，验证清单、配置、健康，再启动。不要回滚状态快照覆盖现有删除墓碑或恢复已经删除的讨论。Thinking 无法启动时保留关闭状态，Go API 的编辑与保存继续可用。
+停止 Pi，确认进程退出后，保留权限备份整个私有 StateDirectory。每个会话的 `.sqlite`、`.events.sqlite`、仍存在的各自 WAL/SHM、旧 JSON/归档和删除墓碑必须成套保存，不能只复制其中一个数据库，也不能在服务写入时逐文件复制。原子切回兼容发布 symlink，验证清单、配置、健康，再启动。不要回滚状态快照覆盖现有删除墓碑或恢复已经删除的讨论。Thinking 无法启动时保留关闭状态，Go API 的编辑与保存继续可用。
 
-首次启动自动将旧 JSON 会话与事件归档一次性导入 SQLite，保留历史、请求回执、事件 cursor、费用预留和故事写入回执；旧未完成 Run 转为 interrupted。导入提交完成后移除旧 JSON 与归档，旧 SDK entries 不转为 Durable 任务检查点。上线前须在停机状态保留完整备份。
+升级前先在完整停机备份的隔离副本上启动新版，验证旧 JSON、多段归档和现有 Durable 单文档状态的迁移。首次启动先幂等投影旧事件，再提交 `layout=2` 状态；只有成功后才清理旧 JSON/归档。保留历史、请求回执、事件 cursor、费用预留和故事写入回执，旧未完成 Run 转为 interrupted，旧 SDK entries 不转为 Durable 任务检查点。正式启动完成后检查历史页、事件 cursor、费用预留与取消状态，再开放 Thinking 流量。迁移或投影失败时保持停用，保留完整目录以便修复后重启；不要删除事件库试图跳过错误。
 
 正常退出会取消正在执行的请求，已接受消息/预算已落盘。SIGKILL 后，启动先撤回旧排队输入并持久取消全部旧 live tasks，再启动调度完成清理。running 消息变为 interrupted，保留历史和未知费用预留，不自动付费重跑。作者可在 UI 确认潜在额外费用后创建新的 attempt；取消、删除、撤销授权及已进入 `request_turn_organize` 的 Run 不可恢复。上下文超限使用作者确认的续谈要点，原讨论仍可读。存活 PID 的锁不抢占；未知 PID/权限错误或遗留 `.process-lock-admission` 需要运维核验，不按文件年龄删除。Go 文件锁异常残留仍遵循保守人工恢复流程。
 
-删除先撤销 Go grant，再持久排队；每五秒重试 Pi 清理。即使 Node 离线也不能再次调用工具。Node 先写删除墓碑，阻止新输入和迟到结果；中止并等待执行结束、关闭 Harness 后，删除会话 SQLite、WAL/SHM、旧 JSON 和事件归档。墓碑保留，防止创建重放复活。Session 列表中的孤立初始化 grant 可再次用同键创建或删除，不会发送模型请求。
+删除先撤销 Go grant，再持久排队；每五秒重试 Pi 清理。即使 Node 离线也不能再次调用工具。Node 先写删除墓碑，阻止新输入和迟到结果；中止并等待执行结束、关闭 Harness 后，删除会话的两个 SQLite、各自 WAL/SHM、旧 JSON 和事件归档。墓碑保留，防止创建重放复活。Session 列表中的孤立初始化 grant 可再次用同键创建或删除，不会发送模型请求。
 
 ### 存储兼容性
 
-回滚发布必须支持当前 SQLite / Durable 文档格式。旧 JSON 运行时和旧格式转换工具不能读取迁移后的状态；不能仅切换到旧 Pi 二进制恢复服务。恢复备份须保留更新的删除墓碑、取消栅栏和业务回执；开放 reservation 先由原计费权威结算或核账。不得用旧备份覆盖更新的作者状态。
+回滚发布必须支持 `layout=2`、事务 outbox 和事件库格式。旧 JSON 运行时及 `aa7dfbf` 的单文档实现不能读取新布局，不能仅切换旧 Pi 二进制恢复服务。尚未开放新写入时，可成套恢复升级前的完整停机备份；已经产生新数据时，使用兼容版本或修复前滚，不能用旧备份覆盖费用、业务回执、取消栅栏或删除墓碑。开放 reservation 先由原计费权威结算或核账。两个数据库始终一同备份、迁移和恢复。
 
 ## 可选真实合成 Eval
 

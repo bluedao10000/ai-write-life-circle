@@ -71,7 +71,7 @@ export class PiHost {
     return this.view(id,false);
   }
   private view(id:string,withEvents:boolean) {
-    const s = this.store.read(id,withEvents);
+    const s = withEvents ? this.store.read(id) : this.store.state(id);
     if (!s || s.deleted || this.store.isDeleted(id))
       throw new AgentError("NOT_FOUND", 404);
     // Older accepted messages predate the public correlation field. The durable
@@ -102,7 +102,7 @@ export class PiHost {
       throw new AgentError("GRANT_MISMATCH", 403);
     if (this.store.isDeleted(input.sessionId))
       throw new AgentError("SESSION_DELETED", 410);
-    const old = this.store.read(input.sessionId);
+    const old = this.store.state(input.sessionId);
     if (old?.deleted) throw new AgentError("SESSION_DELETED", 410);
     if (old) {
       if (old.owner !== input.authorId || old.view.bookId !== input.bookId)
@@ -134,6 +134,7 @@ export class PiHost {
   }
   async event(s: Saved, event: Omit<ThinkingEvent, "id">, commit = true, fence?:ExecutionFence) {
     if (s.deleted) return;
+    s.events = s.events.filter(item => item.id > this.store.cursor(s.view.sessionId));
     s.events.push({ ...event, id: ++s.view.cursor });
     if (commit) await this.store.write(s, undefined, fence);
   }
@@ -152,7 +153,7 @@ export class PiHost {
   ) {
     await this.ready;
     if (this.closing) throw new AgentError("SESSION_INTERRUPTED",503);
-    let s = this.get(id);
+    let s = this.view(id,false);
     const admittedEpoch = s.epoch ?? 0;
     const fingerprint = digest(input),
       old = Object.hasOwn(s.requests, key) ? s.requests[key] : undefined;
@@ -165,7 +166,7 @@ export class PiHost {
       throw new AgentError("SESSION_BUSY", 409);
     if (this.active.size >= limitConcurrent(this.config))
       throw new AgentError("AGENT_BUSY", 429);
-    if (s.view.messages.length >= 200 || s.events.length >= 20000)
+    if (s.view.messages.length >= 200)
       throw new AgentError("SESSION_HISTORY_LIMIT", 429);
     const grant = await authorize(this.config, capability);
     if (
@@ -178,7 +179,7 @@ export class PiHost {
     if (!selected) throw new AgentError("MODEL_UNAVAILABLE", 409);
     // Authorization awaits network. Cancel/delete/another admission must fence this snapshot.
     if (this.closing) throw new AgentError("SESSION_INTERRUPTED",503);
-    const latest = this.get(id);
+    const latest = this.view(id,false);
     const replay = Object.hasOwn(latest.requests, key) ? latest.requests[key] : undefined;
     if (replay) {
       if (replay.fingerprint !== fingerprint) throw new AgentError("IDEMPOTENCY_KEY_REUSED");
@@ -191,7 +192,7 @@ export class PiHost {
     // Serialize admission at the HTTP layer; recheck after asynchronous authorization.
     if (this.active.size >= limitConcurrent(this.config))
       throw new AgentError("AGENT_BUSY", 429);
-    if (this.active.has(id) || this.store.read(id)?.deleted)
+    if (this.active.has(id) || this.store.state(id)?.deleted)
       throw new AgentError("SESSION_BUSY", 409);
     let previousAttempt = 0;
     if (input.recovery) {
@@ -270,6 +271,7 @@ export class PiHost {
       traceRun(id,s.view.run,{input:0,output:0,charged:0,incomplete:false});
       active.session = conversation;
       durable.setRun(async (_context, signal) => {
+        await this.store.waitPublished(id);
         const interrupted = () => active.abort.abort(new AgentError("SESSION_INTERRUPTED"));
         signal.addEventListener("abort", interrupted, {once:true});
         try { await this.run(s, input, capability, active); }
@@ -291,13 +293,13 @@ export class PiHost {
   async cancel(id: string, capability?: string) {
     await this.ready;
     if (capability) {
-      const before=this.get(id),epoch=before.epoch??0;
+      const before=this.view(id,false),epoch=before.epoch??0;
       const grant=await authorize(this.config,capability);
       if(grant.sessionId!==id || grant.authorId!==before.owner || grant.bookId!==before.view.bookId) throw new AgentError("GRANT_MISMATCH",403);
-      if((this.get(id).epoch??0)!==epoch) throw new AgentError("SESSION_INTERRUPTED",409);
+      if((this.view(id,false).epoch??0)!==epoch) throw new AgentError("SESSION_INTERRUPTED",409);
     }
     const active = this.active.get(id);
-    const s = this.get(id);
+    const s = this.view(id,false);
     await this.store.write(s, async tx => {
       const current = await this.store.readTransaction(tx);
       if (current) Object.assign(s,current);
@@ -321,40 +323,17 @@ export class PiHost {
     if (active) await this.admissions.get(id)?.catch(() => {});
     if (active?.session) await active.session.abort(durableContext);
     if (active) await active.done;
-    return this.get(id).view;
+    return this.view(id,false).view;
   }
   async delete(id: string) {
     await this.ready;
     this.store.markDeleted(id);
-    const s = this.store.read(id,false);
-    if (s) {
-      s.deleted = true;
-      s.view.status = "deleted";
-      s.view.messages = [];
-      s.entries = [];
-      s.events = [];
-      s.requests = {};
-      delete s.discussionMemory;
-      delete s.archive;
-      delete s.executionLease;
-      delete s.runs;
-      delete s.checkpoint;
-      delete s.durable;
-      delete s.execution;
-      delete s.attempts;
-      delete s.view.run;
-      await this.store.write(s);
-    }
     const a = this.active.get(id);
     a?.abort.abort();
     if (a) await this.admissions.get(id)?.catch(() => {});
     if (a?.session) await a.session.abort(durableContext);
     if (a) await a.done; // deletion fence blocks every subsequent write
     await this.store.purge(id);
-    if (!s) {
-      // A delayed create cannot resurrect a deleted grant. Go authorization is the primary fence.
-      return;
-    }
   }
   async close() {
     this.closing = true;
@@ -746,7 +725,7 @@ export class PiHost {
       run.status = message.status;
       run.failure = failureFor(message.errorCode,run.modelCalls>0);
       if (message.status === "cancelled") run.resumable = false;
-      if (!this.store.isDeleted(id) && this.store.read(id,false)?.view.run?.runId === run.runId)
+      if (!this.store.isDeleted(id) && this.store.state(id)?.view.run?.runId === run.runId)
         await this.event(s, {
           type: "error",
           messageId: message.id,
@@ -755,11 +734,11 @@ export class PiHost {
     } finally {
       clearTimeout(deadline);
 
-      if (!this.store.isDeleted(id) && this.store.read(id,false)?.view.run?.runId === run.runId) {
+      if (!this.store.isDeleted(id) && this.store.state(id)?.view.run?.runId === run.runId) {
         const authorMessage=s.view.messages.find(m=>m.id===run.messageId && m.role==="user");
         if(authorMessage?.storyRecording?.status==="saving") authorMessage.storyRecording={...authorMessage.storyRecording,status:"unknown",code:"OUTCOME_UNKNOWN"};
         delete s.executionLease;
-        s.epoch = Math.max(s.epoch ?? 0,this.store.read(id)?.epoch ?? 0);
+        s.epoch = Math.max(s.epoch ?? 0,this.store.state(id)?.epoch ?? 0);
         run.durationMs = Math.max(0,performance.now()-started); run.updatedAt = new Date().toISOString();
         s.view.status = "idle";
         message.usage = { ...s.view.usage };
