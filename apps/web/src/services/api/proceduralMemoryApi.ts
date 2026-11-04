@@ -1,10 +1,11 @@
-import { proceduralListSchema, proceduralEvidenceListSchema, proceduralRecordSchema, proceduralCreateSchema, proceduralDecisionSchema, proceduralMergeSchema, proceduralSourceSchema } from '@writer-agent/contracts'
+import { proceduralListSchema, proceduralEvidenceListSchema, proceduralRecordSchema, proceduralCreateSchema, proceduralDecisionSchema, proceduralMergeSchema, proceduralSourceSchema, proceduralOutcomeSchema } from '@writer-agent/contracts'
 import type { z } from 'zod'
 import { getJson, postJson } from './client'
 
 export type ProceduralMemory = z.infer<typeof proceduralListSchema>['items'][number]
 export type TaskEvidence = z.infer<typeof proceduralEvidenceListSchema>['items'][number]
 export type MemoryCreate = z.infer<typeof proceduralCreateSchema>
+export type MemoryOutcome = z.infer<typeof proceduralOutcomeSchema>
 export type MemorySource = z.infer<typeof proceduralSourceSchema>
 export type MemoryMerge = z.infer<typeof proceduralMergeSchema>
 export type MemoryDecision = z.infer<typeof proceduralDecisionSchema>
@@ -15,6 +16,7 @@ function parse<T>(schema: { parse(value: unknown): T }, value: unknown): T {
 export const proceduralMemoryApi = {
   async list(book: string, signal?: AbortSignal) { return parse(proceduralListSchema, await getJson(root(book), signal)).items },
   async evidence(book: string, signal?: AbortSignal) { return parse(proceduralEvidenceListSchema, await getJson(`${root(book)}/evidence`, signal)).items },
+  async outcome(book: string, task: string, signal?: AbortSignal) { return parse(proceduralOutcomeSchema, await getJson(`${root(book)}/evidence/${encodeURIComponent(task)}/outcome`, signal)) },
   async source(book: string, task: string, signal?: AbortSignal) { return parse(proceduralSourceSchema, await getJson(`${root(book)}/evidence/${encodeURIComponent(task)}`, signal)) },
   async create(book: string, input: MemoryCreate, key: string) { return parse(proceduralRecordSchema, await postJson(root(book), proceduralCreateSchema.parse(input), key)) },
   async merge(book: string, id: string, input: MemoryMerge, key: string) { return parse(proceduralRecordSchema, await postJson(`${root(book)}/${encodeURIComponent(id)}/merge`, proceduralMergeSchema.parse(input), key)) },

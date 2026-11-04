@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {createPiWorkerFixture,until} from './lib/pi-worker-fixture.mjs';
-import {proceduralRecordSchema,proceduralListSchema,proceduralEvidenceListSchema} from '../packages/contracts/dist/procedural-memory.js';
+import {proceduralRecordSchema,proceduralListSchema,proceduralEvidenceListSchema,proceduralOutcomeSchema} from '../packages/contracts/dist/procedural-memory.js';
 const f=await createPiWorkerFixture({modelBudget:{maxModelCalls:10,maxTokens:200000}});
 try{
  const worker=f.start('pi-worker');await until(()=>worker.output.includes('worker_started'),'Worker ready');
@@ -23,10 +23,15 @@ try{
   const source=await f.call(root+'/evidence/'+taskId);
   assert.equal(source.evidence.taskId,taskId);assert.equal(source.source.type,'chapter');assert.equal(source.truncated,false);
   previews.push(source.source.text);
+  const outcome=proceduralOutcomeSchema.parse(await f.call(root+'/evidence/'+taskId+'/outcome'));
+  assert.equal(outcome.evidence.taskId,taskId);assert.equal(outcome.basis,'revision_observations');
+  assert(outcome.items.length<=20);assert(outcome.items.reduce((sum,item)=>sum+Buffer.byteLength(item.text),0)<=16384);
+
   assert(!JSON.stringify(source).includes('leaseToken'));
  }
  assert.deepEqual(previews.sort(),['林舟在北港等待。','林舟在南港整理旧信。'].sort());
  await f.call(root+'/evidence/'+ids[0],{user:{id:'other-author',email:'other@example.com'},status:404});
+ await f.call(root+'/evidence/'+ids[0]+'/outcome',{user:{id:'other-author',email:'other@example.com'},status:404});
 
  const candidate=proceduralRecordSchema.parse(await f.call(root,{method:'POST',key:'create-memory',status:201,body:{content:'PROCEDURAL_REVIEWED_RULE: 核对林舟的原文证据后再整理人物观察。',taskIds:[ids[0]]}}));
  assert.equal(candidate.status,'candidate');

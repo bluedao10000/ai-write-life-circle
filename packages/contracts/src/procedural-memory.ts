@@ -17,3 +17,12 @@ export const proceduralSourceSchema=z.object({
  ]),
  truncated:z.boolean(),
 }).strict();
+
+export const proceduralOutcomeSchema=z.object({
+ evidence:proceduralEvidenceSchema,
+ basis:z.enum(['task_result','revision_observations']),
+ version:z.number().int().nonnegative(),
+ items:z.array(z.object({id:z.string(),kind:z.enum(['knowledge_observation','review_finding','creative_proposal','plan_assessment']),status:z.string(),text:z.string(),epistemic:z.string().optional(),feedback:z.string().optional()}).strict()).max(20),
+ total:z.number().int().nonnegative(),
+ truncated:z.boolean(),
+}).strict();

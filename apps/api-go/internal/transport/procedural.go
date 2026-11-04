@@ -43,6 +43,11 @@ func handleProcedural(o Options, w http.ResponseWriter, r *http.Request, path st
 			write(w, status, value, "")
 		}
 	}
+	if len(parts) == 9 && parts[6] == "evidence" && parts[8] == "outcome" && r.Method == "GET" {
+		value, e := s.Tasks.MemoryOutcome(r.Context(), *actor, app.Project, parts[7])
+		respond(value, e, 200)
+		return true
+	}
 	if len(parts) == 8 && parts[6] == "evidence" && r.Method == "GET" {
 		value, e := s.Tasks.MemorySource(r.Context(), *actor, app.Project, parts[7])
 		respond(value, e, 200)

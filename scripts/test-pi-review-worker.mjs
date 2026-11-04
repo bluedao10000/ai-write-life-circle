@@ -9,7 +9,16 @@ async function ready(p,event){await until(()=>{if(p.exitCode!==null)throw Error(
 try{
  thinking=f.start('pi');await ready(thinking,'agent_started');const isolated=await f.call('/v1/agent-runtime');assert.equal(isolated.executors.review.ready,false);assert.equal(isolated.executors.knowledge.ready,false);assert.equal(isolated.executors.creative.ready,false);node=f.start('pi-worker');await ready(node,'worker_started');
  // Pi is the default and only background executor.
- let before=f.calls,r=await f.enqueue();await f.complete(r.runId);assert.equal(f.calls,before+1);
+ let before=f.calls,r=await f.enqueue();const reviewed=await f.complete(r.runId);assert.equal(f.calls,before+1);
+ const memoryBase='/v1/studio/books/review-fixture/procedural-memory/evidence';
+ const taskEvidence=(await f.call(memoryBase)).items.find(item=>item.kind==='review.execute');assert(taskEvidence);
+ const outcomePath=memoryBase+'/'+taskEvidence.taskId+'/outcome';
+ const outcome=await f.call(outcomePath);assert.equal(outcome.basis,'task_result');assert.equal(outcome.total,reviewed.findings.length);assert.deepEqual(outcome.items.map(item=>item.id).sort(),reviewed.findings.map(item=>item.findingId).sort());
+ assert(outcome.items.length>0);
+ await f.call('/v1/projects/review-fixture/reviews/'+r.runId+'/findings/'+reviewed.findings[0].findingId+'/feedback',{method:'POST',body:{choice:'false_positive',baseVersion:reviewed.version}});
+ const feedback=await f.call(outcomePath);assert(feedback.version>outcome.version);assert.equal(feedback.items.find(item=>item.id===reviewed.findings[0].findingId).feedback,'false_positive');
+ assert.equal(f.calls,before+1);
+
  for(const scenario of f.cases){await f.select(scenario);r=await f.enqueue();const done=await until(async()=>{const x=await f.get(r.runId);return !['queued','running'].includes(x.status)&&x},scenario.id);assert.equal(done.status,scenario.fake==='invalid'?'failed':'completed');assert.equal(done.findings.length,scenario.fake==='valid'?1:0);if(scenario.fake.startsWith('fake-'))assert.equal(done.rejectedCount,1)}
  assert.ok(f.requests.some(r=>r.stream===true),'Pi SDK must perform real streaming model normalization');
  const status=await f.call('/v1/agent-runtime');const spec=YAML.parse(await readFile(new URL('../harness/contracts/api-spec-v0.4.0-proposed.yaml',import.meta.url),'utf8'));const validate=new Ajv({strict:false}).compile({$ref:'#/components/schemas/AgentRuntimeStatus',components:spec.components});assert.ok(validate(status),JSON.stringify(validate.errors));for(const kind of ['review','knowledge','creative'])assert.equal(status.executors[kind].executorOwner,'pi');

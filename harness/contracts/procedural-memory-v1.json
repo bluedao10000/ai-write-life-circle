@@ -13,6 +13,62 @@
     }
   ],
   "paths": {
+    "/v1/studio/books/{bookId}/procedural-memory/evidence/{taskId}/outcome": {
+      "parameters": [
+        {
+          "name": "bookId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "taskId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "readProceduralOutcome",
+        "summary": "readProceduralOutcome",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/proceduralOutcome"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Author authentication required"
+          },
+          "404": {
+            "description": "Book or source unavailable"
+          },
+          "409": {
+            "description": "Version or lifecycle conflict"
+          },
+          "410": {
+            "description": "Memory deleted"
+          },
+          "422": {
+            "description": "Invalid input or insufficient evidence"
+          }
+        }
+      }
+    },
     "/v1/studio/books/{bookId}/procedural-memory/evidence/{taskId}": {
       "parameters": [
         {
@@ -646,6 +702,109 @@
         "required": [
           "baseVersion",
           "sources"
+        ],
+        "additionalProperties": false
+      },
+      "proceduralOutcome": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "evidence": {
+            "type": "object",
+            "properties": {
+              "taskId": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "strategyVersion": {
+                "type": "string"
+              },
+              "inputHash": {
+                "type": "string"
+              },
+              "completedAt": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "taskId",
+              "kind",
+              "strategyVersion",
+              "inputHash",
+              "completedAt"
+            ],
+            "additionalProperties": false
+          },
+          "basis": {
+            "type": "string",
+            "enum": [
+              "task_result",
+              "revision_observations"
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "items": {
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "knowledge_observation",
+                    "review_finding",
+                    "creative_proposal",
+                    "plan_assessment"
+                  ]
+                },
+                "status": {
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                },
+                "epistemic": {
+                  "type": "string"
+                },
+                "feedback": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "kind",
+                "status",
+                "text"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "evidence",
+          "basis",
+          "version",
+          "items",
+          "total",
+          "truncated"
         ],
         "additionalProperties": false
       },

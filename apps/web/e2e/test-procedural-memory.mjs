@@ -47,6 +47,14 @@ try {
   await page.getByRole('button', { name: `查看任务 ${evidence[0].taskId} 的原始来源`, exact: true }).click()
   await expect(page.getByRole('region', { name: '原始任务来源' }).getByText(preview.source.text, { exact: true })).toBeVisible()
   expect(f.calls).toBe(callsBeforePreview)
+  const outcome = await f.call(base + '/procedural-memory/evidence/' + evidence[0].taskId + '/outcome')
+  expect(outcome.basis).toBe('revision_observations')
+  await page.getByRole('button', { name: '查看关联结果', exact: true }).click()
+  const resultPanel = page.getByRole('region', { name: '任务关联结果', exact: true })
+  await expect(resultPanel).toBeVisible()
+  if (outcome.items.length) await expect(resultPanel.getByText(outcome.items[0].text, { exact: true })).toBeVisible()
+  else await expect(resultPanel.getByText('未保留可展示的关联结果。')).toBeVisible()
+  expect(f.calls).toBe(callsBeforePreview)
   const output = new URL('../../../.local/memory-ui/', import.meta.url)
   await mkdir(output, { recursive: true })
   await page.getByRole('region', { name: '原始任务来源' }).scrollIntoViewIfNeeded()
@@ -89,7 +97,7 @@ try {
   await expect(page.getByText('还没有操作经验。')).toBeVisible()
   expect((await f.call(base + '/procedural-memory')).items).toEqual([])
   expect(errors).toEqual([])
-  console.log('PASS: browser + Go + Pi Worker, real task receipts and original-source preview, create/merge/separate confirmation/reload/withdraw/delete, desktop and mobile. Synthetic provider only.')
+  console.log('PASS: browser + Go + Pi Worker, real task receipts, original-source and result previews, create/merge/separate confirmation/reload/withdraw/delete, desktop and mobile. Synthetic provider only.')
 } finally {
   await browser?.close()
   if (vite && vite.exitCode === null) { const exited = new Promise(resolve => vite.once('exit', resolve)); vite.kill('SIGTERM'); await exited }

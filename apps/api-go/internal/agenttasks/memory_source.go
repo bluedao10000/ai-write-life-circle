@@ -28,29 +28,39 @@ type MemorySourceContent struct {
 
 // MemorySource reads the primary chapter or captured discussion, not the full model request.
 func (s *Service) MemorySource(ctx context.Context, actor application.Actor, book, id string) (MemorySource, error) {
-	var out MemorySource
+	r, app, e := s.memoryRecord(ctx, actor, book, id)
+	if e != nil {
+		return MemorySource{}, e
+	}
+	return s.memorySource(ctx, app, r)
+}
+func (s *Service) memoryRecord(ctx context.Context, actor application.Actor, book, id string) (Record, *application.Service, error) {
 	if actor.Role != "author" {
-		return out, application.Fail(403, "AUTHOR_DECISION_REQUIRED", "Author identity required.")
+		return Record{}, nil, application.Fail(403, "AUTHOR_DECISION_REQUIRED", "Author identity required.")
 	}
 	app, e := s.Management.Resolve(actor, book)
 	if e != nil {
-		return out, e
+		return Record{}, nil, e
 	}
 	if e = ctx.Err(); e != nil {
-		return out, e
+		return Record{}, nil, e
 	}
 	st, e := s.load()
 	if e != nil {
-		return out, e
+		return Record{}, nil, e
 	}
 	r, ok := st.Tasks[id]
+	if !ok || r.Task.Author != actor.ID || r.Task.Book != book || !r.Finished || r.Outcome != "completed" || r.CompletedAt == "" || r.Task.InputHash == "" || r.Task.Strategy == "" {
+		return Record{}, nil, application.Fail(404, "MEMORY_SOURCE_UNAVAILABLE", "Original task source is unavailable.")
+	}
+	return r, app, nil
+}
+func (s *Service) memorySource(ctx context.Context, app *application.Service, r Record) (MemorySource, error) {
+	var out MemorySource
 	unavailable := func() (MemorySource, error) {
 		return MemorySource{}, application.Fail(404, "MEMORY_SOURCE_UNAVAILABLE", "Original task source is unavailable.")
 	}
-	if !ok || r.Task.Author != actor.ID || r.Task.Book != book || !r.Finished || r.Outcome != "completed" || r.CompletedAt == "" || r.Task.InputHash == "" || r.Task.Strategy == "" {
-		return unavailable()
-	}
-	out.Evidence = TaskEvidence{id, r.Task.Kind, r.Task.Strategy, r.Task.InputHash, r.CompletedAt}
+	out.Evidence = TaskEvidence{r.Task.ID, r.Task.Kind, r.Task.Strategy, r.Task.InputHash, r.CompletedAt}
 	if r.Task.Kind == "creative.organize" {
 		job := r.Creative.Claim.Job
 		turn, err := s.creative(app).Excerpt(ctx, job.TurnKey)
@@ -100,7 +110,7 @@ func (s *Service) MemorySource(ctx context.Context, actor application.Actor, boo
 		out.Source = MemorySourceContent{Type: "chapter", ChapterID: chapter, RevisionID: revision.ID, ContentHash: revision.Hash, Text: text}
 		out.Truncated = len(text) < len(revision.Markdown)
 	}
-	if e = ctx.Err(); e != nil {
+	if e := ctx.Err(); e != nil {
 		return MemorySource{}, e
 	}
 	return out, nil

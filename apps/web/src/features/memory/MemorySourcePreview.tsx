@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Btn } from '../../components/vnext/ui'
 import { proceduralMemoryApi as api, type MemorySource } from '../../services/api/proceduralMemoryApi'
+import MemoryOutcomePreview from './MemoryOutcomePreview'
 import { ApiProblemError } from '../../services/writerAgent'
 
 export default function MemorySourcePreview({ bookId, taskId }: { bookId: string; taskId: string }) {
@@ -34,6 +35,7 @@ export default function MemorySourcePreview({ bookId, taskId }: { bookId: string
         <p className="text-ink-3">{message.role === 'user' ? '作者' : '助手建议'}</p>
         <p className="whitespace-pre-wrap break-words">{message.text}</p>
       </div>)}
+      <MemoryOutcomePreview bookId={bookId} taskId={taskId} />
       {source.truncated && <p role="status" className="text-ink-3">来源较长，此处仅显示开头部分。</p>}
     </div>}
   </div>

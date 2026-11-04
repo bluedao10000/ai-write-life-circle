@@ -250,6 +250,18 @@ func TestKnowledgeLargeCandidatePreservesLegacyAllowance(t *testing.T) {
 	if e != nil || view.AssertionTotal != 110 {
 		t.Fatal(view.AssertionTotal, e)
 	}
+	result, e := s.MemoryOutcome(ctx, application.Actor{ID: task.Author, Role: "author"}, task.Book, task.ID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	bytes := 0
+	for _, item := range result.Items {
+		bytes += len(item.Text)
+	}
+	if !result.Truncated || result.Total != 110 || len(result.Items) > 20 || bytes != MemorySourceBytes {
+		t.Fatal("unbounded result projection", result.Total, len(result.Items), bytes)
+	}
+
 }
 
 // SEC-003: background claiming covers every author's books and runs each task
