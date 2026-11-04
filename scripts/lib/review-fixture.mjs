@@ -44,6 +44,9 @@ export async function createReviewFixture({modelBudget}={}) {
  if(request.stream){res.writeHead(200,{'Content-Type':'text/event-stream'});res.end('data: '+JSON.stringify({id:'knowledge',object:'chat.completion.chunk',model:request.model,choices:[{index:0,delta:{role:'assistant',content},finish_reason:'stop'}],...(selected==='usage-missing'?{}:{usage:{prompt_tokens:150,completion_tokens:100}})})+'\n\ndata: [DONE]\n\n');return}
  res.setHeader('Content-Type','application/json');res.end(JSON.stringify({choices:[{finish_reason:'stop',message:{content}}],usage:{prompt_tokens:150,completion_tokens:100}}));return
  }
+ if(!input?.sources&&mode==='memory-read'&&!request.messages.some(m=>m.role==='tool')){
+ res.writeHead(200,{'Content-Type':'text/event-stream'});res.end('data: '+JSON.stringify({id:'memory-tool',object:'chat.completion.chunk',model:request.model,choices:[{index:0,delta:{role:'assistant',tool_calls:[{index:0,id:'memory-call',type:'function',function:{name:'retrieve_memory',arguments:'{}'}}]},finish_reason:'tool_calls'}],usage:{prompt_tokens:20,completion_tokens:10}})+'\n\ndata: [DONE]\n\n');return
+ }
  if(!input?.sources){res.writeHead(200,{'Content-Type':'text/event-stream'});res.end('data: '+JSON.stringify({id:'thinking',object:'chat.completion.chunk',model:request.model,choices:[{index:0,delta:{role:'assistant',content:'合成思考回复'},finish_reason:'stop'}],usage:{prompt_tokens:20,completion_tokens:10}})+'\n\ndata: [DONE]\n\n');return}
     reviewCalls++
     const selectedMode = mode

@@ -23,3 +23,13 @@ Go 保持作者、作品、来源权限、确认/拒绝/撤销和删除权威。
 旧格式`through/summary`已定义来源为本Session连续前缀，下一次授权运行可直接派生来源ID并写入原检查点，无需模型调用。打开旧目录不修改或重新付费。新增字段可选，旧实现仍读取`through/summary`；回滚保留当前状态文件，不恢复旧费用或回执快照。Storage layout保持不变。
 
 验收覆盖45轮真实Pi对话压缩与重启、来源元数据持久化、旧格式启动零请求、正常执行补齐来源、来源替换/移除/状态失效及原消息保留。长期Episodic、Semantic、Procedural的统一适配、冲突/过期/整理审核和完整检索验收仍未完成。
+
+## Semantic与Episodic检索
+
+只读`retrieve_memory`工具同时要求`creative`和`knowledge` scope，只接受可选query，不接受作者、作品或路径参数。Pi Tool Gateway与Go私有RPC都检查权限，Go在I/O后再次校验授权。工具按当前会话作者和作品解析业务Service，直接读取Creative StoryContext和Knowledge Query；不保存独立副本。
+
+返回`schemaVersion=1`、bookId、records、可引用sources、truncated、omitted及unavailableLayers。每条record含id、layer、status、resource、version、versionResource、content和provenance。资产version引用`creative.asset`；提案和决定引用`creative.state`；原文观察引用`knowledge.state`。来源保留资产版本、原始消息或Chapter/Revision与引文位置。只有作者已接受资产标为confirmed，原文观察为observed，提案保留proposed/rejected，历史决定为episodic并保留applied/offered/undone。计划仍是意图，不能当作已发生的原文事件。
+
+Knowledge读取刷新来源状态，并校验引用Revision、内容标识和引文范围；退休、过期或不可读取的来源不进入结果。Creative沿用原状态的归档、替代、提案过期和来源删除过滤。检索按分组轮流填入，最多24条且受原工具结果字节限制；遗漏明确标记，可使用已有原始查询工具读取详情。Procedural尚未实现，显式列入unavailableLayers。Thinking Tool Schema Version升至2；恢复仍沿用现有重新授权与执行中断规则。
+
+无新持久格式或数据库。作者修改和版本冲突、撤销与确认继续由原Go接口处理。Go测试验证Revision替换后观察消失、资产归档后新Service不再返回、版本冲突拒绝、双scope、跨作品参数拒绝及有界输出。统一Memory Eval通过真实Thinking→Tool Gateway→Go RPC取得观察与来源；未进行语义质量或完整四层记忆验收。

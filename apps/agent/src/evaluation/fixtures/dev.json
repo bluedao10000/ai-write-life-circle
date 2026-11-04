@@ -1,5 +1,5 @@
 {
-  "version": "agent-eval-v5",
+  "version": "agent-eval-v6",
   "split": "dev",
   "synthetic": true,
   "tasks": [
@@ -641,6 +641,89 @@
           },
           {
             "metric": "timeoutRecorded",
+            "operator": "eq",
+            "value": true
+          }
+        ],
+        "forbidden": []
+      }
+    },
+    {
+      "taskId": "dev-knowledge-memory",
+      "category": "memory",
+      "capability": "knowledge",
+      "difficulty": "boundary",
+      "request": "林舟在北港整理旧信。",
+      "environment": {
+        "scenario": "knowledge-memory",
+        "fixture": "synthetic-v1",
+        "initialState": {}
+      },
+      "stoppingCriteria": {
+        "timeoutMs": 30000,
+        "maxTokens": 100000,
+        "maxModelCalls": 3,
+        "maxToolCalls": 1
+      },
+      "scorer": {
+        "deterministic": [
+          {
+            "metric": "completed",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "businessCommitted",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "provenanceValid",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "sourceUnchanged",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "canonAssets",
+            "operator": "eq",
+            "value": 0
+          },
+          {
+            "metric": "authorIsolated",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "entities",
+            "operator": "eq",
+            "value": 2
+          },
+          {
+            "metric": "assertions",
+            "operator": "eq",
+            "value": 2
+          },
+          {
+            "metric": "memoryToolCompleted",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "retrievedObservations",
+            "operator": "eq",
+            "value": 2
+          },
+          {
+            "metric": "retrievedConfirmed",
+            "operator": "eq",
+            "value": 0
+          },
+          {
+            "metric": "memoryProvenance",
             "operator": "eq",
             "value": true
           }

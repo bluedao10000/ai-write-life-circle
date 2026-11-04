@@ -235,6 +235,8 @@ func (s *Service) execute(ctx context.Context, rec Record, name string, args too
 		return nil, e
 	}
 	switch name {
+	case "retrieve_memory":
+		return s.retrieveMemory(ctx, rec, app, args)
 	case "read_chapter":
 		c, e := app.Source(args.Chapter)
 		if e != nil {

@@ -268,7 +268,7 @@ export class PiHost {
       const durable = await this.store.runtime(id);
       const conversation = await durable.harness.createConversation({ownership:{kind:"ownerless"}}, durableContext);
       s.durable = {conversationId: conversation.id};
-      s.execution = {governance:{runtimeVersion,definitionVersion:1,toolSchemaVersion:1,promptVersion:'thinking-v1',memorySchemaVersion:1},calls:0, turns:0, memoryCalls:0, spent:0, modelRequests:[]};
+      s.execution = {governance:{runtimeVersion,definitionVersion:1,toolSchemaVersion:2,promptVersion:'thinking-v1',memorySchemaVersion:1},calls:0, turns:0, memoryCalls:0, spent:0, modelRequests:[]};
       await this.event(s, { type: "message_started", messageId: mid }, false);
       traceRun(id,s.view.run,{input:0,output:0,charged:0,incomplete:false});
       active.session = conversation;
@@ -400,7 +400,7 @@ export class PiHost {
       () => active.abort.abort(new AgentError(run.stepType === "tool" ? "TOOL_TIMEOUT" : "DURATION_EXCEEDED")),
       limit.maxDurationMs,
     );
-    const governed=executionContext({recordAudit:record=>{(execution.audit??=[]).push(record)},executionId:run.runId,traceId:run.traceId,role:'thinking',sessionId:id,authorizationVersion:run.authorizationVersion??0,scopes:s.view.scopes,versions:{prompt:'thinking-v1',toolSchema:'story-tools-v1'},budget:{maxTokens:pool,maxModelCalls:limit.maxTurnsPerRequest+MAX_MEMORY_CALLS,maxToolCalls:limit.maxToolCalls},deadline:s.executionLease!.expiresAt,signal:active.abort.signal});
+    const governed=executionContext({recordAudit:record=>{(execution.audit??=[]).push(record)},executionId:run.runId,traceId:run.traceId,role:'thinking',sessionId:id,authorizationVersion:run.authorizationVersion??0,scopes:s.view.scopes,versions:{prompt:'thinking-v1',toolSchema:'story-tools-v2'},budget:{maxTokens:pool,maxModelCalls:limit.maxTurnsPerRequest+MAX_MEMORY_CALLS,maxToolCalls:limit.maxToolCalls},deadline:s.executionLease!.expiresAt,signal:active.abort.signal});
     const currentAuthorization={authorize:async()=>{
       alive();const grant=await authorize(this.config,capability,active.abort.signal);alive();
       if(grant.sessionId!==id||grant.authorId!==s.owner||grant.bookId!==s.view.bookId||(grant.authorizationVersion??0)!==(run.authorizationVersion??0)||modelIdentity(grant.model)!==modelIdentity(s.view.model)||canonicalJSON(grant.scopes)!==canonicalJSON(s.view.scopes))throw Error('AUTHORIZATION_REVOKED');

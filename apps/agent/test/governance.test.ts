@@ -11,6 +11,20 @@ import type {Config} from '../src/config.js';
 const context=(signal=new AbortController().signal)=>executionContext({executionId:'execution',traceId:'trace',role:'thinking',authorizationVersion:1,scopes:['creative'],deadline:Date.now()+10000,signal});
 const deferred=()=>{let resolve!:()=>void;const promise=new Promise<void>(r=>{resolve=r});return {promise,resolve}};
 
+test('unified memory tool requires both scopes and reauthorizes every execution',async()=>{
+ const config={model:{limits:{maxToolResultBytes:10000,maxDurationMs:5000}}} as Config;
+ for(const scopes of [[],['creative'],['knowledge']]){
+  assert.equal(tools(config,'session','fixture',new AbortController().signal,()=>{},()=>true,scopes).some(t=>t.name==='retrieve_memory'),false);
+ }
+ let authorized=0;
+ const tool=tools(config,'session','fixture',new AbortController().signal,()=>{},()=>true,['creative','knowledge'],undefined,{context:executionContext({...context(),scopes:['creative','knowledge']}),authority:{authorize:async()=>{authorized++;throw Error('AUTHORIZATION_REVOKED')}}}).find(t=>t.name==='retrieve_memory')!;
+ assert(tool);assert.equal(tool.replay,'safe');
+ await assert.rejects(tool.execute({query:'人物',bookId:'other'},{} as never,BACKGROUND_CONTEXT),/TOOL_EXECUTION_FAILED/);
+ assert.equal(authorized,0);
+ await assert.rejects(tool.execute({query:'人物'},{} as never,BACKGROUND_CONTEXT),/AUTHORIZATION_REVOKED/);
+ assert.equal(authorized,1);
+});
+
 test('model gate cancels actual HTTP transport on execution, caller and deadline cancellation',async()=>{
  for(const source of ['execution','request','options','deadline']){
   const entered=deferred();

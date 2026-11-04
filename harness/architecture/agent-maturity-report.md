@@ -129,3 +129,11 @@ Phase 2仍未完整验收：Thinking独立业务终态、故障轨迹、独立�
 旧格式按既有`through`前缀派生来源，无需付费重建；启动不发模型请求，下一次授权运行保存元数据。可选字段保持旧读取合同和layout=2，不引入新数据库；回滚只更换兼容该layout的代码，不覆盖状态及费用回执。
 
 验收：119项Agent测试、类型检查、lint和构建通过；包含45轮Pi压缩、重启后来源保持一致、真实Store旧格式启动零调用与正常执行补齐来源。Memory分类合成评测通过，覆盖来源完整性、来源失效及schema版本；语义召回仍未测量。长期三层记忆和完整生命周期尚未完成，Phase 3保持部分实现。
+
+### 统一长期记忆读取
+
+新增只读`retrieve_memory`，通过真实Thinking工具入口聚合Go的Creative设定/候选/决定与Knowledge有效观察。两端均要求creative+knowledge权限；数据直接来自原权威存储，保留来源、确认状态和版本所属资源。来源失效和归档即时反映到读取，记录数及返回字节有界，遗漏明确标记。Procedural保持未实现，不将空接口算作能力。新Run记录Tool Schema Version 2，无生产格式变更。
+
+验收：120项Agent测试通过，Go Thinking/Creative/Knowledge测试通过，类型检查、lint及构建通过。Memory分类2/2工程通过；新增案例由真实Go/Pi Thinking调用该工具，返回2条observed记录、0条confirmed记录和有效来源。共3次合成模型调用、1次工具调用，310 tokens。Go测试覆盖原文替换后失效、归档后重启读取为空、版本冲突、双scope与跨作品参数拒绝，以及输出容量边界。
+
+Phase 3剩余：Procedural记忆、统一冲突/过期/整理审核流程和完整召回/删除验收。Phase 2保留集、人工校准和其余故障/性能评测，以及Phase 4–6仍需继续实施。

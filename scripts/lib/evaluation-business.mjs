@@ -74,7 +74,9 @@ async function knowledge(fixture,task,result,wait,worker,children){
  const assertions=view.assertions.filter(a=>a.status==='current'),sources=assertions.flatMap(a=>a.sources);
  usage(result,[job]);
  result.metrics={completed:job.status==='completed',businessCommitted:job.status==='completed',entities:view.entities.length,assertions:assertions.length,provenanceValid:sources.length>0&&sources.every(s=>s.bookId===book.bookId&&s.revisionId===saved.revisionId&&task.request.includes(s.quote)),sourceUnchanged:after.headRevision.revisionId===saved.revisionId,canonAssets:(await fixture.call(base+'/creative/assets')).total,authorIsolated:await isolated(fixture,root),promptVersion:job.strategyVersion,model:job.model.model};
- result.trace.push({action:'go_knowledge_terminal_read',name:job.status});return result;
+ result.trace.push({action:'go_knowledge_terminal_read',name:job.status});
+ if(task.environment.scenario==='knowledge-memory')await memoryProbe(fixture,task,result,wait,children,base);
+ return result;
 }
 async function creative(fixture,task,result,wait,children){
  const pi=fixture.start('pi');children.push(pi);
@@ -116,4 +118,24 @@ async function knowledgeFault(fixture,task,result,wait,worker,children,root,save
  result.budgetExposure={tokens:view.budgetTokens,authority:'go'};
  result.metrics={actualSigkill:worker.signalCode==='SIGKILL',timeoutRecorded:jobs.some(j=>j.failureCode==='LLM_TIMEOUT'),unknownUsageRetained:view.budgetTokens>=before.budgetTokens&&view.budgetTokens>0,completedJobs:jobs.filter(j=>j.status==='completed').length,assertions:view.assertions.length,sourceUnchanged:(await fixture.call(chapter)).headRevision.revisionId===saved.revisionId,modelCalls:fixture.calls,model:jobs[0]?.model.model??null,promptVersion:jobs[0]?.strategyVersion??null};
  result.trace.push({action:'go_budget_and_jobs_read'});return result;
+}
+
+async function memoryProbe(fixture,task,result,wait,children,base){
+ const pi=fixture.start('pi');children.push(pi);
+ await wait(()=>{if(pi.exitCode!==null)throw Error('EVAL_THINKING_EXIT');return pi.output.includes('agent_started')});
+ await fetch(fixture.origin+'/control',{method:'POST',body:JSON.stringify({mode:'memory-read'})});
+ const model=await fixture.call(base+'/thinking/capabilities');
+ const session=await fixture.call(base+'/thinking/sessions',{method:'POST',status:201,body:{consent:true,model,scopes:['creative','knowledge']}});
+ const path=base+'/thinking/sessions/'+session.sessionId;
+ await fixture.call(path+'/messages',{method:'POST',status:202,body:{text:'检索记忆并区分原文观察与作者确认。'}});
+ const completed=await wait(async()=>{const state=await fixture.call(path);return state.status==='idle'&&state});
+ const memories=fixture.requests.flatMap(request=>request.messages.filter(m=>m.role==='tool').flatMap(message=>{try{const value=JSON.parse(message.content);return Array.isArray(value.records)?[value]:[]}catch{return []}}));
+ const memory=memories.at(-1);
+ result.metrics.memoryToolCompleted=completed.messages.at(-1)?.status==='completed';
+ result.metrics.retrievedObservations=memory?.records.filter(record=>record.resource==='knowledge.assertion'&&record.status==='observed').length??null;
+ result.metrics.retrievedConfirmed=memory?.records.filter(record=>record.status==='confirmed').length??null;
+ result.metrics.memoryProvenance=!!memory&&memory.records.length>0&&memory.records.every(record=>record.provenance&&record.versionResource);
+ result.toolCalls=new Set(fixture.requests.flatMap(request=>request.messages.filter(message=>message.role==='tool').map(message=>message.tool_call_id))).size;
+ if(result.chargedTokens!==null&&!completed.usage.incomplete){result.inputTokens+=completed.usage.input;result.outputTokens+=completed.usage.output;result.chargedTokens+=completed.usage.charged}else{result.inputTokens=null;result.outputTokens=null;result.chargedTokens=null}
+ result.trace.push({action:'go_memory_tool_result_observed'});
 }

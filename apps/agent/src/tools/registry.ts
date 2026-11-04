@@ -16,6 +16,7 @@ import {
 } from "@writer-agent/contracts";
 import type { Config } from "../config.js";
 export const storyNames = [
+  "retrieve_memory",
   "search_knowledge",
   "read_chapter",
   "get_entity",
@@ -53,6 +54,7 @@ const creativeNames = new Set<string>([
   "update_discussion_focus",
 ]);
 const descriptions: Partial<Record<(typeof storyNames)[number], string>> = {
+  retrieve_memory: "Retrieve current semantic memory and episodic decisions across author settings and manuscript observations. Requires creative and knowledge scopes. Records carry original resources, versions and provenance; observed/proposed are never confirmed canon. Procedural memory is not available.",
   list_creative_assets: "Author's creative assets (optional kind, query). accepted=confirmed, draft=draft; plans are intentions.",
   get_creative_asset: "One creative asset by assetId, with links.",
   list_creative_proposals: "UNCONFIRMED AI proposals awaiting review; never canon.",
@@ -95,6 +97,7 @@ export function tools(
   const uncertain = new Set<string>();
   const id128 = Type.String({ maxLength: 128 });
   const narrow: Record<string, ReturnType<typeof Type.Object>> = {
+    retrieve_memory: Type.Object({query: Type.Optional(Type.String({maxLength:256}))},{additionalProperties:false}),
     list_creative_assets: Type.Object({ query: Type.Optional(Type.String({ maxLength: 256 })), kind: Type.Optional(Type.String({ maxLength: 40 })) }, { additionalProperties: false }),
     get_creative_asset: Type.Object({ assetId: id128 }, { additionalProperties: false }),
     get_writing_context: Type.Object({ chapterId: id128 }, { additionalProperties: false }),
@@ -118,7 +121,7 @@ export function tools(
     },
     { additionalProperties: false },
   );
-  const granted = storyNames.filter((name) => (!mutationNames.has(name) || (execution && (name === "update_discussion_focus" || (name === "record_story_changes" ? execution.dialogueRecording : !execution.dialogueRecording)))) && scopes.includes(creativeNames.has(name) ? "creative" : name === "get_author_notes" ? "notes" : ["read_chapter", "find_related_chapters"].includes(name) ? "chapters" : "knowledge"));
+  const granted = storyNames.filter((name) => (name!=="retrieve_memory"||scopes.includes("creative")) && (!mutationNames.has(name) || (execution && (name === "update_discussion_focus" || (name === "record_story_changes" ? execution.dialogueRecording : !execution.dialogueRecording)))) && scopes.includes(creativeNames.has(name) ? "creative" : name === "get_author_notes" ? "notes" : ["read_chapter", "find_related_chapters"].includes(name) ? "chapters" : "knowledge"));
   const registrations:ToolRegistration[] = [
     ...granted.map(
       (name) =>
@@ -129,7 +132,7 @@ export function tools(
           description:
             descriptions[name] ??
             `Read-only author-scoped Story Tool: ${name}. No paths, bookId or authorId accepted. Chapter windows are limited; follow truncated/totalUTF16 to retrieve more.`,
-          parameters: name in mutations ? mutations[name as keyof typeof mutations] : creativeNames.has(name) ? (narrow[name] ?? empty) : parameters,
+          parameters: name in mutations ? mutations[name as keyof typeof mutations] : (creativeNames.has(name)||name==="retrieve_memory") ? (narrow[name] ?? empty) : parameters,
           async execute(args, _api, context) {
             const operationSignal = context.abortSignal ? AbortSignal.any([signal, context.abortSignal]) : signal;
             operationSignal.throwIfAborted();
@@ -259,7 +262,7 @@ export function tools(
   ];
   const context=governance?.context??executionContext({executionId:execution?.runId??id,traceId:execution?.runId??id,role:'thinking',sessionId:id,authorizationVersion:0,scopes,deadline:Date.now()+config.model.limits.maxDurationMs,signal});
   const authority=governance?.authority??{authorize:async()=>{const grant=await authorize(config,capability,signal);if(grant.sessionId!==id||scopes.some(scope=>!grant.scopes.includes(scope as typeof grant.scopes[number])))throw Error('AUTHORIZATION_REVOKED')}};
-  return registrations.map(tool=>governTool(tool,{name:tool.name,risk:mutationNames.has(tool.name)?'write':tool.name==='request_turn_organize'?'candidate':'read',replay:tool.replay??'unsafe',requiredScopes:tool.name==='load_analysis_skill'?[]:[creativeNames.has(tool.name)?'creative':tool.name==='get_author_notes'?'notes':['read_chapter','find_related_chapters'].includes(tool.name)?'chapters':'knowledge'],maxInputBytes:64*1024,maxOutputBytes:config.model.limits.maxToolResultBytes,timeoutMs:5000,idempotencyRequired:mutationNames.has(tool.name)},context,authority));
+  return registrations.map(tool=>governTool(tool,{name:tool.name,risk:mutationNames.has(tool.name)?'write':tool.name==='request_turn_organize'?'candidate':'read',replay:tool.replay??'unsafe',requiredScopes:tool.name==='retrieve_memory'?['creative','knowledge']:tool.name==='load_analysis_skill'?[]:[creativeNames.has(tool.name)?'creative':tool.name==='get_author_notes'?'notes':['read_chapter','find_related_chapters'].includes(tool.name)?'chapters':'knowledge'],maxInputBytes:64*1024,maxOutputBytes:config.model.limits.maxToolResultBytes,timeoutMs:5000,idempotencyRequired:mutationNames.has(tool.name)},context,authority));
 }
 const toolText = (text: string, details: Record<string, JsonValue> = {}) => ({output:[{type:"text" as const,text}],details});
 const feedback = (code: string, message: string, extra: Record<string, unknown> = {}) => toolText(JSON.stringify({ok:false,code,message,...extra}), {recoverable:true,code});
