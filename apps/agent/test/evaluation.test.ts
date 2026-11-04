@@ -53,3 +53,17 @@ test('memory and creative business graders require provenance, author isolation 
   }
  }
 });
+
+test('unknown usage requires a bounded Go exposure and remains unmeasured',async()=>{
+ const task=data.tasks[0]!;
+ const unknown={...observation,inputTokens:null,outputTokens:null,chargedTokens:null};
+ for(const tokens of [0,-1,Infinity,task.stoppingCriteria.maxTokens+1]){
+  const run=await runEvaluation([task],async()=>({...unknown,budgetExposure:{tokens,authority:'go'}}));
+  assert.equal(run.results[0]!.passed,false);
+ }
+ const run=await runEvaluation([task],async()=>({...unknown,budgetExposure:{tokens:1000,authority:'go'}}));
+ assert.equal(run.results[0]!.passed,true);
+ assert.equal(run.results[0]!.observation?.chargedTokens,null);
+ assert.equal(run.metrics.tokenMeasuredTasks,0);
+ assert.equal(run.metrics.tokensPerSuccessfulTask,null);
+});

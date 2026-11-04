@@ -103,3 +103,11 @@ Knowledge使用1次模型调用，Go记录150输入/100输出tokens。Creative�
 本地验收：112项Agent测试通过，类型检查、lint及构建通过；完整dev评测13/13工程通过，共10次模型调用、1次工具尝试。评分器测试证明来源缺失、作者隔离失败、正式资产自动增加或原稿改变都会使案例失败。报告仍位于`.local/evals/agent/dev-all.json`，未提交或远程发布。无生产数据格式变更。
 
 Phase 2仍未完整验收：Thinking独立业务终态、故障轨迹、独立红队/记忆数据集、Judge及人工校准、完整版本和性能报告尚待完成。Creative案例涵盖Thinking回复链路，但不替代Thinking取消与恢复的专门评测。
+
+### Worker故障评测
+
+开发集`agent-eval-v4`新增Knowledge SIGKILL与Provider超时案例。SIGKILL在模型请求已发出后执行，暂停业务域并启动新Worker，等待Provider迟到响应后确认Go没有完成任务、没有生成观察、原稿不变、没有再次调用模型。超时案例读取Go的`LLM_TIMEOUT`回执，验证同样的预算与副作用约束。两项均只有1次模型调用，usage未知且不记为零；Go保留的token exposure独立记入观察，用于验证预算上限，不作为已知消耗。
+
+本地验收：113项Agent测试通过，类型检查、lint及构建通过；可靠性分类4/4工程通过。报告`.local/evals/agent/dev-reliability.json`含真实进程故障轨迹和Go预算读数。评分器拒绝零、负数、非有限数和超预算的未知费用覆盖。没有运行真实付费模型，也没有更改生产格式或部署代码。
+
+后续仍需Thinking的取消/恢复、其他指定故障的数据集适配、Judge与人工校准、独立安全与记忆评测，以及版本/性能报告；现有单项故障证据不等于完整可靠性验收。

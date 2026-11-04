@@ -25,7 +25,7 @@ export async function executeEvaluation(task:EvaluationTask,signal:AbortSignal):
 }
 async function execute(task:EvaluationTask,signal:AbortSignal,result:Observation):Promise<Observation>{
  signal.throwIfAborted();
- if(task.environment.scenario.startsWith('review-')||task.environment.scenario.endsWith('-business')){
+ if(task.environment.scenario.startsWith('review-')||task.environment.scenario.startsWith('knowledge-')||task.environment.scenario.endsWith('-business')){
   const modulePath=new URL('../../../../scripts/lib/evaluation-business.mjs',import.meta.url).href;
   const {executeBusinessEvaluation}=await import(modulePath) as {executeBusinessEvaluation:(task:EvaluationTask,signal:AbortSignal,result:Observation)=>Promise<Observation>};
   return executeBusinessEvaluation(task,signal,result);

@@ -23,3 +23,5 @@ Dataset 有独立版本与 split，五类 task-success/reliability/memory/safety
 CI执行合成dev数据，不调用真实Provider。Review fixture按评测调用数与token上限拒绝超额输出，失败或取消后的未知usage不记为零。进程在每个案例结束或取消后关闭，临时目录随fixture回收。报告仅写入本地`.local/evals/agent/`，不自动提交。Judge、其他业务终态与完整故障评测仍在后续范围。具体证据和剩余验收见 [成熟度报告](agent-maturity-report.md)。
 
 Knowledge业务案例从实际保存的Revision执行提取，检查Go中的实体、观察、来源Revision、原稿版本和正式资产数量。Creative业务案例启动Thinking会话后由Worker整理，检查Go中的待确认提案、作者消息证据及正式资产数量。两者以第二作者身份请求同一资源，要求404。Creative usage汇总Thinking响应与Go持久任务usage；缺少任一usage时总量保持未知。模型输出仍由本地fixture提供，来源与隔离结果属于工程验收。
+
+可靠性案例在Knowledge模型请求发出后对Worker执行SIGKILL，暂停该业务域并重启Worker，等待本地Provider完成迟到响应后读取Go任务、预算和观察；另一个案例由真实请求超时触发Go故障回执。每日任务预算限制为1，禁止评测中的自动重试扩大调用。未知usage保留null；只有Go记录的正整数token exposure在案例预算内时，才允许预算检查通过。该exposure不是已知消耗，不计入已测token指标。SIGKILL案例验证暂停后的安全重启，不将其描述为原任务自动恢复。

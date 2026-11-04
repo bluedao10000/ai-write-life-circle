@@ -18,7 +18,7 @@ export async function executeBusinessEvaluation(task,signal,result){
   const sources=await fixture.sourceBytes();
   const worker=fixture.start('pi-worker');children.push(worker);
   await wait(()=>{if(worker.exitCode!==null)throw Error('EVAL_WORKER_EXIT');return worker.output.includes('worker_started')});
-  if(task.capability==='knowledge')return await knowledge(fixture,task,result,wait);
+  if(task.capability==='knowledge')return await knowledge(fixture,task,result,wait,worker,children);
   if(task.capability==='creative')return await creative(fixture,task,result,wait,children);
   if(task.environment.scenario==='review-receipt')fixture.dropCompletion();
   const run=await fixture.enqueue();result.trace.push({action:'go_accepted'});
@@ -58,14 +58,17 @@ async function isolated(fixture,path){
  await fixture.call(path,{user:{id:'other-eval-author',email:'other-eval@example.com'},status:404});
  return true;
 }
-async function knowledge(fixture,task,result,wait){
+async function knowledge(fixture,task,result,wait,worker,children){
  const {book,base}=await createBook(fixture,task),root=base+'/knowledge';
  await fixture.call(base+'/creative/settings/pause',{method:'POST',body:{}});
  const chapter=`/v1/projects/${book.bookId}/chapters/${book.chapters[0].chapterId}`;
  const before=await fixture.call(chapter);
  const saved=await fixture.call(chapter+'/revisions',{method:'POST',status:201,body:{baseRevisionId:before.headRevision.revisionId,markdown:task.request}});
+ const fault=task.environment.scenario==='knowledge-crash'||task.environment.scenario==='knowledge-timeout';
+ if(fault)await fetch(fixture.origin+'/control',{method:'POST',body:JSON.stringify({mode:task.environment.scenario==='knowledge-crash'?'knowledge-slow':'knowledge-timeout'})});
  const page=await fixture.call(root);
  await fixture.call(root+'/enable',{method:'POST',body:{baseVersion:page.version,consent:true,model:page.model,dailyTokenBudget:task.stoppingCriteria.maxTokens,dailyJobBudget:1}});
+ if(fault)return knowledgeFault(fixture,task,result,wait,worker,children,root,saved,chapter);
  const job=await wait(async()=>{const {items}=await fixture.call(root+'/jobs');return items.find(j=>j.revisionId===saved.revisionId&&['completed','failed'].includes(j.status))});
  const view=await fixture.call(root),after=await fixture.call(chapter);
  const assertions=view.assertions.filter(a=>a.status==='current'),sources=assertions.flatMap(a=>a.sources);
@@ -91,4 +94,26 @@ async function creative(fixture,task,result,wait,children){
  if(result.chargedTokens!==null&&!thinking.usage.incomplete){result.inputTokens+=thinking.usage.input;result.outputTokens+=thinking.usage.output;result.chargedTokens+=thinking.usage.charged}else{result.inputTokens=null;result.outputTokens=null;result.chargedTokens=null}
  result.metrics={completed:turn.status==='organized',businessCommitted:turn.status==='organized',proposals:proposals.items.length,provenanceValid:proposals.items.length>0&&proposals.items.every(p=>p.source.messageId===messageId&&p.evidence.every(e=>e.role==='user'&&task.request.includes(e.quote))),canonAssets:(await fixture.call(root+'/assets')).total,sourceUnchanged:(await fixture.call(chapter)).headRevision.revisionId===before.headRevision.revisionId,authorIsolated:await isolated(fixture,root),promptVersion:jobs[0]?.strategyVersion??null,model:jobs[0]?.model.model??null};
  result.trace.push({action:'go_creative_terminal_read',name:turn.status});return result;
+}
+
+async function knowledgeFault(fixture,task,result,wait,worker,children,root,saved,chapter){
+ await wait(()=>fixture.calls===1);
+ const before=await fixture.call(root);
+ if(task.environment.scenario==='knowledge-crash'){
+  await fixture.stop(worker,'SIGKILL');
+  result.trace.push({action:'worker_sigkill'});
+  await fixture.call(root+'/pause',{method:'POST',body:{baseVersion:(await fixture.call(root)).version}});
+  const replacement=fixture.start('pi-worker');children.push(replacement);
+  await wait(()=>{if(replacement.exitCode!==null)throw Error('EVAL_WORKER_EXIT');return replacement.output.includes('worker_started')});
+  result.trace.push({action:'worker_restarted_with_domain_paused'});
+  await wait(()=>fixture.knowledgeResponses===1);
+ }else{
+  await wait(async()=>{const {items}=await fixture.call(root+'/jobs');return items.some(j=>j.revisionId===saved.revisionId&&j.failureCode==='LLM_TIMEOUT')});
+  result.trace.push({action:'provider_timeout_reported'});
+ }
+ const view=await fixture.call(root),jobs=(await fixture.call(root+'/jobs')).items;
+ result.inputTokens=null;result.outputTokens=null;result.chargedTokens=null;
+ result.budgetExposure={tokens:view.budgetTokens,authority:'go'};
+ result.metrics={actualSigkill:worker.signalCode==='SIGKILL',timeoutRecorded:jobs.some(j=>j.failureCode==='LLM_TIMEOUT'),unknownUsageRetained:view.budgetTokens>=before.budgetTokens&&view.budgetTokens>0,completedJobs:jobs.filter(j=>j.status==='completed').length,assertions:view.assertions.length,sourceUnchanged:(await fixture.call(chapter)).headRevision.revisionId===saved.revisionId,modelCalls:fixture.calls,model:jobs[0]?.model.model??null,promptVersion:jobs[0]?.strategyVersion??null};
+ result.trace.push({action:'go_budget_and_jobs_read'});return result;
 }

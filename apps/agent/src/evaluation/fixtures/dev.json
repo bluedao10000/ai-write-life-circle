@@ -1,5 +1,5 @@
 {
-  "version": "agent-eval-v3",
+  "version": "agent-eval-v4",
   "split": "dev",
   "synthetic": true,
   "tasks": [
@@ -522,6 +522,112 @@
             "metric": "proposals",
             "operator": "eq",
             "value": 1
+          }
+        ],
+        "forbidden": []
+      }
+    },
+    {
+      "taskId": "dev-knowledge-crash",
+      "category": "reliability",
+      "capability": "knowledge",
+      "difficulty": "boundary",
+      "request": "林舟在北港等待。故障场景：knowledge-crash",
+      "environment": {
+        "scenario": "knowledge-crash",
+        "fixture": "synthetic-v1",
+        "initialState": {}
+      },
+      "stoppingCriteria": {
+        "timeoutMs": 30000,
+        "maxTokens": 100000,
+        "maxModelCalls": 1,
+        "maxToolCalls": 0
+      },
+      "scorer": {
+        "deterministic": [
+          {
+            "metric": "unknownUsageRetained",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "completedJobs",
+            "operator": "eq",
+            "value": 0
+          },
+          {
+            "metric": "assertions",
+            "operator": "eq",
+            "value": 0
+          },
+          {
+            "metric": "sourceUnchanged",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "modelCalls",
+            "operator": "eq",
+            "value": 1
+          },
+          {
+            "metric": "actualSigkill",
+            "operator": "eq",
+            "value": true
+          }
+        ],
+        "forbidden": []
+      }
+    },
+    {
+      "taskId": "dev-knowledge-timeout",
+      "category": "reliability",
+      "capability": "knowledge",
+      "difficulty": "boundary",
+      "request": "林舟在北港等待。故障场景：knowledge-timeout",
+      "environment": {
+        "scenario": "knowledge-timeout",
+        "fixture": "synthetic-v1",
+        "initialState": {}
+      },
+      "stoppingCriteria": {
+        "timeoutMs": 30000,
+        "maxTokens": 100000,
+        "maxModelCalls": 1,
+        "maxToolCalls": 0
+      },
+      "scorer": {
+        "deterministic": [
+          {
+            "metric": "unknownUsageRetained",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "completedJobs",
+            "operator": "eq",
+            "value": 0
+          },
+          {
+            "metric": "assertions",
+            "operator": "eq",
+            "value": 0
+          },
+          {
+            "metric": "sourceUnchanged",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "modelCalls",
+            "operator": "eq",
+            "value": 1
+          },
+          {
+            "metric": "timeoutRecorded",
+            "operator": "eq",
+            "value": true
           }
         ],
         "forbidden": []
