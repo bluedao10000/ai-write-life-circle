@@ -1,5 +1,5 @@
 {
-  "version": "agent-eval-v11",
+  "version": "agent-eval-v12",
   "split": "dev",
   "synthetic": true,
   "tasks": [
@@ -726,6 +726,11 @@
             "metric": "memoryProvenance",
             "operator": "eq",
             "value": true
+          },
+          {
+            "metric": "memoryLatencyObserved",
+            "operator": "eq",
+            "value": true
           }
         ],
         "forbidden": []
@@ -797,6 +802,11 @@
           },
           {
             "metric": "authorIsolated",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "memoryLatencyObserved",
             "operator": "eq",
             "value": true
           }
@@ -1493,6 +1503,16 @@
             "metric": "secondRetrievalComplete",
             "operator": "eq",
             "value": true
+          },
+          {
+            "metric": "firstLatencyObserved",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "secondLatencyObserved",
+            "operator": "eq",
+            "value": true
           }
         ],
         "forbidden": []
@@ -1589,6 +1609,16 @@
           },
           {
             "metric": "secondRetrievalComplete",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "firstLatencyObserved",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "secondLatencyObserved",
             "operator": "eq",
             "value": true
           }
@@ -1697,6 +1727,16 @@
           },
           {
             "metric": "secondRetrievalComplete",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "firstLatencyObserved",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "secondLatencyObserved",
             "operator": "eq",
             "value": true
           }

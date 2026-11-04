@@ -34,13 +34,15 @@ export function assertCurrent(context:ExecutionContext){
  if(Date.now()>=context.deadline)throw Error('DURATION_EXCEEDED');
 }
 export type AuditAction='authorized'|'denied'|'reserved'|'model_started'|'model_finished'|'tool_started'|'tool_finished'|'failed';
-export type AuditRecord={action:AuditAction;timestamp:string;modelRequestId?:string};
+export type ToolAuditDetails={toolName?:string;durationMs?:number};
+export type AuditRecord=ToolAuditDetails&{action:AuditAction;timestamp:string;modelRequestId?:string};
 const counts:Partial<Record<`${AgentRole}:${AuditAction}`,number>>={};
 /** Only fixed metadata enters logs; payloads, credentials and arbitrary errors are excluded. */
-export function audit(context:ExecutionContext,action:AuditAction){
- context.recordAudit?.({action,timestamp:new Date().toISOString(),...(context.modelRequestId?{modelRequestId:context.modelRequestId}:{})});
+export function audit(context:ExecutionContext,action:AuditAction,details:ToolAuditDetails={}){
+ const timing={...(details.toolName?{toolName:details.toolName}:{}),...(typeof details.durationMs==='number'&&Number.isFinite(details.durationMs)&&details.durationMs>=0?{durationMs:details.durationMs}:{})};
+ context.recordAudit?.({...timing,action,timestamp:new Date().toISOString(),...(context.modelRequestId?{modelRequestId:context.modelRequestId}:{})});
  const key=`${context.role}:${action}` as const;counts[key]=(counts[key]??0)+1;
- console.log(JSON.stringify({event:'agent_governance',runtimeVersion,definitionVersion:definition(context.role).version,versions:context.versions,executionId:context.executionId,traceId:context.traceId,taskId:context.taskId,modelRequestId:context.modelRequestId,executorEpoch:context.executorEpoch,sessionId:context.sessionId,role:context.role,authorizationVersion:context.authorizationVersion,action,timestamp:new Date().toISOString()}));
+ console.log(JSON.stringify({event:'agent_governance',...timing,runtimeVersion,definitionVersion:definition(context.role).version,versions:context.versions,executionId:context.executionId,traceId:context.traceId,taskId:context.taskId,modelRequestId:context.modelRequestId,executorEpoch:context.executorEpoch,sessionId:context.sessionId,role:context.role,authorizationVersion:context.authorizationVersion,action,timestamp:new Date().toISOString()}));
 }
 export const governanceMetrics=()=>({...counts});
 export interface AuthorizationManager {authorize():Promise<void>}

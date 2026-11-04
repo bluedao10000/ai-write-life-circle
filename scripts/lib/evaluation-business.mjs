@@ -153,6 +153,9 @@ async function memoryProbe(fixture,task,result,wait,children,base,start=true){
  result.metrics.memoryProvenance=!!memory&&memory.records.length>0&&memory.records.every(record=>record.provenance&&record.versionResource);
  result.toolCalls+=new Set(probeRequests.flatMap(request=>request.messages.filter(message=>message.role==='tool').map(message=>message.tool_call_id))).size;
  if(result.chargedTokens!==null&&!completed.usage.incomplete){result.inputTokens+=completed.usage.input;result.outputTokens+=completed.usage.output;result.chargedTokens+=completed.usage.charged}else{result.inputTokens=null;result.outputTokens=null;result.chargedTokens=null}
+ const observations=children.flatMap(child=>(child.output??'').split('\n').flatMap(line=>{try{const record=JSON.parse(line);return record.event==='agent_governance'&&record.sessionId===session.sessionId&&record.toolName==='retrieve_memory'&&record.action==='tool_finished'&&Number.isFinite(record.durationMs)&&record.durationMs>=0?[record.durationMs]:[]}catch{return []}}));
+ (result.timings??={memoryRetrievalMs:[]}).memoryRetrievalMs.push(...observations);
+ result.metrics.memoryLatencyObserved=observations.length===1;
  result.trace.push({action:'go_memory_tool_result_observed'});
  return memory;
 }
@@ -184,7 +187,7 @@ async function procedural(fixture,task,result,wait,children){
  const rule=records?.find(record=>record.id===candidate.id);
  result.metrics={...result.metrics,
   independentEvidence:evidence.length===2&&evidence[0].inputHash!==evidence[1].inputHash&&evidence.every(e=>e.kind===evidence[0].kind&&e.strategyVersion===evidence[0].strategyVersion),
-  firstProbeCompleted:result.metrics.memoryToolCompleted,
+  firstProbeCompleted:result.metrics.memoryToolCompleted,firstLatencyObserved:result.metrics.memoryLatencyObserved,
   confirmedRetrieved:records?.length===1&&!!rule,
   exactRuleRetrieved:rule?.content?.text===input.content,
   provenanceValid:rule?.provenance?.length===2&&new Set(rule.provenance.map(source=>source.taskId)).size===2&&rule.provenance.every(source=>evidence.some(original=>original.taskId===source.taskId&&original.kind===source.kind&&original.strategyVersion===source.strategyVersion&&original.inputHash===source.inputHash))&&rule.version===confirmed.version&&rule.versionResource==='procedural.rule',
@@ -199,6 +202,7 @@ async function procedural(fixture,task,result,wait,children){
  result.metrics.authoritativeUnavailable=expiring?stored?.unavailableReason==='expired'&&!stored.available:task.environment.scenario==='procedural-revoke'?stored?.status==='rejected'&&!stored.available:!stored;
  const second=await memoryProbe(fixture,task,result,wait,children,base,false);
  result.metrics.secondProbeCompleted=result.metrics.memoryToolCompleted;
+ result.metrics.secondLatencyObserved=result.metrics.memoryLatencyObserved;
  result.metrics.secondRetrievalComplete=!!second&&!second.truncated&&second.omitted===0;
  result.metrics.invalidRulesRetrieved=second?second.records.filter(record=>record.layer==='procedural').length:null;
  result.metrics.canonAssets=(await fixture.call(base+'/creative/assets')).total;

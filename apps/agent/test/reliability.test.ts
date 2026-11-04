@@ -161,6 +161,10 @@ test("a tool body stalled after headers reaches a tool timeout without another m
  const f=await fixture({scopes:["knowledge"],duration:1000});try{
   f.mode("toolhang");await f.send();const run=f.host.get(f.id).view.run!;
   assert.equal(f.toolCalls,1);assert.equal(f.calls,1);assert.equal(run.status,"failed");assert.equal(run.failure?.code,"TOOL_TIMEOUT");
+  const timing=f.host.store.state(f.id)!.execution!.audit?.find(record=>record.action==='failed'&&record.toolName==='search_knowledge');
+  assert(timing);assert(Number.isFinite(timing.durationMs));assert(timing.durationMs!>0);
+  await f.restart();
+  assert.deepEqual(f.host.store.state(f.id)!.execution!.audit?.find(record=>record.action==='failed'&&record.toolName==='search_knowledge'),timing);
  }finally{await f.close()}
 });
 

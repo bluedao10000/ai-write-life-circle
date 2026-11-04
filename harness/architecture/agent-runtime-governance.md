@@ -61,3 +61,9 @@ Thinking的版本和白名单审计记录加入原 `RunExecution`，随业务检
 保留原health响应，新增runtime字段；新增同服务令牌保护的liveness/readiness/diagnostics路径。诊断仅返回固定字段、有限标签的计数和组件状态，不含会话ID、正文、凭证或任意错误文本。失败和恢复计数来自Store内已有运行状态，投影重放后重新派生；进程累计指标明确标为process，不作为跨重启账本。Worker仍以Go现有heartbeat/status为权威，后续聚合不引入第二心跳服务。
 
 生产入口仍在Store初始化成功后监听端口，启动失败直接退出；liveness不是迁移期间的进度接口。`--healthcheck`使用readiness。unpublishedSessions表示已观察到的提交后发布失败，不统计正在正常投影的短暂提交。
+
+## 工具执行耗时
+
+Tool Gateway使用单调时钟记录每次调用的耗时。tool_started包含注册工具名，tool_finished/failed包含工具名与durationMs；计时从进入网关开始，包含参数校验、授权、实际执行和输出校验，不包含此前的模型响应等待。字段加入原RunExecution审计及关联日志，随原检查点持久化，不建立独立统计权威。工具名取注册定义，不取模型参数；审计仍不记录输入、输出、错误正文或凭证。
+
+新增字段可选，旧审计继续可读。代码回滚忽略这些元数据，保留原任务、费用和回执。重启回归验证工具超时的耗时记录持久保留。当前不提供跨进程历史聚合或生产延迟SLO。

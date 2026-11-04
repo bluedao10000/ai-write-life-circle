@@ -43,3 +43,9 @@ Knowledge业务案例从实际保存的Revision执行提取，检查Go中的实�
 `agent-eval-v11`新增procedural-revoke、procedural-expiry和procedural-delete三个memory类dev样本，复用真实Go/Pi业务适配器。每项最多6次合成模型调用、2次工具调用和45秒，费用记录读取原Knowledge任务与Thinking会话usage。自然到期通过公开expiresAt与实际时钟验证，不修改生产状态时间。
 
 评分要求失效前真实读到精确规则与来源，失效后在Go重启与新会话中读到完整、未截断结果；空观察或缺失工具结果不算成功。未确认候选、跨作者访问、Canon变更和失效规则进入结果均不通过。删除还要求持久正文清除与旧请求重放拒绝。报告保留本地，不作为真实模型质量或held-out验收。
+
+## Memory Retrieval延迟
+
+`agent-eval-v12`的业务Memory探测从真实Thinking进程的治理日志中按本次sessionId、retrieve_memory和tool_finished取耗时。每次探测要求恰有一个有效样本；原始样本保存在Observation.timings.memoryRetrievalMs，报告按调用汇总samples/P50/P95。整项任务耗时仍单独统计，不能将模型等待或测试准备时间称为检索延迟。
+
+没有观察值时样本数为0、百分位为null；非有限数与负数不参与统计。该统计覆盖Tool Gateway的授权与校验、Go读取及原业务检查点成本，不是数据库查询的独立耗时。合成小规模样本用于可重复测量，不构成生产负载基准。

@@ -9,4 +9,4 @@ export const evaluationTaskSchema=z.object({
 }).strict();
 export type EvaluationTask=z.infer<typeof evaluationTaskSchema>;
 export type Category=typeof categories[number];
-export type Observation={budgetExposure?:{tokens:number;authority:'go'|'thinking-durable'};metrics:Record<string,number|string|boolean|null>;trace:{action:string;name?:string}[];inputTokens:number|null;outputTokens:number|null;chargedTokens:number|null;modelCalls:number;toolCalls:number};
+export type Observation={timings?:{memoryRetrievalMs:number[]};budgetExposure?:{tokens:number;authority:'go'|'thinking-durable'};metrics:Record<string,number|string|boolean|null>;trace:{action:string;name?:string}[];inputTokens:number|null;outputTokens:number|null;chargedTokens:number|null;modelCalls:number;toolCalls:number};

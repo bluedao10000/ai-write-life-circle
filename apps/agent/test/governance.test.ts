@@ -114,3 +114,17 @@ test('tool gateway aborts HTTP body at the earlier execution deadline or tool ti
   }finally{server.closeAllConnections();await new Promise<void>((resolve,reject)=>server.close(error=>error?reject(error):resolve()))}
  }
 });
+
+test('tool terminal audit records elapsed time and registered name without payloads or errors',async()=>{
+ const records:import('../src/runtime/governance/runtime.js').AuditRecord[]=[];
+ const execution=executionContext({...context(),recordAudit:record=>records.push(record)});
+ const policy:ToolPolicy={name:'lookup',risk:'read',replay:'safe',requiredScopes:['creative'],maxInputBytes:100,maxOutputBytes:100,timeoutMs:1000,idempotencyRequired:false};
+ const tool=governTool({name:'lookup',description:'lookup',parameters:Type.Object({query:Type.String()}),replay:'safe',execute:async()=>({output:[{type:'text',text:'PRIVATE_OUTPUT'}]})},policy,execution,{authorize:async()=>{}});
+ await tool.execute({query:'PRIVATE_INPUT'},{} as never,BACKGROUND_CONTEXT);
+ assert.equal(records[0]?.action,'tool_started');assert.equal(records[0]?.durationMs,undefined);
+ assert.equal(records[1]?.action,'tool_finished');assert.equal(records[1]?.toolName,'lookup');assert(Number.isFinite(records[1]?.durationMs));assert(records[1]!.durationMs!>=0);
+ const denied=governTool(tool,policy,execution,{authorize:async()=>{throw Error('PRIVATE_FAILURE')}});
+ await assert.rejects(denied.execute({query:'PRIVATE_INPUT'},{} as never,BACKGROUND_CONTEXT),/PRIVATE_FAILURE/);
+ assert.equal(records.at(-1)?.action,'failed');assert.equal(records.at(-1)?.toolName,'lookup');assert(Number.isFinite(records.at(-1)?.durationMs));
+ assert(!JSON.stringify(records).includes('PRIVATE'));
+});

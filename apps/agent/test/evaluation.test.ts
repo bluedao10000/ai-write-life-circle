@@ -127,3 +127,9 @@ test('procedural memory graders require actual retrieval before invalidation and
   for(const change of changes)assert.equal(grade(task,{...observation,metrics:{...metrics,...change}}).passed,false);
  }
 });
+
+test('memory latency aggregates actual calls, keeps absent evidence null and excludes invalid samples',()=>{
+ const rows=[{passed:true,durationMs:9000,observation:{...observation,timings:{memoryRetrievalMs:[2,8]}}},{passed:true,durationMs:1000,observation:{...observation,timings:{memoryRetrievalMs:[4,NaN,-1,Infinity]}}}];
+ assert.deepEqual(aggregate(rows).memoryRetrieval,{samples:3,p50Ms:4,p95Ms:8});
+ assert.deepEqual(aggregate([{passed:true,durationMs:1000,observation}]).memoryRetrieval,{samples:0,p50Ms:null,p95Ms:null});
+});
