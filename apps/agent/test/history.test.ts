@@ -157,3 +157,39 @@ test("a queued run commit cannot replace a persisted cancellation epoch",async()
   assert.equal(store.read(id)?.epoch,2);assert.equal(store.read(id)?.view.title,"Synthetic");
  } finally {await store.close();rmSync(dir,{recursive:true,force:true})}
 });
+
+
+test("legacy segments below 32 MiB import and remain writable when total history exceeds 32 MiB",async()=>{
+ const dir=mkdtempSync(join(tmpdir(),"thinking-large-import-")),id=`th-${randomUUID()}`;
+ const legacy=syntheticSaved(id,18000);
+ const events:ThinkingEvent[]=legacy.events.map(event=>({id:event.id,type:"text_delta",messageId:"answer",text:"x".repeat(2100)}));
+ legacy.events=events.slice(14000);
+ legacy.archive={archivedThrough:14000,segments:[]};
+ const limit=32*1024*1024;
+ const writeLegacy=(name:string,value:unknown)=>{
+  const serialized=JSON.stringify(value);assert(Buffer.byteLength(serialized)<limit);
+  writeFileSync(join(dir,name),serialized,{mode:0o600});
+ };
+ for(let start=0;start<14000;start+=archiveBatch){
+  const firstId=start+1,lastId=start+archiveBatch;
+  legacy.archive.segments.push({firstId,lastId});
+  writeLegacy(`${id}.${firstId}-${lastId}.events.json`,{schema:1,sessionId:id,firstId,lastId,events:events.slice(start,lastId)});
+ }
+ writeLegacy(`${id}.json`,legacy);
+ assert(Buffer.byteLength(JSON.stringify({...legacy,events}))>limit);
+ let store=new Store(dir);
+ try {
+  await store.ready;
+  assert.deepEqual(store.readEvents(id)?.events,events);
+  const recent=store.read(id,false)!;
+  recent.events.push({id:++recent.view.cursor,type:"session_completed"});
+  await store.write(recent);
+  assert.equal(readdirSync(dir).some(file=>file.endsWith(".json")),false);
+  await store.close();store=new Store(dir);await store.ready;
+  assert.equal(store.readEvents(id)?.events.length,18001);
+  assert.equal(store.readEvents(id,18000)?.events[0]?.type,"session_completed");
+  const oversized=store.read(id,false)!;oversized.view.title="x".repeat(limit);
+  await assert.rejects(store.write(oversized),/SESSION_STORAGE_LIMIT/);
+  assert.equal(store.read(id,false)?.view.title,"Synthetic");
+ } finally {await store.close();rmSync(dir,{recursive:true,force:true})}
+});

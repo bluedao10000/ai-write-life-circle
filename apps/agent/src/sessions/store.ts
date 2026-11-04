@@ -5,7 +5,7 @@ import { AssistantEntry, type Harness, type SubmissionId, type Tx } from "@earen
 import { thinkingSessionSchema, type ThinkingSession, type ThinkingEvent, type ThinkingExecutionInput, type ThinkingRun } from "@writer-agent/contracts";
 import { failureFor } from "../runtime/reliability.js";
 import { durableContext, interruptDurable, openDurable, ThinkingState, type DurableRuntime } from "../runtime/durable.js";
-import { archiveThreshold, readEventArchive, type ArchiveManifest } from "./event-archive.js";
+import { archiveBatch, archiveThreshold, readEventArchive, type ArchiveManifest } from "./event-archive.js";
 import type { StoryWrites } from "../tools/registry.js";
 
 export type ExecutionFence = {runId:string;owner:string;epoch:number};
@@ -241,7 +241,16 @@ export class Store implements ExecutionAuthority {
         committed.events = [...previous.events.filter(event => event.id < first), ...committed.events];
       }
       delete committed.archive;
-      if (Buffer.byteLength(JSON.stringify(committed)) > 32 * 1024 * 1024) throw Error("SESSION_STORAGE_LIMIT");
+      // SQLite retains the complete history; capacity follows the legacy main
+      // document and event segments rather than their combined serialized size.
+      const recentStart = Math.max(0, committed.events.length - archiveThreshold);
+      const withinLimit = (value: unknown) => Buffer.byteLength(JSON.stringify(value)) <= 32 * 1024 * 1024;
+      if (!withinLimit({...committed, events:committed.events.slice(recentStart)})) throw Error("SESSION_STORAGE_LIMIT");
+      for (let start = 0; start < recentStart; start += archiveBatch) {
+        const events = committed.events.slice(start, Math.min(start + archiveBatch, recentStart));
+        if (!withinLimit({schema:1,sessionId:committed.view.sessionId,firstId:events[0]!.id,lastId:events.at(-1)!.id,events}))
+          throw Error("SESSION_STORAGE_LIMIT");
+      }
       document.saved = committed as unknown as JsonValue;
       return result;
     }, durableContext);
