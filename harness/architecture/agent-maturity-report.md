@@ -14,7 +14,7 @@ Phase 0 已完成源码审计和架构设计；Phase 1 已完成本地代码接�
 | 授权及工具 | 部分覆盖 | tools/registry、Go工具RPC、strict schema、scope、epoch及StoryWrites | 本地重放前授权及ToolPolicy已接入；待扩展独立攻击集 |
 | Worker | 工程验证 | scheduler/dispatcher/TaskClient，四种Go任务；Review/Knowledge/Creative集成 | 统一合同已接入；待完善持久关联审计 |
 | 上下文 | 部分覆盖 | context-management、Working Memory来源绑定与无付费旧格式迁移；重启测试 | 摘要并非长期已确认事实 |
-| 长期记忆 | 部分领域覆盖 | Go creative决定/提案/资产，knowledge检索，讨论focus | 缺统一来源/过期/冲突/审核模型和召回评测 |
+| 长期记忆 | 部分覆盖 | Working来源、Semantic/Episodic检索、版本冲突提示、Procedural作者审核与过期检索 | 待后台整理、语义冲突、工作台审核界面与召回评测 |
 | Evaluation | 部分覆盖 | 统一schema/split/runner、Go业务和故障适配、受治理Judge、人工标注导入 | 待完成独立数据集、保留集、人工校准与性能验收 |
 | 安全 | 部分覆盖 | capability、隔离进程、工具授权、取消及幂等测试 | 缺独立红队数据、记忆污染、子角色扩权验证 |
 | 可观测性 | 部分覆盖 | 治理关联日志、进程计数；Thinking鉴权健康/诊断包含投影失败、恢复与未知费用会话数 | 缺跨进程聚合、持久诊断及历史指标 |
@@ -201,3 +201,20 @@ Agent测试124/124通过；类型检查、lint、构建通过。评分器回归�
 Go Thinking/Creative测试、Go API构建通过。现有Memory评测3/3通过，7次合成模型调用、2次工具调用，验证真实Thinking→Tool Gateway→Go检索及删除来源链路保持兼容。冲突生命周期由上述Go测试验证，尚未加入独立模型评测场景。
 
 尚缺语义矛盾识别、后台整理候选、Procedural Memory与完整过期策略；版本冲突提示不等同于这些能力。Phase 3仍为部分实现。
+
+## Procedural Memory v1 实现与验收
+
+新增Go操作经验领域、作者API、Zod/OpenAPI契约及Thinking检索接入。经验与作品Canon分离；候选引用真实Go已完成任务回执，确认至少要求同执行策略下两个不同输入的成功任务，并由作者作出版本绑定决定。任务投影只含ID、类型、策略版本、原inputHash与完成时间，不含请求、租约、输出或费用状态。所有记录仍受作品所有权控制。
+
+候选/确认/拒绝/删除使用原文件锁、原子写入与作品删除栅栏。记录默认30天、最多90天有效，过期或来源移除立即从可检索规则中排除。并发审核只有一个版本成功。删除清除正文和历史幂等回执中的正文，墓碑拒绝旧创建/确认重放。按记录、请求数和8 MiB编码JSON限制存储，超额写入不发布。
+
+持久文件为`creative/<book-key>/procedural-memory-v1.json`，独立于旧Creative state-v1.json；原目录备份和删除逻辑覆盖新文件。旧目录读取不创建文件，重启保留确认结果，删除作品清理记录并拒绝旧Service迟到写入。回滚旧二进制忽略此文件，旧作品删除路径仍清理整个目录；再次升级可读取schema=1，不恢复旧任务或费用快照。
+
+验证：
+
+- Go procedural、agenttasks、thinking、transport、application与server测试通过。
+- Procedural race测试通过，覆盖并发确认、版本冲突、存储预算、单次成功与重复输入拒绝、来源失效、过期、删除重放、跨作者拒绝和作品清理。
+- `pnpm test:memory`真实Go/Pi Worker完成两个不同输入的Knowledge任务；公开API确认规则，API重启后Thinking通过retrieve_memory读到规则及两条来源，删除后新会话检索不再返回规则。只使用本地合成模型。
+- Agent测试126/126、类型检查、lint、Go/Agent构建及11份OpenAPI契约漂移检查通过。新增OpenAPI lint无错误，保留私有协议license与内联组件的3项提示。
+
+当前管理入口为API，未实现工作台审核界面、自动经验提取、后台记忆整理与跨任务泛化验证。成功回执加作者审核不是统计质量证明。Phase 3仍为部分实现，Phase 5/6尚未验收。

@@ -8,6 +8,7 @@ import (
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/compat"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/creative"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/knowledge"
+	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/procedural"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/publication"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/review"
 	"io"
@@ -24,9 +25,10 @@ import (
 
 type Resolver func(*http.Request) *application.Actor
 type Options struct {
-	WorkerStatus func() any
-	KnowledgeFor func(*application.Service) *knowledge.Service
-	CreativeFor  func(*application.Service) *creative.Service
+	ProceduralFor func(*application.Service) *procedural.Service
+	WorkerStatus  func() any
+	KnowledgeFor  func(*application.Service) *knowledge.Service
+	CreativeFor   func(*application.Service) *creative.Service
 	// SessionOwned verifies a Thinking session belongs to the author and book.
 	SessionOwned func(application.Actor, string, string) error
 	Imports      *application.ImportService
@@ -193,6 +195,9 @@ func Handler(o Options) http.Handler {
 			return
 		}
 		if handleKnowledge(o, w, r, path) {
+			return
+		}
+		if handleProcedural(o, w, r, path) {
 			return
 		}
 		if handleCreative(o, w, r, path) {

@@ -191,3 +191,4 @@ export * from "./agent-tasks.js"
 export * from './resume.js'
 
 export * from './billing-review.js'
+export * from './procedural-memory.js'

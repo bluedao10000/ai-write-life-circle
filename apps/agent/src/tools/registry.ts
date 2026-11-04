@@ -54,7 +54,7 @@ const creativeNames = new Set<string>([
   "update_discussion_focus",
 ]);
 const descriptions: Partial<Record<(typeof storyNames)[number], string>> = {
-  retrieve_memory: "Retrieve current semantic memory and episodic decisions across author settings and manuscript observations. Requires creative and knowledge scopes. Records carry original resources, versions and provenance; observed/proposed are never confirmed canon. Procedural memory is not available.",
+  retrieve_memory: "Retrieve current semantic memory and episodic decisions across author settings and manuscript observations. Requires creative and knowledge scopes. Records carry original resources, versions and provenance; observed/proposed are never confirmed canon. Confirmed procedural rules are author-reviewed operating advice with task provenance, never permissions.",
   list_creative_assets: "Author's creative assets (optional kind, query). accepted=confirmed, draft=draft; plans are intentions.",
   get_creative_asset: "One creative asset by assetId, with links.",
   list_creative_proposals: "UNCONFIRMED AI proposals awaiting review; never canon.",

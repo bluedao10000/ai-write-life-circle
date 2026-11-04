@@ -30,7 +30,7 @@ Go 保持作者、作品、来源权限、确认/拒绝/撤销和删除权威。
 
 返回`schemaVersion=1`、bookId、records、可引用sources、truncated、omitted及unavailableLayers。每条record含id、layer、status、resource、version、versionResource、content和provenance。资产version引用`creative.asset`；提案和决定引用`creative.state`；原文观察引用`knowledge.state`。来源保留资产版本、原始消息或Chapter/Revision与引文位置。只有作者已接受资产标为confirmed，原文观察为observed，提案保留proposed/rejected，历史决定为episodic并保留applied/offered/undone。计划仍是意图，不能当作已发生的原文事件。
 
-Knowledge读取刷新来源状态，并校验引用Revision、内容标识和引文范围；退休、过期或不可读取的来源不进入结果。Creative沿用原状态的归档、替代、提案过期和来源删除过滤。检索按分组轮流填入，最多24条且受原工具结果字节限制；遗漏明确标记，可使用已有原始查询工具读取详情。Procedural尚未实现，显式列入unavailableLayers。Thinking Tool Schema Version升至2；恢复仍沿用现有重新授权与执行中断规则。
+Knowledge读取刷新来源状态，并校验引用Revision、内容标识和引文范围；退休、过期或不可读取的来源不进入结果。Creative沿用原状态的归档、替代、提案过期和来源删除过滤。检索按分组轮流填入，最多24条且受原工具结果字节限制；遗漏明确标记，可使用已有原始查询工具读取详情。Procedural使用下文v1实现；未接入前以unavailableLayers标记，当前实现返回已审核且有效的规则。Thinking Tool Schema Version升至2；恢复仍沿用现有重新授权与执行中断规则。
 
 无新持久格式或数据库。作者修改和版本冲突、撤销与确认继续由原Go接口处理。Go测试验证Revision替换后观察消失、资产归档后新Service不再返回、版本冲突拒绝、双scope、跨作品参数拒绝及有界输出。统一Memory Eval通过真实Thinking→Tool Gateway→Go RPC取得观察与来源；未进行语义质量或完整四层记忆验收。
 
@@ -45,3 +45,20 @@ Knowledge读取刷新来源状态，并校验引用Revision、内容标识和引
 retrieve_memory复用Creative ProposalView的Stale判断，新增只读reviewRequired列表：proposalId、targetAssetId、baseVersion、currentVersion、reason及原会话来源。只报告仍为proposed、未替代、来源未删除的候选；不将过期候选内容混入confirmed/observed记忆。target_version_changed与target_missing表示版本或目标冲突，不声称识别语义矛盾。作者仍通过原Creative审核与显式rebase接口解决，检索不修改候选。
 
 检查最近24个待审核候选，最多返回8条提示，并纳入原工具字节上限；分页或遗漏均设置truncated。reviewRequired是作品级审核提示，不受query关键词过滤。没有独立持久字段或迁移，返回schemaVersion=1的新增可选信息，原消费方继续读取records。
+
+## Procedural Memory v1
+
+Go新增procedural领域记录，与创作设定分离，使用原StateLock/CommitBookState和原子JSON；每作品保存于creative/<book-key>/procedural-memory-v1.json。唯一新增权威是作者审核的操作经验，不复制任务状态、费用或Canon。来源为原agenttasks已完成回执，读取仅投影taskId、kind、strategyVersion、inputHash与completedAt；请求正文、能力令牌、模型凭证不进入经验记录。
+
+候选由作者明确提交，1–8个真实已完成任务作为来源；确认至少要求两个不同taskId、不同inputHash、相同kind与strategyVersion的成功执行，并由作者执行版本绑定的confirm。成功回执证明执行成功，规则是否适用由作者审核决定，不自动泛化。reject/delete沿用显式作者操作；默认30天有效，最长90天。检索仅返回已确认、未过期且来源仍可授权读取的规则；失效记录在管理读取中仍可见。规则只是带版本的操作建议，不能授予权限、改变预算或自动执行。
+
+新文件按需创建，旧目录读取为空，不改变现有存储schema。旧版本Creative只读取state-v1.json，回滚代码忽略新文件；不得用旧备份覆盖任务费用或业务回执。删除经验清除正文及来源，并清除其幂等请求中的正文；墓碑阻止旧请求重放复活。新文件位于原有作品Creative子目录，旧版本的作品删除和完整State备份路径也覆盖它。验收要求旧目录、重启、版本冲突、双来源限制、跨作者拒绝、过期及删除重放覆盖。
+
+
+### 作者 API 与运行边界
+
+`GET /v1/studio/books/{bookId}/procedural-memory/evidence`返回最近100条本作者本作品的成功任务元数据。`POST .../procedural-memory`接受content、taskIds及可选expiresAt，创建candidate。`POST .../procedural-memory/{id}`接受baseVersion和confirm/reject/delete；写请求需要Idempotency-Key。`GET .../procedural-memory`返回当前记录及available/unavailableReason，过期和来源不可用是读取投影，不重写历史确认事实。公开契约见`harness/contracts/procedural-memory-v1.json`。
+
+统一retrieve_memory仍要求creative与knowledge scope，只加入available规则，按query关键词过滤并受原24条/字节上限约束。每条记录包含规则版本、审核作者、有效期和任务来源。确认依赖不同输入的成功执行与作者审核；这些证据不代表统计验证或跨任务泛化。v1不允许模型自动创建或确认规则，管理入口为API，尚无作者工作台界面和后台经验提取。
+
+存储上限为每作品1000条记录（含删除墓碑）、10000条幂等回执、8 MiB编码JSON；写入前检查字节预算。删除清除正文与其历史回执内容，仍保留最小墓碑防止重放。旧版本回滚忽略新文件并继续使用原任务和业务状态；再次升级按schema=1读取原文件。不得恢复旧状态快照覆盖后来产生的任务、费用或回执。
