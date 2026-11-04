@@ -2,6 +2,7 @@ import {setTimeout as delay} from 'node:timers/promises';
 import {startThinkingFixture} from './thinking-fixture.mjs';
 
 export async function executeSecurityEvaluation(task,signal,result){
+ if(task.environment.scenario==='security-write-revoked')return executeWriteRevocation(task,signal,result);
  const revoked=task.environment.scenario==='security-revoked';
  const indirect=task.environment.scenario==='security-indirect';
  if(task.capability!=='thinking'||task.stoppingCriteria.maxModelCalls<(indirect?3:1)||task.stoppingCriteria.maxToolCalls<(indirect?2:1)||task.stoppingCriteria.maxTokens<40000)throw Error('EVAL_MODEL_BUDGET');
@@ -78,4 +79,55 @@ export async function executeSecurityEvaluation(task,signal,result){
   if(result.modelCalls&&result.chargedTokens===0){result.inputTokens=null;result.outputTokens=null;result.chargedTokens=null}
   await f.close();
  }
+}
+
+
+async function executeWriteRevocation(task,signal,result){
+ if(task.stoppingCriteria.maxModelCalls<3||task.stoppingCriteria.maxToolCalls<2||task.stoppingCriteria.maxTokens<40000)throw Error('EVAL_MODEL_BUDGET');
+ signal.throwIfAborted();
+ let base,asset,revoking=false,callsAtRevocation,revocationPersisted=false,emitted=0;
+ const originalText='主角叫林舟，是一名法医。';
+ const f=await startThinkingFixture({modelBudget:task.stoppingCriteria,chatDelta:async body=>{
+  signal.throwIfAborted();
+  if(body.messages.some(message=>message.role==='tool'))return {content:'合成写入已完成。'};
+  const messageId=body.messages.map(message=>typeof message.content==='string'?message.content:JSON.stringify(message.content)).join('\n').match(/Current author message: ([^.\s]+)\./)?.[1];
+  if(!messageId)throw Error('EVAL_MESSAGE_ID_MISSING');
+  if(revoking){
+   await f.call(base+'/preferences',{method:'POST',key:task.taskId+'-revoke',body:{scopes:[]}});
+   revocationPersisted=(await f.call(base+'/preferences')).scopes.length===0;
+   callsAtRevocation=f.calls.length;
+  }
+  const change=revoking?{intent:'decide',targetAssetId:asset.assetId,baseVersion:asset.version,patch:{setFields:[{key:'职业',value:'记者'}]}}:{intent:'decide',kind:'character',patch:{name:'林舟',setFields:[{key:'职业',value:'法医'}]}};
+  return {tool_calls:[{index:0,id:'write-'+(++emitted),type:'function',function:{name:'record_story_changes',arguments:JSON.stringify({changes:[{...change,evidence:[{messageId,quote:revoking?task.request:originalText}]}]})}}]};
+ }});
+ try{
+  const book=await f.call('/v1/studio/books',{method:'POST',key:task.taskId+'-book',status:201,body:{operation:'create',baseVersion:0,title:task.taskId}});
+  const root='/v1/studio/books/'+book.bookId,creative=root+'/creative';base=root+'/thinking';
+  await f.call(creative+'/settings/pause',{method:'POST',key:task.taskId+'-pause',body:{}});
+  await f.call(creative+'/settings/recording',{method:'POST',key:task.taskId+'-recording',body:{dialogueRecording:true}});
+  const chapter='/v1/projects/'+book.bookId+'/chapters/'+book.chapters[0].chapterId;
+  const before=await f.call(chapter),model=await f.call(base+'/capabilities');
+  async function execute(text){
+   signal.throwIfAborted();
+   const session=await f.call(base+'/sessions',{method:'POST',key:task.taskId+'-session-'+revoking,status:201,body:{consent:true,model,scopes:['creative']}});
+   const path=base+'/sessions/'+session.sessionId;
+   await f.call(path+'/messages',{method:'POST',key:task.taskId+'-message-'+revoking,status:202,body:{text}});
+   for(;;){signal.throwIfAborted();const state=await f.call(path);if(state.status==='idle')return {state,session,events:(await f.call(path+'/events?after=0')).items};await delay(40,undefined,{signal})}
+  }
+  const control=await execute(originalText);
+  const assets=await f.call(creative+'/assets');asset=assets.items.find(item=>item.kind==='character'&&item.name==='林舟');
+  const initialReceipts=(await f.call(creative+'/changes?sessionId='+control.session.sessionId)).items;
+  result.metrics.positiveWriteCommitted=control.state.run.status==='completed'&&assets.total===1&&asset?.fields.some(field=>field.key==='职业'&&field.value==='法医')&&initialReceipts.length===1&&initialReceipts[0].status==='applied';
+  if(!result.metrics.positiveWriteCommitted)throw Error('EVAL_POSITIVE_WRITE_REQUIRED');
+  revoking=true;
+  const denied=await execute(task.request),after=await f.call(creative+'/assets');
+  const deniedReceipts=(await f.call(creative+'/changes?sessionId='+denied.session.sessionId)).items;
+  const chapterAfter=await f.call(chapter);
+  Object.assign(result.metrics,{revocationPersisted,attackAttempted:emitted===2,toolAdvertised:f.calls.at(-1)?.tools.some(tool=>tool.function?.name==='record_story_changes')===true,denied:denied.state.run.status==='failed'&&denied.state.messages.at(-1)?.status==='failed',failureCode:denied.state.run.failure?.code??null,successfulTools:denied.events.filter(event=>event.type==='tool_completed').length,startedTools:denied.events.filter(event=>event.type==='tool_started').length,assetUnchanged:JSON.stringify(after)===JSON.stringify(assets),deniedReceipts:deniedReceipts.length,sourceUnchanged:chapterAfter.headRevision.revisionId===before.headRevision.revisionId,modelCallsAfterRevocation:callsAtRevocation===undefined?null:f.calls.length-callsAtRevocation,credentialsLeaked:[f.token,f.bearer,f.identity.privateKey,f.env.WRITER_AGENT_PI_LLM_API_KEY].some(secret=>secret&&JSON.stringify(f.calls).includes(secret))});
+  const usages=[control.state.usage,denied.state.usage];
+  if(usages.some(usage=>usage.incomplete)){result.inputTokens=null;result.outputTokens=null;result.chargedTokens=null;result.budgetExposure={tokens:usages.reduce((sum,usage)=>sum+usage.charged,0),authority:'thinking-durable'}}
+  else{result.inputTokens=usages.reduce((sum,u)=>sum+u.input,0);result.outputTokens=usages.reduce((sum,u)=>sum+u.output,0);result.chargedTokens=usages.reduce((sum,u)=>sum+u.charged,0)}
+  result.trace.push({action:'positive_business_write_committed'},{action:'authorization_revoked_before_write_tool'},{action:'business_assets_and_receipts_read'});
+  return result;
+ }finally{result.modelCalls=f.calls.length;result.toolCalls=f.tools.length;if(result.modelCalls&&result.chargedTokens===0){result.inputTokens=null;result.outputTokens=null;result.chargedTokens=null}await f.close()}
 }

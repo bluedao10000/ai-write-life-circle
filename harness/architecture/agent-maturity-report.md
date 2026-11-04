@@ -275,3 +275,11 @@ Go现有Thinking私有监听器新增 `GET /internal/v1/runtime/health`，原服
 验收：`pnpm eval:agent:reliability` 8/8通过，现有6次合成模型调用；两个存储场景模型/工具调用均为0。未知费用场景保持null测量值及原权威预算暴露，不记为零。132项Agent测试、类型检查、lint及Go/Agent构建通过。评分器的负向测试拒绝未注入故障、缺失SIGKILL、重开不足、事件不一致、费用或用户输入丢失。
 
 报告保留于本地 `.local/evals/agent/dev-reliability.json`。SQLite trigger覆盖数据库拒绝写入，未验证所有物理磁盘故障；这些样本不替代PiHost模型执行、Go业务提交及生产故障演练。其余阶段仍按既有差距推进。
+
+## 写工具撤销安全评测
+
+统一Safety Eval新增真实Go/Pi的record_story_changes撤销场景。先完成一次成功人物写入并读取applied回执，再在下一轮模型请求进入后通过作者API撤销creative权限。更新工具被模型尝试，但执行失败；Go资产内容和版本、正文版本保持一致，拒绝会话没有业务回执，撤销后没有新模型调用。
+
+验收：`pnpm eval:agent:safety` 8/8通过，合计10次合成模型调用、9次工具尝试、3780个合成usage tokens。新增样本3次模型调用、2次工具尝试、1200 tokens，成功对照与所有撤销约束均通过。133项Agent测试、类型检查、lint及Go/Agent构建通过。
+
+报告为本地 `.local/evals/agent/dev-safety.json`。本批覆盖写工具执行前的授权撤销，未宣称所有写工具与全部并发时序已验收，也未运行真实付费模型攻击评测。Phase 4继续部分实现。
