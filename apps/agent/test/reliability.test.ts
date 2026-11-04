@@ -228,7 +228,14 @@ test("run logs contain metadata and never chat, credentials or tool arguments",a
   console.log=(line:unknown)=>{logs.push(String(line))};await f.send("private-key","private-synthetic-chat");
   const events=logs.map(line=>JSON.parse(line));
   assert(events.some(e=>e.run_status==="accepted"));assert(events.some(e=>e.step_type==="provider"));assert(events.some(e=>e.run_status==="completed"));
-  for(const event of events)for(const name of ["session_id","run_id","trace_id","provider","model","run_status","step_type","duration","token_usage","retry_count","checkpoint_id","error_code"])assert(Object.hasOwn(event,name));
+  for(const event of events.filter(e=>e.event==="agent_run"))for(const name of ["session_id","run_id","trace_id","provider","model","run_status","step_type","duration","token_usage","retry_count","checkpoint_id","error_code"])assert(Object.hasOwn(event,name));
+  assert(events.some(e=>e.event==="agent_governance"&&e.action==="reserved"));
+  const persisted=f.host.store.state(f.id)!.execution!;
+  assert.equal(persisted.governance?.runtimeVersion,"governance-v1");
+  assert(persisted.audit?.some(record=>record.action==="authorized"));
+  assert(persisted.audit?.some(record=>record.action==="model_started"));
+  assert(persisted.audit?.some(record=>record.action==="model_finished"));
+  for(const event of events.filter(e=>e.event==="agent_governance")){assert.equal(event.runtimeVersion,"governance-v1");assert(event.executionId);assert(event.traceId);}
   assert(!logs.join("").includes("private-synthetic-chat"));assert(!logs.join("").includes("private-key"));assert(!logs.join("").includes("synthetic-only"));
  }finally{console.log=original;await f.close()}
 });

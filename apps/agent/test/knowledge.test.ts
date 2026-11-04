@@ -21,8 +21,8 @@ test('Pi SDK accepts Knowledge above the former 96 KiB candidate limit and prese
  const cfg=executionConfigSchema.parse({Provider:'openai-compatible',BaseURL:endpoint,APIKey:'',Model:'fixture',ResponseFormat:'none',TokenParameter:'max_tokens',Timeout:5e9,MaxContextBytes:12000,MaxOutputTokens:131072,MaxResponseBytes:1024*1024});
  const task:import('@writer-agent/contracts').AgentTask={taskId:crypto.randomUUID(),kind:'knowledge.extract',bookId:'synthetic-large-output',authorId:'fixture-author',leaseToken:crypto.randomUUID(),executorEpoch:1,attempt:1,deadline:new Date(Date.now()+30000).toISOString(),strategyVersion:'knowledge-extraction-v1',revisionId:'fixture-revision',contentHash:'sha256:'+'a'.repeat(64),inputHash:'sha256:'+'b'.repeat(64),model:{provider:cfg.Provider,model:cfg.Model,endpoint,execution:'local'},configFingerprint:executionFingerprint(cfg),outputSchemaVersion:'knowledge-candidates-v1',reservedTokens:1000,budgetDay:'2026-10-22',consent:{},request:{system:systemPrompt,input:'{}',schemaName:'knowledge_extraction',schema}};
  try{
-  const gateway=new ModelGateway(cfg,'synthetic-only');validateKnowledge(task,gateway);const result=await executeKnowledge(task,gateway,new AbortController().signal);assert.ok(Buffer.byteLength(result.text)>96*1024);assert.ok(Buffer.byteLength(result.text)<=512*1024);
-  await assert.rejects(gateway.execute({...task,kind:'review.execute'},new AbortController().signal),(e:unknown)=>e instanceof GatewayError&&e.code==='LLM_RESPONSE_TOO_LARGE');
+  const gateway=new ModelGateway(cfg,'synthetic-only',async()=>{});validateKnowledge(task,gateway);const result=await executeKnowledge(task,gateway,new AbortController().signal);assert.ok(Buffer.byteLength(result.text)>96*1024);assert.ok(Buffer.byteLength(result.text)<=512*1024);
+  await assert.rejects(gateway.execute({...task,kind:'review.execute',outputSchemaVersion:'review-candidates-v1'},new AbortController().signal),(e:unknown)=>e instanceof GatewayError&&e.code==='LLM_RESPONSE_TOO_LARGE');
  }finally{server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()))}
 });
 

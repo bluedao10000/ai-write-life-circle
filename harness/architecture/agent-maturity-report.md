@@ -2,7 +2,7 @@
 
 日期：2026-11-04。基线：`25e6066f519fdb4386bbbbe334edb48badbc5c03`。
 
-Phase 0 已完成源码审计和架构设计；Phase 1–6 尚未实现。成熟度采用“工程验证 / 部分覆盖 / 未实现”，不以文件数量打分。此前同基线的本地 `pnpm verify` 已通过，包含 102 项 Agent 测试和 Go/Pi 真实进程集成；不代表真实模型任务成功率或全部威胁已验证。远程最新状态未刷新：GitHub API 最近返回账号停用403，本次使用本地 main 与已有跟踪引用。
+Phase 0 已完成源码审计和架构设计；Phase 1 已完成本地代码接入和工程验收；Phase 2–6 尚未实现。成熟度采用“工程验证 / 部分覆盖 / 未实现”，不以文件数量打分。此前同基线的本地 `pnpm verify` 已通过，包含 102 项 Agent 测试和 Go/Pi 真实进程集成；不代表真实模型任务成功率或全部威胁已验证。远程最新状态未刷新：GitHub API 最近返回账号停用403，本次使用本地 main 与已有跟踪引用。
 
 ## 能力矩阵
 
@@ -51,3 +51,22 @@ Phase 0无运行时或数据变更，可直接回退文档提交。后续版本�
 尚未解决：统一入口接入、持久审计容量策略、记忆权威接口扩展、父子预算事务、独立held-out评测和真实模型质量证据。多角色只有在相同预算下验证收益后才可启用。LLM Judge抗注入提示不能保证评分免受影响，程序约束与人工校准必须独立存在。
 
 Phase 0验收依据为当前源码入口、契约、已有测试与基线验证记录；没有新增运行时代码，也未产生新的红队、真实模型或性能结果。Phase 1需以代码接入和运行回归验收，不以本ADR作为实现证明。
+
+## Phase 1 验收记录
+
+新增 `runtime/governance/runtime.ts`、`tool-gateway.ts` 和公共 `index.ts`；实际接入 PiHost、ModelGateway、工具Registry、Worker Scheduler与RunExecution持久字段。授权/预算适配复用Go与Durable，未新增状态数据库或修改公开协议。
+
+| 验收项 | 证据 |
+| --- | --- |
+| 模型必须预留后发送 | governance.test.ts：未准备、预留等待、失败与取消均零发送；重复准备/发送拒绝 |
+| Go started失败阻止Provider | gateway.test.ts：真实SDK与本地HTTP，拒绝admission或缺少adapter时请求数为零 |
+| 工具重放重新授权 | governance.test.ts：已有故事回执与本地skill在撤销后拒绝 |
+| 参数/权限/迟到结果 | governance.test.ts：额外bookId拒绝、scope扩权拒绝、取消后不发布结果 |
+| 审计与版本 | reliability.test.ts：白名单日志无正文/凭证，版本和审计进入原持久执行对象 |
+| 原有语义 | 全部106项Agent测试通过，包含SIGKILL、SQLite/outbox失败、预算、取消及迁移 |
+| 跨进程合同 | Thinking、故事连续性、Review Worker、Creative、Knowledge quick/faults脚本通过 |
+| 静态与构建 | typecheck:agent、Agent lint、build:agent通过；Go API/control构建通过 |
+
+命令：`pnpm test:agent`、`pnpm typecheck:agent`、`pnpm --filter @writer-agent/agent lint`、`pnpm build:agent`；构建Go后执行 `scripts/test-thinking-agent.mjs`、`scripts/test-story-continuity.mjs`、`scripts/test-pi-review-worker.mjs`、`scripts/test-creative-workflow.mjs`、`scripts/test-pi-knowledge-worker.mjs --quick`、`scripts/test-pi-knowledge-faults.mjs`。
+
+证据仅证明工程边界。未调用真实付费模型，未产生新的质量分数或性能改善结论，未部署本批代码。Phase 2下一步为统一评测schema/split/runner及Thinking事件全分页。后续仍需父子预算、长期记忆、全局持久诊断与编排审批；这些不因Registry已存在而视为完成。

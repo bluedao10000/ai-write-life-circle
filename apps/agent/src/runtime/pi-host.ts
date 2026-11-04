@@ -1,3 +1,4 @@
+import {ModelRequestGate,executionContext,runtimeVersion} from './governance/runtime.js';
 import {manageDiscussion, memoryInstruction, providerInput, inputTokenBound, inputBytes, discussionText, type MeasuredInput, type ProviderInput} from "./context-management.js";
 import { failureFor, traceRun } from "./reliability.js";
 import { canonicalJSON, modelIdentity } from "./fingerprint.js";
@@ -266,7 +267,7 @@ export class PiHost {
       const durable = await this.store.runtime(id);
       const conversation = await durable.harness.createConversation({ownership:{kind:"ownerless"}}, durableContext);
       s.durable = {conversationId: conversation.id};
-      s.execution = {calls:0, turns:0, memoryCalls:0, spent:0, modelRequests:[]};
+      s.execution = {governance:{runtimeVersion,definitionVersion:1,toolSchemaVersion:1,promptVersion:'thinking-v1'},calls:0, turns:0, memoryCalls:0, spent:0, modelRequests:[]};
       await this.event(s, { type: "message_started", messageId: mid }, false);
       traceRun(id,s.view.run,{input:0,output:0,charged:0,incomplete:false});
       active.session = conversation;
@@ -398,6 +399,11 @@ export class PiHost {
       () => active.abort.abort(new AgentError(run.stepType === "tool" ? "TOOL_TIMEOUT" : "DURATION_EXCEEDED")),
       limit.maxDurationMs,
     );
+    const governed=executionContext({recordAudit:record=>{(execution.audit??=[]).push(record)},executionId:run.runId,traceId:run.traceId,role:'thinking',sessionId:id,authorizationVersion:run.authorizationVersion??0,scopes:s.view.scopes,versions:{prompt:'thinking-v1',toolSchema:'story-tools-v1'},budget:{maxTokens:pool,maxModelCalls:limit.maxTurnsPerRequest+MAX_MEMORY_CALLS,maxToolCalls:limit.maxToolCalls},deadline:s.executionLease!.expiresAt,signal:active.abort.signal});
+    const currentAuthorization={authorize:async()=>{
+      alive();const grant=await authorize(this.config,capability,active.abort.signal);alive();
+      if(grant.sessionId!==id||grant.authorId!==s.owner||grant.bookId!==s.view.bookId||(grant.authorizationVersion??0)!==(run.authorizationVersion??0)||modelIdentity(grant.model)!==modelIdentity(s.view.model)||canonicalJSON(grant.scopes)!==canonicalJSON(s.view.scopes))throw Error('AUTHORIZATION_REVOKED');
+    }};
     const session = active.session!;
     try {
       const configured = modelEntries(this.config).find(v => v.enabled && modelIdentity(v.model) === modelIdentity(s.view.model));
@@ -430,7 +436,7 @@ export class PiHost {
         void (async () => {
           try {
             alive();
-            await authorize(this.config, capability, active.abort.signal);
+            await currentAuthorization.authorize();
             alive();
             const memoryCall = phase === "memory";
             if (memoryCall) {
@@ -442,15 +448,16 @@ export class PiHost {
             let requestInput: ProviderInput | undefined, requestError: string | undefined;
             const providerUsage: {reported:ReturnType<typeof completionUsage>;seen:boolean} = {reported:null,seen:false};
             let transportCode = "";
+            const gate=new ModelRequestGate({...governed,modelRequestId:requestId},currentAuthorization);
             const providerStream = original(model, context, {
               ...options,
               headers:{...options?.headers,"X-Client-Request-Id":requestId},
               maxTokens: limit.maxOutputTokens,
               maxRetries: 0,
               signal: options?.signal ? AbortSignal.any([active.abort.signal, options.signal]) : active.abort.signal,
-              fetch:boundedModelFetch(cfg.model.endpoint,limit.maxOutputTokens*32+65536,active.abort.signal,(code,status) => {
+              fetch:gate.transport(boundedModelFetch(cfg.model.endpoint,limit.maxOutputTokens*32+65536,active.abort.signal,(code,status) => {
                 transportCode = code === "LLM_CONTEXT_OVERFLOW" ? "CONTEXT_OVERFLOW" : status === 429 ? "RATE_LIMITED" : status === 401 || status === 403 || status === 404 ? "MODEL_CONFIGURATION_ERROR" : code === "LLM_RESPONSE_TOO_LARGE" ? "MODEL_OUTPUT_INCOMPLETE" : "PROVIDER_UNAVAILABLE";
-              }),
+              })),
               async onPayload(value) {
                 try {
                   const transformed = await options?.onPayload?.(value, model);
@@ -480,6 +487,7 @@ export class PiHost {
                   if (s.view.usage.charged + reserve > limit.maxSessionTokens) throw new AgentError("SESSION_BUDGET_EXCEEDED", 429);
                   // This hook runs after SDK serialization and before any provider request.
                   // Unknown/crashed usage retains the reservation; known usage settles below.
+                  await gate.prepare({reserve:async()=>{
                   execution.modelRequests.push({id:requestId,reservedTokens:reserve,bound,status:"reserved"});
                   execution.spent += bound;
                   s.view.usage.charged += reserve;
@@ -490,6 +498,7 @@ export class PiHost {
                   run.updatedAt = new Date().toISOString();run.durationMs=Math.max(0,performance.now()-started);
                   await persist({type:"usage",usage:{...s.view.usage}});
                   traceRun(id,run,runUsage());
+                  }});
                   return payload;
                 } catch (e) { requestError = safeCode(e); throw e; }
               },
@@ -550,6 +559,7 @@ export class PiHost {
               stream.push(event);
             }
             const result = await providerStream.result();
+            gate.finished();
             stream.end(closing ? withoutToolCalls(result) : result);
           } catch (e) {
             errorCode = safeCode(e);
@@ -601,6 +611,7 @@ export class PiHost {
         },
         s.view.scopes,
         {messageId:run.messageId,runId:run.runId,dialogueRecording:storyContext?.dialogueRecording === true,writes:storyWrites,persist:() => checkpoint("tool"),onStoryRecording:state=>{authorMessage.storyRecording=state}},
+        {context:governed,authority:currentAuthorization},
       );
       const custom = cfg.model.toolCalling === false ? [] : allowedTools;
       // Tool definitions travel with every reply turn; the history budget must leave room for them.

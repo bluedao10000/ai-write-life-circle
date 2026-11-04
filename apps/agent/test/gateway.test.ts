@@ -43,7 +43,11 @@ test('Pi bounded Review sends the task prompt and preserves dialect, usage and z
  const config=executionConfigSchema.parse({Provider:'openai-compatible',BaseURL:endpoint,APIKey:'',Model:'fixture',ResponseFormat:'json_schema',TokenParameter:'max_tokens',Timeout:5e9,MaxContextBytes:12000,MaxOutputTokens:2048,MaxResponseBytes:256*1024});
  const task:AgentTask={taskId:crypto.randomUUID(),kind:'review.execute',bookId:'synthetic',authorId:'author',leaseToken:crypto.randomUUID(),executorEpoch:1,attempt:1,deadline:new Date(Date.now()+15000).toISOString(),strategyVersion:strategy,revisionId:'fixture-rev',contentHash:'fixture-hash',inputHash:'sha256:'+'a'.repeat(64),model:{provider:config.Provider,model:config.Model,endpoint,execution:'local'},configFingerprint:executionFingerprint(config),outputSchemaVersion:'review-candidates-v1',reservedTokens:34048,budgetDay:'',consent:{},request:{system:systemPrompt,input:'{"sources":[]}',schemaName:'',schema:{type:'object'}}};
  try{
- const gateway=new ModelGateway(config,'fixture-key');validateReview(task,gateway);
+ const blockedGateway=new ModelGateway(config,'fixture-key',async()=>{throw Error('SYNTHETIC_STARTED_REJECTED')});
+ await assert.rejects(executeReview(task,blockedGateway,new AbortController().signal));assert.equal(requests.length,0,'Go started rejection must precede network');
+ const closedGateway=new ModelGateway(config,'fixture-key');
+ await assert.rejects(executeReview(task,closedGateway,new AbortController().signal));assert.equal(requests.length,0,'missing business adapter must fail closed');
+ const gateway=new ModelGateway(config,'fixture-key',async()=>{});validateReview(task,gateway);
  const value=await executeReview(task,gateway,new AbortController().signal);assert.deepEqual(value.usage,{inputTokens:33,outputTokens:8,cachedInputTokens:0});assert.equal(requests.length,1);assert.equal(requestIds[0],task.taskId);
  const payload=requests[0];assert.equal(payload.max_tokens,2048);assert.equal(payload.max_completion_tokens,undefined);assert.equal(payload.tools,undefined);assert.equal((payload.response_format as {json_schema:{name:string}}).json_schema.name,'writing_review');assert.ok(JSON.stringify(payload).includes(systemPrompt.slice(0,80)));
  cached=20;const hit=await executeReview(task,gateway,new AbortController().signal);assert.deepEqual(hit.usage,{inputTokens:33,outputTokens:8,cachedInputTokens:20});
@@ -51,10 +55,10 @@ test('Pi bounded Review sends the task prompt and preserves dialect, usage and z
  missing=true;const unknown=await executeReview(task,gateway,new AbortController().signal);assert.equal(unknown.usage,null,'missing usage must remain unknown, not free');
  invalid=true;await assert.rejects(executeReview(task,gateway,new AbortController().signal),(e:unknown)=>e instanceof GatewayError&&e.code==='LLM_INVALID_OUTPUT');assert.equal(requests.length,5,'no automatic model retries');
  const capped=await executeReview({...task,request:{...task.request,outputLimit:512}},gateway,new AbortController().signal).catch(e=>e);assert.ok(capped instanceof GatewayError);assert.equal(requests.at(-1)?.max_tokens,512);
- const tuned = new ModelGateway({...config,MaxOutputTokens:4096,Timeout:10e9},'fixture-key');assert.doesNotThrow(()=>validateReview(task,tuned));
+ const tuned = new ModelGateway({...config,MaxOutputTokens:4096,Timeout:10e9},'fixture-key',async()=>{});assert.doesNotThrow(()=>validateReview(task,tuned));
  const changedPrompt = {...task,request:{...task.request,system:'Use concise Chinese margin notes.'}};assert.doesNotThrow(()=>validateReview(changedPrompt,gateway));
  invalid=false;await executeReview(changedPrompt,gateway,new AbortController().signal);assert.equal((requests.at(-1)?.messages as {content:string}[])[0].content,changedPrompt.request.system);
- const lower = new ModelGateway({...config,MaxOutputTokens:256},'fixture-key');
+ const lower = new ModelGateway({...config,MaxOutputTokens:256},'fixture-key',async()=>{});
  await executeReview({...task,request:{...task.request,outputLimit:512}},lower,new AbortController().signal);assert.equal(requests.at(-1)?.max_tokens,256);
  const wrong={...task,model:{...task.model,model:'another-model'}};assert.throws(()=>validateReview(wrong,gateway));assert.equal(requests.length,8);
  }finally{server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()))}

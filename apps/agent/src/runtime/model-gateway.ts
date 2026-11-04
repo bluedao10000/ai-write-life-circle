@@ -1,3 +1,4 @@
+import {ModelRequestGate,workerContext,definition} from './governance/runtime.js';
 import {modelIdentity} from "./fingerprint.js";
 import {candidateBytes} from "./execution-policy.js";
 import { createModels, createProvider, InMemoryCredentialStore, type Model } from "@earendil-works/pi-ai";
@@ -61,8 +62,9 @@ export function completionUsage(value:unknown,maxOutput:number):AgentModelRespon
   return {inputTokens:raw.prompt_tokens!,outputTokens:raw.completion_tokens!,cachedInputTokens:valid?cached:0};
 }
 export class ModelGateway {
-  constructor(readonly config:ExecutionConfig,readonly key:string){}
+  constructor(readonly config:ExecutionConfig,readonly key:string,readonly admission:(task:AgentTask)=>Promise<void>=async()=>{throw Error('MODEL_RESERVATION_REQUIRED')}){}
   validate(task:AgentTask){
+    if(definition(task.kind).output!==task.outputSchemaVersion)throw new GatewayError('AGENT_CONFIG_CHANGED');
     const limit=task.request.outputLimit;
     if(limit!==undefined && (task.kind!=='review.execute'||!Number.isInteger(limit)||limit<128||limit>32768))throw new GatewayError('AGENT_CONFIG_CHANGED');
     if(task.configFingerprint!==executionFingerprint(this.config)||modelIdentity(task.model)!==executionFingerprint(this.config))throw new GatewayError("AGENT_CONFIG_CHANGED");
@@ -72,12 +74,14 @@ export class ModelGateway {
     const output=Math.min(task.request.outputLimit??this.config.MaxOutputTokens,this.config.MaxOutputTokens);
     const cfg=this.config,deadline=AbortSignal.timeout(Math.max(1,Math.min(cfg.Timeout/1e6,Date.parse(task.deadline)-Date.now()))),abort=AbortSignal.any([signal,deadline]);
     const {runtime,model}=await configuredModel(cfg.BaseURL,cfg.Model,this.key,cfg.MaxContextBytes+20000,output);
+    const thisAdmission=()=>this.admission(task);
+    const gate=new ModelRequestGate(workerContext(task,abort),{authorize:async()=>{this.validate(task)}});
     let usage:AgentModelResponse['usage']=null,transportError="";
     try {
       const result=await runtime.completeSimple(model,{systemPrompt:task.request.system,messages:[{role:"user",content:task.request.input,timestamp:Date.now()}]},{
         headers:{'X-Client-Request-Id':task.taskId},maxTokens:output,signal:abort,maxRetries:0,timeoutMs:cfg.Timeout/1e6,
-        fetch:boundedModelFetch(cfg.BaseURL,cfg.MaxResponseBytes,abort,code=>{transportError=code==="LLM_CONTEXT_OVERFLOW"?"LLM_HTTP_ERROR":code}),
-        onPayload(value){
+        fetch:gate.transport(boundedModelFetch(cfg.BaseURL,cfg.MaxResponseBytes,abort,code=>{transportError=code==="LLM_CONTEXT_OVERFLOW"?"LLM_HTTP_ERROR":code})),
+        async onPayload(value){
           const payload=value as Record<string,unknown>;
           // Preserve the author-approved structured format and exact Token parameter.
           delete payload.max_tokens;delete payload.max_completion_tokens;payload[cfg.TokenParameter]=output;
@@ -85,6 +89,7 @@ export class ModelGateway {
           if(cfg.ResponseFormat==="json_object")payload.response_format={type:"json_object"};
           if(cfg.ResponseFormat==="json_schema")payload.response_format={type:"json_schema",json_schema:{name:task.request.schemaName||"writing_review",strict:true,schema:task.request.schema}};
           if(Array.isArray(payload.tools)&&payload.tools.length)throw new GatewayError("LLM_TOOL_OUTPUT_FORBIDDEN");
+          await gate.prepare({reserve:()=>thisAdmission()});
           return payload;
         },
         onProviderStreamEvent(value){
@@ -92,6 +97,7 @@ export class ModelGateway {
           if(reported)usage=reported;
         },
       });
+      gate.finished();
       const text=result.content.filter(b=>b.type==="text").map(b=>b.text).join("");
       const response={text,usage};
       if(abort.aborted)throw new GatewayError(deadline.aborted?"LLM_TIMEOUT":"REVIEW_INTERRUPTED",response);

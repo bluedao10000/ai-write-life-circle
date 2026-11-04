@@ -1,3 +1,5 @@
+import {executionContext} from '../src/runtime/governance/runtime.js';
+const fixtureGovernance={context:executionContext({executionId:'fixture',traceId:'fixture',role:'thinking',authorizationVersion:0,scopes:['creative','chapters'],deadline:Date.now()+60000,signal:new AbortController().signal}),authority:{authorize:async()=>{}}};
 import test from "node:test";
 import {BACKGROUND_CONTEXT, withAbortSignal} from "@earendil-works/chord/context";
 import assert from "node:assert/strict";
@@ -16,7 +18,7 @@ import type {Config} from "../src/config.js";
 const config={storyOrigin:"http://127.0.0.1:8791",model:{limits:{maxToolResultBytes:24000}}} as Config;
 const args={changes:[{intent:"decide",kind:"character",patch:{name:"林舟"},evidence:[{messageId:"author-current",quote:"主角叫林舟"}]}]};
 const execution=():StoryExecution=>({messageId:"author-current",runId:"run-current",dialogueRecording:true,writes:{},persist:()=>{}});
-const registered=(ex:StoryExecution,scopes=["creative"])=>tools(config,"session","fixture",new AbortController().signal,()=>{},()=>true,scopes,ex);
+const registered=(ex:StoryExecution,scopes=["creative"])=>tools(config,"session","fixture",new AbortController().signal,()=>{},()=>true,scopes,ex,fixtureGovernance);
 const invoke=async(tool:ReturnType<typeof registered>[number],input:unknown=args)=>{
   const result=await tool.execute(input,{} as never,BACKGROUND_CONTEXT);
   return {...result,details:result.details as Record<string,unknown>};
@@ -62,7 +64,7 @@ test("validation feedback is recoverable and successful logical-turn writes repl
     const tool=registered(ex).find(t=>t.name==="record_story_changes")!;
     const conflict=await invoke(tool);assert.equal(conflict.details.code,"VERSION_CONFLICT");assert.equal(ex.writes.record_story_changes,undefined);
     const success=await invoke(tool);assert.match(JSON.stringify(success),/receipt-1/);
-    const replay=await invoke(tool,{changes:[]});assert.equal(replay.details.alreadyRecorded,true);assert.equal(requests,2);assert(persisted>=3);
+    const replay=await invoke(tool,{changes:[{...args.changes[0],patch:{name:'另一角色'}}]});assert.equal(replay.details.alreadyRecorded,true);assert.equal(requests,2);assert(persisted>=3);
   }finally{globalThis.fetch=original}
 });
 
@@ -75,7 +77,7 @@ test("story writes await budget, intent and receipt commits",async()=>{
     return new Response('{"changeId":"persisted","status":"applied"}');
   };
   try {
-    const tool=tools(config,"session","fixture",new AbortController().signal,()=>{},async()=>{await Promise.resolve();order.push("budget");return true},["creative"],ex).find(t=>t.name==="record_story_changes")!;
+    const tool=tools(config,"session","fixture",new AbortController().signal,()=>{},async()=>{await Promise.resolve();order.push("budget");return true},["creative"],ex,fixtureGovernance).find(t=>t.name==="record_story_changes")!;
     await invoke(tool);
     assert.deepEqual(order,["budget","intent","request","receipt"]);
   }finally{globalThis.fetch=original}
@@ -100,7 +102,7 @@ test("unknown save outcome retains original batch across recovery and forbids a 
     let tool=registered(ex).find(t=>t.name==="record_story_changes")!;
     assert.equal((await invoke(tool)).details.code,"OUTCOME_UNKNOWN");
     assert.deepEqual(ex.writes.record_story_changes.arguments,args);
-    assert.equal((await invoke(tool,{changes:[]})).details.code,"PENDING_STORY_CHANGE");
+    assert.equal((await invoke(tool,{changes:[{...args.changes[0],patch:{name:'另一角色'}}]})).details.code,"PENDING_STORY_CHANGE");
     assert.equal((await invoke(tool)).details.code,"OUTCOME_UNKNOWN");assert.equal(requests,1);
     delete ex.writes.record_story_changes.tool;
     const offer=registered({...ex,dialogueRecording:false}).find(t=>t.name==="offer_story_changes")!;
@@ -108,7 +110,7 @@ test("unknown save outcome retains original batch across recovery and forbids a 
     // A new run has the durable arguments but can safely retry the original request.
     globalThis.fetch=async(_url,init)=>{requests++;assert.deepEqual(JSON.parse(init?.body as string).arguments,args);return new Response('{"changeId":"receipt-after-recovery","status":"applied"}')};
     tool=registered({...ex,runId:"run-recovery"}).find(t=>t.name==="record_story_changes")!;
-    assert.equal((await invoke(tool,{changes:[]})).details.code,"PENDING_STORY_CHANGE");
+    assert.equal((await invoke(tool,{changes:[{...args.changes[0],patch:{name:'另一角色'}}]})).details.code,"PENDING_STORY_CHANGE");
     assert.match(JSON.stringify(await invoke(tool)),/receipt-after-recovery/);assert.equal(requests,2);
   }finally{globalThis.fetch=original}
 });
@@ -120,7 +122,7 @@ test("offered batches report awaiting author action and preserve one batch acros
   try {
     await invoke(registered(ex).find(t=>t.name==="offer_story_changes")!);
     assert.deepEqual(states,[{status:"saving",changeCount:1},{status:"offered",changeCount:1,changeId:"offered-1"}]);
-    await invoke(registered({...ex,dialogueRecording:true}).find(t=>t.name==="record_story_changes")!,{changes:[]});
+    await invoke(registered({...ex,dialogueRecording:true}).find(t=>t.name==="record_story_changes")!,{changes:[{...args.changes[0],patch:{name:'另一角色'}}]});
     assert.equal(calls,1);assert.deepEqual(states.at(-1),{status:"offered",changeCount:1,changeId:"offered-1"});
   }finally{globalThis.fetch=original}
 });

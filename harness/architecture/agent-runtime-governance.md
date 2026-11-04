@@ -1,6 +1,6 @@
 # ADR：统一 Runtime Governance
 
-日期：2026-11-04。状态：设计，尚未接入生产执行。
+日期：2026-11-04。状态：Phase 1 本地实现并验收，尚未部署。
 
 ## 合同与权威
 
@@ -33,3 +33,19 @@ Thinking BudgetAdapter 复用 Saved.execution.modelRequests、usage 和 Store.wr
 ## 验收
 
 用真实入口证明请求前预留、预留失败零网络请求、撤销后零工具执行、缓存重放也授权、取消后迟到结果被栅栏拒绝、未知 usage 不退款。保留现有 SIGKILL/outbox/迁移/Go 集成测试。静态入口扫描只用于发现绕过，不能替代运行验证。
+
+## Phase 1 实现与验收
+
+公共入口为 `apps/agent/src/runtime/governance/index.ts`。Registry 登记 Thinking 与四种 Go task kind，并校验 Worker 输出合同；ExecutionContext 固定角色、scope、期限、关联ID和版本，预算只读派生自原 Run/AgentTask。
+
+`ModelRequestGate` 已接入 PiHost 的回复与讨论压缩 stream，以及 Worker 的 complete。SDK最终payload钩子等待授权和原持久预留适配器；实际fetch要求该请求已准备且尚未发送。并发准备、未预留发送和重复发送均被拒绝。Worker适配器在最终payload阶段调用Go started和heartbeat，没有适配器的ModelGateway默认拒绝执行。usage结算、未知费用与重试仍沿用原实现。
+
+`governTool` 包装所有注册工具，包括本地analysis skill与StoryWrites回执重放：校验schema/输入大小、scope、当前授权、取消和期限，然后执行原工具及检查输出大小。执行仍使用原顺序调度、原意图持久化和Go回执。Thinking重新核验作者、作品、session、授权版本、模型与scope；本地缓存不能绕过这项检查。
+
+Thinking的版本和白名单审计记录加入原 `RunExecution`，随业务检查点提交，并跟随既往attempt映射保留。Worker继续使用Go的任务、started、预算和完成/失败回执作为持久事实；治理关联日志不构成第二个数据库。治理指标按固定role/action计数，属于进程内统计，不是跨重启总账。
+
+新增可选私有字段不改公共Thinking或Go协议；旧运行没有governance元数据时保留legacy语义，启动仍中断旧付费执行。现有layout=2迁移与墓碑规则不变。代码回滚需支持该布局，禁止恢复旧状态覆盖新费用/回执。
+
+验收：106项Agent测试通过，包含治理预留闸门、失败零网络、撤销后的本地重放、严格参数、迟到结果拒绝及审计脱敏/持久记录；类型检查、lint和构建通过。真实Go/Pi集成通过Thinking、story-continuity、Review Worker、Creative workflow、Knowledge 10章及Knowledge faults，全部合成HTTP模型。
+
+本阶段不启用子任务、父子预算划分、通用审批存储或长期记忆。高风险业务仍依赖现有作者同意、消息证据和Go确认规则。全局持久诊断、历史指标与统一健康聚合属于后续Observability阶段；不将本地日志标为完整持久审计。

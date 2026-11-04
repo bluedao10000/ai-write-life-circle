@@ -1,3 +1,5 @@
+import {executionContext} from '../src/runtime/governance/runtime.js';
+const fixtureGovernance={context:executionContext({executionId:'fixture',traceId:'fixture',role:'thinking',authorizationVersion:0,scopes:['creative','chapters'],deadline:Date.now()+60000,signal:new AbortController().signal}),authority:{authorize:async()=>{}}};
 import test from 'node:test';
 import {BACKGROUND_CONTEXT} from '@earendil-works/chord/context';
 import assert from 'node:assert/strict';
@@ -12,7 +14,7 @@ test('tool deduplication canonicalizes nested property order and avoids the seco
  globalThis.fetch=async()=>{network++;return new Response('{"items":[],"sources":[]}',{headers:{'content-type':'application/json'}})};
  try {
   const config={storyOrigin:'http://127.0.0.1:8791',model:{limits:{maxToolResultBytes:1000}}} as Config;
-  const tool=tools(config,'session','fixture',new AbortController().signal,()=>{},()=>true,['chapters']).find(t=>t.name==='read_chapter')!;
+  const tool=tools(config,'session','fixture',new AbortController().signal,()=>{},()=>true,['chapters'],undefined,fixtureGovernance).find(t=>t.name==='read_chapter')!;
   await tool.execute({chapterId:'one',revisionId:'two'},{} as never,BACKGROUND_CONTEXT);
   await tool.execute({revisionId:'two',chapterId:'one'},{} as never,BACKGROUND_CONTEXT);
   assert.equal(network,1);

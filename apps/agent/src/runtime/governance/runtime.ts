@@ -1,0 +1,69 @@
+import type {AgentTask} from '@writer-agent/contracts';
+
+export const runtimeVersion='governance-v1';
+export const definitions=Object.freeze({
+ thinking:{version:1,capability:'thinking',mode:'durable',retry:'explicit',output:'thinking-v1',tools:'scoped',modelCalls:'run-budget'},
+ 'review.execute':{version:1,capability:'review',mode:'go-task',retry:'go',output:'review-candidates-v1',tools:'none',modelCalls:1},
+ 'knowledge.extract':{version:1,capability:'knowledge',mode:'go-task',retry:'go',output:'knowledge-candidates-v1',tools:'none',modelCalls:1},
+ 'creative.organize':{version:1,capability:'creative',mode:'go-task',retry:'go',output:'creative-organize-candidates-v1',tools:'none',modelCalls:1},
+ 'creative.plan_check':{version:1,capability:'creative',mode:'go-task',retry:'go',output:'creative-plan_check-candidates-v1',tools:'none',modelCalls:1},
+} as const);
+export type AgentRole=keyof typeof definitions;
+export type ExecutionContext=Readonly<{
+ executionId:string;traceId:string;role:AgentRole;authorizationVersion:number;
+ versions?:Readonly<{prompt:string;toolSchema:string}>;
+ budget?:Readonly<{maxTokens:number;maxModelCalls:number;maxToolCalls:number}>;
+ recordAudit?:(record:AuditRecord)=>void;
+ sessionId?:string;taskId?:string;modelRequestId?:string;executorEpoch?:number;scopes:readonly string[];deadline:number;signal:AbortSignal;
+}>;
+export function definition(role:string){
+ if(!Object.hasOwn(definitions,role))throw Error('UNSUPPORTED_TASK_KIND');
+ return definitions[role as AgentRole];
+}
+export function executionContext(value:ExecutionContext):ExecutionContext {
+ definition(value.role);
+ if(!Number.isFinite(value.deadline)||!Number.isSafeInteger(value.authorizationVersion)||value.authorizationVersion<0)throw Error('AGENT_CONFIG_CHANGED');
+ return Object.freeze({...value,...(value.budget?{budget:Object.freeze({...value.budget})}:{}),...(value.versions?{versions:Object.freeze({...value.versions})}:{}),scopes:Object.freeze([...value.scopes])});
+}
+export function workerContext(task:AgentTask,signal:AbortSignal){
+ return executionContext({executionId:task.taskId,traceId:task.taskId,taskId:task.taskId,role:task.kind,authorizationVersion:typeof task.consent.authorizationVersion==='number'?task.consent.authorizationVersion:0,executorEpoch:task.executorEpoch,scopes:[],versions:{prompt:task.strategyVersion,toolSchema:task.outputSchemaVersion},budget:{maxTokens:task.reservedTokens,maxModelCalls:1,maxToolCalls:0},deadline:Date.parse(task.deadline),signal});
+}
+export function assertCurrent(context:ExecutionContext){
+ context.signal.throwIfAborted();
+ if(Date.now()>=context.deadline)throw Error('DURATION_EXCEEDED');
+}
+export type AuditAction='authorized'|'denied'|'reserved'|'model_started'|'model_finished'|'tool_started'|'tool_finished'|'failed';
+export type AuditRecord={action:AuditAction;timestamp:string;modelRequestId?:string};
+const counts:Partial<Record<`${AgentRole}:${AuditAction}`,number>>={};
+/** Only fixed metadata enters logs; payloads, credentials and arbitrary errors are excluded. */
+export function audit(context:ExecutionContext,action:AuditAction){
+ context.recordAudit?.({action,timestamp:new Date().toISOString(),...(context.modelRequestId?{modelRequestId:context.modelRequestId}:{})});
+ const key=`${context.role}:${action}` as const;counts[key]=(counts[key]??0)+1;
+ console.log(JSON.stringify({event:'agent_governance',runtimeVersion,definitionVersion:definition(context.role).version,versions:context.versions,executionId:context.executionId,traceId:context.traceId,taskId:context.taskId,modelRequestId:context.modelRequestId,executorEpoch:context.executorEpoch,sessionId:context.sessionId,role:context.role,authorizationVersion:context.authorizationVersion,action,timestamp:new Date().toISOString()}));
+}
+export const governanceMetrics=()=>({...counts});
+export interface AuthorizationManager {authorize():Promise<void>}
+/** Adapter to the existing Durable checkpoint or Go started receipt, never a second ledger. */
+export interface BudgetManager {reserve():Promise<void>}
+export class ModelRequestGate {
+ private ready=false;
+ private preparing=false;
+ private sent=false;
+ constructor(readonly context:ExecutionContext,readonly authorization:AuthorizationManager){}
+ async prepare(budget:BudgetManager){
+  if(this.preparing||this.ready||this.sent)throw Error('MODEL_REQUEST_REPLAY');
+  this.preparing=true;
+  assertCurrent(this.context);
+  try{await this.authorization.authorize();assertCurrent(this.context);audit(this.context,'authorized');await budget.reserve();assertCurrent(this.context);this.ready=true;audit(this.context,'reserved')}
+  catch(error){audit(this.context,'denied');throw error}
+ }
+ transport(fetcher:typeof fetch):typeof fetch {
+  return async(request,options)=>{
+   assertCurrent(this.context);
+   if(!this.ready||this.sent)throw Error('MODEL_RESERVATION_REQUIRED');
+   this.sent=true;audit(this.context,'model_started');
+   return fetcher(request,options);
+  };
+ }
+ finished(){audit(this.context,'model_finished')}
+}

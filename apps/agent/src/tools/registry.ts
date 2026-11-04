@@ -1,3 +1,5 @@
+import {governTool} from '../runtime/governance/tool-gateway.js';
+import {executionContext,type ExecutionContext,type AuthorizationManager} from '../runtime/governance/runtime.js';
 import { canonicalJSON } from "../runtime/fingerprint.js";
 import { Type } from "typebox";
 import { z } from "zod";
@@ -87,6 +89,7 @@ export function tools(
   onCall: () => boolean | Promise<boolean>,
   scopes: readonly string[] = [],
   execution?: StoryExecution,
+  governance?: {context:ExecutionContext;authority:AuthorizationManager},
 ): ToolRegistration[] {
   const seen = new Set<string>();
   const uncertain = new Set<string>();
@@ -116,7 +119,7 @@ export function tools(
     { additionalProperties: false },
   );
   const granted = storyNames.filter((name) => (!mutationNames.has(name) || (execution && (name === "update_discussion_focus" || (name === "record_story_changes" ? execution.dialogueRecording : !execution.dialogueRecording)))) && scopes.includes(creativeNames.has(name) ? "creative" : name === "get_author_notes" ? "notes" : ["read_chapter", "find_related_chapters"].includes(name) ? "chapters" : "knowledge"));
-  return [
+  const registrations:ToolRegistration[] = [
     ...granted.map(
       (name) =>
         ({
@@ -254,6 +257,9 @@ export function tools(
       },
     } satisfies ToolRegistration]),
   ];
+  const context=governance?.context??executionContext({executionId:execution?.runId??id,traceId:execution?.runId??id,role:'thinking',sessionId:id,authorizationVersion:0,scopes,deadline:Date.now()+config.model.limits.maxDurationMs,signal});
+  const authority=governance?.authority??{authorize:async()=>{const grant=await authorize(config,capability,signal);if(grant.sessionId!==id||scopes.some(scope=>!grant.scopes.includes(scope as typeof grant.scopes[number])))throw Error('AUTHORIZATION_REVOKED')}};
+  return registrations.map(tool=>governTool(tool,{name:tool.name,risk:mutationNames.has(tool.name)?'write':tool.name==='request_turn_organize'?'candidate':'read',replay:tool.replay??'unsafe',requiredScopes:tool.name==='load_analysis_skill'?[]:[creativeNames.has(tool.name)?'creative':tool.name==='get_author_notes'?'notes':['read_chapter','find_related_chapters'].includes(tool.name)?'chapters':'knowledge'],maxInputBytes:64*1024,maxOutputBytes:config.model.limits.maxToolResultBytes,timeoutMs:5000,idempotencyRequired:mutationNames.has(tool.name)},context,authority));
 }
 const toolText = (text: string, details: Record<string, JsonValue> = {}) => ({output:[{type:"text" as const,text}],details});
 const feedback = (code: string, message: string, extra: Record<string, unknown> = {}) => toolText(JSON.stringify({ok:false,code,message,...extra}), {recoverable:true,code});

@@ -9,13 +9,12 @@ export class Scheduler {
  readonly active=new Map<string,{abort:AbortController;done:Promise<void>}>();
  private incompatible=false;
  readonly instance=randomUUID();readonly client:TaskClient;readonly gateway:ModelGateway;
- constructor(readonly config:WorkerConfig){this.client=new TaskClient(config,this.instance);this.gateway=new ModelGateway(config.model,config.key)}
+ constructor(readonly config:WorkerConfig){this.client=new TaskClient(config,this.instance);this.gateway=new ModelGateway(config.model,config.key,async task=>{await this.client.action(task,'started');await this.client.action(task,'heartbeat')})}
  private log(event:string,task?:AgentTask,code?:string){console.log(JSON.stringify({event,taskId:task?.taskId,kind:task?.kind,code}))}
  private async process(task:AgentTask,abort:AbortController){
   let heartbeat:ReturnType<typeof setInterval>|undefined;
   try{
    validateTask(task,this.gateway);
-   await this.client.action(task,'started');
    heartbeat=setInterval(()=>{void this.client.action(task,'heartbeat').catch(()=>abort.abort())},1000);
    const response=await executeTask(task,this.gateway,abort.signal);
    await this.client.action(task,'complete',response);
