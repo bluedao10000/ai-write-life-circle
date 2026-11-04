@@ -168,3 +168,96 @@ func TestMemoryRetrievalExpiresDeletedConversationSources(t *testing.T) {
 		t.Fatal("business receipts lost", e)
 	}
 }
+
+func TestMemoryConflictReviewUsesAuthoritativeVersionsAndLifecycle(t *testing.T) {
+	s, rec, _ := fixture(t)
+	ctx := context.Background()
+	rec.Scopes = append(rec.Scopes, "creative")
+	rec.Model.Limits.Tools = 30
+	if e := s.tx(ctx, func(st *registry) error { st.Sessions[rec.ID] = rec; return nil }); e != nil {
+		t.Fatal(e)
+	}
+	actor := application.Actor{ID: rec.Owner, Role: "author"}
+	app, e := s.Management.Resolve(actor, rec.Book)
+	if e != nil {
+		t.Fatal(e)
+	}
+	c := creative.New(app, llm.Config{}, nil)
+	on := true
+	if _, e = c.Configure(ctx, actor, "recording", compat.UUID(), creative.SettingsInput{DialogueRecording: &on}); e != nil {
+		t.Fatal(e)
+	}
+	asset, e := c.CreateAsset(ctx, actor, compat.UUID(), creative.AssetInput{Kind: "character", Status: "accepted", Content: creative.Content{Name: "林舟", Summary: "已确认的看守人"}})
+	if e != nil {
+		t.Fatal(e)
+	}
+	sessions := []string{}
+	proposals := []string{}
+	for i := 0; i < 10; i++ {
+		session, message := compat.UUID(), compat.UUID()
+		sessions = append(sessions, session)
+		summary := "尚未确认的摆渡人"
+		receipt, e := c.RecordStoryChanges(ctx, actor, compat.UUID(), session, message, creative.RecordStoryChangesInput{Changes: []creative.StoryChangeInput{{Intent: "explore", TargetAssetID: asset.ID, BaseVersion: &asset.Version, Patch: creative.Patch{Summary: &summary}, Evidence: []creative.StoryEvidence{{MessageID: message, Quote: summary}}}}}, []creative.TurnMessage{{ID: message, Role: "user", Text: summary}})
+		if e != nil {
+			t.Fatal(e)
+		}
+		proposals = append(proposals, receipt.Changes[0].ProposalID)
+	}
+	body := `{"sessionId":"` + rec.ID + `","tool":"retrieve_memory","arguments":{}}`
+	before := call(t, s, rec, "/internal/v1/agent/tools/execute", body, 200)
+	if len(before["reviewRequired"].([]any)) != 0 {
+		t.Fatal(before)
+	}
+	updatedContent := creative.Content{Name: "林舟", Summary: "作者更新后的看守人"}
+	updated, e := c.UpdateAsset(ctx, actor, compat.UUID(), asset.ID, creative.AssetUpdate{BaseVersion: asset.Version, Content: &updatedContent})
+	if e != nil {
+		t.Fatal(e)
+	}
+	restarted := &Service{Management: s.Management, State: s.State, Secret: s.Secret}
+	after := call(t, restarted, rec, "/internal/v1/agent/tools/execute", body, 200)
+	review := after["reviewRequired"].([]any)
+	if len(review) != 8 || after["truncated"] != true || after["omitted"].(float64) < 2 {
+		t.Fatal(after)
+	}
+	for _, item := range review {
+		conflict := item.(map[string]any)
+		if conflict["reason"] != "target_version_changed" || conflict["targetAssetId"] != asset.ID || conflict["baseVersion"] != float64(asset.Version) || conflict["currentVersion"] != float64(updated.Version) || conflict["provenance"] == nil {
+			t.Fatal(conflict)
+		}
+	}
+	for _, item := range after["records"].([]any) {
+		if item.(map[string]any)["resource"] == "creative.proposal" {
+			t.Fatal("stale candidate exposed as current memory")
+		}
+	}
+	if _, e = c.Decide(ctx, actor, compat.UUID(), creative.DecideInput{Decisions: []creative.DecisionInput{{ProposalID: proposals[0], Action: "accept"}}}); e == nil || application.AsError(e).Code != "PROPOSAL_STALE" {
+		t.Fatal("stale acceptance", e)
+	}
+	edited := creative.Content{Name: "林舟", Summary: "作者重新审核的摆渡人"}
+	if _, e = c.Decide(ctx, actor, compat.UUID(), creative.DecideInput{Decisions: []creative.DecisionInput{{ProposalID: proposals[0], Action: "accept_edited", Content: &edited, ExpectedVersion: &updated.Version}}}); e != nil {
+		t.Fatal(e)
+	}
+	limited := rec
+	limited.Model.Limits.ResultBytes = 1600
+	bounded, e := s.execute(ctx, limited, "retrieve_memory", toolArgs{})
+	if e != nil {
+		t.Fatal(e)
+	}
+	raw, _ := json.Marshal(bounded)
+	if len(raw) > 1600 || bounded.(map[string]any)["truncated"] != true {
+		t.Fatal(string(raw))
+	}
+	for _, session := range sessions {
+		if e = c.CancelSession(ctx, session); e != nil {
+			t.Fatal(e)
+		}
+	}
+	final := call(t, restarted, rec, "/internal/v1/agent/tools/execute", body, 200)
+	if len(final["reviewRequired"].([]any)) != 0 {
+		t.Fatal(final)
+	}
+	detail, e := c.Asset(ctx, asset.ID)
+	if e != nil || detail.Asset.Summary != edited.Summary {
+		t.Fatal("confirmed setting lost", e)
+	}
+}

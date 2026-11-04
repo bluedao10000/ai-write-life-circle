@@ -39,3 +39,9 @@ Knowledge读取刷新来源状态，并校验引用Revision、内容标识和引
 会话删除沿用Creative CancelSession：未确认提案过期，原话证据清除，focus删除，作者已确认资产保留。StoryContext排除`SourceDeleted`的历史变更回执，避免Thinking上下文和统一记忆引用不可读取的会话来源；排除发生在最近记录容量选择之前，失效回执不会占用有效记录的位置。业务审计和幂等回执继续保留，不参与模型记忆检索。
 
 验收通过实际Go/Pi流程生成候选、删除来源会话、创建新Thinking会话并调用retrieve_memory；检查过期状态、证据清除及空检索结果。Go测试同时证明新建Service仍遵循删除结果，已确认资产与业务审计没有丢失。无持久格式变化，回滚代码不会恢复被清除的原话。
+
+## 版本冲突检索合同
+
+retrieve_memory复用Creative ProposalView的Stale判断，新增只读reviewRequired列表：proposalId、targetAssetId、baseVersion、currentVersion、reason及原会话来源。只报告仍为proposed、未替代、来源未删除的候选；不将过期候选内容混入confirmed/observed记忆。target_version_changed与target_missing表示版本或目标冲突，不声称识别语义矛盾。作者仍通过原Creative审核与显式rebase接口解决，检索不修改候选。
+
+检查最近24个待审核候选，最多返回8条提示，并纳入原工具字节上限；分页或遗漏均设置truncated。reviewRequired是作品级审核提示，不受query关键词过滤。没有独立持久字段或迁移，返回schemaVersion=1的新增可选信息，原消费方继续读取records。

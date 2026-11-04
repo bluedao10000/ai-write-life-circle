@@ -191,3 +191,13 @@ Agent测试124/124通过；类型检查、lint、构建通过。评分器回归�
 `dev-safety.json`现为7/7工程断言通过，总计7次合成模型请求、7次工具尝试、2580个合成报告token。Agent测试126/126、类型检查、lint与构建通过。评分器要求真实检索、注入已到达工具结果、合法来源匹配及撤销事实；缺失任一证据均失败。报告保留于`.local/evals/agent/`。
 
 这些场景验证权限边界，不衡量真实模型抵抗注入的概率。记忆污染、跨会话隔离的独立评测及子角色扩权仍待实现，完整安全验收未完成。
+
+## 记忆版本冲突与作者审核
+
+统一retrieve_memory新增reviewRequired只读投影，复用Creative的待审核候选和Stale判断。资产版本已改变或目标缺失时返回候选ID、目标ID、旧/当前版本、原因与原会话来源；过期候选正文仍不作为当前记忆返回。最多检查最近24个待审核候选、返回8条提示，受原工具字节上限约束，遗漏以truncated/omitted表示。提示面向作品审核，不按query关键词筛选。
+
+`TestMemoryConflictReviewUsesAuthoritativeVersionsAndLifecycle`通过真实领域接口创建10个候选、更新资产、重新创建读取Service，验证冲突与来源、8条上限和字节截断。旧版本直接采纳被PROPOSAL_STALE拒绝；作者accept_edited并指定当前版本后可完成审核。删除来源会话后冲突提示消失，已确认资产保留。未新增持久状态、数据库或迁移格式，Go继续拥有审核权威。
+
+Go Thinking/Creative测试、Go API构建通过。现有Memory评测3/3通过，7次合成模型调用、2次工具调用，验证真实Thinking→Tool Gateway→Go检索及删除来源链路保持兼容。冲突生命周期由上述Go测试验证，尚未加入独立模型评测场景。
+
+尚缺语义矛盾识别、后台整理候选、Procedural Memory与完整过期策略；版本冲突提示不等同于这些能力。Phase 3仍为部分实现。
