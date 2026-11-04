@@ -1,4 +1,5 @@
 import {ModelRequestGate,workerContext,definition} from './governance/runtime.js';
+import type {ExecutionContext,AuthorizationManager,BudgetManager} from './governance/runtime.js';
 import {modelIdentity} from "./fingerprint.js";
 import {candidateBytes} from "./execution-policy.js";
 import { createModels, createProvider, InMemoryCredentialStore, type Model } from "@earendil-works/pi-ai";
@@ -111,4 +112,40 @@ export class ModelGateway {
       throw new GatewayError(deadline.aborted?"LLM_TIMEOUT":signal.aborted?"REVIEW_INTERRUPTED":transportError||"LLM_INVALID_RESPONSE",{text:"",usage});
     }
   }
+}
+
+/** No-tool evaluation calls use the same Pi provider, transport and reservation gate. */
+export async function completeJudgment(config:ExecutionConfig,key:string,context:ExecutionContext,authority:AuthorizationManager,budget:BudgetManager & {settle(usage:AgentModelResponse['usage']):Promise<void>},request:{system:string;input:string;schema:Record<string,unknown>}):Promise<AgentModelResponse>{
+ const cfg=executionConfigSchema.parse(config);
+ if(context.role!=='evaluation.judge'||context.scopes.length||!context.budget||context.budget.maxModelCalls!==1||context.budget.maxToolCalls!==0)throw new GatewayError('AGENT_CONFIG_CHANGED');
+ const timeout=AbortSignal.timeout(Math.max(1,Math.min(cfg.Timeout/1e6,context.deadline-Date.now())));
+ const signal=AbortSignal.any([context.signal,timeout]);
+ const gate=new ModelRequestGate({...context,signal},authority);
+ const {runtime,model}=await configuredModel(cfg.BaseURL,cfg.Model,key,cfg.MaxContextBytes+20000,cfg.MaxOutputTokens);
+ let usage:AgentModelResponse['usage']=null,reserved=false,transportError='';
+ try{
+  const result=await runtime.completeSimple(model,{systemPrompt:request.system,messages:[{role:'user',content:request.input,timestamp:Date.now()}]},{signal,maxTokens:cfg.MaxOutputTokens,maxRetries:0,timeoutMs:cfg.Timeout/1e6,
+   fetch:gate.transport(boundedModelFetch(cfg.BaseURL,cfg.MaxResponseBytes,signal,code=>{transportError=code})),
+   async onPayload(value){
+    const payload=value as Record<string,unknown>;
+    delete payload.max_tokens;delete payload.max_completion_tokens;payload[cfg.TokenParameter]=cfg.MaxOutputTokens;
+    payload.response_format={type:'json_schema',json_schema:{name:'agent_judgment',strict:true,schema:request.schema}};
+    if(Array.isArray(payload.tools)&&payload.tools.length)throw new GatewayError('LLM_TOOL_OUTPUT_FORBIDDEN');
+    const bytes=Buffer.byteLength(JSON.stringify(payload));
+    if(bytes>cfg.MaxContextBytes||bytes+cfg.MaxOutputTokens>context.budget!.maxTokens)throw new GatewayError('LLM_CONTEXT_OVERFLOW');
+    await gate.prepare({reserve:async()=>{await budget.reserve();reserved=true}});return payload;
+   },
+   onProviderStreamEvent(value){const reported=completionUsage(value,cfg.MaxOutputTokens);if(reported)usage=reported},
+  });
+  signal.throwIfAborted();
+  const response:AgentModelResponse={text:result.content.filter(b=>b.type==='text').map(b=>b.text).join(''),usage};
+  if(response.usage&&response.usage.inputTokens+response.usage.outputTokens>context.budget.maxTokens)throw new GatewayError('LLM_BUDGET_EXCEEDED',response);
+  if(transportError)throw new GatewayError(transportError,response);
+  if(result.content.some(b=>b.type==='toolCall'))throw new GatewayError('LLM_TOOL_OUTPUT_FORBIDDEN',response);
+  if(result.stopReason!=='stop')throw new GatewayError('LLM_INCOMPLETE_OUTPUT',response);
+  gate.finished();return response;
+ }catch(error){
+  if(error instanceof GatewayError)throw error;
+  throw new GatewayError(signal.aborted?'LLM_TIMEOUT':transportError||'LLM_INVALID_RESPONSE',{text:'',usage});
+ }finally{if(reserved)await budget.settle(usage)}
 }

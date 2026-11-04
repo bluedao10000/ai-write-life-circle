@@ -52,6 +52,6 @@ jobs:
       - name: Agent recovery process integration
         run: pnpm test:thinking
       - name: Agent engineering evaluation (synthetic dev dataset)
-        run: pnpm eval:agent
+        run: pnpm eval:agent && pnpm eval:agent:judge
       - name: Web unit tests
         run: pnpm --filter @writer-agent/web test

@@ -25,3 +25,11 @@ CI执行合成dev数据，不调用真实Provider。Review fixture按评测调�
 Knowledge业务案例从实际保存的Revision执行提取，检查Go中的实体、观察、来源Revision、原稿版本和正式资产数量。Creative业务案例启动Thinking会话后由Worker整理，检查Go中的待确认提案、作者消息证据及正式资产数量。两者以第二作者身份请求同一资源，要求404。Creative usage汇总Thinking响应与Go持久任务usage；缺少任一usage时总量保持未知。模型输出仍由本地fixture提供，来源与隔离结果属于工程验收。
 
 可靠性案例在Knowledge模型请求发出后对Worker执行SIGKILL，暂停该业务域并重启Worker，等待本地Provider完成迟到响应后读取Go任务、预算和观察；另一个案例由真实请求超时触发Go故障回执。每日任务预算限制为1，禁止评测中的自动重试扩大调用。未知usage保留null；只有Go记录的正整数token exposure在案例预算内时，才允许预算检查通过。该exposure不是已知消耗，不计入已测token指标。SIGKILL案例验证暂停后的安全重启，不将其描述为原任务自动恢复。
+
+## Judge与校准入口
+
+`pnpm eval:agent:judge`运行独立合成开发集，报告写入`.local/evals/agent/judge-dev.json`。`evaluation/judge.ts`定义`writing-judge-v1` rubric（遵循请求、证据、清晰度，0–4分）与`judge-prompt-v1`；pointwise返回逐维分数，pairwise返回A/B/tie。候选顺序随机化并记录，输出映射回原候选ID。严格JSON校验拒绝非法分数、缺失字段、错误版本及额外字段。确定性失败的候选即使得高分也不具备通过资格。
+
+`evaluation.judge`是Registry独立角色，无scope、无工具、单次模型请求。`completeJudgment`复用Pi Models API、受限fetch与ModelRequestGate，最终payload先做大小和token上限检查，再授权及预留，网络返回后结算usage。没有已知usage则保留预留；不自动重试。合成运行最多10次调用、100000 tokens，每次预留10000；本地预算只约束fixture，不授予Go业务额度。报告保留失败、调用轨迹与费用；任何执行失败使命令退出非零。当前没有真实付费Judge入口。
+
+人工标注可通过`pnpm eval:agent:judge -- --annotations=/absolute/path/annotations.json`导入JSON数组。每条包含`caseId`、`datasetVersion`（`judge-engineering-dev-v1`）、`rubricVersion`、`reviewerId`、`annotatedAt`和`label`。pointwise的label为0–4整数总体分数；pairwise为原候选ID或`tie`。校准拒绝重复标注、未知案例、错版和非法标签，输出样本数、pointwise平均绝对误差及pairwise一致率。无人工样本时指标为null；测试中的合成标注不写入报告。该合成Judge固定返回分数，仅证明治理与计算链路，不证明评审质量或抗注入能力。

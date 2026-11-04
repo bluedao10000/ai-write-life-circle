@@ -111,3 +111,13 @@ Phase 2仍未完整验收：Thinking独立业务终态、故障轨迹、独立�
 本地验收：113项Agent测试通过，类型检查、lint及构建通过；可靠性分类4/4工程通过。报告`.local/evals/agent/dev-reliability.json`含真实进程故障轨迹和Go预算读数。评分器拒绝零、负数、非有限数和超预算的未知费用覆盖。没有运行真实付费模型，也没有更改生产格式或部署代码。
 
 后续仍需Thinking的取消/恢复、其他指定故障的数据集适配、Judge与人工校准、独立安全与记忆评测，以及版本/性能报告；现有单项故障证据不等于完整可靠性验收。
+
+### Judge工程实现
+
+新增独立rubric、pointwise/pairwise严格输出、随机展示顺序记录和人工标注校准。Judge通过Registry角色`evaluation.judge`及统一ModelRequestGate执行；复用Pi Models API和受限网络传输，禁止工具，最终payload预留先于网络，usage结算先于返回，未知usage保留预留。真实付费模型尚未启用。
+
+`pnpm eval:agent:judge`执行3项本地HTTP合成案例，3次请求合计480 tokens；报告包含版本、顺序、轨迹、usage和失败。人工标注导入支持版本校验、去重、pointwise误差和pairwise一致率。当前人工样本为0、质量未验证，不将固定合成评分计作模型能力。
+
+验收：全套118项Agent测试通过；Judge定向测试覆盖非法输出、确定性否决、顺序映射、校准数据约束、真实Pi请求前预留、授权/预留失败零请求、未知usage结算、超长输入拒绝和取消报告。类型检查、lint、构建及合成Judge命令通过。CI已配置Judge命令，未触发远程运行。无生产数据格式变更。
+
+剩余Phase 2工作包括真实Judge的显式授权与持久预算适配、独立人工校准证据、Thinking取消/恢复及其他故障评测、五类独立数据集的扩展和保留集验收、完整版本与性能报告。Phase 3–6仍在后续实施范围。

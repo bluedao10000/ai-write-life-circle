@@ -61,7 +61,8 @@
     "eval:agent:reliability": "pnpm eval:agent -- --category=reliability",
     "eval:agent:memory": "pnpm eval:agent -- --category=memory",
     "eval:agent:safety": "pnpm eval:agent -- --category=safety",
-    "eval:agent:performance": "pnpm eval:agent -- --category=performance"
+    "eval:agent:performance": "pnpm eval:agent -- --category=performance",
+    "eval:agent:judge": "pnpm --filter @writer-agent/contracts build && pnpm --filter @writer-agent/agent exec tsx scripts/evaluate-judge.ts"
   },
   "devDependencies": {
     "@redocly/cli": "2.63.0",
