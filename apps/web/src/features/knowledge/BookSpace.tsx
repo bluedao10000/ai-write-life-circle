@@ -1,3 +1,4 @@
+import ProceduralMemoryPanel from '../memory/ProceduralMemoryPanel'
 import { KnowledgePanel } from './KnowledgePanel'
 import LegacyRecords from './LegacyRecords'
 import type { useStudioController } from '../vnext/useStudioController'
@@ -69,8 +70,9 @@ export default function BookSpace({
           historyContent={
             <LegacyRecords proposals={workspace.proposals} decisions={workspace.decisions} />
           }
+          memoryContent={view === 'book' && section === 'experience' ? <ProceduralMemoryPanel bookId={workspace.projectId} bookTitle={workspace.projectTitle} demo={!api} onSection={next => setBookNav({ section: next })} /> : undefined}
           knowledgeContent={
-            api && view === 'book' && section !== 'notes' && section !== 'inbox' && !canon ? (
+            api && view === 'book' && section !== 'experience' && section !== 'notes' && section !== 'inbox' && !canon ? (
               <KnowledgePanel
                 key={workspace.projectId}
                 bookId={workspace.projectId}

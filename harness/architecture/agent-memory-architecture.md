@@ -59,6 +59,15 @@ Go新增procedural领域记录，与创作设定分离，使用原StateLock/Comm
 
 `GET /v1/studio/books/{bookId}/procedural-memory/evidence`返回最近100条本作者本作品的成功任务元数据。`POST .../procedural-memory`接受content、taskIds及可选expiresAt，创建candidate。`POST .../procedural-memory/{id}`接受baseVersion和confirm/reject/delete；写请求需要Idempotency-Key。`GET .../procedural-memory`返回当前记录及available/unavailableReason，过期和来源不可用是读取投影，不重写历史确认事实。公开契约见`harness/contracts/procedural-memory-v1.json`。
 
-统一retrieve_memory仍要求creative与knowledge scope，只加入available规则，按query关键词过滤并受原24条/字节上限约束。每条记录包含规则版本、审核作者、有效期和任务来源。确认依赖不同输入的成功执行与作者审核；这些证据不代表统计验证或跨任务泛化。v1不允许模型自动创建或确认规则，管理入口为API，尚无作者工作台界面和后台经验提取。
+统一retrieve_memory仍要求creative与knowledge scope，只加入available规则，按query关键词过滤并受原24条/字节上限约束。每条记录包含规则版本、审核作者、有效期和任务来源。确认依赖不同输入的成功执行与作者审核；这些证据不代表统计验证或跨任务泛化。v1不允许模型自动创建或确认规则，管理入口包括API及书页「操作经验」；后台经验提取尚未实现。
 
 存储上限为每作品1000条记录（含删除墓碑）、10000条幂等回执、8 MiB编码JSON；写入前检查字节预算。删除清除正文与其历史回执内容，仍保留最小墓碑防止重放。旧版本回滚忽略新文件并继续使用原任务和业务状态；再次升级按schema=1读取原文件。不得恢复旧状态快照覆盖后来产生的任务、费用或回执。
+
+
+### 作者工作台
+
+书页新增「操作经验」分区，列表和最近100条任务来源并行读取。作者可选择1–8个来源保存候选，查看任务类型、完成时间与方法版本，再执行确认、撤回或删除。确认按钮要求全部来源同类、同方法版本且输入不同；Go在提交时重新读取回执并作最终判断。过期、来源不可用和撤回状态直接使用服务端投影。
+
+经验内容遵守4000 UTF-8字节上限。每次决定绑定当前version；同一失败请求重试复用幂等键，编辑输入后使用新键。冲突后刷新权威状态并保留未保存草稿。按作品重建面板，卸载时中止读取，迟到响应不进入新作品；演示模式显示连接说明，不构造经验或来源。
+
+验证命令为 `pnpm --filter @writer-agent/web exec vitest run src/test/procedural-memory.test.tsx` 和 `pnpm --filter @writer-agent/web test:memory`。浏览器测试启动真实Go/Pi Worker生成两个不同输入的任务回执，在桌面与手机布局完成创建、确认、刷新、撤回和删除，并读取Go状态核验结果。模型为本地合成服务；身份断言使用隔离测试密钥，未执行生产登录流程。界面接入不改变持久格式，回滚Web构建即可保留已审核经验。

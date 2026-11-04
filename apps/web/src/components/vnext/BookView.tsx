@@ -18,7 +18,7 @@ export type KnowledgeSection =
  * V3 book sections (Figma Make BookView): five asset kinds, 待确认, notes and
  * history. 'chapter' remains a legacy entry into manuscript knowledge.
  */
-export type BookSection = KnowledgeSection | 'inbox'
+export type BookSection = KnowledgeSection | 'inbox' | 'experience'
 export type AssetSection = 'people' | 'world' | 'timeline' | 'plot' | 'threads'
 export const isAssetSection = (s: BookSection): s is AssetSection => s === 'people' || s === 'world' || s === 'timeline' || s === 'plot' || s === 'threads'
 /** canon = author-owned creative assets; manuscript = AI observations from saved prose. Stored separately. */
@@ -34,6 +34,7 @@ export const BOOK_NAV: NavMeta[] = [
   { id: 'plot', label: '剧情结构', icon: 'layers', asset: true },
   { id: 'threads', label: '伏笔', icon: 'thread', asset: true },
   { id: 'inbox', label: '待确认', icon: 'review' },
+  { id: 'experience', label: '操作经验', icon: 'note' },
   { id: 'notes', label: '创作笔记', icon: 'note' },
   { id: 'history', label: '变更历史', icon: 'history' },
 ]
@@ -103,6 +104,7 @@ const SECTIONS: {
 ]
 
 type P = {
+  memoryContent?: ReactNode
   knowledgeContent?: ReactNode
   creativeContent?: ReactNode
   /** Counts shown beside the nav items (real data only). */
@@ -163,7 +165,7 @@ export default function BookView(p: P) {
   const canon = nav.section === 'inbox' || (isAssetSection(nav.section) && sourceOf(nav) === 'canon')
   const entry = nav.entryId ? p.entries.find((e) => e.id === nav.entryId) : undefined
   const change = nav.changeId ? p.changes.find((c) => c.id === nav.changeId) : undefined
-  const apiPanel = canon && p.creativeContent
+  const apiPanel = nav.section === 'experience' && p.memoryContent ? p.memoryContent : canon && p.creativeContent
     ? p.creativeContent
     : p.knowledgeContent && !entry && !change && nav.section !== 'notes'
       ? p.knowledgeContent
