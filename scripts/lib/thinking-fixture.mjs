@@ -303,13 +303,13 @@ export async function startThinkingFixture({ live = false, taskProtocol = false,
       throw Error("fixture timeout " + errors);
     const call = async (
       path,
-      { method = "GET", body, key, status = 200, auth = true } = {},
+      { method = "GET", body, key, status = 200, auth = true, user } = {},
     ) => {
       const response = await fetch(apiOrigin + path, {
         method,
         headers: {
           "X-Writer-Agent-Thinking":"reliability-v1",
-          ...(auth ? { Authorization: "Bearer " + bearer, ...identity.headers(method, path) } : {}),
+          ...(auth ? { Authorization: "Bearer " + bearer, ...identity.headers(method, path, user) } : {}),
           ...(body ? { "Content-Type": "application/json" } : {}),
           ...(key ? { "Idempotency-Key": key } : {}),
         },

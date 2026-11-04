@@ -26,6 +26,11 @@ export async function executeEvaluation(task:EvaluationTask,signal:AbortSignal):
 }
 async function execute(task:EvaluationTask,signal:AbortSignal,result:Observation):Promise<Observation>{
  signal.throwIfAborted();
+ if(task.environment.scenario.startsWith('security-')){
+  const modulePath=new URL('../../../../scripts/lib/evaluation-security.mjs',import.meta.url).href;
+  const {executeSecurityEvaluation}=await import(modulePath) as {executeSecurityEvaluation:(task:EvaluationTask,signal:AbortSignal,result:Observation)=>Promise<Observation>};
+  return executeSecurityEvaluation(task,signal,result);
+ }
  if(task.environment.scenario.startsWith('thinking-')){
   const modulePath=new URL('../../../../scripts/lib/evaluation-thinking.mjs',import.meta.url).href;
   const {executeThinkingEvaluation}=await import(modulePath) as {executeThinkingEvaluation:(task:EvaluationTask,signal:AbortSignal,result:Observation)=>Promise<Observation>};

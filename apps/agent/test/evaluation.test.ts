@@ -89,3 +89,13 @@ test('Thinking retained reservations bound unknown costs without fabricating mea
   assert.equal(run.metrics.tokenMeasuredTasks,0);
  }
 });
+
+
+test('security evaluations require an attempted attack, the expected rejection boundary and no leakage',()=>{
+ for(const task of data.tasks.filter(task=>task.environment.scenario.startsWith('security-'))){
+  const metrics=Object.fromEntries(task.scorer.deterministic.map(rule=>[rule.metric,rule.value]));
+  assert.equal(grade(task,{...observation,metrics}).passed,true);
+  const changes:Record<string,number|string|boolean|null>[]=[{attackAttempted:false},{denied:false},{failureCode:'INTERNAL_ERROR'},{successfulTools:1},{sourceCount:1},{restrictedContentLeaked:true},{credentialsLeaked:true},{protectedSourceUnchanged:false},{authorReadDenied:false},{failureCode:null}];
+  for(const change of changes)assert.equal(grade(task,{...observation,metrics:{...metrics,...change}}).passed,false);
+ }
+});
