@@ -56,6 +56,21 @@ Phase 0验收依据为当前源码入口、契约、已有测试与基线验证�
 
 新增 `runtime/governance/runtime.ts`、`tool-gateway.ts` 和公共 `index.ts`；实际接入 PiHost、ModelGateway、工具Registry、Worker Scheduler与RunExecution持久字段。授权/预算适配复用Go与Durable，未新增状态数据库或修改公开协议。
 
+### 当前分支验收（2026-11-04）
+
+Runtime Governance 已完成实际执行接入和本地工程验收。Thinking 回复与讨论压缩使用同一预留闸门；Review、Knowledge、Creative 的模型请求使用 Go started/heartbeat 适配；所有注册工具包括本地技能和回执重放均执行治理检查。
+
+本次完整运行结果：
+
+- `pnpm test:agent`：133/133 通过，包含请求预留、取消、工具权限、审计持久化、SIGKILL 与存储故障测试。
+- `pnpm typecheck:agent`、Agent lint、`pnpm build:agent`、Go API/control 构建：通过。
+- `test-thinking-agent.mjs`、`test-story-continuity.mjs`：真实 Go/Pi 进程通过，覆盖显式恢复、取消、删除与业务写入。
+- `test-pi-review-worker.mjs`、`test-creative-workflow.mjs`：通过，覆盖 Worker 隔离、重复执行、重启及候选结果。Review 关联结果验证以 Go 完成任务回执可读为前提。
+- `test-pi-knowledge-worker.mjs --quick`：10 章通过；`test-pi-knowledge-faults.mjs`：未知费用保留、预算、暂停、丢失回执、SIGKILL、版本替换与删除通过。
+- `test-runtime-health.mjs`：鉴权、Go 活性、Thinking 停止/重启、Worker 心跳过期及未知待办计数通过，零模型请求。
+
+模型使用本地合成 HTTP Provider，未发生付费调用。这些结果证明执行合同与工程边界，不衡量真实模型质量。父子预算、受控多 Agent、完整历史审计与自主执行仍按后续阶段验收。当前实现保留 Go 业务权威及 Thinking/Worker 进程隔离，无新增生产数据格式变更。
+
 | 验收项 | 证据 |
 | --- | --- |
 | 模型必须预留后发送 | governance.test.ts：未准备、预留等待、失败与取消均零发送；重复准备/发送拒绝 |

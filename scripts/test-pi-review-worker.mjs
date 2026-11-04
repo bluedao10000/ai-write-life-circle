@@ -11,7 +11,7 @@ try{
  // Pi is the default and only background executor.
  let before=f.calls,r=await f.enqueue();const reviewed=await f.complete(r.runId);assert.equal(f.calls,before+1);
  const memoryBase='/v1/studio/books/review-fixture/procedural-memory/evidence';
- const taskEvidence=(await f.call(memoryBase)).items.find(item=>item.kind==='review.execute');assert(taskEvidence);
+ const taskEvidence=await until(async()=>(await f.call(memoryBase)).items.find(item=>item.kind==='review.execute'),'completed review task receipt');
  const outcomePath=memoryBase+'/'+taskEvidence.taskId+'/outcome';
  const outcome=await f.call(outcomePath);assert.equal(outcome.basis,'task_result');assert.equal(outcome.total,reviewed.findings.length);assert.deepEqual(outcome.items.map(item=>item.id).sort(),reviewed.findings.map(item=>item.findingId).sort());
  assert(outcome.items.length>0);
