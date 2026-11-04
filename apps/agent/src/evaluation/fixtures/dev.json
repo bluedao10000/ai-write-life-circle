@@ -1,5 +1,5 @@
 {
-  "version": "agent-eval-v7",
+  "version": "agent-eval-v8",
   "split": "dev",
   "synthetic": true,
   "tasks": [
@@ -799,6 +799,177 @@
             "metric": "authorIsolated",
             "operator": "eq",
             "value": true
+          }
+        ],
+        "forbidden": []
+      }
+    },
+    {
+      "taskId": "dev-thinking-cancel",
+      "category": "reliability",
+      "capability": "thinking",
+      "difficulty": "boundary",
+      "request": "请给出一个候选情节，等待我确认。场景：thinking-cancel",
+      "environment": {
+        "scenario": "thinking-cancel",
+        "fixture": "synthetic-v1",
+        "initialState": {}
+      },
+      "stoppingCriteria": {
+        "timeoutMs": 30000,
+        "maxTokens": 100000,
+        "maxModelCalls": 1,
+        "maxToolCalls": 0
+      },
+      "scorer": {
+        "deterministic": [
+          {
+            "metric": "initialStatus",
+            "operator": "eq",
+            "value": "cancelled"
+          },
+          {
+            "metric": "initialMessageStatus",
+            "operator": "eq",
+            "value": "cancelled"
+          },
+          {
+            "metric": "automaticCalls",
+            "operator": "eq",
+            "value": 0
+          },
+          {
+            "metric": "unknownUsageRetained",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "duplicateCalls",
+            "operator": "eq",
+            "value": 0
+          },
+          {
+            "metric": "finalStatus",
+            "operator": "eq",
+            "value": "cancelled"
+          },
+          {
+            "metric": "finalMessageStatus",
+            "operator": "eq",
+            "value": "cancelled"
+          },
+          {
+            "metric": "attempt",
+            "operator": "eq",
+            "value": 1
+          },
+          {
+            "metric": "acceptedUsers",
+            "operator": "eq",
+            "value": 1
+          },
+          {
+            "metric": "originalMessagePreserved",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "modelCalls",
+            "operator": "eq",
+            "value": 1
+          },
+          {
+            "metric": "toolCalls",
+            "operator": "eq",
+            "value": 0
+          },
+          {
+            "metric": "sameReceipt",
+            "operator": "eq",
+            "value": true
+          }
+        ],
+        "forbidden": []
+      }
+    },
+    {
+      "taskId": "dev-thinking-recovery",
+      "category": "reliability",
+      "capability": "thinking",
+      "difficulty": "boundary",
+      "request": "请给出一个候选情节，等待我确认。场景：thinking-recovery",
+      "environment": {
+        "scenario": "thinking-recovery",
+        "fixture": "synthetic-v1",
+        "initialState": {}
+      },
+      "stoppingCriteria": {
+        "timeoutMs": 30000,
+        "maxTokens": 100000,
+        "maxModelCalls": 2,
+        "maxToolCalls": 0
+      },
+      "scorer": {
+        "deterministic": [
+          {
+            "metric": "initialStatus",
+            "operator": "eq",
+            "value": "interrupted"
+          },
+          {
+            "metric": "initialMessageStatus",
+            "operator": "eq",
+            "value": "interrupted"
+          },
+          {
+            "metric": "automaticCalls",
+            "operator": "eq",
+            "value": 0
+          },
+          {
+            "metric": "unknownUsageRetained",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "duplicateCalls",
+            "operator": "eq",
+            "value": 0
+          },
+          {
+            "metric": "finalStatus",
+            "operator": "eq",
+            "value": "completed"
+          },
+          {
+            "metric": "finalMessageStatus",
+            "operator": "eq",
+            "value": "completed"
+          },
+          {
+            "metric": "attempt",
+            "operator": "eq",
+            "value": 2
+          },
+          {
+            "metric": "acceptedUsers",
+            "operator": "eq",
+            "value": 1
+          },
+          {
+            "metric": "originalMessagePreserved",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "modelCalls",
+            "operator": "eq",
+            "value": 2
+          },
+          {
+            "metric": "toolCalls",
+            "operator": "eq",
+            "value": 0
           }
         ],
         "forbidden": []

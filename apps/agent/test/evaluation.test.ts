@@ -54,7 +54,7 @@ test('memory and creative business graders require provenance, author isolation 
  }
 });
 
-test('unknown usage requires a bounded Go exposure and remains unmeasured',async()=>{
+test('unknown usage requires a bounded authoritative exposure and remains unmeasured',async()=>{
  const task=data.tasks[0]!;
  const unknown={...observation,inputTokens:null,outputTokens:null,chargedTokens:null};
  for(const tokens of [0,-1,Infinity,task.stoppingCriteria.maxTokens+1]){
@@ -66,4 +66,26 @@ test('unknown usage requires a bounded Go exposure and remains unmeasured',async
  assert.equal(run.results[0]!.observation?.chargedTokens,null);
  assert.equal(run.metrics.tokenMeasuredTasks,0);
  assert.equal(run.metrics.tokensPerSuccessfulTask,null);
+});
+
+
+test('Thinking fault graders reject paid automatic recovery, lost messages and refunded unknown usage',()=>{
+ for(const scenario of ['thinking-cancel','thinking-recovery']){
+  const task=data.tasks.find(task=>task.environment.scenario===scenario)!;
+  const metrics=Object.fromEntries(task.scorer.deterministic.map(rule=>[rule.metric,rule.value]));
+  assert.equal(grade(task,{...observation,metrics}).passed,true);
+  const changes:Record<string,number|string|boolean>[]=[{automaticCalls:1},{duplicateCalls:1},{originalMessagePreserved:false},{unknownUsageRetained:false},{finalStatus:'running'},{acceptedUsers:2}];
+  for(const change of changes){
+   assert.equal(grade(task,{...observation,metrics:{...metrics,...change}}).passed,false);
+  }
+ }
+});
+
+test('Thinking retained reservations bound unknown costs without fabricating measured tokens',async()=>{
+ const task=data.tasks[0]!;
+ for(const tokens of [1000,0,task.stoppingCriteria.maxTokens+1]){
+  const run=await runEvaluation([task],async()=>({...observation,inputTokens:null,outputTokens:null,chargedTokens:null,budgetExposure:{tokens,authority:'thinking-durable'}}));
+  assert.equal(run.results[0]!.withinBudget,tokens===1000);
+  assert.equal(run.metrics.tokenMeasuredTasks,0);
+ }
 });

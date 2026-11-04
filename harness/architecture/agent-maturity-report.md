@@ -163,3 +163,11 @@ Thinking新增受服务令牌保护的`/internal/v1/liveness`、`readiness`与`d
 ### 限制
 
 模型响应来自本地合成Provider，不代表真实模型质量验收。健康为Thinking本地状态投影，未完成三个进程的统一聚合、历史指标及持久诊断。生产入口在Store初始化完成后监听；初始化失败直接退出。Phase 1本地工程验收完成，Phase 4完整可观测性验收仍待后续实施。
+
+## Thinking取消与恢复评测
+
+开发数据集版本`agent-eval-v8`新增`thinking-cancel`和`thinking-recovery`，由真实Go API与Pi进程执行；共享fixture将评测token上限传入原会话预算，并限制合成Provider请求数。取消前重复消息返回同一回执；取消后的消息重放与resume被拒绝。恢复场景实际SIGKILL后重启，原消息保持不变，显式resume完成第二次attempt，重复resume不产生额外模型请求。两个场景均在Go重启后读取最终状态。
+
+本地`dev-reliability.json`：6/6工程断言通过，共6次合成模型调用、0次工具调用。Thinking取消场景1次调用，保留8972 token预算暴露；恢复场景2次调用，保留9374 token预算暴露。两者usage均未知，实际token指标为null；上述数字是Durable会话账本的保守预留，不是模型实际消耗。报告保存在`.local/evals/agent/`，未纳入版本控制。
+
+Agent测试123/123通过，类型检查、lint与构建通过。新增评分器回归要求自动调用、重复请求、丢失消息、未知费用返还与错误终态均判失败。Phase 2仍缺完整独立安全/保留集、其余故障适配、人工Judge校准及真实模型质量证据。

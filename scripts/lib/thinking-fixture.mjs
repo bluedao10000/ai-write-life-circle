@@ -22,7 +22,7 @@ const free = async () => {
 // checks); chatDelayMs paces its streamed chunks; chatStatus(body) may return an
 // HTTP status to fail that provider call; chatDelta(body) can script tool calls.
 // Defaults keep the canned reply.
-export async function startThinkingFixture({ live = false, taskProtocol = false, chatModels = false, maxOutputTokens = "1024", allowLocalLiveTransport = false, completionCrash = false, chatReply, chatDelayMs = 100, chatStatus, chatDelta } = {}) {
+export async function startThinkingFixture({ live = false, taskProtocol = false, chatModels = false, maxOutputTokens = "1024", allowLocalLiveTransport = false, completionCrash = false, modelBudget, chatReply, chatDelayMs = 100, chatStatus, chatDelta } = {}) {
   if (completionCrash && live) throw Error("CRASH_FIXTURE_MUST_USE_MOCK_PROVIDER");
   // Go runs in production mode, so every author call carries a signed user.
   const identity = identityFixture();
@@ -55,6 +55,7 @@ export async function startThinkingFixture({ live = false, taskProtocol = false,
     const body = JSON.parse(raw);
     calls.push(body);
     for(const wake of providerWaiters)wake();
+    if(modelBudget && calls.length>modelBudget.maxModelCalls){res.writeHead(429);res.end('{}');return;}
     // Optional synthetic provider failure (HTTP status) for recovery tests.
     const failure = chatModels ? chatStatus?.(body) : undefined;
     if (failure) {
@@ -212,9 +213,9 @@ export async function startThinkingFixture({ live = false, taskProtocol = false,
       : "synthetic-thinking",
     WRITER_AGENT_PI_FIXTURE: live && !allowLocalLiveTransport ? "" : "1",
     WRITER_AGENT_PI_MAX_DURATION_MS: live ? "120000" : "10000",
-    WRITER_AGENT_PI_MAX_TURNS: "4",
+    WRITER_AGENT_PI_MAX_TURNS: String(modelBudget?.maxModelCalls ?? 4),
     // Fixture-only: V3 creative tools add ~2 KiB to each conservative reservation.
-    WRITER_AGENT_PI_MAX_SESSION_TOKENS: live?"64000":"260000",
+    WRITER_AGENT_PI_MAX_SESSION_TOKENS: String(modelBudget?.maxTokens ?? (live?64000:260000)),
     WRITER_AGENT_PI_MAX_OUTPUT_TOKENS: String(maxOutputTokens),
     WRITER_AGENT_PI_VERSION: "fixture",
   };
