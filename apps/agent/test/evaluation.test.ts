@@ -133,3 +133,25 @@ test('memory latency aggregates actual calls, keeps absent evidence null and exc
  assert.deepEqual(aggregate(rows).memoryRetrieval,{samples:3,p50Ms:4,p95Ms:8});
  assert.deepEqual(aggregate([{passed:true,durationMs:1000,observation}]).memoryRetrieval,{samples:0,p50Ms:null,p95Ms:null});
 });
+
+test('storage fault graders reject unobserved faults, duplicate recovery and lost authoritative state',()=>{
+ const tasks=data.tasks.filter(task=>task.environment.scenario.startsWith('storage-'));
+ assert.equal(tasks.length,2);
+ for(const task of tasks){
+  const metrics=Object.fromEntries(task.scorer.deterministic.map(rule=>[rule.metric,rule.value]));
+  assert.equal(grade(task,{...observation,metrics}).passed,true);
+  const changes:Record<string,number|boolean|null>[]=[{actualSigkill:false},{restarts:1},{cursorPreserved:false},{eventsExact:false},{unknownReservationRetained:false},{cancelledRunPreserved:false},{acceptedInputPreserved:false},{unpublishedAfterRecovery:1}];
+  if(task.environment.scenario==='storage-sqlite')changes.push({sqliteWriteRejected:false},{snapshotBlocked:false},{eventsBlocked:false},{unpublishedSessions:0});
+  else changes.push({committedBoundaryObserved:false});
+  for(const change of changes)assert.equal(grade(task,{...observation,metrics:{...metrics,...change}}).passed,false);
+ }
+});
+
+test('storage evaluation deadline terminates the actual child process and returns a failed observation',async()=>{
+ const {executeEvaluation}=await import('../src/evaluation/executors.js');
+ const task=data.tasks.find(task=>task.environment.scenario==='storage-outbox')!;
+ const result=await runEvaluation([{...task,stoppingCriteria:{...task.stoppingCriteria,timeoutMs:1}}],executeEvaluation);
+ assert.equal(result.results[0]!.passed,false);
+ assert.equal(result.results[0]!.error,'EVAL_CANCELLED_OR_TIMEOUT');
+ assert.equal(result.results[0]!.observation?.modelCalls,0);
+});

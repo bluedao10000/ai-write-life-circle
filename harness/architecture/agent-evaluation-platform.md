@@ -49,3 +49,11 @@ Knowledge业务案例从实际保存的Revision执行提取，检查Go中的实�
 `agent-eval-v12`的业务Memory探测从真实Thinking进程的治理日志中按本次sessionId、retrieve_memory和tool_finished取耗时。每次探测要求恰有一个有效样本；原始样本保存在Observation.timings.memoryRetrievalMs，报告按调用汇总samples/P50/P95。整项任务耗时仍单独统计，不能将模型等待或测试准备时间称为检索延迟。
 
 没有观察值时样本数为0、百分位为null；非有限数与负数不参与统计。该统计覆盖Tool Gateway的授权与校验、Go读取及原业务检查点成本，不是数据库查询的独立耗时。合成小规模样本用于可重复测量，不构成生产负载基准。
+
+## 存储故障评测
+
+`agent-eval-v13`新增storage-sqlite与storage-outbox两个reliability dev样本，复用分层存储测试的独立Node子进程。前者在隔离事件数据库安装SQLite trigger拒绝INSERT，验证实际数据库写入失败、快照/事件读取拒绝与未发布计数；移除故障后终止并重开进程。后者在Store的state_committed边界停住，父进程观察到已提交信号后执行SIGKILL。
+
+两个场景都连续重开两次，逐项核验完整事件序列、游标、原用户输入、幂等身份、已取消且不可自动恢复的Run、完整usage对象，以及未发布计数归零。费用状态为预先保存的合成未知预留；这些存储操作没有调用模型，不能把保留的历史预留算成本次新增模型消耗。模型取消与付费恢复另由Thinking故障场景覆盖。
+
+每项30秒，模型/工具调用上限为0；父评测超时会终止实际子进程并清理隔离目录。评分器拒绝未观察到故障、缺失SIGKILL、只完成一次重开、事件不一致或权威状态丢失。SQLite trigger模拟数据库拒绝写入，不代表磁盘满、文件系统损坏等全部物理故障。

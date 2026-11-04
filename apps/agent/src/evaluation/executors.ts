@@ -1,3 +1,4 @@
+import {executeStorageEvaluation} from './storage-fault.js';
 import {EvaluationFailure} from './runner.js';
 import {createServer} from 'node:http';
 import {mkdtempSync,rmSync,statSync} from 'node:fs';
@@ -26,6 +27,7 @@ export async function executeEvaluation(task:EvaluationTask,signal:AbortSignal):
 }
 async function execute(task:EvaluationTask,signal:AbortSignal,result:Observation):Promise<Observation>{
  signal.throwIfAborted();
+ if(task.environment.scenario.startsWith('storage-'))return executeStorageEvaluation(task,signal,result);
  if(task.environment.scenario.startsWith('security-')){
   const modulePath=new URL('../../../../scripts/lib/evaluation-security.mjs',import.meta.url).href;
   const {executeSecurityEvaluation}=await import(modulePath) as {executeSecurityEvaluation:(task:EvaluationTask,signal:AbortSignal,result:Observation)=>Promise<Observation>};

@@ -265,3 +265,13 @@ Go现有Thinking私有监听器新增 `GET /internal/v1/runtime/health`，原服
 - 原Thinking跨进程回归通过，包括工具调用、签名授权、轮询/SSE、取消、SIGKILL、显式恢复、Go重启与离线删除栅栏。Go与Agent构建通过。
 
 该汇总需要原Thinking私有监听器已配置；未配置的部署继续使用已有Worker状态接口。接口只读派生现有状态，无数据格式迁移，回滚Go构建即可移除新增路由。Phase 4仍缺跨进程历史指标、代表性并发基准和完整安全验收；本批未部署。
+
+## SQLite与Outbox故障统一评测
+
+`agent-eval-v13`新增独立存储进程的SQLite写入拒绝和Outbox已提交边界SIGKILL场景。SQLite故障由隔离事件数据库的trigger实际拒绝INSERT产生；评分同时要求写失败、快照/事件不可发布与未发布计数为1。Outbox场景要求父进程已观察state_committed，再终止子进程。
+
+两项均连续重开两次，核验事件序列完全一致、游标保持、取消状态和epoch保持、原用户输入与幂等身份保持、完整usage对象保持、未发布计数归零。父评测超时会终止真实子进程并返回失败观察。原分层存储测试子进程被复用，未新增生产故障开关。
+
+验收：`pnpm eval:agent:reliability` 8/8通过，现有6次合成模型调用；两个存储场景模型/工具调用均为0。未知费用场景保持null测量值及原权威预算暴露，不记为零。132项Agent测试、类型检查、lint及Go/Agent构建通过。评分器的负向测试拒绝未注入故障、缺失SIGKILL、重开不足、事件不一致、费用或用户输入丢失。
+
+报告保留于本地 `.local/evals/agent/dev-reliability.json`。SQLite trigger覆盖数据库拒绝写入，未验证所有物理磁盘故障；这些样本不替代PiHost模型执行、Go业务提交及生产故障演练。其余阶段仍按既有差距推进。

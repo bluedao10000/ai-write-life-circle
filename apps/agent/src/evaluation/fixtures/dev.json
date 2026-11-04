@@ -1,5 +1,5 @@
 {
-  "version": "agent-eval-v12",
+  "version": "agent-eval-v13",
   "split": "dev",
   "synthetic": true,
   "tasks": [
@@ -1737,6 +1737,157 @@
           },
           {
             "metric": "secondLatencyObserved",
+            "operator": "eq",
+            "value": true
+          }
+        ],
+        "forbidden": []
+      }
+    },
+    {
+      "taskId": "dev-storage-sqlite",
+      "category": "reliability",
+      "capability": "thinking",
+      "difficulty": "boundary",
+      "request": "保留投影写入失败前已接受的合成用户消息。",
+      "environment": {
+        "scenario": "storage-sqlite",
+        "fixture": "synthetic-v1",
+        "initialState": {}
+      },
+      "stoppingCriteria": {
+        "timeoutMs": 30000,
+        "maxTokens": 1,
+        "maxModelCalls": 0,
+        "maxToolCalls": 0
+      },
+      "scorer": {
+        "deterministic": [
+          {
+            "metric": "actualSigkill",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "restarts",
+            "operator": "eq",
+            "value": 2
+          },
+          {
+            "metric": "cursorPreserved",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "eventsExact",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "unknownReservationRetained",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "cancelledRunPreserved",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "acceptedInputPreserved",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "unpublishedAfterRecovery",
+            "operator": "eq",
+            "value": 0
+          },
+          {
+            "metric": "sqliteWriteRejected",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "snapshotBlocked",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "eventsBlocked",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "unpublishedSessions",
+            "operator": "eq",
+            "value": 1
+          }
+        ],
+        "forbidden": []
+      }
+    },
+    {
+      "taskId": "dev-storage-outbox",
+      "category": "reliability",
+      "capability": "thinking",
+      "difficulty": "boundary",
+      "request": "保留Outbox提交后进程终止前已接受的合成用户消息。",
+      "environment": {
+        "scenario": "storage-outbox",
+        "fixture": "synthetic-v1",
+        "initialState": {}
+      },
+      "stoppingCriteria": {
+        "timeoutMs": 30000,
+        "maxTokens": 1,
+        "maxModelCalls": 0,
+        "maxToolCalls": 0
+      },
+      "scorer": {
+        "deterministic": [
+          {
+            "metric": "actualSigkill",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "restarts",
+            "operator": "eq",
+            "value": 2
+          },
+          {
+            "metric": "cursorPreserved",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "eventsExact",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "unknownReservationRetained",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "cancelledRunPreserved",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "acceptedInputPreserved",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "unpublishedAfterRecovery",
+            "operator": "eq",
+            "value": 0
+          },
+          {
+            "metric": "committedBoundaryObserved",
             "operator": "eq",
             "value": true
           }

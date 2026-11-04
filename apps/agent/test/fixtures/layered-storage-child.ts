@@ -1,3 +1,5 @@
+import {DatabaseSync} from 'node:sqlite';
+import {join} from 'node:path';
 import {Store,type Saved} from '../../src/sessions/store.js';
 import {EventStore} from '../../src/sessions/event-store.js';
 
@@ -22,6 +24,11 @@ process.on('message',async(input:unknown)=>{
   let result:unknown;
   if(command.op==='arm')armed=command.phase;
   else if(command.op==='fail-projection')failProjection=true;
+  else if(command.op==='fail-sqlite'||command.op==='repair-sqlite'){
+   const db=new DatabaseSync(join(directory!,sessionId!+'.events.sqlite'));
+   try{db.exec(command.op==='fail-sqlite'?"CREATE TRIGGER eval_reject BEFORE INSERT ON thinking_events BEGIN SELECT RAISE(ABORT,'EVAL_SQLITE_WRITE_FAILED'); END;":'DROP TRIGGER eval_reject')}finally{db.close()}
+  }
+  else if(command.op==='health')result=store.health();
   else if(command.op==='write')await store.write(command.value!);
   else if(command.op==='snapshot')result=store.read(sessionId!,false);
   else if(command.op==='events')result=store.readEvents(sessionId!,command.after??0,1000)?.events;
