@@ -1,3 +1,4 @@
+import {readThinkingEvents} from './lib/thinking-events.mjs';
 import { writeFile, mkdir } from "node:fs/promises";
 import { setTimeout as delay } from "node:timers/promises";
 import {
@@ -38,7 +39,7 @@ try {
   }
   if (result.status !== "idle") throw Error("Evaluation exceeded deadline");
   const answer = result.messages.at(-1),
-    events = await f.call(path + "/events?after=0"),
+    events = await readThinkingEvents(f.call,path,result.cursor),
     sources = answer.sources,
     expected = new Set(book.chapters.map((c) => c.chapterId)),
     found = new Set(sources.map((s) => s.chapterId)),

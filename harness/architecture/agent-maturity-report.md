@@ -70,3 +70,15 @@ Phase 0验收依据为当前源码入口、契约、已有测试与基线验证�
 命令：`pnpm test:agent`、`pnpm typecheck:agent`、`pnpm --filter @writer-agent/agent lint`、`pnpm build:agent`；构建Go后执行 `scripts/test-thinking-agent.mjs`、`scripts/test-story-continuity.mjs`、`scripts/test-pi-review-worker.mjs`、`scripts/test-creative-workflow.mjs`、`scripts/test-pi-knowledge-worker.mjs --quick`、`scripts/test-pi-knowledge-faults.mjs`。
 
 证据仅证明工程边界。未调用真实付费模型，未产生新的质量分数或性能改善结论，未部署本批代码。Phase 2下一步为统一评测schema/split/runner及Thinking事件全分页。后续仍需父子预算、长期记忆、全局持久诊断与编排审批；这些不因Registry已存在而视为完成。
+
+## Phase 2：评测基础设施进度
+
+状态：进行中，尚未通过完整Phase 2验收。
+
+已实现 `evaluation/task-schema.ts`、`dataset.ts`、`runner.ts`、`graders.ts`、`metrics.ts`、`report.ts` 和生产模块执行适配器。统一命令 `eval:agent` 及 reliability/memory/safety/performance 已登记；默认运行dev合成数据，未知参数与真实模型模式拒绝执行。dev与held-out文件独立，检测重复ID/请求；本批仅运行dev，未发布held-out能力结论。
+
+实际执行路径包括 PiHost/Store、Worker ModelGateway/领域候选解析、governTool、EventStore重新打开/重放/分页，以及manageDiscussion。报告记录commit/dirty、版本、输入fixture、预算、轨迹、未测指标和失败；没有观测的费用不记为零。质量成功率、业务提交正确率、语义记忆召回和货币成本尚无证据时保持null。
+
+验证：109项Agent测试、类型检查、lint通过；首批dev案例8/8工程通过。Thinking Eval通过451条事件分页回归，末尾工具调用不再漏算。输出位于 `.local/evals/agent/dev-all.json`，这是一组小样本工程检查，不用于质量/SLA结论。
+
+剩余Phase 2工作：接入Go跨进程最终状态与故障轨迹、扩展独立红队/记忆样本、实现受治理的可选pointwise/pairwise Judge及人工一致性报告、CI入口、执行超时/资源回收强化、完整版本与性能指标。当前Worker适配器使用显式synthetic admission，不证明Go授权和业务提交；讨论压缩回调为确定性fixture，不证明摘要语义准确。不得将8/8标为整个平台验收完成。

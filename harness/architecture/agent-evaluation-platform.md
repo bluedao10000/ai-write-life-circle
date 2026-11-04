@@ -15,3 +15,7 @@ Dataset 有独立版本与 split，五类 task-success/reliability/memory/safety
 报告包含 commit（含dirty标记）、Pi版本、Provider/Model、prompt/tool/dataset版本、配置、逐项得分、轨迹、失败与费用。CI 默认 mock/deterministic；真实模型需显式参数与合成材料、调用/token硬上限，禁止自动读取生产凭证。
 
 统一命令 eval:agent 及 reliability/memory/safety/performance 在 Phase 2 实现后登记。原评测保留，用适配器汇总，不能将 shell exit0 直接转为真实任务成功率。
+
+## 实现进度
+
+基础Schema、split校验、Runner、程序评分、聚合报告与五类命令已落地。默认 `pnpm eval:agent` 使用dev；分类命令通过 `--category` 选择，`--split=held-out` 显式选择保留集。当前适配器覆盖生产PiHost、Worker候选解析、Tool Gateway、EventStore和讨论压缩算法；Go最终提交和Judge尚待接入。每份报告将工程通过率与真实质量分开，未测结果为null。具体证据和剩余验收见 [成熟度报告](agent-maturity-report.md)。
