@@ -42,3 +42,14 @@ test('business evaluation requires Go evidence, rejects duplicate candidates and
  assert.equal(grade(source,{...observation,metrics:{...metrics,findings:0,rejectedCount:1,completionAcknowledgementsDropped:0}}).passed,true);
  assert.equal(grade(source,{...observation,metrics:{...metrics,completionAcknowledgementsDropped:0}}).passed,false);
 });
+
+test('memory and creative business graders require provenance, author isolation and no canon promotion',()=>{
+ for(const capability of ['knowledge','creative']){
+  const task=data.tasks.find(task=>task.environment.scenario===capability+'-business')!;
+  const metrics={completed:true,businessCommitted:true,entities:2,assertions:2,proposals:1,provenanceValid:true,sourceUnchanged:true,canonAssets:0,authorIsolated:true};
+  assert.equal(grade(task,{...observation,metrics}).passed,true);
+  for(const change of [{provenanceValid:false},{authorIsolated:false},{canonAssets:1},{sourceUnchanged:false}]){
+   assert.equal(grade(task,{...observation,metrics:{...metrics,...change}}).passed,false);
+  }
+ }
+});

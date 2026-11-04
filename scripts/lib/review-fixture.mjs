@@ -30,6 +30,12 @@ export async function createReviewFixture({modelBudget}={}) {
       res.writeHead(429).end('{}');return
     }
  requests.push(request)
+ if(request.messages.find(m=>m.role==='system')?.content.startsWith('You organize')){
+  const input=JSON.parse(request.messages.find(m=>m.role==='user').content);
+  const message=input.conversation.find(m=>m.messageId===input.focusMessageIds[0]);
+  const content=JSON.stringify({summary:'合成人物候选',noChange:false,changes:[{ref:'hero',operation:'CREATE',stance:'author_hypothesis',kind:'character',name:'林舟',evidence:[{messageId:message.messageId,quote:message.text}]}]});
+  res.writeHead(200,{'Content-Type':'text/event-stream'});res.end('data: '+JSON.stringify({id:'creative',object:'chat.completion.chunk',model:request.model,choices:[{index:0,delta:{role:'assistant',content},finish_reason:'stop'}],usage:{prompt_tokens:100,completion_tokens:80}})+'\n\ndata: [DONE]\n\n');return
+ }
     let input;try{input=JSON.parse(request.messages.find((m)=>m.role==='user').content)}catch{input=null}
  if(input?.targetMarkdown!==undefined){
  const selected=mode;if(selected==='knowledge-slow'||selected==='knowledge-timeout')await new Promise(r=>setTimeout(r,selected==='knowledge-timeout'?2500:1800));

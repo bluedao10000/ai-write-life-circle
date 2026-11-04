@@ -93,3 +93,13 @@ Phase 0验收依据为当前源码入口、契约、已有测试与基线验证�
 本地验收：111项Agent测试通过，类型检查、lint及构建通过；`pnpm eval:agent`开发集11/11工程通过，共7次合成模型调用。报告位于`.local/evals/agent/dev-all.json`。CI已配置同一dev命令，尚未远程执行。保留集本批未运行；没有真实质量或货币成本结论。
 
 本批只扩展评测与fixture，无生产状态格式变更。剩余工作包括Thinking/Knowledge/Creative的业务终态适配、真实故障轨迹、独立红队/记忆数据、Judge与人工校准、完整版本及性能报告。原进程内Worker案例仍仅证明候选解析，不能替代新增Go案例；讨论记忆案例仍不证明语义召回。
+
+### Knowledge与Creative业务评测
+
+开发集`agent-eval-v3`新增两个真实Go/Pi业务案例。Knowledge由保存的Revision提取2个实体、2条观察，来源指向该Revision；Creative由Thinking会话驱动Worker保存1条待确认提案，证据来自作者消息。两项原稿版本均未变化，正式Creative资产均为0，另一作者读取同一资源均返回404。
+
+Knowledge使用1次模型调用，Go记录150输入/100输出tokens。Creative使用2次调用，Thinking与Go任务合计120输入/90输出tokens。报告记录Go返回的策略版本、模型名；缺失usage不会补零。该数据来自合成HTTP模型，不代表语义质量或真实费用。
+
+本地验收：112项Agent测试通过，类型检查、lint及构建通过；完整dev评测13/13工程通过，共10次模型调用、1次工具尝试。评分器测试证明来源缺失、作者隔离失败、正式资产自动增加或原稿改变都会使案例失败。报告仍位于`.local/evals/agent/dev-all.json`，未提交或远程发布。无生产数据格式变更。
+
+Phase 2仍未完整验收：Thinking独立业务终态、故障轨迹、独立红队/记忆数据集、Judge及人工校准、完整版本和性能报告尚待完成。Creative案例涵盖Thinking回复链路，但不替代Thinking取消与恢复的专门评测。

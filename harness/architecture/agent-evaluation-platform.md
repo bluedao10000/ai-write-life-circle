@@ -21,3 +21,5 @@ Dataset 有独立版本与 split，五类 task-success/reliability/memory/safety
 基础Schema、split校验、Runner、程序评分、聚合报告与五类命令已落地。默认 `pnpm eval:agent` 构建Go API与Agent后使用dev；分类命令通过 `--category` 选择，`--split=held-out` 显式选择保留集。适配器覆盖生产PiHost、Worker候选解析、Tool Gateway、EventStore和讨论压缩算法。Review业务适配器启动真实Go API和Pi Worker，读取Go终态、usage、候选数与拒绝数，核对原稿未变；覆盖正常完成、完成回执丢失和伪造来源。每份报告将工程通过率与真实质量分开，未测结果为null。
 
 CI执行合成dev数据，不调用真实Provider。Review fixture按评测调用数与token上限拒绝超额输出，失败或取消后的未知usage不记为零。进程在每个案例结束或取消后关闭，临时目录随fixture回收。报告仅写入本地`.local/evals/agent/`，不自动提交。Judge、其他业务终态与完整故障评测仍在后续范围。具体证据和剩余验收见 [成熟度报告](agent-maturity-report.md)。
+
+Knowledge业务案例从实际保存的Revision执行提取，检查Go中的实体、观察、来源Revision、原稿版本和正式资产数量。Creative业务案例启动Thinking会话后由Worker整理，检查Go中的待确认提案、作者消息证据及正式资产数量。两者以第二作者身份请求同一资源，要求404。Creative usage汇总Thinking响应与Go持久任务usage；缺少任一usage时总量保持未知。模型输出仍由本地fixture提供，来源与隔离结果属于工程验收。

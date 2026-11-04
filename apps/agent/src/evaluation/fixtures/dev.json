@@ -1,5 +1,5 @@
 {
-  "version": "agent-eval-v2",
+  "version": "agent-eval-v3",
   "split": "dev",
   "synthetic": true,
   "tasks": [
@@ -401,6 +401,127 @@
             "metric": "completionAcknowledgementsDropped",
             "operator": "eq",
             "value": 0
+          }
+        ],
+        "forbidden": []
+      }
+    },
+    {
+      "taskId": "dev-knowledge-business",
+      "category": "task-success",
+      "capability": "knowledge",
+      "difficulty": "boundary",
+      "request": "林舟在北港等待。",
+      "environment": {
+        "scenario": "knowledge-business",
+        "fixture": "synthetic-v1",
+        "initialState": {}
+      },
+      "stoppingCriteria": {
+        "timeoutMs": 30000,
+        "maxTokens": 100000,
+        "maxModelCalls": 1,
+        "maxToolCalls": 0
+      },
+      "scorer": {
+        "deterministic": [
+          {
+            "metric": "completed",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "businessCommitted",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "provenanceValid",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "sourceUnchanged",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "canonAssets",
+            "operator": "eq",
+            "value": 0
+          },
+          {
+            "metric": "authorIsolated",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "entities",
+            "operator": "eq",
+            "value": 2
+          },
+          {
+            "metric": "assertions",
+            "operator": "eq",
+            "value": 2
+          }
+        ],
+        "forbidden": []
+      }
+    },
+    {
+      "taskId": "dev-creative-business",
+      "category": "task-success",
+      "capability": "creative",
+      "difficulty": "boundary",
+      "request": "也许主角林舟是灯塔看守人，这只是一个候选构思。",
+      "environment": {
+        "scenario": "creative-business",
+        "fixture": "synthetic-v1",
+        "initialState": {}
+      },
+      "stoppingCriteria": {
+        "timeoutMs": 30000,
+        "maxTokens": 100000,
+        "maxModelCalls": 2,
+        "maxToolCalls": 0
+      },
+      "scorer": {
+        "deterministic": [
+          {
+            "metric": "completed",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "businessCommitted",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "provenanceValid",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "sourceUnchanged",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "canonAssets",
+            "operator": "eq",
+            "value": 0
+          },
+          {
+            "metric": "authorIsolated",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "proposals",
+            "operator": "eq",
+            "value": 1
           }
         ],
         "forbidden": []
