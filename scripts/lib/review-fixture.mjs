@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createServer } from 'node:http'
 export const cases = JSON.parse(await readFile(new URL('../../harness/evals/review-agent/cases.json', import.meta.url), 'utf8'))
-export async function createReviewFixture() {
+export async function createReviewFixture({modelBudget}={}) {
   const directory = await mkdtemp(join(tmpdir(), 'writer-review-fixture-'))
   const harness = join(directory, 'harness'), state = join(directory, 'state')
   await mkdir(join(harness, 'manuscript'), { recursive: true })
@@ -26,6 +26,9 @@ export async function createReviewFixture() {
     calls++
     let body = ''; for await (const chunk of req) body += chunk
     const request = JSON.parse(body)
+    if(modelBudget&&(calls>modelBudget.maxModelCalls||calls*(100+(request.max_completion_tokens??request.max_tokens??2048))>modelBudget.maxTokens)){
+      res.writeHead(429).end('{}');return
+    }
  requests.push(request)
     let input;try{input=JSON.parse(request.messages.find((m)=>m.role==='user').content)}catch{input=null}
  if(input?.targetMarkdown!==undefined){

@@ -1,6 +1,6 @@
 # ADR：统一 Agent Evaluation
 
-日期：2026-11-04。状态：设计。
+日期：2026-11-04。状态：Phase 2 实现中。
 
 任务由 Request、Environment、StoppingCriteria、Scorer 组成。严格 schema 包含 taskId、能力、难度、合成 fixture、初态、期望与禁止行为、时间/token/tool预算、确定性评分器及可选 judge/human rubric。Fixture 由 runner 安装，执行结果必须来自实际 Agent 入口；不得把期望输出作为模拟执行结果。
 
@@ -18,4 +18,6 @@ Dataset 有独立版本与 split，五类 task-success/reliability/memory/safety
 
 ## 实现进度
 
-基础Schema、split校验、Runner、程序评分、聚合报告与五类命令已落地。默认 `pnpm eval:agent` 使用dev；分类命令通过 `--category` 选择，`--split=held-out` 显式选择保留集。当前适配器覆盖生产PiHost、Worker候选解析、Tool Gateway、EventStore和讨论压缩算法；Go最终提交和Judge尚待接入。每份报告将工程通过率与真实质量分开，未测结果为null。具体证据和剩余验收见 [成熟度报告](agent-maturity-report.md)。
+基础Schema、split校验、Runner、程序评分、聚合报告与五类命令已落地。默认 `pnpm eval:agent` 构建Go API与Agent后使用dev；分类命令通过 `--category` 选择，`--split=held-out` 显式选择保留集。适配器覆盖生产PiHost、Worker候选解析、Tool Gateway、EventStore和讨论压缩算法。Review业务适配器启动真实Go API和Pi Worker，读取Go终态、usage、候选数与拒绝数，核对原稿未变；覆盖正常完成、完成回执丢失和伪造来源。每份报告将工程通过率与真实质量分开，未测结果为null。
+
+CI执行合成dev数据，不调用真实Provider。Review fixture按评测调用数与token上限拒绝超额输出，失败或取消后的未知usage不记为零。进程在每个案例结束或取消后关闭，临时目录随fixture回收。报告仅写入本地`.local/evals/agent/`，不自动提交。Judge、其他业务终态与完整故障评测仍在后续范围。具体证据和剩余验收见 [成熟度报告](agent-maturity-report.md)。

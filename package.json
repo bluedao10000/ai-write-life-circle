@@ -57,7 +57,7 @@
     "eval:reliability": "pnpm --filter @writer-agent/contracts build && node scripts/eval-agent-reliability.mjs",
     "test:reliability": "pnpm eval:reliability",
     "test:story": "pnpm build:api:go && pnpm build:agent && node scripts/test-story-continuity.mjs",
-    "eval:agent": "pnpm --filter @writer-agent/agent exec tsx scripts/evaluate-agent.ts",
+    "eval:agent": "pnpm build:api:go && pnpm build:agent && pnpm --filter @writer-agent/agent exec tsx scripts/evaluate-agent.ts",
     "eval:agent:reliability": "pnpm eval:agent -- --category=reliability",
     "eval:agent:memory": "pnpm eval:agent -- --category=memory",
     "eval:agent:safety": "pnpm eval:agent -- --category=safety",

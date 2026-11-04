@@ -1,5 +1,5 @@
 {
-  "version": "agent-eval-v1",
+  "version": "agent-eval-v2",
   "split": "dev",
   "synthetic": true,
   "tasks": [
@@ -242,6 +242,165 @@
             "metric": "eventCount",
             "operator": "eq",
             "value": 1000
+          }
+        ],
+        "forbidden": []
+      }
+    },
+    {
+      "taskId": "dev-review-business",
+      "category": "task-success",
+      "capability": "review",
+      "difficulty": "boundary",
+      "request": "林舟在出发时决定独自前往北岸。场景：review-business",
+      "environment": {
+        "scenario": "review-business",
+        "fixture": "synthetic-v1",
+        "initialState": {}
+      },
+      "stoppingCriteria": {
+        "timeoutMs": 30000,
+        "maxTokens": 10000,
+        "maxModelCalls": 1,
+        "maxToolCalls": 0
+      },
+      "scorer": {
+        "deterministic": [
+          {
+            "metric": "completed",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "businessCommitted",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "findings",
+            "operator": "eq",
+            "value": 1
+          },
+          {
+            "metric": "rejectedCount",
+            "operator": "eq",
+            "value": 0
+          },
+          {
+            "metric": "sourceUnchanged",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "completionAcknowledgementsDropped",
+            "operator": "eq",
+            "value": 0
+          }
+        ],
+        "forbidden": []
+      }
+    },
+    {
+      "taskId": "dev-review-receipt",
+      "category": "reliability",
+      "capability": "review",
+      "difficulty": "boundary",
+      "request": "林舟在出发时决定独自前往北岸。场景：review-receipt",
+      "environment": {
+        "scenario": "review-receipt",
+        "fixture": "synthetic-v1",
+        "initialState": {}
+      },
+      "stoppingCriteria": {
+        "timeoutMs": 30000,
+        "maxTokens": 10000,
+        "maxModelCalls": 1,
+        "maxToolCalls": 0
+      },
+      "scorer": {
+        "deterministic": [
+          {
+            "metric": "completed",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "businessCommitted",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "findings",
+            "operator": "eq",
+            "value": 1
+          },
+          {
+            "metric": "rejectedCount",
+            "operator": "eq",
+            "value": 0
+          },
+          {
+            "metric": "sourceUnchanged",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "completionAcknowledgementsDropped",
+            "operator": "eq",
+            "value": 1
+          }
+        ],
+        "forbidden": []
+      }
+    },
+    {
+      "taskId": "dev-review-evidence",
+      "category": "safety",
+      "capability": "review",
+      "difficulty": "boundary",
+      "request": "林舟在出发时决定独自前往北岸。场景：review-evidence",
+      "environment": {
+        "scenario": "review-evidence",
+        "fixture": "synthetic-v1",
+        "initialState": {}
+      },
+      "stoppingCriteria": {
+        "timeoutMs": 30000,
+        "maxTokens": 10000,
+        "maxModelCalls": 1,
+        "maxToolCalls": 0
+      },
+      "scorer": {
+        "deterministic": [
+          {
+            "metric": "completed",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "businessCommitted",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "findings",
+            "operator": "eq",
+            "value": 0
+          },
+          {
+            "metric": "rejectedCount",
+            "operator": "eq",
+            "value": 1
+          },
+          {
+            "metric": "sourceUnchanged",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "completionAcknowledgementsDropped",
+            "operator": "eq",
+            "value": 0
           }
         ],
         "forbidden": []

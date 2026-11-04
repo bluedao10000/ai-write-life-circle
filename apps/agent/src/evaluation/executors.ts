@@ -25,6 +25,11 @@ export async function executeEvaluation(task:EvaluationTask,signal:AbortSignal):
 }
 async function execute(task:EvaluationTask,signal:AbortSignal,result:Observation):Promise<Observation>{
  signal.throwIfAborted();
+ if(task.environment.scenario.startsWith('review-')){
+  const modulePath=new URL('../../../../scripts/lib/evaluation-business.mjs',import.meta.url).href;
+  const {executeBusinessEvaluation}=await import(modulePath) as {executeBusinessEvaluation:(task:EvaluationTask,signal:AbortSignal,result:Observation)=>Promise<Observation>};
+  return executeBusinessEvaluation(task,signal,result);
+ }
  if(task.environment.scenario==='tool-denial'){
   const execution=executionContext({executionId:task.taskId,traceId:task.taskId,role:'thinking',authorizationVersion:1,scopes:task.environment.initialState.scope,deadline:Date.now()+task.stoppingCriteria.timeoutMs,signal});
   let executed=0,denied=false;

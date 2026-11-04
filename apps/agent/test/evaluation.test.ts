@@ -30,3 +30,15 @@ test('failed execution retains observed calls and never reports unknown usage as
  assert.equal(result.metrics.tokenMeasuredTasks,0);assert.equal(result.metrics.failedTaskTokens,null);
  assert.equal(aggregate([{passed:false,durationMs:1}]).modelCalls,null);
 });
+
+test('business evaluation requires Go evidence, rejects duplicate candidates and manuscript writes',()=>{
+ const task=data.tasks.find(task=>task.environment.scenario==='review-receipt')!;
+ const metrics={completed:true,businessCommitted:true,findings:1,rejectedCount:0,sourceUnchanged:true,completionAcknowledgementsDropped:1};
+ assert.equal(grade(task,{...observation,metrics}).passed,true);
+ for(const change of [{businessCommitted:null},{findings:2},{sourceUnchanged:false},{completionAcknowledgementsDropped:0}]){
+  assert.equal(grade(task,{...observation,metrics:{...metrics,...change}}).passed,false);
+ }
+ const source=data.tasks.find(task=>task.environment.scenario==='review-evidence')!;
+ assert.equal(grade(source,{...observation,metrics:{...metrics,findings:0,rejectedCount:1,completionAcknowledgementsDropped:0}}).passed,true);
+ assert.equal(grade(source,{...observation,metrics:{...metrics,completionAcknowledgementsDropped:0}}).passed,false);
+});

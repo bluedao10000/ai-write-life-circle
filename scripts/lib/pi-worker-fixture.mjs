@@ -11,8 +11,8 @@ import {identityFixture} from './identity-fixture.mjs';
 export const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 export async function until(fn,label,timeout=12000){const end=Date.now()+timeout;while(Date.now()<end){const value=await fn();if(value)return value;await sleep(40)}throw Error('Timeout: '+label)}
 async function free(){const s=createServer();await new Promise(r=>s.listen(0,'127.0.0.1',r));const port=s.address().port;await new Promise(r=>s.close(r));return port}
-export async function createPiWorkerFixture({chapters=0,executionEnv={}}={}){
- const data=await createReviewFixture();
+export async function createPiWorkerFixture({chapters=0,executionEnv={},modelBudget}={}){
+ const data=await createReviewFixture({modelBudget});
  if(chapters){await rm(join(data.harness,'manuscript'),{recursive:true});await mkdir(join(data.harness,'manuscript'));for(let i=1;i<=chapters;i++)await writeFile(join(data.harness,'manuscript',`CH-${String(i).padStart(6,'0')}.md`),`# 合成章节 ${i}\nID: CH-${String(i).padStart(6,'0')}\norder: ${i}\n\n合成原文第 ${i} 章。\n`);await fetch(data.origin+'/control',{method:'POST',body:JSON.stringify({mode:'knowledge-empty'})})}
  const taskPort=await free(),piPort=await free(),toolPort=await free();const keys={};for(const name of ['bearer','task','rpc','capability']){keys[name]=randomBytes(32).toString('hex');await writeFile(join(data.directory,name),keys[name],{mode:0o600})}
  const safeEnv=Object.fromEntries(Object.entries(process.env).filter(([name])=>!name.startsWith('WRITER_AGENT_')));
