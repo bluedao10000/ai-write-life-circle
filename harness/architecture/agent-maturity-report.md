@@ -14,7 +14,7 @@ Phase 0 已完成源码审计和架构设计；Phase 1 已完成本地代码接�
 | 授权及工具 | 部分覆盖 | tools/registry、Go工具RPC、strict schema、scope、epoch及StoryWrites | 本地重放前授权及ToolPolicy已接入；待扩展独立攻击集 |
 | Worker | 工程验证 | scheduler/dispatcher/TaskClient，四种Go任务；Review/Knowledge/Creative集成 | 统一合同已接入；待完善持久关联审计 |
 | 上下文 | 部分覆盖 | context-management、Working Memory来源绑定与无付费旧格式迁移；重启测试 | 摘要并非长期已确认事实 |
-| 长期记忆 | 部分覆盖 | Working来源、Semantic/Episodic检索、版本冲突提示、Procedural作者审核与过期检索 | 待后台整理、语义冲突、工作台审核界面与召回评测 |
+| 长期记忆 | 部分覆盖 | Working来源、Semantic/Episodic检索、版本冲突提示、Procedural作者审核、重复候选合并与过期检索 | 待自动经验提取、后台整理、语义冲突与召回质量评测 |
 | Evaluation | 部分覆盖 | 统一schema/split/runner、Go业务和故障适配、受治理Judge、人工标注导入 | 待完成独立数据集、保留集、人工校准与性能验收 |
 | 安全 | 部分覆盖 | capability、隔离进程、工具授权、取消及幂等测试 | 缺独立红队数据、记忆污染、子角色扩权验证 |
 | 可观测性 | 部分覆盖 | 治理关联日志、进程计数；Thinking鉴权健康/诊断包含投影失败、恢复与未知费用会话数 | 缺跨进程聚合、持久诊断及历史指标 |
@@ -298,3 +298,18 @@ Go现有Thinking私有监听器新增 `GET /internal/v1/runtime/health`，原服
 报告为本地 `.local/benchmarks/agent-worker.json`，记录Runtime/策略版本、commit/dirty、环境及每轮原始完成延迟；复现步骤见 [Agent性能基准](../workflows/agent-benchmarks.md)。Go/Agent构建、脚本语法检查及全部基准断言通过，无真实模型调用。
 
 双Worker在该小规模合成负载中吞吐更高，未形成生产并发建议。真实模型成本与质量、代表性长正文、持续负载和多Agent编排收益仍需单独验证。
+
+## 操作经验重复候选合并
+
+作者工作台提供“合并重复候选”，按完全相同的正文汇总最多8条待确认记录。Go在原状态锁和一次原子提交中校验目标及来源的版本、有效期、作品权限与真实任务回执，合并并去重最多8个任务来源，保留最早有效期，撤回重复项。目标仍为candidate；独立来源不足时仍不能确认，确认由作者另行执行。
+
+前端展示合并数量和效果，失败重试保留幂等键，刷新冲突状态时保留未保存草稿。新增严格Zod/OpenAPI请求合同和作者API；不新增Agent工具或自动写入入口。
+
+验收：
+
+- Go procedural/transport race测试通过；合并覆盖并发版本竞争、失败零部分写入、来源移除/跨作者、过期、不同正文、来源数量上限、证据去重、重启幂等与删除后重放拒绝。
+- 操作经验界面10项测试通过；前端277项测试、认证Worker 23项测试通过，类型检查、lint、生产构建及11份OpenAPI契约检查通过。
+- 真实浏览器 + Go + Pi Worker完成两条单来源候选的创建、合并、单独确认、刷新、撤回和删除；桌面与手机无横向溢出。
+- `scripts/test-procedural-memory.mjs`通过真实Go/Pi验证严格请求参数、跨作者拒绝、合并后重启和幂等重放。Thinking在确认前检索不到规则，确认后只返回一条规则和两条来源，删除后检索为空且旧合并请求返回410。
+
+数据继续使用procedural-memory-v1的现有字段、状态和请求回执；旧二进制可读取合并结果，回滚保留当前文件及费用/任务回执。测试均使用本地合成Provider，无付费调用。自动经验提取、语义整理、长期泛化质量和后台调度仍未实现，Phase 3保持部分完成。

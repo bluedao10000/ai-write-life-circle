@@ -53,7 +53,7 @@ func handleProcedural(o Options, w http.ResponseWriter, r *http.Request, path st
 		respond(map[string]any{"items": items}, e, 200)
 		return true
 	}
-	if r.Method != "POST" || (len(parts) != 6 && len(parts) != 7) {
+	if r.Method != "POST" || (len(parts) != 6 && len(parts) != 7 && !(len(parts) == 8 && parts[7] == "merge")) {
 		problem(w, application.Fail(404, "NOT_FOUND", "Unknown memory route."), "")
 		return true
 	}
@@ -72,6 +72,12 @@ func handleProcedural(o Options, w http.ResponseWriter, r *http.Request, path st
 		if decode(&in) {
 			value, e := s.Create(r.Context(), *actor, key, in)
 			respond(value, e, 201)
+		}
+	} else if len(parts) == 8 {
+		var in procedural.MergeInput
+		if decode(&in) {
+			value, e := s.Merge(r.Context(), *actor, key, parts[6], in)
+			respond(value, e, 200)
 		}
 	} else {
 		var in procedural.Decision

@@ -6,3 +6,5 @@ export const proceduralCreateSchema=z.object({content:z.string().min(1).max(4000
 export const proceduralDecisionSchema=z.object({baseVersion:z.number().int().positive(),action:z.enum(['confirm','reject','delete'])}).strict();
 export const proceduralListSchema=z.object({items:z.array(proceduralViewSchema)}).strict();
 export const proceduralEvidenceListSchema=z.object({items:z.array(proceduralEvidenceSchema),limit:z.literal(100)}).strict();
+
+export const proceduralMergeSchema=z.object({baseVersion:z.number().int().positive(),sources:z.array(z.object({id:z.string().min(1),baseVersion:z.number().int().positive()}).strict()).min(1).max(7)}).strict();

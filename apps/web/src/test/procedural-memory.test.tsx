@@ -19,6 +19,14 @@ function fixture(initial: ProceduralMemory[] = []) {
       posts.push({ url, body, key: new Headers(init.headers).get('Idempotency-Key') })
       if (fail) { fail = false; throw Error('连接中断，请重试。') }
       if ('taskIds' in body) items = [candidate({ content: String(body.content) })]
+      else if (url.endsWith('/merge')) {
+        const ids = (body.sources as { id: string }[]).map(s => s.id)
+        const targetId = decodeURIComponent(url.split('/').at(-2)!)
+        const target = items.find(item => item.id === targetId)!
+        const merged = items.filter(item => item.id === targetId || ids.includes(item.id))
+        const provenance = [...new Map(merged.flatMap(item => item.provenance ?? []).map(s => [s.taskId, s])).values()]
+        items = [{ ...target, version: target.version + 1, provenance }, ...items.filter(item => item.id !== targetId).map(item => ids.includes(item.id) ? { ...item, status: 'rejected' as const, version: item.version + 1 } : item)]
+      }
       else items = [candidate({ version: Number(body.baseVersion) + 1, status: body.action === 'confirm' ? 'confirmed' : body.action === 'delete' ? 'deleted' : 'rejected', available: body.action === 'confirm' })]
       const record = { ...items[0] } as Partial<ProceduralMemory>
       delete record.available; delete record.unavailableReason
@@ -109,4 +117,42 @@ it('explains the UTF-8 content limit before allowing submission', async () => {
   expect(screen.getByRole('alert')).toHaveTextContent('经验内容过长')
   expect(screen.getByRole('button', { name: '保存候选' })).toBeDisabled()
   expect(f.posts).toHaveLength(0)
+})
+
+it('merges identical candidates with version fences, retries idempotently and requires separate confirmation', async () => {
+  const f = fixture([candidate({ provenance: [evidence[0]] }), candidate({ id: 'm2', version: 3, provenance: [evidence[1]] })])
+  const user = userEvent.setup()
+  render(panel('book / one'))
+  await screen.findByRole('button', { name: '合并重复候选' })
+  for (const button of screen.getAllByRole('button', { name: '确认经验' })) expect(button).toBeDisabled()
+  await user.type(screen.getByRole('textbox'), '未保存的另一条经验')
+  f.failNext()
+  await user.click(screen.getByRole('button', { name: '合并重复候选' }))
+  await screen.findByRole('alert')
+  await user.click(screen.getByRole('button', { name: '合并重复候选' }))
+  await screen.findByText('重复候选已合并，仍需你确认后才供 AI 参考。')
+  expect(f.posts).toHaveLength(2)
+  expect(f.posts[0].key).toBe(f.posts[1].key)
+  expect(f.posts[1].url).toBe('/v1/studio/books/book%20%2F%20one/procedural-memory/m1/merge')
+  expect(f.posts[1].body).toEqual({ baseVersion: 1, sources: [{ id: 'm2', baseVersion: 3 }] })
+  expect(screen.getByRole('textbox')).toHaveValue('未保存的另一条经验')
+  expect(screen.getByText('已撤回')).toBeInTheDocument()
+  expect(screen.queryByText('已确认 · 可供 AI 参考')).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '确认经验' })).toBeEnabled()
+  await user.click(screen.getByRole('button', { name: '确认经验' }))
+  await screen.findByText('已确认 · 可供 AI 参考')
+  expect(f.posts[2].body).toEqual({ baseVersion: 2, action: 'confirm' })
+})
+it('does not merge nonmatching, confirmed, expired or unavailable records', async () => {
+  fixture([candidate(), candidate({ id: 'different', content: '另一条经验' }), candidate({ id: 'confirmed', status: 'confirmed', available: true }), candidate({ id: 'expired', unavailableReason: 'expired' }), candidate({ id: 'missing', unavailableReason: 'source_unavailable' })])
+  render(panel()); await screen.findByText('另一条经验')
+  expect(screen.queryByRole('button', { name: '合并重复候选' })).not.toBeInTheDocument()
+})
+it('merging duplicate evidence does not enable confirmation', async () => {
+  fixture([candidate({ provenance: [evidence[0]] }), candidate({ id: 'm2', provenance: [evidence[0]] })])
+  render(panel()); await screen.findByRole('button', { name: '合并重复候选' })
+  await userEvent.click(screen.getByRole('button', { name: '合并重复候选' }))
+  await screen.findByText('重复候选已合并，仍需你确认后才供 AI 参考。')
+  expect(screen.getByRole('button', { name: '确认经验' })).toBeDisabled()
+  expect(screen.getAllByText('查看任务来源（1）', { selector: 'summary' })).toHaveLength(2)
 })

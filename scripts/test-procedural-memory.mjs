@@ -18,15 +18,20 @@ try{
  const evidence=await until(async()=>{const page=proceduralEvidenceListSchema.parse(await f.call(root+'/evidence'));return page.items.filter(item=>item.kind==='knowledge.extract').length===2&&page},'completed task receipts');
  const ids=evidence.items.filter(item=>item.kind==='knowledge.extract').map(item=>item.taskId);
  assert.equal(ids.length,2);assert.notEqual(evidence.items[0].inputHash,evidence.items[1].inputHash);
- const candidate=proceduralRecordSchema.parse(await f.call(root,{method:'POST',key:'create-memory',status:201,body:{content:'PROCEDURAL_REVIEWED_RULE: 核对林舟的原文证据后再整理人物观察。',taskIds:ids}}));
+ const candidate=proceduralRecordSchema.parse(await f.call(root,{method:'POST',key:'create-memory',status:201,body:{content:'PROCEDURAL_REVIEWED_RULE: 核对林舟的原文证据后再整理人物观察。',taskIds:[ids[0]]}}));
  assert.equal(candidate.status,'candidate');
  assert.equal(proceduralListSchema.parse(await f.call(root)).items[0].available,false);
  await f.call(root,{user:{id:'other-author',email:'other@example.com'},status:404});
- const confirmed=proceduralRecordSchema.parse(await f.call(root+'/'+candidate.id,{method:'POST',key:'confirm-memory',body:{action:'confirm',baseVersion:candidate.version}}));
- assert.equal(confirmed.status,'confirmed');
- await f.call(root+'/'+candidate.id,{method:'POST',body:{action:'reject',baseVersion:1},status:409});
+ const second=proceduralRecordSchema.parse(await f.call(root,{method:'POST',key:'create-duplicate',status:201,body:{content:candidate.content,taskIds:[ids[1]]}}));
+ const mergePath=root+'/'+candidate.id+'/merge',mergeInput={baseVersion:1,sources:[{id:second.id,baseVersion:1}]};
+ await f.call(mergePath,{method:'POST',status:422,body:{...mergeInput,bookId:'other-book'}});
+ await f.call(mergePath,{method:'POST',user:{id:'other-author',email:'other@example.com'},status:404,body:mergeInput});
+ const merged=proceduralRecordSchema.parse(await f.call(mergePath,{method:'POST',key:'merge-memory',body:mergeInput}));
+ assert.equal(merged.status,'candidate');assert.equal(merged.version,2);assert.equal(merged.provenance.length,2);
  await f.stop(f.api());await f.startAPI();
- assert.equal(proceduralListSchema.parse(await f.call(root)).items[0].available,true);
+ assert.deepEqual(proceduralRecordSchema.parse(await f.call(mergePath,{method:'POST',key:'merge-memory',body:mergeInput})),merged);
+ const pending=proceduralListSchema.parse(await f.call(root)).items;
+ assert(pending.every(item=>!item.available));assert.equal(pending.find(item=>item.id===second.id).status,'rejected');
  const pi=f.start('pi');await until(()=>pi.output.includes('agent_started'),'Thinking ready');
  await fetch(f.origin+'/control',{method:'POST',body:JSON.stringify({mode:'memory-read'})});
  async function retrieve(){
@@ -39,9 +44,16 @@ try{
   const memories=f.requests.slice(start).flatMap(request=>request.messages.filter(m=>m.role==='tool').flatMap(m=>{try{const v=JSON.parse(m.content);return Array.isArray(v.records)?[v]:[]}catch{return []}}));
   assert(memories.length);return memories.at(-1).records.filter(r=>r.layer==='procedural');
  }
+ assert.deepEqual(await retrieve(),[]);
+ const confirmed=proceduralRecordSchema.parse(await f.call(root+'/'+candidate.id,{method:'POST',key:'confirm-memory',body:{action:'confirm',baseVersion:merged.version}}));
+ assert.equal(confirmed.status,'confirmed');
+ await f.call(root+'/'+candidate.id,{method:'POST',body:{action:'reject',baseVersion:1},status:409});
+ await f.stop(f.api());await f.startAPI();
+ assert.equal(proceduralListSchema.parse(await f.call(root)).items.find(item=>item.id===candidate.id).available,true);
  const records=await retrieve();assert.equal(records.length,1);assert.equal(records[0].id,candidate.id);assert.equal(records[0].provenance.length,2);assert.equal(records[0].status,'confirmed');
  await f.call(root+'/'+candidate.id,{method:'POST',key:'delete-memory',body:{action:'delete',baseVersion:confirmed.version}});
- await f.call(root,{method:'POST',key:'create-memory',status:410,body:{content:'PROCEDURAL_REVIEWED_RULE: 核对林舟的原文证据后再整理人物观察。',taskIds:ids}});
+ await f.call(root,{method:'POST',key:'create-memory',status:410,body:{content:'PROCEDURAL_REVIEWED_RULE: 核对林舟的原文证据后再整理人物观察。',taskIds:[ids[0]]}});
+ await f.call(mergePath,{method:'POST',key:'merge-memory',status:410,body:mergeInput});
  assert.deepEqual(await retrieve(),[]);
- console.log('PASS: real Go/Pi Worker receipts, author-reviewed procedural memory, independent evidence, scoped retrieval, API restart, version conflict and deletion replay. Synthetic provider only.');
+ console.log('PASS: real Go/Pi Worker receipts, duplicate candidate merge, restart replay, separate author review, independent evidence, scoped retrieval, API restart, version conflict and deletion replay. Synthetic provider only.');
 }finally{await f.close()}

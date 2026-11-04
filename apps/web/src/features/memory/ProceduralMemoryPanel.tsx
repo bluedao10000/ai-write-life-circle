@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { BOOK_NAV, type BookSection } from '../../components/vnext/BookView'
 import { Btn } from '../../components/vnext/ui'
-import { proceduralMemoryApi as api, type ProceduralMemory, type TaskEvidence, type MemoryDecision } from '../../services/api/proceduralMemoryApi'
+import { proceduralMemoryApi as api, type ProceduralMemory, type TaskEvidence, type MemoryDecision, type MemoryMerge } from '../../services/api/proceduralMemoryApi'
 import { ApiProblemError } from '../../services/writerAgent'
 
 type Props = { bookId: string; bookTitle: string; demo?: boolean; onSection: (section: BookSection) => void }
@@ -17,6 +17,8 @@ function failureMessage(error: unknown) {
     if (error.status === 404 || error.status === 410) return '经验或任务来源已不可用，请刷新后查看。'
     if (error.status === 401 || error.status === 403) return '当前无法访问这部作品，请重新登录后重试。'
     if (error.code === 'MEMORY_EVIDENCE_INSUFFICIENT') return '所选来源必须是同类、同版本且输入不同的至少两个成功任务。'
+    if (error.code === 'MEMORY_CONTENT_MISMATCH') return '只能合并内容完全相同的候选，请刷新后查看。'
+    if (error.code === 'INVALID_MEMORY_MERGE') return '请选择最多 8 条相同候选，合并后的任务来源不能超过 8 项。'
     if (error.code === 'MEMORY_STORAGE_LIMIT') return '操作经验存储已达到上限，暂时无法保存。'
     return '操作经验暂时无法保存，请刷新后重试。'
   }
@@ -52,20 +54,21 @@ function MemoryPanel({ bookId, bookTitle, demo, onSection }: Props) {
     if (!demo) void refresh().catch(e => { if (alive.current && !request.current?.signal.aborted) setError(e instanceof Error ? e.message : '暂时无法加载操作经验。') })
     return () => { alive.current = false; request.current?.abort() }
   }, [demo, refresh])
-  async function mutate(id?: string, decision?: MemoryDecision) {
+  async function mutate(id?: string, decision?: MemoryDecision, merge?: MemoryMerge) {
     if (locked.current) return
     locked.current = true; setBusy(true); setError(''); setNotice('')
-    const input = decision ?? { content: content.trim(), taskIds: [...selected].sort() }
-    const operation = JSON.stringify([id, input])
+    const input = merge ?? decision ?? { content: content.trim(), taskIds: [...selected].sort() }
+    const operation = JSON.stringify([merge ? 'merge' : 'save', id, input])
     const key = keys.current.get(operation) ?? crypto.randomUUID()
     keys.current.set(operation, key)
     try {
-      if (id && decision) await api.decide(bookId, id, decision, key)
+      if (id && merge) await api.merge(bookId, id, merge, key)
+      else if (id && decision) await api.decide(bookId, id, decision, key)
       else await api.create(bookId, { content: content.trim(), taskIds: [...selected].sort() }, key)
       if (!alive.current) return
       keys.current.delete(operation)
       if (!id) { setContent(''); setSelected([]) }
-      setNotice(!id ? '候选已保存，确认后可供 AI 参考。' : decision?.action === 'delete' ? '经验已删除。' : decision?.action === 'confirm' ? '经验已确认。' : '经验已撤回。')
+      setNotice(merge ? '重复候选已合并，仍需你确认后才供 AI 参考。' : !id ? '候选已保存，确认后可供 AI 参考。' : decision?.action === 'delete' ? '经验已删除。' : decision?.action === 'confirm' ? '经验已确认。' : '经验已撤回。')
       await refresh()
     } catch (e) {
       if (!alive.current) return
@@ -74,6 +77,25 @@ function MemoryPanel({ bookId, bookTitle, demo, onSection }: Props) {
         try { await refresh() } catch { if (alive.current) setError('无法刷新最新状态，请稍后重试。') }
       }
     } finally { locked.current = false; if (alive.current) setBusy(false) }
+  }
+  const duplicateGroups = new Map<string, ProceduralMemory[]>()
+  for (const item of items) {
+    if (!item.content || item.status !== 'candidate' || item.unavailableReason === 'expired' || item.unavailableReason === 'source_unavailable') continue
+    const group = duplicateGroups.get(item.content) ?? []
+    group.push(item)
+    duplicateGroups.set(item.content, group)
+  }
+  const merges = new Map<string, MemoryMerge>()
+  for (const group of duplicateGroups.values()) {
+    const chosen: ProceduralMemory[] = []
+    const taskIds = new Set<string>()
+    for (const item of group) {
+      const combined = new Set([...taskIds, ...(item.provenance ?? []).map(s => s.taskId)])
+      if (combined.size > 8 || chosen.length >= 8) continue
+      chosen.push(item)
+      combined.forEach(id => taskIds.add(id))
+    }
+    if (chosen.length > 1) merges.set(chosen[0].id, { baseVersion: chosen[0].version, sources: chosen.slice(1).map(item => ({ id: item.id, baseVersion: item.version })) })
   }
   const tooLong = new TextEncoder().encode(content.trim()).length > 4000
   const valid = content.trim().length > 0 && !tooLong && selected.length > 0 && selected.every(id => sources.some(s => s.taskId === id))
@@ -110,7 +132,9 @@ function MemoryPanel({ bookId, bookTitle, demo, onSection }: Props) {
             <p className="text-ui-sm text-ink-3">{item.available ? '已确认 · 可供 AI 参考' : item.unavailableReason === 'expired' ? '已过期' : item.unavailableReason === 'source_unavailable' ? '来源已不可用' : item.status === 'rejected' ? '已撤回' : '待确认'}{item.expiresAt ? ` · 有效期至 ${date(item.expiresAt)}` : ''}</p>
             <details><summary className="cursor-pointer text-ui-sm">查看任务来源（{item.provenance?.length ?? 0}）</summary><ul className="mt-2 space-y-2 text-ui-sm text-ink-3">{item.provenance?.map(s => <li key={s.taskId}>{kindLabel(s.kind)} · {date(s.completedAt)}<br />任务 {s.taskId} · 方法 {s.strategyVersion}</li>)}</ul></details>
             {item.status === 'candidate' && !independent(item.provenance ?? []) && <p className="text-ui-sm text-ink-3">来源尚不足以确认，需要同类、同版本且输入不同的至少两个成功任务。</p>}
+            {merges.has(item.id) && <p className="text-ui-sm text-ink-3">发现 {merges.get(item.id)!.sources.length + 1} 条相同候选。合并会汇总任务来源、保留最早有效期，并撤回重复项。</p>}
             <div className="flex flex-wrap gap-3">
+              {merges.has(item.id) && <Btn disabled={busy || loading} onClick={() => void mutate(item.id, undefined, merges.get(item.id))}>合并重复候选</Btn>}
               {item.status === 'candidate' && <Btn disabled={busy || loading || !independent(item.provenance ?? []) || item.unavailableReason === 'expired' || item.unavailableReason === 'source_unavailable'} onClick={() => void mutate(item.id, { baseVersion: item.version, action: 'confirm' })}>确认经验</Btn>}
               {(item.status === 'candidate' || item.status === 'confirmed') && <Btn disabled={busy || loading} onClick={() => void mutate(item.id, { baseVersion: item.version, action: 'reject' })}>撤回</Btn>}
               <Btn disabled={busy || loading} onClick={() => void mutate(item.id, { baseVersion: item.version, action: 'delete' })}>删除</Btn>
