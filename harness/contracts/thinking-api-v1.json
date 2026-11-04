@@ -11,6 +11,82 @@
     }
   ],
   "paths": {
+    "/studio/books/{bookId}/thinking/sessions/{sessionId}/memory-candidate": {
+      "parameters": [
+        {
+          "name": "bookId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "sessionId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "importThinkingMemoryCandidate",
+        "summary": "importThinkingMemoryCandidate",
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "tags": [
+          "Private thinking"
+        ],
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/thinkingMemoryCandidateInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Author-scoped response; no model credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/proceduralRecord"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Author session required"
+          },
+          "403": {
+            "description": "Grant revoked or wrong scope"
+          },
+          "404": {
+            "description": "Unknown or unowned resource"
+          },
+          "409": {
+            "description": "Busy or model consent changed"
+          },
+          "422": {
+            "description": "Invalid input, selection or budget"
+          },
+          "429": {
+            "description": "Budget or capacity exhausted"
+          },
+          "503": {
+            "description": "Thinking unavailable; writing remains independent"
+          }
+        }
+      }
+    },
     "/studio/books/{bookId}/thinking/models": {
       "parameters": [
         {
@@ -857,6 +933,45 @@
       }
     },
     "schemas": {
+      "memoryExtractionBinding": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "number",
+            "const": 1
+          },
+          "tasks": {
+            "minItems": 1,
+            "maxItems": 4,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "taskId": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "resultVersion": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "taskId",
+                "resultVersion"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "version",
+          "tasks"
+        ],
+        "additionalProperties": false
+      },
       "thinkingCancelReceipt": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -886,6 +1001,24 @@
           "consent": {
             "type": "boolean",
             "const": true
+          },
+          "memoryExtraction": {
+            "type": "object",
+            "properties": {
+              "taskIds": {
+                "minItems": 1,
+                "maxItems": 4,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "required": [
+              "taskIds"
+            ],
+            "additionalProperties": false
           },
           "model": {
             "type": "object",
@@ -1632,6 +1765,44 @@
                 "creative"
               ]
             }
+          },
+          "memoryExtraction": {
+            "type": "object",
+            "properties": {
+              "version": {
+                "type": "number",
+                "const": 1
+              },
+              "tasks": {
+                "minItems": 1,
+                "maxItems": 4,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "taskId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "resultVersion": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "taskId",
+                    "resultVersion"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "version",
+              "tasks"
+            ],
+            "additionalProperties": false
           }
         },
         "required": [
@@ -1905,6 +2076,21 @@
           "maxConcurrentSessions",
           "maxDurationMs",
           "maxToolResultBytes"
+        ],
+        "additionalProperties": false
+      },
+      "thinkingMemoryCandidateInput": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "runId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          }
+        },
+        "required": [
+          "runId"
         ],
         "additionalProperties": false
       },
@@ -2495,6 +2681,44 @@
               ]
             }
           },
+          "memoryExtraction": {
+            "type": "object",
+            "properties": {
+              "version": {
+                "type": "number",
+                "const": 1
+              },
+              "tasks": {
+                "minItems": 1,
+                "maxItems": 4,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "taskId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "resultVersion": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "taskId",
+                    "resultVersion"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "version",
+              "tasks"
+            ],
+            "additionalProperties": false
+          },
           "createdAt": {
             "type": "string"
           },
@@ -2963,6 +3187,44 @@
                 "creative"
               ]
             }
+          },
+          "memoryExtraction": {
+            "type": "object",
+            "properties": {
+              "version": {
+                "type": "number",
+                "const": 1
+              },
+              "tasks": {
+                "minItems": 1,
+                "maxItems": 4,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "taskId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "resultVersion": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "taskId",
+                    "resultVersion"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "version",
+              "tasks"
+            ],
+            "additionalProperties": false
           },
           "status": {
             "type": "string",
@@ -3652,6 +3914,44 @@
               ]
             }
           },
+          "memoryExtraction": {
+            "type": "object",
+            "properties": {
+              "version": {
+                "type": "number",
+                "const": 1
+              },
+              "tasks": {
+                "minItems": 1,
+                "maxItems": 4,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "taskId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "resultVersion": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "taskId",
+                    "resultVersion"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "version",
+              "tasks"
+            ],
+            "additionalProperties": false
+          },
           "status": {
             "type": "string",
             "enum": [
@@ -4009,6 +4309,124 @@
           "output",
           "charged",
           "incomplete"
+        ],
+        "additionalProperties": false
+      },
+      "proceduralRecord": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "extractions": {
+            "maxItems": 8,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "sessionId": {
+                  "type": "string"
+                },
+                "runId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
+                "provider": {
+                  "type": "string"
+                },
+                "model": {
+                  "type": "string"
+                },
+                "promptVersion": {
+                  "type": "string",
+                  "const": "memory-extraction-v1"
+                },
+                "authorizationVersion": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "sessionId",
+                "runId",
+                "provider",
+                "model",
+                "promptVersion",
+                "authorizationVersion"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "id": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "candidate",
+              "confirmed",
+              "rejected",
+              "deleted"
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "provenance": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "taskId": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "strategyVersion": {
+                  "type": "string"
+                },
+                "inputHash": {
+                  "type": "string"
+                },
+                "completedAt": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "taskId",
+                "kind",
+                "strategyVersion",
+                "inputHash",
+                "completedAt"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "reviewedBy": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "version",
+          "createdAt",
+          "updatedAt"
         ],
         "additionalProperties": false
       },

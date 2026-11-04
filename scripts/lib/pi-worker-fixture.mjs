@@ -27,16 +27,16 @@ export async function createPiWorkerFixture({chapters=0,executionEnv={},modelBud
  await new Promise(r=>proxy.listen(0,'127.0.0.1',r));baseEnv.WRITER_AGENT_TASK_ORIGIN=`http://127.0.0.1:${proxy.address().port}`;
  Object.assign(baseEnv,executionEnv);
  const processes=new Set();let api,origin;
- function start(kind,overrides={}){
+ function start(kind,overrides={},entrypoint){
   let command,args,env={...baseEnv,...overrides};
-  if(kind==='pi'||kind==='pi-worker'){command=process.execPath;args=[new URL(kind==='pi'?'../../apps/agent/dist/main.js':'../../apps/agent/dist/worker/main.js',import.meta.url).pathname];env.WRITER_AGENT_LLM_API_KEY='synthetic-only';if(kind==='pi-worker'){delete env.WRITER_AGENT_STATE_DIR;delete env.WRITER_AGENT_HARNESS_ROOT}}
-  else if(kind==='api'){command=new URL('../../apps/api-go/dist/writer-agent-api',import.meta.url).pathname;args=[]}
+  if(kind==='pi'||kind==='pi-worker'){command=process.execPath;args=[entrypoint??new URL(kind==='pi'?'../../apps/agent/dist/main.js':'../../apps/agent/dist/worker/main.js',import.meta.url).pathname];env.WRITER_AGENT_LLM_API_KEY='synthetic-only';if(kind==='pi-worker'){delete env.WRITER_AGENT_STATE_DIR;delete env.WRITER_AGENT_HARNESS_ROOT}}
+  else if(kind==='api'){command=entrypoint??new URL('../../apps/api-go/dist/writer-agent-api',import.meta.url).pathname;args=[]}
   else throw Error('Unknown test process: '+kind)
   const p=spawn(command,args,{env,stdio:['ignore','pipe','pipe']});p.output='';p.stdout.on('data',b=>{p.output+=b});p.stderr.on('data',b=>{p.output+=b});processes.add(p);return p;
  }
  async function stop(p,signal='SIGTERM'){if(!p||p.exitCode!==null||p.signalCode!==null)return;const ended=new Promise(r=>p.once('exit',r));p.kill(signal);const timer=setTimeout(()=>p.kill('SIGKILL'),6000);await ended;clearTimeout(timer);processes.delete(p)}
- async function startAPI(){api=start('api');origin=await until(()=>{if(api.exitCode!==null)throw Error(api.output);return api.output.match(/listening on (http:\/\/127\.0\.0\.1:\d+)/)?.[1]},'API listening')}
- async function call(path,{method='GET',body,status=200,key=crypto.randomUUID(),user}={}){const r=await fetch(origin+path,{method,headers:{authorization:'Bearer '+keys.bearer,...identity.headers(method,path,user),...(body instanceof FormData?{}:{'content-type':'application/json'}),'idempotency-key':key},...(body===undefined?{}:{body:body instanceof FormData?body:JSON.stringify(body)})});const value=r.status===204?null:await r.json();assert.equal(r.status,status,JSON.stringify(value));return value}
+ async function startAPI(binary){api=start('api',{},binary);origin=await until(()=>{if(api.exitCode!==null)throw Error(api.output);return api.output.match(/listening on (http:\/\/127\.0\.0\.1:\d+)/)?.[1]},'API listening')}
+ async function call(path,{method='GET',body,status=200,key=crypto.randomUUID(),user}={}){const r=await fetch(origin+path,{method,headers:{authorization:'Bearer '+keys.bearer,...(path.includes('/thinking/')?{'X-Writer-Agent-Thinking':'reliability-v1'}:{}),...identity.headers(method,path,user),...(body instanceof FormData?{}:{'content-type':'application/json'}),'idempotency-key':key},...(body===undefined?{}:{body:body instanceof FormData?body:JSON.stringify(body)})});const value=r.status===204?null:await r.json();assert.equal(r.status,status,JSON.stringify(value));return value}
  const project='/v1/projects/review-fixture';
  async function enqueue(){const c=await call(project+'/chapters/CH-008');const input={revisionId:c.headRevision.revisionId,contentHash:c.headRevision.contentHash,reviewTypes:['character_consistency']};const plan=await call(project+'/chapters/CH-008/review-preview',{method:'POST',body:input});return call(project+'/chapters/CH-008/reviews',{method:'POST',status:202,body:{...input,consent:{confirmed:true,planHash:plan.planHash}}})}
  const get=id=>call(project+'/reviews/'+id);

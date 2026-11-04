@@ -36,9 +36,12 @@ export const thinkingModelSchema = z
     limits: thinkingLimitsSchema,
   })
   .strict();
+export const memoryExtractionBindingSchema=z.object({version:z.literal(1),tasks:z.array(z.object({taskId:z.string().min(1),resultVersion:z.number().int().nonnegative()}).strict()).min(1).max(4)}).strict();
+export const thinkingMemoryCandidateInputSchema=z.object({runId:z.string().uuid()}).strict();
 export const thinkingCreateSchema = z
   .object({
     consent: z.literal(true).optional(),
+    memoryExtraction:z.object({taskIds:z.array(z.string().min(1)).min(1).max(4)}).strict().optional(),
     model: thinkingModelSchema.optional(),
     modelId: z.string().regex(/^[a-zA-Z0-9_-]{1,80}$/).optional(),
     scopes: z.array(thinkingScopeSchema).max(4).optional(),
@@ -174,6 +177,7 @@ export const thinkingSessionSchema = z
     createdAt: z.string(),
     model: thinkingModelSchema,
     scopes: z.array(thinkingScopeSchema),
+    memoryExtraction:memoryExtractionBindingSchema.optional(),
     status: z.enum(["idle", "running", "deleted"]),
     messages: z.array(thinkingMessageSchema),
     cursor: z.number().int().nonnegative(),
@@ -190,6 +194,7 @@ export const thinkingSummarySchema = thinkingSessionSchema.pick({
   createdAt: true,
   model: true,
   scopes: true,
+  memoryExtraction:true,
   status: true,
 });
 export const thinkingCancelReceiptSchema = z.object({sessionId:z.string(),status:z.literal("cancelled"),syncPending:z.boolean()}).strict();
@@ -233,6 +238,7 @@ export const thinkingGrantSchema = z
     bookId: z.string(),
     model: thinkingModelSchema,
     scopes: thinkingScopeSchema.array(),
+    memoryExtraction:memoryExtractionBindingSchema.optional(),
   })
   .strict();
 export const thinkingToolRequestSchema = z

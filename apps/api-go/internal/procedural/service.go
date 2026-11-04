@@ -16,15 +16,24 @@ import (
 )
 
 type Record struct {
-	ID         string                    `json:"id"`
-	Content    string                    `json:"content,omitempty"`
-	Status     string                    `json:"status"`
-	Version    int                       `json:"version"`
-	Evidence   []agenttasks.TaskEvidence `json:"provenance,omitempty"`
-	CreatedAt  string                    `json:"createdAt"`
-	UpdatedAt  string                    `json:"updatedAt"`
-	ExpiresAt  string                    `json:"expiresAt,omitempty"`
-	ReviewedBy string                    `json:"reviewedBy,omitempty"`
+	Extractions []Extraction              `json:"extractions,omitempty"`
+	ID          string                    `json:"id"`
+	Content     string                    `json:"content,omitempty"`
+	Status      string                    `json:"status"`
+	Version     int                       `json:"version"`
+	Evidence    []agenttasks.TaskEvidence `json:"provenance,omitempty"`
+	CreatedAt   string                    `json:"createdAt"`
+	UpdatedAt   string                    `json:"updatedAt"`
+	ExpiresAt   string                    `json:"expiresAt,omitempty"`
+	ReviewedBy  string                    `json:"reviewedBy,omitempty"`
+}
+type Extraction struct {
+	SessionID            string `json:"sessionId"`
+	RunID                string `json:"runId"`
+	Provider             string `json:"provider"`
+	Model                string `json:"model"`
+	PromptVersion        string `json:"promptVersion"`
+	AuthorizationVersion int    `json:"authorizationVersion"`
 }
 type Input struct {
 	Content   string   `json:"content"`
@@ -54,9 +63,10 @@ type state struct {
 	Requests map[string]receipt `json:"requests"`
 }
 type Service struct {
-	App   *application.Service
-	Tasks *agenttasks.Service
-	Clock func() time.Time
+	App                *application.Service
+	Tasks              *agenttasks.Service
+	Clock              func() time.Time
+	ValidateExtraction func(context.Context, application.Actor, string, Extraction) error
 }
 
 func (s *Service) now() time.Time {
@@ -149,7 +159,20 @@ func (s *Service) mutate(ctx context.Context, actor application.Actor, key, op s
 	return out, e
 }
 func (s *Service) Create(ctx context.Context, actor application.Actor, key string, in Input) (Record, error) {
-	return s.mutate(ctx, actor, key, "create", in, func(st *state) (Record, error) {
+	return s.create(ctx, actor, key, in, nil)
+}
+func (s *Service) CreateExtracted(ctx context.Context, actor application.Actor, key string, in Input, extraction Extraction) (Record, error) {
+	return s.create(ctx, actor, key, in, &extraction)
+}
+func (s *Service) create(ctx context.Context, actor application.Actor, key string, in Input, extraction *Extraction) (Record, error) {
+	var identity any = in
+	if extraction != nil {
+		identity = struct {
+			Input
+			Extraction *Extraction
+		}{in, extraction}
+	}
+	return s.mutate(ctx, actor, key, "create", identity, func(st *state) (Record, error) {
 		content := strings.TrimSpace(in.Content)
 		if len(content) == 0 || len(content) > 4000 || len(st.Records) >= 1000 {
 			return Record{}, problem(422, "INVALID_MEMORY", "Content or record limit exceeded.")
@@ -167,7 +190,11 @@ func (s *Service) Create(ctx context.Context, actor application.Actor, key strin
 			}
 		}
 		stamp := now.Format(time.RFC3339Nano)
-		return Record{ID: "pm-" + compat.UUID(), Content: content, Status: "candidate", Version: 1, Evidence: evidence, CreatedAt: stamp, UpdatedAt: stamp, ExpiresAt: expires.UTC().Format(time.RFC3339Nano)}, nil
+		origins := []Extraction(nil)
+		if extraction != nil {
+			origins = []Extraction{*extraction}
+		}
+		return Record{Extractions: origins, ID: "pm-" + compat.UUID(), Content: content, Status: "candidate", Version: 1, Evidence: evidence, CreatedAt: stamp, UpdatedAt: stamp, ExpiresAt: expires.UTC().Format(time.RFC3339Nano)}, nil
 	})
 }
 func ids(r Record) []string {
@@ -207,6 +234,9 @@ func (s *Service) Decide(ctx context.Context, actor application.Actor, key, id s
 		}
 		switch in.Action {
 		case "confirm":
+			if e := s.validateExtractions(ctx, actor, r); e != nil {
+				return Record{}, e
+			}
 			if r.Status != "candidate" {
 				return Record{}, problem(409, "MEMORY_NOT_PENDING", "Only a candidate can be confirmed.")
 			}
@@ -231,6 +261,7 @@ func (s *Service) Decide(ctx context.Context, actor application.Actor, key, id s
 			r.Status = "rejected"
 			r.ReviewedBy = actor.ID
 		case "delete":
+			r.Extractions = nil
 			r.Content = ""
 			r.Evidence = nil
 			r.ExpiresAt = ""
@@ -265,6 +296,11 @@ func (s *Service) List(ctx context.Context, actor application.Actor) ([]View, er
 		expiry, e := time.Parse(time.RFC3339Nano, r.ExpiresAt)
 		if e != nil || !expiry.After(s.now()) {
 			v.UnavailableReason = "expired"
+		} else if err := s.validateExtractions(ctx, actor, r); err != nil {
+			if application.AsError(err).Status >= 500 {
+				return nil, err
+			}
+			v.UnavailableReason = "source_unavailable"
 		} else if r.Status != "confirmed" {
 			v.UnavailableReason = "not_confirmed"
 		} else {
@@ -290,4 +326,16 @@ func (s *Service) List(ctx context.Context, actor application.Actor) ([]View, er
 		return out[i].ID < out[j].ID
 	})
 	return out, nil
+}
+
+func (s *Service) validateExtractions(ctx context.Context, actor application.Actor, r Record) error {
+	for _, origin := range r.Extractions {
+		if s.ValidateExtraction == nil {
+			return problem(503, "MEMORY_UNAVAILABLE", "Extraction validation unavailable.")
+		}
+		if e := s.ValidateExtraction(ctx, actor, s.App.Project, origin); e != nil {
+			return e
+		}
+	}
+	return nil
 }

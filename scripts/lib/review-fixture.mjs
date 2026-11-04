@@ -30,6 +30,13 @@ export async function createReviewFixture({modelBudget}={}) {
       res.writeHead(429).end('{}');return
     }
  requests.push(request)
+ if(request.messages.find(m=>m.role==='system')?.content.includes('You extract a candidate operating method')){
+  const selected=mode,system=request.messages.find(m=>m.role==='system').content;
+  if(selected==='memory-extract-slow')await new Promise(r=>setTimeout(r,1800));
+  const taskIds=[...new Set([...system.matchAll(/"taskId":"([^"]+)"/g)].map(m=>m[1]))];
+  const content=selected==='memory-extract-invalid'?'invalid-json':JSON.stringify({content:'适用于对照章节的内容审查：先逐条核对原文证据，再结合作者反馈判断差异。成功执行不代表质量已经验证；需更多独立任务验证适用性。',taskIds:selected==='memory-extract-foreign'?['unselected-task']:taskIds});
+  res.writeHead(200,{'Content-Type':'text/event-stream'});res.end('data: '+JSON.stringify({id:'memory-extract',object:'chat.completion.chunk',model:request.model,choices:[{index:0,delta:{role:'assistant',content},finish_reason:'stop'}],usage:{prompt_tokens:100,completion_tokens:80}})+'\n\ndata: [DONE]\n\n');return
+ }
  if(request.messages.find(m=>m.role==='system')?.content.startsWith('You organize')){
   const input=JSON.parse(request.messages.find(m=>m.role==='user').content);
   const message=input.conversation.find(m=>m.messageId===input.focusMessageIds[0]);

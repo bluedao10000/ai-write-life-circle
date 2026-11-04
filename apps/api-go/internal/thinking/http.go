@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-var route = regexp.MustCompile(`^/v1/studio/books/([A-Za-z0-9_-]+)/thinking/(capabilities|models|preferences|sessions)(?:/(th-[a-f0-9-]{36}))?(?:/(messages|events|history|cancel|resume))?$`)
+var route = regexp.MustCompile(`^/v1/studio/books/([A-Za-z0-9_-]+)/thinking/(capabilities|models|preferences|sessions)(?:/(th-[a-f0-9-]{36}))?(?:/(messages|events|history|cancel|resume|memory-candidate))?$`)
 
 func IsPublicPath(path string) bool { return strings.Contains(path, "/thinking/") }
 func reply(w http.ResponseWriter, v any, e error, status int) {
@@ -168,7 +168,11 @@ func (s *Service) chooseModel(ctx context.Context, id string) (Model, error) {
 }
 func prefKey(owner, book string) string { return hash([]string{owner, book}) }
 func summary(r Record) map[string]any {
-	return map[string]any{"sessionId": r.ID, "bookId": r.Book, "title": r.Title, "createdAt": r.Created, "model": r.Model, "scopes": r.Scopes, "status": "idle"}
+	out := map[string]any{"sessionId": r.ID, "bookId": r.Book, "title": r.Title, "createdAt": r.Created, "model": r.Model, "scopes": r.Scopes, "status": "idle"}
+	if r.MemoryExtraction != nil {
+		out["memoryExtraction"] = r.MemoryExtraction
+	}
+	return out
 }
 func (s *Service) PublicHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -255,7 +259,9 @@ func (s *Service) PublicHandler() http.Handler {
 					st.Preferences[key] = in.Scopes
 					for id, v := range st.Sessions {
 						if v.Owner == a.ID && v.Book == book && !v.Deleted {
-							v.Scopes = in.Scopes
+							if v.MemoryExtraction == nil {
+								v.Scopes = in.Scopes
+							}
 							v.AuthorizationVersion++
 							v.Nonce = compat.UUID()
 							st.Sessions[id] = v
@@ -304,6 +310,19 @@ func (s *Service) PublicHandler() http.Handler {
 				return
 			}
 			requestHash := hash(in)
+			var extraction *MemoryExtraction
+			if in.MemoryExtraction != nil {
+				if !in.Consent || len(in.Scopes) > 0 {
+					reply(w, nil, fail(422, "THINKING_CONSENT_REQUIRED"), 0)
+					return
+				}
+				var err error
+				extraction, err = s.bindMemoryExtraction(ctx, *a, book, *in.MemoryExtraction)
+				if err != nil {
+					reply(w, nil, err, 0)
+					return
+				}
+			}
 			model, e := s.chooseModel(r.Context(), in.ID)
 			if e != nil {
 				reply(w, nil, e, 0)
@@ -320,7 +339,7 @@ func (s *Service) PublicHandler() http.Handler {
 					return
 				}
 			}
-			if in.Model.Model == "" {
+			if in.Model.Model == "" && in.MemoryExtraction == nil {
 				st, err := s.load()
 				if err != nil {
 					reply(w, nil, err, 0)
@@ -363,7 +382,7 @@ func (s *Service) PublicHandler() http.Handler {
 				if _, e := s.Management.Resolve(*a, book); e != nil {
 					return e
 				}
-				if in.Model.Model == "" {
+				if in.Model.Model == "" && in.MemoryExtraction == nil {
 					allowed := st.Preferences[prefKey(a.ID, book)]
 					for _, scope := range in.Scopes {
 						if !contains(allowed, scope) {
@@ -380,7 +399,7 @@ func (s *Service) PublicHandler() http.Handler {
 				if active >= 10000 {
 					return fail(429, "SESSION_LIMIT")
 				}
-				record = Record{ID: "th-" + compat.UUID(), Book: book, Owner: a.ID, Title: "新的思考", Created: compat.Now(), Model: model, Scopes: in.Scopes, Nonce: compat.UUID()}
+				record = Record{MemoryExtraction: extraction, ID: "th-" + compat.UUID(), Book: book, Owner: a.ID, Title: "新的思考", Created: compat.Now(), Model: model, Scopes: in.Scopes, Nonce: compat.UUID()}
 				st.Sessions[record.ID] = record
 				st.Requests[rk] = receipt{fp, record.ID}
 				return nil
@@ -389,7 +408,11 @@ func (s *Service) PublicHandler() http.Handler {
 				reply(w, nil, e, 0)
 				return
 			}
-			v, e := s.agent(r.Context(), "POST", "/internal/v1/sessions", map[string]any{"sessionId": record.ID, "authorId": record.Owner, "bookId": book, "model": record.Model, "scopes": record.Scopes, "createdAt": record.Created, "capability": s.capability(record)})
+			payload := map[string]any{"sessionId": record.ID, "authorId": record.Owner, "bookId": book, "model": record.Model, "scopes": record.Scopes, "createdAt": record.Created, "capability": s.capability(record)}
+			if record.MemoryExtraction != nil {
+				payload["memoryExtraction"] = record.MemoryExtraction
+			}
+			v, e := s.agent(r.Context(), "POST", "/internal/v1/sessions", payload)
 			if e == nil {
 				_, e = s.owned(*a, book, record.ID)
 			}
@@ -399,6 +422,10 @@ func (s *Service) PublicHandler() http.Handler {
 		record, e := s.owned(*a, book, id)
 		if e != nil {
 			reply(w, nil, e, 0)
+			return
+		}
+		if action == "memory-candidate" && r.Method == "POST" {
+			s.memoryCandidate(w, r, *a, record)
 			return
 		}
 		target := "/internal/v1/sessions/" + id
@@ -536,6 +563,14 @@ func (s *Service) PublicHandler() http.Handler {
 					return err
 				}
 				record = latest
+				if record.MemoryExtraction != nil {
+					if in.ModelID != "" || in.Selection != nil || in.Compact {
+						return fail(422, "INVALID_MEMORY_EXTRACTION")
+					}
+					if _, err := s.memoryExtractionContext(ctx, record); err != nil {
+						return err
+					}
+				}
 				if record.CancelPending {
 					return fail(409, "CANCELLATION_PENDING")
 				}
@@ -714,14 +749,14 @@ func (s *Service) PublicHandler() http.Handler {
 								current.ResumeBlocked = false
 							}
 							current.LastMessage = accepted.MessageID
-							if s.OnMessageAccepted != nil {
+							if s.OnMessageAccepted != nil && current.MemoryExtraction == nil {
 								current.Intake = addIntake(current.Intake, accepted.MessageID)
 							}
 							st.Sessions[id] = current
 							record = current
 							return nil
 						}) == nil
-						if s.OnMessageAccepted != nil && !record.Deleted && !record.ResumeBlocked {
+						if s.OnMessageAccepted != nil && record.MemoryExtraction == nil && !record.Deleted && !record.ResumeBlocked {
 							if s.OnMessageAccepted(r.Context(), record, accepted.MessageID) == nil && queued {
 								_ = s.dropIntake(r.Context(), id, accepted.MessageID)
 							}

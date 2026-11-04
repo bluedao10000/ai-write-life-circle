@@ -92,7 +92,7 @@ func (s *Service) retrieveMemory(ctx context.Context, rec Record, app *applicati
 	for _, change := range story.RecentChanges {
 		groups[3] = append(groups[3], memoryRecord{change.ChangeID, "episodic", change.Status, "creative.story_change", story.StateVersion, "creative.state", map[string]any{"createdAt": change.CreatedAt, "status": change.Status, "changeCount": len(change.Changes)}, map[string]any{"sessionId": change.SessionID, "messageId": change.MessageID, "changeId": change.ChangeID}})
 	}
-	procedures, err := (&procedural.Service{App: app, Tasks: &agenttasks.Service{Management: s.Management, State: s.State}}).List(ctx, application.Actor{ID: rec.Owner, Role: "author"})
+	procedures, err := (&procedural.Service{App: app, ValidateExtraction: s.ValidateMemoryExtraction, Tasks: &agenttasks.Service{Management: s.Management, State: s.State}}).List(ctx, application.Actor{ID: rec.Owner, Role: "author"})
 	if err != nil {
 		return nil, err
 	}

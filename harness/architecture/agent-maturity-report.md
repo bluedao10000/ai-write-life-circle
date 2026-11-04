@@ -14,7 +14,7 @@ Phase 0 已完成源码审计和架构设计；Phase 1 已完成本地代码接�
 | 授权及工具 | 部分覆盖 | tools/registry、Go工具RPC、strict schema、scope、epoch及StoryWrites | 本地重放前授权及ToolPolicy已接入；待扩展独立攻击集 |
 | Worker | 工程验证 | scheduler/dispatcher/TaskClient，四种Go任务；Review/Knowledge/Creative集成 | 统一合同已接入；待完善持久关联审计 |
 | 上下文 | 部分覆盖 | context-management、Working Memory来源绑定与无付费旧格式迁移；重启测试 | 摘要并非长期已确认事实 |
-| 长期记忆 | 部分覆盖 | Working来源、Semantic/Episodic检索、版本冲突提示、Procedural作者审核、重复候选合并与过期检索 | 待自动经验提取、后台整理、语义冲突与召回质量评测 |
+| 长期记忆 | 部分覆盖 | Working来源、Semantic/Episodic检索、版本冲突提示、Procedural作者审核、重复候选合并与过期检索 | 主动模型提取已实现；待后台整理、语义冲突与召回质量评测 |
 | Evaluation | 部分覆盖 | 统一schema/split/runner、Go业务和故障适配、受治理Judge、人工标注导入 | 待完成独立数据集、保留集、人工校准与性能验收 |
 | 安全 | 部分覆盖 | capability、隔离进程、工具授权、取消及幂等测试 | 缺独立红队数据、记忆污染、子角色扩权验证 |
 | 可观测性 | 部分覆盖 | 治理关联日志、进程计数；Thinking鉴权健康/诊断包含投影失败、恢复与未知费用会话数 | 缺跨进程聚合、持久诊断及历史指标 |
@@ -356,3 +356,17 @@ Go现有Thinking私有监听器新增 `GET /internal/v1/runtime/health`，原服
 - 浏览器 + Go + Pi Worker及Thinking操作经验回归通过，包括来源/结果预览、跨作者拒绝、候选合并、单独确认、重启与删除后检索。截图保留于本地`.local/memory-ui/source-preview.png`。
 
 所有模型请求使用本地合成Provider。回滚恢复上一Go/Web构建即可，保留原业务文件和费用回执。自动模型经验提取、发送授权、候选发布与后台整理仍未完成；结果证据可读取不等于规则有效性已获验证，Phase 3保持部分完成。
+
+## 作者主动经验提取：实际执行与审核
+
+已接入操作经验工作台、Go来源绑定、Pi `memory.extract` 角色和原模型预算闸门。作者同意后读取所选成功任务的原始来源与当前结果；scope固定为空，不开放工具。Go按已完成Run导入候选，原Procedural事务负责幂等与独立作者确认。模型、提示、Run及授权来源随候选保存，合并后继续有效；来源版本变化或撤销后不允许确认或检索。
+
+验证证据：
+
+- 133项Agent测试通过；Go Thinking、Procedural、AgentTasks race测试通过，新增提取来源在合并/审核/检索中的授权回归。
+- `test-memory-extraction.mjs`：真实Go/Pi进程通过明确同意、跨作者拒绝、固定scope、单次模型调用、零工具、无效输出、额外来源拒绝、候选幂等、版本失效、取消、SIGKILL与显式恢复。
+- 前端287项测试（含14项提取/操作经验测试）、24项Worker鉴权代理测试通过；桌面/移动浏览器完成实际模型提取与候选保存。
+- 上一版 `15a241e` Go/Pi构建通过退役状态回滚测试，原任务回执和已收费点数保留，无新增模型调用。
+- Agent/Web类型检查、lint、构建及OpenAPI合同检查通过。模型为本地合成Provider，没有付费调用。
+
+持久变化是原会话及候选记录的可选来源元数据。生产回滚需先撤回相关候选、取消并删除专用会话；详细步骤见[经验提取ADR](dreaming-memory-candidates.md)。当前未发布或部署。Phase 3仍缺后台整理、语义冲突及质量/召回证据；Phase 5/6仍未实现，整体目标继续推进。

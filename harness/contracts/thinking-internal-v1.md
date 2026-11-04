@@ -25,6 +25,7 @@ Zod 可执行契约：`packages/contracts/src/thinking.ts`。外部 author API �
 | 路径 | 输入 | 输出 |
 | --- | --- | --- |
 | /internal/v1/agent/authorize | 空 | ThinkingGrant：sessionId,authorId,bookId,model,scopes |
+| /internal/v1/agent/memory-extraction-context | 空 | 专用会话绑定的任务来源与结果；仅持有该会话 capability 可读取 |
 | /internal/v1/agent/story-context | `{sessionId,query}`；需 creative scope | 当前作品设定、候选、问题、本会话焦点及近期变更 |
 | /internal/v1/agent/story-change-receipt | `{sessionId,messageId}`；需 creative scope | 原作者消息的权威回执摘要或 null，用于恢复 |
 | /internal/v1/agent/tools/execute | ThinkingToolRequest：sessionId,tool,arguments；写工具附可信 messageId/runId | 工具专属 JSON，可能含 ThinkingSource 数组；≤ maxToolResultBytes |
@@ -58,3 +59,11 @@ Worker复用Go已有执行权政策与5秒心跳有效期；禁用的执行器�
 Thinking通过原服务Token读取`/internal/v1/readiness`，单次探测至多2秒，并服从更短的调用方期限；禁止重定向，响应最多32KiB。仅投影固定状态与activeTasks/pendingAdmissions/failedSessions/unpublishedSessions/recoveryPending计数，不转发任意错误或未知字段。无法连接/超时为unavailable，合同不匹配为invalid_response，未配置为disabled；有效响应保留ready/degraded/not_ready。只有有效响应中的固定计数可读取，无法取得有效响应时counts为null。
 
 该接口不新增心跳、数据库或调度权威，不替代进程自己的liveness探针。Go API可响应与完整业务数据健康是不同观测；汇总readiness表示启用Agent执行组件可用。
+
+## 经验提取会话
+
+ThinkingCreate 可包含 `memoryExtraction:{taskIds:[...]}`，须 `consent:true` 且不含 scope。Go 验证 1–4 个成功任务并捕获业务结果版本；ThinkingGrant、PrivateCreate、Session、Summary 携带可选 `memoryExtraction:{version:1,tasks:[{taskId,resultVersion}]}`。旧会话省略该字段。
+
+私有上下文响应为 `{binding:MemoryExtractionBinding,items:[{source:ProceduralSource,outcome:ProceduralOutcome}]}`，只含固定任务；逐次验证结果版本及原来源可读。该接口禁止普通会话访问，专用会话禁止全部故事工具。取消同步仍可获取最新 grant 以撤回 Pi 执行，已取消的 grant 不得用于新模型请求或候选导入。
+
+作者 `POST /thinking/sessions/{id}/memory-candidate` 提交 `{runId}`。Go从持久会话读取已完成输出，验证严格 JSON、来源子集、授权版本与取消状态，调用原 Procedural 候选事务。幂等身份为 Run；响应 201 ProceduralRecord，`extractions` 记录会话、Run、模型、提示版本和授权版本。确认、合并与检索继续验证各提取来源，撤销或来源变化后不可用。正式确认仍走原作者决定命令。

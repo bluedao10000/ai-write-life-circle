@@ -191,7 +191,9 @@ func run() error {
 		reviewServices[app.Project] = r
 		return r
 	}
-	h := transport.Handler(transport.Options{ProceduralFor: func(app *application.Service) *procedural.Service { return &procedural.Service{App: app, Tasks: tasks} }, CreativeFor: creativeFor, SessionOwned: thought.Owned, WorkerStatus: func() any { return agentruntime.ReadUnifiedStatus(c.State, modelConfig) }, KnowledgeFor: func(app *application.Service) *knowledge.Service { return knowledgeFor(app) }, Imports: imports, Management: management, ReviewFor: reviewFor, Account: func(ctx context.Context, a application.Actor) (any, error) {
+	h := transport.Handler(transport.Options{ProceduralFor: func(app *application.Service) *procedural.Service {
+		return &procedural.Service{App: app, Tasks: tasks, ValidateExtraction: thought.ValidateMemoryExtraction}
+	}, CreativeFor: creativeFor, SessionOwned: thought.Owned, WorkerStatus: func() any { return agentruntime.ReadUnifiedStatus(c.State, modelConfig) }, KnowledgeFor: func(app *application.Service) *knowledge.Service { return knowledgeFor(app) }, Imports: imports, Management: management, ReviewFor: reviewFor, Account: func(ctx context.Context, a application.Actor) (any, error) {
 		return accountView(ctx, ledger, management, a)
 	}, Redeem: func(ctx context.Context, a application.Actor, code string) (any, error) {
 		return redeem(ctx, ledger, management, a, code)

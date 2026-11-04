@@ -1,54 +1,50 @@
-# ADR：Dreaming 只产生作者待确认的记忆候选
+# ADR：经验提取只产生作者待确认的记忆候选
 
-日期：2026-10-29。更新：2026-11-04。状态：来源/业务结果预览与作者候选审核已实现；模型提取和后台调度尚未实现。
+日期：2026-10-29。更新：2026-11-04。状态：作者主动提取、来源/结果预览、候选审核已实现；后台整理尚未实现。
 
-流程：授权范围内的历史会话快照 → 候选提取 → 去重/冲突/过期核验 → 作者逐项确认 → 按既有 Go 正式写入事务生效。LLM 只产候选，Harness 管预算与恢复；正式知识 Store 与候选 Store 分离。
+## 执行与权威
 
-## 数据契约建议
+作者选取成功任务 → 同意发送 → 来源绑定的 Thinking Durable 执行 → 模型候选 → Go 验证并保存 → 作者独立确认。Go 继续拥有授权、点数、业务写入和幂等回执；Pi 负责受治理模型执行。复用现有会话和 Run，不新增任务数据库或预算账本。
 
-```ts
-type MemoryCandidate = {
-  candidateId: string; bookId: string; ownerId: string;
-  kind: 'author_confirmed_fact' | 'writing_preference' | 'agent_suggestion'
-      | 'creative_hypothesis' | 'deprecated';
-  status: 'proposed' | 'confirmed' | 'rejected' | 'superseded' | 'expired';
-  content: string; version: number;
-  source: { sessionId: string; messageIds: string[]; runId: string;
-    checkpointId: string; snapshotHash: string; grantVersion: string };
-  evidence: { sourceId: string; revisionId: string; contentHash: string }[];
-  extractedBy: { provider: string; model: string; policyVersion: string };
-  dedupKey: string; conflictsWith: string[]; supersedes?: string;
-  validUntil?: string; authorDecision?: { actorId: string; at: string;
-    action: 'confirm' | 'reject' | 'deprecate'; expectedVersion: number };
-};
-```
+主动提取使用专用 `memory.extract` 角色与 `memory-extraction-v1` 提示。后台整理仍需后续接入 Go Worker 的任务领取、租约与恢复合同，不由浏览器定时调用模型。
 
-模型输出中自报 author_confirmed_fact 仅是待验证类别；服务端必须定位作者明确陈述及其确认操作。Agent 建议和假设不能因置信度、重复次数、summary、dreaming 周期而升级。写作偏好与小说事实分别存储，默认按作品隔离；跨作品偏好需要另行授权。
+## 来源与发送范围
 
-确认必须是作者角色的独立 Go 命令，带 expectedVersion、稳定幂等键、来源快照 hash 和授权版本；事务内重查归属、会话未删、来源未撤销、候选未过期、冲突版本未变。任何变化返回 conflict/expired，不能套用旧确认。撤销会话授权阻止后续提取与候选确认；已正式确认的资料按现有作者撤销/废弃流程处理，不自动删已出版内容。
+作者创建会话时明确同意发送 1–4 个成功任务的原始来源、关联业务结果与作者反馈。Go 保存任务 ID 和结果版本，不保存来源正文副本。原章节读取任务的历史 Revision，Creative 讨论读取已保留摘录；来源最多16 KiB，结果最多20条与16 KiB，截断明确标记。Knowledge 标记为 revision_observations，不冒充单次模型输出档案。
 
-去重按规范内容 hash + kind + book 范围，语义相似只产合并建议。冲突保留并列候选与证据，由作者裁决。弃用生成 superseded/deprecated 链，不能静默覆盖旧事实。
+每次授权和读取上下文重查作者/作品、来源可用性及结果版本。来源清除、反馈或结果变化阻止新调用与候选发布。模型不能改变任务集合、作者、作品或授权版本。上下文经 Pi 原 payload Token 上限和费用预留检查后才发送。
 
-## 后续实施门
+专用会话 scope 固定为空，不继承作品权限设置；禁止故事工具、自动整理、模型切换与正文选区。任务证据只作为引用数据，不能授予权限。提示说明证据局限，真正的边界由 Go 来源绑定、ModelRequestGate 和零工具策略执行。
 
-1. 先实现只读候选预览/引用与授权说明，再审查 schema、隐私边界和用户确认流程。
-2. 构建合成样本 Eval：建议不得升级事实、矛盾保留、撤销/删除阻断、旧版本确认失败、跨作品隔离。
-3. 若未来批准后台提取，复用 Go task authority 的 lease/epoch/started/预算/回执；沿本次 Run 追踪，不把 Memory 写进 Pi compaction。
-4. 灰度仅启用作者主动触发；作者确认提交与回滚（追加废弃记录）先于任何自动调度。
+## 候选发布与审核
 
-不新增 Provider，不更改数据发送范围，不把历史讨论作为正式设定恢复机制。
+模型输出严格 JSON：`content` 与 `taskIds`。正文说明适用情境、方法和证据限制，最多4000 UTF-8字节；来源必须是本次选中任务的非空子集。成功回执只证明执行，不证明方法质量或因果关系。
 
-## 已实现的来源边界
+作者调用 `POST /thinking/sessions/{id}/memory-candidate`，只提交 `runId`。Go读取 Pi 持久结果，核验完成状态、授权版本、来源版本和取消状态，拒绝浏览器提供模型正文或确认状态。通过原 Procedural 事务保存 candidate，幂等键为 Run 身份；重复命令不新增候选或模型调用。
 
-操作经验工作台提供按需原始来源预览。Go从已完成任务回执定位原章节Revision或Creative讨论摘录，复用原读接口，不保存第二份历史。返回精确来源身份、最多16 KiB正文及截断标记；历史Revision不替换为当前正文，讨论保留用户/助手角色。任务未成功、作者/作品不匹配、来源已清除均不可读取。公开API为`GET /v1/studio/books/{bookId}/procedural-memory/evidence/{taskId}`。
+候选的 `extractions` 保存会话、Run、模型、提示版本和授权版本。合并精确相同候选时保留全部提取来源，最多8个任务及8次提取执行；不按语义相似度自动合并。确认、合并和检索仍验证原提取授权与来源。撤销、删除或来源版本变化使其不可用，不通过合并清除权限约束。
 
-候选创建、重复候选合并、作者确认、撤回和删除已使用原业务锁与幂等回执。确认要求同策略的不同成功输入，仍由作者独立判断适用性。来源预览只说明当时输入，未提供完整执行轨迹，也不能单凭成功回执推断任务方法有效。
+确认仍是作者独立 Go 命令，绑定候选版本；至少需要同 kind/strategyVersion、不同 taskId/inputHash 的两个成功输入。默认30天有效，最长90天。模型不能确认记忆、改变 Canon、修改预算或直接执行外部副作用。
 
-## 提取任务接入约束
+## 取消、崩溃与恢复
 
-模型提取须读取原任务来源及可验证的执行结果，声明适用情境与证据缺口，不将输入摘要包装成经验规律。作者选择来源并确认模型发送范围后才入队；发送前重读原来源，来源清除或授权撤销阻止调用与候选发布。截断输入必须在任务合同中显式记录，不能静默补全。
+沿用 Thinking 的取消 epoch、执行栅栏、未知费用保留、SIGKILL 启动中断和显式付费恢复。没有自动重试循环。取消同步可取得最新 grant 以终止 Pi 运行，但不能据此导入候选或开启新的提取。工作台只在作者点击后调用模型，网络结果不明时复用原请求身份。
 
-复用Go任务领取、started、heartbeat、费用与完成回执，Pi继续经过统一Model Gateway。提取输出只允许候选正文与所选来源的子集，不能指定作者、作品、确认状态、权限或预算。输出必须经Go验证后进入作者候选审核。新任务种类及其持久字段需要单独完成旧状态读取、版本不兼容处理、故障恢复和回滚测试；来源预览不改变任何持久格式。
+## 数据兼容与回滚
 
+原会话新增可选 `memoryExtraction:{version:1,tasks:[{taskId,resultVersion}]}`；原 Procedural 记录新增可选 `extractions`。旧会话和手工候选不变，没有新增存储文件、数据库或布局迁移。旧 Pi 拒绝不认识的新会话合同。
 
-业务结果预览已通过原Go领域读取实现：审查发现及作者反馈、Creative提案及计划核对、Knowledge同Revision观察。结果按原业务版本和当前状态返回，最多20条与16 KiB正文。Knowledge明确标记revision_observations，其他路径标记task_result；不将观察关联伪装成单次模型响应档案。读取结果必须先验证原来源可用。模型提取仍需显式发送授权、受治理调用、输出约束、来源和结果版本重查，以及候选发布验收。
+回滚步骤：
+
+1. 停止新提取；取消仍运行的专用会话，等待费用结算或保留未知费用。
+2. 撤回模型提取的候选/规则，包括保留提取来源的合并结果，防止旧代码跳过来源约束。
+3. 删除专用会话并完成 Pi 清理，保留原账单和业务回执。
+4. 按现有停机备份流程备份状态，再回滚 Go/Pi。不得用旧备份覆盖开放后的费用或回执。
+
+真实兼容测试以 `15a241e` 的 Go/Pi 构建读取上述退役状态，验证进程启动、任务回执、已收费点数和零新增模型调用。测试入口：`scripts/test-memory-extraction.mjs --rollback-api=<old-go> --rollback-pi=<old-agent-entry>`。
+
+## 验收与剩余范围
+
+真实 Go/Pi + 本地合成 Provider 验证：明确同意、跨作者拒绝、固定来源/结果版本、零工具、无效输出/额外来源拒绝、候选导入幂等、API/Pi 重启、取消、SIGKILL 未知费用和显式恢复。浏览器验证桌面/移动端的发送说明、模型调用、保存候选及独立审核；Proxy 验证公开命令允许、私有上下文不转发。
+
+合成测试证明执行与权限边界，不证明经验质量或跨任务泛化。后台整理、语义冲突、真实模型质量与召回评测仍是后续工作。Phase 3 保持部分实现。

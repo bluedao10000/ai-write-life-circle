@@ -1,6 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { z } from "zod";
 import * as c from "../../packages/contracts/src/thinking.js";
+import {proceduralRecordSchema} from "../../packages/contracts/src/procedural-memory.js";
 const schemas = Object.fromEntries(
   Object.entries(c)
     .filter(([key]) => key.endsWith("Schema"))
@@ -64,6 +65,10 @@ const op = (id: string, output: string, input?: string, status = 200) => ({
 });
 const base = "/studio/books/{bookId}/thinking";
 const paths = {
+  [base + "/sessions/{sessionId}/memory-candidate"]: {
+    parameters:[param("bookId"),param("sessionId")],
+    post:{...op("importThinkingMemoryCandidate","proceduralRecord","thinkingMemoryCandidateInput",201),parameters:[]},
+  },
   [base + "/models"]: {parameters: [param("bookId")], get: op("listThinkingModels", "thinkingModels")},
   [base + "/preferences"]: {parameters: [param("bookId")], get: op("getThinkingPreferences", "thinkingPreferences"), post: {...op("setThinkingPreferences", "thinkingPreferences", "thinkingPreferences"), parameters: []}},
   [base + "/capabilities"]: {
@@ -157,6 +162,7 @@ const doc = {
     },
     schemas: {
       ...schemas,
+      proceduralRecord:z.toJSONSchema(proceduralRecordSchema,{target:"draft-2020-12",io:"input"}),
       thinkingReceipt: {
         type: "object",
         required: ["messageId"],

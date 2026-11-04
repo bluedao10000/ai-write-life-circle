@@ -28,6 +28,8 @@ func (s *Service) Merge(ctx context.Context, actor application.Actor, key, id st
 		refs := append([]MergeSource{{id, in.BaseVersion}}, in.Sources...)
 		seen, taskIDs := map[string]bool{}, map[string]bool{}
 		records := []Record{}
+		origins := []Extraction{}
+		originIDs := map[string]bool{}
 		var expires time.Time
 		now := s.now()
 		for _, ref := range refs {
@@ -47,6 +49,18 @@ func (s *Service) Merge(ctx context.Context, actor application.Actor, key, id st
 			}
 			if len(records) > 0 && r.Content != records[0].Content {
 				return Record{}, problem(422, "MEMORY_CONTENT_MISMATCH", "Only identical content can be merged.")
+			}
+			if e := s.validateExtractions(ctx, actor, r); e != nil {
+				return Record{}, e
+			}
+			for _, origin := range r.Extractions {
+				if !originIDs[origin.RunID] {
+					originIDs[origin.RunID] = true
+					origins = append(origins, origin)
+				}
+			}
+			if len(origins) > 8 {
+				return Record{}, problem(422, "INVALID_MEMORY_MERGE", "Merged evidence exceeds eight extraction runs.")
 			}
 			expiry, e := time.Parse(time.RFC3339Nano, r.ExpiresAt)
 			if e != nil || !expiry.After(now) {
@@ -75,6 +89,7 @@ func (s *Service) Merge(ctx context.Context, actor application.Actor, key, id st
 		stamp := now.Format(time.RFC3339Nano)
 		target := records[0]
 		target.Evidence = evidence
+		target.Extractions = origins
 		target.ExpiresAt = expires.Format(time.RFC3339Nano)
 		target.UpdatedAt = stamp
 		target.Version++

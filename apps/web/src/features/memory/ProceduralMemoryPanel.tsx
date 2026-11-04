@@ -3,6 +3,7 @@ import { BOOK_NAV, type BookSection } from '../../components/vnext/BookView'
 import { Btn } from '../../components/vnext/ui'
 import { proceduralMemoryApi as api, type ProceduralMemory, type TaskEvidence, type MemoryDecision, type MemoryMerge } from '../../services/api/proceduralMemoryApi'
 import MemorySourcePreview from './MemorySourcePreview'
+import MemoryExtraction from './MemoryExtraction'
 import { ApiProblemError } from '../../services/writerAgent'
 
 type Props = { bookId: string; bookTitle: string; demo?: boolean; onSection: (section: BookSection) => void }
@@ -90,9 +91,12 @@ function MemoryPanel({ bookId, bookTitle, demo, onSection }: Props) {
   for (const group of duplicateGroups.values()) {
     const chosen: ProceduralMemory[] = []
     const taskIds = new Set<string>()
+    const extractionRuns=new Set<string>()
     for (const item of group) {
       const combined = new Set([...taskIds, ...(item.provenance ?? []).map(s => s.taskId)])
-      if (combined.size > 8 || chosen.length >= 8) continue
+      const combinedRuns=new Set([...extractionRuns,...(item.extractions??[]).map(source=>source.runId)])
+      if (combined.size > 8 || combinedRuns.size>8 || chosen.length >= 8) continue
+      combinedRuns.forEach(id=>extractionRuns.add(id))
       chosen.push(item)
       combined.forEach(id => taskIds.add(id))
     }
@@ -126,10 +130,12 @@ function MemoryPanel({ bookId, bookTitle, demo, onSection }: Props) {
           <p className="text-ui-sm text-ink-3">显示最近 100 个已完成任务。确认经验需要同类、同版本且输入不同的至少两个成功任务。</p>
           <Btn type="submit" disabled={!valid || busy || loading}>保存候选</Btn>
         </form>
+        <MemoryExtraction bookId={bookId} taskIds={selected} onSaved={refresh}/>
         <div className="space-y-4">
           {!loading && items.filter(x => x.status !== 'deleted').length === 0 && <p className="text-ui text-ink-3">还没有操作经验。</p>}
           {items.filter(x => x.status !== 'deleted').map(item => <article key={item.id} className="space-y-3 rounded-xl border border-line-soft p-4" aria-label={item.content}>
             <p className="whitespace-pre-wrap text-ui">{item.content}</p>
+            {!!item.extractions?.length&&<p className="text-ui-sm text-ink-3">AI 提取 · {Array.from(new Set(item.extractions.map(source=>source.model))).join("、")}</p>}
             <p className="text-ui-sm text-ink-3">{item.available ? '已确认 · 可供 AI 参考' : item.unavailableReason === 'expired' ? '已过期' : item.unavailableReason === 'source_unavailable' ? '来源已不可用' : item.status === 'rejected' ? '已撤回' : '待确认'}{item.expiresAt ? ` · 有效期至 ${date(item.expiresAt)}` : ''}</p>
             <details><summary className="cursor-pointer text-ui-sm">查看任务来源（{item.provenance?.length ?? 0}）</summary><ul className="mt-2 space-y-2 text-ui-sm text-ink-3">{item.provenance?.map(s => <li key={s.taskId}>{kindLabel(s.kind)} · {date(s.completedAt)}<br />任务 {s.taskId} · 方法 {s.strategyVersion}<MemorySourcePreview bookId={bookId} taskId={s.taskId} /></li>)}</ul></details>
             {item.status === 'candidate' && !independent(item.provenance ?? []) && <p className="text-ui-sm text-ink-3">来源尚不足以确认，需要同类、同版本且输入不同的至少两个成功任务。</p>}

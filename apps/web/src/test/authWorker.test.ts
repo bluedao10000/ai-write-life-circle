@@ -306,6 +306,17 @@ describe('private knowledge proxy',()=>{
 })
 
 describe('private creative asset proxy',()=>{
+ it('forwards author memory-candidate commands but never private extraction context',async()=>{
+  const book='book-11111111-1111-4111-8111-111111111111',path=`/v1/studio/books/${book}/thinking/sessions/th-11111111-1111-4111-8111-111111111111/memory-candidate`
+  const upstream=vi.fn(async(input:unknown)=>new URL(String(input)).pathname===`/v1/studio/books/${book}`?Response.json({bookId:book}):Response.json({status:'candidate'}));stubAPI(upstream)
+  expect((await handleRequest(request(path,'POST','{}'),env)).status).toBe(401)
+  await signIn()
+  expect((await handleRequest(request(path,'POST','{}'),env)).status).toBe(200)
+  expect((await handleRequest(request(path,'GET'),env)).status).toBe(404)
+  expect((await handleRequest(request(path,'POST','{}',{origin:'https://evil.example'}),env)).status).toBe(403)
+  await handleRequest(request('/internal/v1/agent/memory-extraction-context','POST','{}'),env)
+  expect(upstream).toHaveBeenCalledTimes(2)
+ })
  it('forwards only declared creative routes and keeps origin protection',async()=>{
   await signIn()
   const book='book-11111111-1111-4111-8111-111111111111',root=`/v1/studio/books/${book}/creative`

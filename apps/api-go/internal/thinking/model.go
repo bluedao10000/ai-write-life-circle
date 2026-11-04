@@ -47,20 +47,21 @@ type Model struct {
 	Limits          Limits `json:"limits"`
 }
 type Record struct {
-	ID                   string   `json:"sessionId"`
-	Book                 string   `json:"bookId"`
-	Owner                string   `json:"ownerId"`
-	Title                string   `json:"title"`
-	Created              string   `json:"createdAt"`
-	Model                Model    `json:"model"`
-	Scopes               []string `json:"scopes"`
-	Deleted              bool     `json:"deleted"`
-	Pending              bool     `json:"cleanupPending"`
-	AuthorizationVersion int      `json:"authorizationVersion,omitempty"`
-	CancelPending        bool     `json:"cancelPending,omitempty"`
-	ResumeBlocked        bool     `json:"resumeBlocked,omitempty"`
-	Nonce                string   `json:"nonce"`
-	Calls                int      `json:"toolCalls"`
+	MemoryExtraction     *MemoryExtraction `json:"memoryExtraction,omitempty"`
+	ID                   string            `json:"sessionId"`
+	Book                 string            `json:"bookId"`
+	Owner                string            `json:"ownerId"`
+	Title                string            `json:"title"`
+	Created              string            `json:"createdAt"`
+	Model                Model             `json:"model"`
+	Scopes               []string          `json:"scopes"`
+	Deleted              bool              `json:"deleted"`
+	Pending              bool              `json:"cleanupPending"`
+	AuthorizationVersion int               `json:"authorizationVersion,omitempty"`
+	CancelPending        bool              `json:"cancelPending,omitempty"`
+	ResumeBlocked        bool              `json:"resumeBlocked,omitempty"`
+	Nonce                string            `json:"nonce"`
+	Calls                int               `json:"toolCalls"`
 	// LastMessage is the most recently accepted user message, used only to
 	// scope the controlled request_turn_organize tool to the current turn.
 	LastMessage string `json:"lastMessageId,omitempty"`
@@ -100,10 +101,11 @@ type Service struct {
 	Meter application.Meter
 }
 type Create struct {
-	ID      string   `json:"modelId,omitempty"`
-	Consent bool     `json:"consent"`
-	Model   Model    `json:"model"`
-	Scopes  []string `json:"scopes"`
+	MemoryExtraction *MemoryExtractionInput `json:"memoryExtraction,omitempty"`
+	ID               string                 `json:"modelId,omitempty"`
+	Consent          bool                   `json:"consent"`
+	Model            Model                  `json:"model"`
+	Scopes           []string               `json:"scopes"`
 }
 type Selection struct {
 	Chapter  string `json:"chapterId"`
@@ -146,6 +148,18 @@ func fail(status int, code string) error {
 	}
 	if code == "INVALID_SELECTION" {
 		detail = "选中原文无法定位到已保存版本，请重新选取。"
+	}
+	switch code {
+	case "MEMORY_SOURCE_CHANGED":
+		detail = "任务结果或作者反馈已更新，请重新选择来源并新建提取。"
+	case "MEMORY_EXTRACTION_UNAVAILABLE":
+		detail = "本次提取已停止或授权已失效，请重新选择来源并新建提取。"
+	case "MEMORY_EXTRACTION_INCOMPLETE":
+		detail = "只能保存已完成且仍获授权的提取结果。"
+	case "INVALID_MEMORY_EXTRACTION":
+		detail = "提取结果格式无效，或包含不支持的操作。请重新提取。"
+	case "INVALID_MEMORY_EVIDENCE":
+		detail = "请选择已完成的任务，候选只能引用本次选中的来源。"
 	}
 	return application.Fail(status, code, detail)
 }

@@ -141,7 +141,29 @@ func (s *Service) PrivateHandler() http.Handler {
 			return
 		}
 		if r.URL.Path == "/internal/v1/agent/authorize" {
-			reply(w, map[string]any{"sessionId": rec.ID, "authorizationVersion": rec.AuthorizationVersion, "authorId": rec.Owner, "bookId": rec.Book, "model": rec.Model, "scopes": rec.Scopes}, nil, 200)
+			grant := map[string]any{"sessionId": rec.ID, "authorizationVersion": rec.AuthorizationVersion, "authorId": rec.Owner, "bookId": rec.Book, "model": rec.Model, "scopes": rec.Scopes}
+			if rec.MemoryExtraction != nil {
+				if !rec.CancelPending && !rec.ResumeBlocked {
+					if _, e := s.memoryExtractionContext(r.Context(), rec); e != nil {
+						reply(w, nil, e, 0)
+						return
+					}
+				}
+				grant["memoryExtraction"] = rec.MemoryExtraction
+			}
+			reply(w, grant, nil, 200)
+			return
+		}
+		if rec.MemoryExtraction != nil {
+			if r.URL.Path != "/internal/v1/agent/memory-extraction-context" {
+				reply(w, nil, fail(403, "SCOPE_FORBIDDEN"), 0)
+				return
+			}
+			items, e := s.memoryExtractionContext(r.Context(), rec)
+			if e == nil {
+				_, e = s.authorize(Bearer(r))
+			}
+			reply(w, map[string]any{"binding": rec.MemoryExtraction, "items": items}, e, 200)
 			return
 		}
 		if r.URL.Path == "/internal/v1/agent/story-context" {

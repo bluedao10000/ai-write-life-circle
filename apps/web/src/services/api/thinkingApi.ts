@@ -8,6 +8,7 @@ import {
   thinkingSessionSchema,
   thinkingHistorySchema,
   thinkingSummarySchema,
+  proceduralRecordSchema,
   type ThinkingCreate,
   type ThinkingRecovery,
   type ThinkingMessageInput,
@@ -16,6 +17,9 @@ import { requestApi, postJson } from "./client";
 const root = (book: string) =>
   `/v1/studio/books/${encodeURIComponent(book)}/thinking`;
 export const thinkingApi = {
+  async memoryCandidate(book:string,id:string,runId:string) {
+    return proceduralRecordSchema.parse(await postJson(root(book)+`/sessions/${id}/memory-candidate`,{runId},runId));
+  },
   async models(book: string, signal?: AbortSignal) {
     return thinkingModelsSchema.parse((await requestApi(root(book) + "/models", {signal})).body).items;
   },
