@@ -18,6 +18,7 @@ export async function executeBusinessEvaluation(task,signal,result){
   const sources=await fixture.sourceBytes();
   const worker=fixture.start('pi-worker');children.push(worker);
   await wait(()=>{if(worker.exitCode!==null)throw Error('EVAL_WORKER_EXIT');return worker.output.includes('worker_started')});
+  if(task.environment.scenario.startsWith('procedural-'))return await procedural(fixture,task,result,wait,children);
   if(task.capability==='knowledge')return await knowledge(fixture,task,result,wait,worker,children);
   if(task.capability==='creative')return await creative(fixture,task,result,wait,children);
   if(task.environment.scenario==='review-receipt')fixture.dropCompletion();
@@ -135,20 +136,78 @@ async function knowledgeFault(fixture,task,result,wait,worker,children,root,save
 async function memoryProbe(fixture,task,result,wait,children,base,start=true){
  if(start){const pi=fixture.start('pi');children.push(pi);
  await wait(()=>{if(pi.exitCode!==null)throw Error('EVAL_THINKING_EXIT');return pi.output.includes('agent_started')});}
+ const firstRequest=fixture.requests.length;
  await fetch(fixture.origin+'/control',{method:'POST',body:JSON.stringify({mode:'memory-read'})});
  const model=await fixture.call(base+'/thinking/capabilities');
  const session=await fixture.call(base+'/thinking/sessions',{method:'POST',status:201,body:{consent:true,model,scopes:['creative','knowledge']}});
  const path=base+'/thinking/sessions/'+session.sessionId;
  await fixture.call(path+'/messages',{method:'POST',status:202,body:{text:'检索记忆并区分原文观察与作者确认。'}});
  const completed=await wait(async()=>{const state=await fixture.call(path);return state.status==='idle'&&state});
- const memories=fixture.requests.flatMap(request=>request.messages.filter(m=>m.role==='tool').flatMap(message=>{try{const value=JSON.parse(message.content);return Array.isArray(value.records)?[value]:[]}catch{return []}}));
+ const probeRequests=fixture.requests.slice(firstRequest);
+ const memories=probeRequests.flatMap(request=>request.messages.filter(m=>m.role==='tool').flatMap(message=>{try{const value=JSON.parse(message.content);return Array.isArray(value.records)?[value]:[]}catch{return []}}));
  const memory=memories.at(-1);
  result.metrics.memoryToolCompleted=completed.messages.at(-1)?.status==='completed';
  result.metrics.retrievedRecords=memory?.records.length??null;
  result.metrics.retrievedObservations=memory?.records.filter(record=>record.resource==='knowledge.assertion'&&record.status==='observed').length??null;
  result.metrics.retrievedConfirmed=memory?.records.filter(record=>record.status==='confirmed').length??null;
  result.metrics.memoryProvenance=!!memory&&memory.records.length>0&&memory.records.every(record=>record.provenance&&record.versionResource);
- result.toolCalls=new Set(fixture.requests.flatMap(request=>request.messages.filter(message=>message.role==='tool').map(message=>message.tool_call_id))).size;
+ result.toolCalls+=new Set(probeRequests.flatMap(request=>request.messages.filter(message=>message.role==='tool').map(message=>message.tool_call_id))).size;
  if(result.chargedTokens!==null&&!completed.usage.incomplete){result.inputTokens+=completed.usage.input;result.outputTokens+=completed.usage.output;result.chargedTokens+=completed.usage.charged}else{result.inputTokens=null;result.outputTokens=null;result.chargedTokens=null}
  result.trace.push({action:'go_memory_tool_result_observed'});
+ return memory;
+}
+
+
+async function procedural(fixture,task,result,wait,children){
+ const {book,base}=await createBook(fixture,task),root=base+'/procedural-memory',knowledge=base+'/knowledge';
+ await fixture.call(base+'/creative/settings/pause',{method:'POST',body:{}});
+ const chapter=`/v1/projects/${book.bookId}/chapters/${book.chapters[0].chapterId}`;
+ const jobs=[];
+ for(const [index,text] of [task.request,task.request+' 林舟补充了一封旧信的出处。'].entries()){
+  const head=await fixture.call(chapter);
+  const saved=await fixture.call(chapter+'/revisions',{method:'POST',status:201,body:{baseRevisionId:head.headRevision.revisionId,markdown:text}});
+  if(index===0){const page=await fixture.call(knowledge);await fixture.call(knowledge+'/enable',{method:'POST',body:{baseVersion:page.version,consent:true,model:page.model,dailyTokenBudget:task.stoppingCriteria.maxTokens,dailyJobBudget:2}})}
+  jobs.push(await wait(async()=>{const {items}=await fixture.call(knowledge+'/jobs');return items.find(job=>job.revisionId===saved.revisionId&&['completed','failed'].includes(job.status))}));
+ }
+ usage(result,jobs);
+ const evidence=await wait(async()=>{const {items}=await fixture.call(root+'/evidence');return items.length===2&&items});
+ const ids=evidence.map(item=>item.taskId);
+ const pi=fixture.start('pi');children.push(pi);
+ await wait(()=>{if(pi.exitCode!==null)throw Error('EVAL_THINKING_EXIT');return pi.output.includes('agent_started')});
+ const expiring=task.environment.scenario==='procedural-expiry';
+ const input={content:task.request,taskIds:ids,...(expiring?{expiresAt:new Date(Date.now()+10000).toISOString()}:{})};
+ const candidate=await fixture.call(root,{method:'POST',key:'procedural-eval-create',status:201,body:input});
+ const unconfirmed=await fixture.call(root,{method:'POST',status:201,body:{content:'尚未审核的独立对照经验。',taskIds:ids}});
+ const confirmed=await fixture.call(root+'/'+candidate.id,{method:'POST',body:{baseVersion:candidate.version,action:'confirm'}});
+ const first=await memoryProbe(fixture,task,result,wait,children,base,false);
+ const records=first?.records.filter(record=>record.layer==='procedural');
+ const rule=records?.find(record=>record.id===candidate.id);
+ result.metrics={...result.metrics,
+  independentEvidence:evidence.length===2&&evidence[0].inputHash!==evidence[1].inputHash&&evidence.every(e=>e.kind===evidence[0].kind&&e.strategyVersion===evidence[0].strategyVersion),
+  firstProbeCompleted:result.metrics.memoryToolCompleted,
+  confirmedRetrieved:records?.length===1&&!!rule,
+  exactRuleRetrieved:rule?.content?.text===input.content,
+  provenanceValid:rule?.provenance?.length===2&&new Set(rule.provenance.map(source=>source.taskId)).size===2&&rule.provenance.every(source=>evidence.some(original=>original.taskId===source.taskId&&original.kind===source.kind&&original.strategyVersion===source.strategyVersion&&original.inputHash===source.inputHash))&&rule.version===confirmed.version&&rule.versionResource==='procedural.rule',
+  candidateExcluded:!!first&&first.records.every(record=>record.id!==unconfirmed.id),
+  authorIsolated:await isolated(fixture,root),
+  memorySchemaVersion:first?.schemaVersion??null,firstRetrievalComplete:!!first&&!first.truncated&&first.omitted===0,model:jobs[0].model.model,promptVersion:jobs[0].strategyVersion,
+ };
+ if(expiring){await wait(()=>Date.now()>=Date.parse(confirmed.expiresAt));result.trace.push({action:'procedural_expiry_elapsed'})}
+ else{await fixture.call(root+'/'+candidate.id,{method:'POST',body:{baseVersion:confirmed.version,action:task.environment.scenario==='procedural-revoke'?'reject':'delete'}});result.trace.push({action:task.environment.scenario==='procedural-revoke'?'procedural_withdrawn':'procedural_deleted'})}
+ await fixture.stop(fixture.api());await fixture.startAPI();result.trace.push({action:'go_api_restarted'});
+ const listed=(await fixture.call(root)).items,stored=listed.find(item=>item.id===candidate.id);
+ result.metrics.authoritativeUnavailable=expiring?stored?.unavailableReason==='expired'&&!stored.available:task.environment.scenario==='procedural-revoke'?stored?.status==='rejected'&&!stored.available:!stored;
+ const second=await memoryProbe(fixture,task,result,wait,children,base,false);
+ result.metrics.secondProbeCompleted=result.metrics.memoryToolCompleted;
+ result.metrics.secondRetrievalComplete=!!second&&!second.truncated&&second.omitted===0;
+ result.metrics.invalidRulesRetrieved=second?second.records.filter(record=>record.layer==='procedural').length:null;
+ result.metrics.canonAssets=(await fixture.call(base+'/creative/assets')).total;
+ result.metrics.sourceUnchanged=(await fixture.call(chapter)).headRevision.revisionId===jobs.at(-1).revisionId;
+ if(task.environment.scenario==='procedural-delete'){
+  await fixture.call(root,{method:'POST',key:'procedural-eval-create',status:410,body:input});
+  result.metrics.deletedReplayRejected=true;
+  const persisted=JSON.parse(await readFile(join(fixture.state,'creative',Buffer.from(book.bookId).toString('base64url'),'procedural-memory-v1.json'),'utf8'));
+  result.metrics.deletedContentPurged=!JSON.stringify(persisted).includes(input.content);
+ }
+ return result;
 }

@@ -117,3 +117,13 @@ test('revocation evaluation requires a committed permission change and no subseq
  const changes:Record<string,number|boolean>[]=[{revocationPersisted:false},{modelCallsAfterRevocation:1},{revokedSourceUnchanged:false}];
  for(const change of changes)assert.equal(grade(task,{...observation,metrics:{...metrics,...change}}).passed,false);
 });
+
+test('procedural memory graders require actual retrieval before invalidation and complete results afterwards',()=>{
+ for(const task of data.tasks.filter(task=>task.environment.scenario.startsWith('procedural-'))){
+  const metrics=Object.fromEntries(task.scorer.deterministic.map(rule=>[rule.metric,rule.value]));
+  assert.equal(grade(task,{...observation,metrics}).passed,true);
+  const changes:Record<string,number|boolean|null>[]=[{confirmedRetrieved:false},{exactRuleRetrieved:false},{candidateExcluded:false},{independentEvidence:false},{provenanceValid:false},{firstProbeCompleted:false},{secondProbeCompleted:false},{authoritativeUnavailable:false},{invalidRulesRetrieved:1},{invalidRulesRetrieved:null},{canonAssets:1},{authorIsolated:false},{sourceUnchanged:false},{firstRetrievalComplete:false},{secondRetrievalComplete:false},{memorySchemaVersion:null}];
+  if(task.environment.scenario==='procedural-delete')changes.push({deletedReplayRejected:false},{deletedContentPurged:false});
+  for(const change of changes)assert.equal(grade(task,{...observation,metrics:{...metrics,...change}}).passed,false);
+ }
+});

@@ -233,3 +233,13 @@ Go Thinking/Creative测试、Go API构建通过。现有Memory评测3/3通过，
 - 浏览器命令 `pnpm --filter @writer-agent/web test:memory` 已加入前端E2E入口；使用合成模型和测试身份断言，无付费模型调用。
 
 本批不修改持久格式。尚缺自动经验提取与整理、语义冲突识别和跨任务质量证据；Phase 3保持部分实现，Phase 5/6仍未验收。
+
+## Procedural Memory 生命周期评测
+
+`agent-eval-v11`将操作经验接入统一Memory Eval，新增撤回、自然到期和删除三个独立dev样本。真实Go/Pi Worker生成两个输入不同的成功回执；作者确认规则后，Thinking经工具网关检索精确正文、版本和两条完整来源。未确认候选始终作为负向对照。状态失效后重启Go API，在新Thinking会话中要求工具成功、结果未截断且失效规则为零。删除额外验证持久正文清除与旧创建重放410。
+
+验收：`pnpm eval:agent:memory` 6/6通过；合计25次合成模型调用、8次工具调用、2440个合成usage tokens。新增三项各6次模型调用、2次工具调用、620 tokens，均在各自6次/2次/200000 tokens/45秒上限内。跨作者读取拒绝、Canon无新增、正文版本不变均通过。128项Agent测试、类型检查、lint、Go/Agent构建通过。
+
+本地报告为 `.local/evals/agent/dev-memory.json`，含数据集版本、执行版本、调用数、usage与确定性断言。工具观测只取本次探测的请求，不复用上一会话的结果；不同会话的相同Provider工具调用ID分别计数。评分器拒绝缺失、截断或未完成的检索证据。
+
+这些结果验证生命周期与权限边界，未运行held-out或付费模型；语义召回、经验泛化、自动经验提取和后台整理仍未完成。Phase 3保持部分实现。

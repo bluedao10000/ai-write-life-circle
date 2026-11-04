@@ -37,3 +37,9 @@ Knowledge业务案例从实际保存的Revision执行提取，检查Go中的实�
 ## Thinking故障评测合同
 
 复用真实Go/Pi进程fixture，通过公开会话、取消与resume接口执行。Provider仅为本地合成边界。取消场景检查终态、晚到结果、重复消息与禁止恢复；恢复场景执行SIGKILL、重启、显式付费同意与幂等resume，检查原用户消息身份和attempt。预算由原Thinking Durable持久预留约束；报告将未知usage记为null，并独立记录thinking-durable预算暴露，不将保守预留伪装成已测token消耗。
+
+## Procedural Memory评测适配
+
+`agent-eval-v11`新增procedural-revoke、procedural-expiry和procedural-delete三个memory类dev样本，复用真实Go/Pi业务适配器。每项最多6次合成模型调用、2次工具调用和45秒，费用记录读取原Knowledge任务与Thinking会话usage。自然到期通过公开expiresAt与实际时钟验证，不修改生产状态时间。
+
+评分要求失效前真实读到精确规则与来源，失效后在Go重启与新会话中读到完整、未截断结果；空观察或缺失工具结果不算成功。未确认候选、跨作者访问、Canon变更和失效规则进入结果均不通过。删除还要求持久正文清除与旧请求重放拒绝。报告保留本地，不作为真实模型质量或held-out验收。

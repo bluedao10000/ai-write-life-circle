@@ -1,5 +1,5 @@
 {
-  "version": "agent-eval-v10",
+  "version": "agent-eval-v11",
   "split": "dev",
   "synthetic": true,
   "tasks": [
@@ -1393,6 +1393,310 @@
           },
           {
             "metric": "revokedSourceUnchanged",
+            "operator": "eq",
+            "value": true
+          }
+        ],
+        "forbidden": []
+      }
+    },
+    {
+      "taskId": "dev-procedural-revoke",
+      "category": "memory",
+      "capability": "knowledge",
+      "difficulty": "boundary",
+      "request": "核对林舟的原文出处，再整理人物观察；撤回后不再引用这条方法。",
+      "environment": {
+        "scenario": "procedural-revoke",
+        "fixture": "synthetic-v1",
+        "initialState": {}
+      },
+      "stoppingCriteria": {
+        "timeoutMs": 45000,
+        "maxTokens": 200000,
+        "maxModelCalls": 6,
+        "maxToolCalls": 2
+      },
+      "scorer": {
+        "deterministic": [
+          {
+            "metric": "independentEvidence",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "firstProbeCompleted",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "secondProbeCompleted",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "confirmedRetrieved",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "exactRuleRetrieved",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "provenanceValid",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "candidateExcluded",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "authorIsolated",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "authoritativeUnavailable",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "invalidRulesRetrieved",
+            "operator": "eq",
+            "value": 0
+          },
+          {
+            "metric": "canonAssets",
+            "operator": "eq",
+            "value": 0
+          },
+          {
+            "metric": "sourceUnchanged",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "memorySchemaVersion",
+            "operator": "eq",
+            "value": 1
+          },
+          {
+            "metric": "firstRetrievalComplete",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "secondRetrievalComplete",
+            "operator": "eq",
+            "value": true
+          }
+        ],
+        "forbidden": []
+      }
+    },
+    {
+      "taskId": "dev-procedural-expiry",
+      "category": "memory",
+      "capability": "knowledge",
+      "difficulty": "boundary",
+      "request": "查证林舟在北港的原文证据，再合并重复观察；方法到期后停止引用。",
+      "environment": {
+        "scenario": "procedural-expiry",
+        "fixture": "synthetic-v1",
+        "initialState": {}
+      },
+      "stoppingCriteria": {
+        "timeoutMs": 45000,
+        "maxTokens": 200000,
+        "maxModelCalls": 6,
+        "maxToolCalls": 2
+      },
+      "scorer": {
+        "deterministic": [
+          {
+            "metric": "independentEvidence",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "firstProbeCompleted",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "secondProbeCompleted",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "confirmedRetrieved",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "exactRuleRetrieved",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "provenanceValid",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "candidateExcluded",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "authorIsolated",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "authoritativeUnavailable",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "invalidRulesRetrieved",
+            "operator": "eq",
+            "value": 0
+          },
+          {
+            "metric": "canonAssets",
+            "operator": "eq",
+            "value": 0
+          },
+          {
+            "metric": "sourceUnchanged",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "memorySchemaVersion",
+            "operator": "eq",
+            "value": 1
+          },
+          {
+            "metric": "firstRetrievalComplete",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "secondRetrievalComplete",
+            "operator": "eq",
+            "value": true
+          }
+        ],
+        "forbidden": []
+      }
+    },
+    {
+      "taskId": "dev-procedural-delete",
+      "category": "memory",
+      "capability": "knowledge",
+      "difficulty": "boundary",
+      "request": "整理林舟的行动前先核对原文证据；删除该经验后不再引用。",
+      "environment": {
+        "scenario": "procedural-delete",
+        "fixture": "synthetic-v1",
+        "initialState": {}
+      },
+      "stoppingCriteria": {
+        "timeoutMs": 45000,
+        "maxTokens": 200000,
+        "maxModelCalls": 6,
+        "maxToolCalls": 2
+      },
+      "scorer": {
+        "deterministic": [
+          {
+            "metric": "independentEvidence",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "firstProbeCompleted",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "secondProbeCompleted",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "confirmedRetrieved",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "exactRuleRetrieved",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "provenanceValid",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "candidateExcluded",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "authorIsolated",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "authoritativeUnavailable",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "invalidRulesRetrieved",
+            "operator": "eq",
+            "value": 0
+          },
+          {
+            "metric": "canonAssets",
+            "operator": "eq",
+            "value": 0
+          },
+          {
+            "metric": "sourceUnchanged",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "memorySchemaVersion",
+            "operator": "eq",
+            "value": 1
+          },
+          {
+            "metric": "deletedReplayRejected",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "deletedContentPurged",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "firstRetrievalComplete",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "secondRetrievalComplete",
             "operator": "eq",
             "value": true
           }
