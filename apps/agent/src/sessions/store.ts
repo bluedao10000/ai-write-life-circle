@@ -1,4 +1,5 @@
 import type {AuditRecord} from '../runtime/governance/runtime.js';
+import type {WorkingMemory} from '../memory/working-memory.js';
 import { mkdirSync, readFileSync, writeFileSync, openSync, closeSync, fsyncSync, lstatSync, readdirSync, rmSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import type { JsonValue } from "@earendil-works/chord";
@@ -18,12 +19,12 @@ export type ExecutionAuthority = {
 export type DurableRun = { conversationId: number; taskId?: number; submissionId?: number; projectedEntry?: number };
 export type RunExecution = {
   audit?:AuditRecord[];
-  governance?: {runtimeVersion:string;definitionVersion:number;toolSchemaVersion:number;promptVersion?:string};
+  governance?: {runtimeVersion:string;definitionVersion:number;toolSchemaVersion:number;promptVersion?:string;memorySchemaVersion?:number};
   calls: number; turns: number; memoryCalls: number; spent: number;
   modelRequests: {id:string;reservedTokens:number;bound:number;input?:number;output?:number;status:"reserved"|"settled"}[];
 };
 export type Saved = {
-  discussionMemory?: {through:number;summary:string};
+  discussionMemory?: WorkingMemory;
   archive?: ArchiveManifest;
   epoch?: number;
   executionLease?: {owner:string;epoch:number;expiresAt:number};

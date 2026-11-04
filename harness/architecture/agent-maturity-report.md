@@ -2,7 +2,7 @@
 
 日期：2026-11-04。基线：`25e6066f519fdb4386bbbbe334edb48badbc5c03`。
 
-Phase 0 已完成源码审计和架构设计；Phase 1 已完成本地代码接入和工程验收；Phase 2–6 尚未实现。成熟度采用“工程验证 / 部分覆盖 / 未实现”，不以文件数量打分。此前同基线的本地 `pnpm verify` 已通过，包含 102 项 Agent 测试和 Go/Pi 真实进程集成；不代表真实模型任务成功率或全部威胁已验证。远程最新状态未刷新：GitHub API 最近返回账号停用403，本次使用本地 main 与已有跟踪引用。
+Phase 0 已完成源码审计和架构设计；Phase 1 已完成本地代码接入和工程验收；Phase 2 与 Phase 3 部分实现；Phase 4–6 尚未完成。成熟度采用“工程验证 / 部分覆盖 / 未实现”，不以文件数量打分。此前同基线的本地 `pnpm verify` 已通过，包含 102 项 Agent 测试和 Go/Pi 真实进程集成；不代表真实模型任务成功率或全部威胁已验证。远程最新状态未刷新：GitHub API 最近返回账号停用403，本次使用本地 main 与已有跟踪引用。
 
 ## 能力矩阵
 
@@ -10,12 +10,12 @@ Phase 0 已完成源码审计和架构设计；Phase 1 已完成本地代码接�
 | --- | --- | --- | --- |
 | Durable执行 | 工程验证 | runtime/durable.ts、durable-crash/lifecycle测试；启动中断旧任务 | 治理生命周期映射，禁止自动付费恢复 |
 | 分层存储 | 工程验证 | sessions/store/event-store/projection；layered-storage-crash测试、10万事件基准 | 统一健康、投影指标与诊断 |
-| 预算 | 工程验证，分路径治理 | PiHost payload后预留与usage检查点；Go agenttasks started/complete；budget/turn-budget测试 | 统一适配；尚无父子预算分配 |
-| 授权及工具 | 部分覆盖 | tools/registry、Go工具RPC、strict schema、scope、epoch及StoryWrites | 本地重放前授权、统一ToolPolicy与攻击集 |
-| Worker | 工程验证 | scheduler/dispatcher/TaskClient，四种Go任务；Review/Knowledge/Creative集成 | 统一执行合同与关联审计 |
-| 上下文 | 部分覆盖 | context-management、讨论摘要及来源重读；context-management测试 | 摘要并非长期已确认事实 |
+| 预算 | 工程验证，分路径治理 | PiHost payload后预留与usage检查点；Go agenttasks started/complete；budget/turn-budget测试 | 已接入原权威预算适配；尚无父子预算分配 |
+| 授权及工具 | 部分覆盖 | tools/registry、Go工具RPC、strict schema、scope、epoch及StoryWrites | 本地重放前授权及ToolPolicy已接入；待扩展独立攻击集 |
+| Worker | 工程验证 | scheduler/dispatcher/TaskClient，四种Go任务；Review/Knowledge/Creative集成 | 统一合同已接入；待完善持久关联审计 |
+| 上下文 | 部分覆盖 | context-management、Working Memory来源绑定与无付费旧格式迁移；重启测试 | 摘要并非长期已确认事实 |
 | 长期记忆 | 部分领域覆盖 | Go creative决定/提案/资产，knowledge检索，讨论focus | 缺统一来源/过期/冲突/审核模型和召回评测 |
-| Evaluation | 工程验证分散 | eval-thinking/reliability/knowledge/style，HTTP模型fixture | 缺统一schema、split、版本、五类指标；首批事件截断计数 |
+| Evaluation | 部分覆盖 | 统一schema/split/runner、Go业务和故障适配、受治理Judge、人工标注导入 | 待完成独立数据集、保留集、人工校准与性能验收 |
 | 安全 | 部分覆盖 | capability、隔离进程、工具授权、取消及幂等测试 | 缺独立红队数据、记忆污染、子角色扩权验证 |
 | 可观测性 | 部分覆盖 | reliability.traceRun及内存计数；Worker有限任务日志 | 缺模型/工具关联、持久诊断、投影与未知费用指标 |
 | 多角色协作 | 未实现 | 三领域Worker是任务执行器，不是协调层 | Creative只读试点，单/多角色同条件比较 |
@@ -25,12 +25,12 @@ Phase 0 已完成源码审计和架构设计；Phase 1 已完成本地代码接�
 
 ## 架构差距与复用清单
 
-1. `runtime/model-gateway.ts` 为 Worker 提供 completeSimple；Thinking 用 configuredModel 后在 PiHost 包装 streamSimple，Discussion Compaction 也走该包装。共享 Provider 适配已经存在，但统一治理合同尚不存在。保留这条 streaming 的原检查点语义再提取，不能换成另一套预算。
+1. `runtime/model-gateway.ts` 为 Worker 提供 completeSimple；Thinking 用 configuredModel 后在 PiHost 包装 streamSimple，Discussion Compaction 也走该包装。共享Provider和ModelRequestGate已统一治理，保留streaming原检查点语义和预算权威。
 2. `worker/scheduler.ts` 先 validateTask，再持久 started，随后 heartbeat 和 execute；Go 决定结果提交和重试。Budget/Authorization适配器应调用这一权威协议，不能以本地 started boolean替代。
-3. `tools/registry.ts` 的 onCall 持久计数与栅栏，Go RPC校验授权；命中本地 StoryWrites回执则直接返回，受控 analysis skill也为本地执行。统一Gateway要覆盖这些分支，不能只包fetch。
+3. `tools/registry.ts` 的 onCall 持久计数与栅栏，Go RPC校验授权；StoryWrites回执与本地analysis skill现均经过Tool Gateway授权，随后才执行本地逻辑。
 4. `ThinkingState` 与 EventStore outbox 已解决业务/事件一致性。审计复用同一检查点，投影健康直接派生Store状态；不要再加审计任务数据库。
 5. `creative` 现有决定、提案、版本和撤销，以及 `knowledge` 来源检索，是长期记忆的业务基础。新通用Memory模块应适配，不应拥有第二个确认事实入口。
-6. `scripts/eval-thinking.mjs` 只请求一次 events?after=0，而接口最多200条，长轨迹会少算工具调用。Phase 2需分页读取并回归验证；不能据此报完整效率指标。
+6. `scripts/eval-thinking.mjs` 已按游标遍历全部事件，451条事件回归确认末尾工具调用进入统计。
 7. `runtime/reliability.ts` counters在进程重启归零；Worker日志主要taskId/kind/code。统一observer需要有限标签、关联ID与持久诊断分工，不能声称当前已有跨重启总量。
 
 ## 文档与模块设计
@@ -121,3 +121,11 @@ Phase 2仍未完整验收：Thinking独立业务终态、故障轨迹、独立�
 验收：全套118项Agent测试通过；Judge定向测试覆盖非法输出、确定性否决、顺序映射、校准数据约束、真实Pi请求前预留、授权/预留失败零请求、未知usage结算、超长输入拒绝和取消报告。类型检查、lint、构建及合成Judge命令通过。CI已配置Judge命令，未触发远程运行。无生产数据格式变更。
 
 剩余Phase 2工作包括真实Judge的显式授权与持久预算适配、独立人工校准证据、Thinking取消/恢复及其他故障评测、五类独立数据集的扩展和保留集验收、完整版本与性能报告。Phase 3–6仍在后续实施范围。
+
+## Phase 3：Working Memory来源接入
+
+`memory/working-memory.ts`已接入真实讨论压缩与上下文溢出恢复；摘要保存有序来源消息ID及schema版本。来源替换、移除或可见状态改变时摘要失效，原消息不变；摘要不作为正式设定。新Run记录Memory Schema Version。来源随原Store检查点保存，沿用Session隔离与删除墓碑。
+
+旧格式按既有`through`前缀派生来源，无需付费重建；启动不发模型请求，下一次授权运行保存元数据。可选字段保持旧读取合同和layout=2，不引入新数据库；回滚只更换兼容该layout的代码，不覆盖状态及费用回执。
+
+验收：119项Agent测试、类型检查、lint和构建通过；包含45轮Pi压缩、重启后来源保持一致、真实Store旧格式启动零调用与正常执行补齐来源。Memory分类合成评测通过，覆盖来源完整性、来源失效及schema版本；语义召回仍未测量。长期三层记忆和完整生命周期尚未完成，Phase 3保持部分实现。

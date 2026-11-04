@@ -1,4 +1,5 @@
 import {ModelRequestGate,executionContext,runtimeVersion} from './governance/runtime.js';
+import {currentWorkingMemory} from '../memory/working-memory.js';
 import {manageDiscussion, memoryInstruction, providerInput, inputTokenBound, inputBytes, discussionText, type MeasuredInput, type ProviderInput} from "./context-management.js";
 import { failureFor, traceRun } from "./reliability.js";
 import { canonicalJSON, modelIdentity } from "./fingerprint.js";
@@ -207,7 +208,7 @@ export class PiHost {
       const recovery = {...s.checkpoint.input.recovery,...input.recovery};
       if (run.failure.code === "CONTEXT_OVERFLOW" && !recovery.continuationContext) {
         const history = s.view.messages.slice(0, s.view.messages.findIndex(m => m.id === s.checkpoint!.messageId));
-        recovery.continuationContext = [s.discussionMemory?.summary, discussionText(history.slice(-6))].filter(Boolean).join("\n").slice(-6000) || s.checkpoint.input.text.slice(-6000);
+        recovery.continuationContext = [currentWorkingMemory(history,s.discussionMemory)?.summary, discussionText(history.slice(-6))].filter(Boolean).join("\n").slice(-6000) || s.checkpoint.input.text.slice(-6000);
       }
       previousAttempt = run.attempt;
       s.entries = recovery.continuationContext ? [] : structuredClone(s.checkpoint.entries);
@@ -267,7 +268,7 @@ export class PiHost {
       const durable = await this.store.runtime(id);
       const conversation = await durable.harness.createConversation({ownership:{kind:"ownerless"}}, durableContext);
       s.durable = {conversationId: conversation.id};
-      s.execution = {governance:{runtimeVersion,definitionVersion:1,toolSchemaVersion:1,promptVersion:'thinking-v1'},calls:0, turns:0, memoryCalls:0, spent:0, modelRequests:[]};
+      s.execution = {governance:{runtimeVersion,definitionVersion:1,toolSchemaVersion:1,promptVersion:'thinking-v1',memorySchemaVersion:1},calls:0, turns:0, memoryCalls:0, spent:0, modelRequests:[]};
       await this.event(s, { type: "message_started", messageId: mid }, false);
       traceRun(id,s.view.run,{input:0,output:0,charged:0,incomplete:false});
       active.session = conversation;

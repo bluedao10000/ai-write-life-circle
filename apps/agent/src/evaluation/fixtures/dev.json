@@ -1,5 +1,5 @@
 {
-  "version": "agent-eval-v4",
+  "version": "agent-eval-v5",
   "split": "dev",
   "synthetic": true,
   "tasks": [
@@ -176,6 +176,21 @@
             "metric": "compacted",
             "operator": "eq",
             "value": true
+          },
+          {
+            "metric": "provenanceComplete",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "staleSourcesRejected",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "memorySchemaVersion",
+            "operator": "eq",
+            "value": 1
           }
         ],
         "forbidden": []

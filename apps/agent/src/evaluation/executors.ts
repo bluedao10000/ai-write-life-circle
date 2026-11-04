@@ -14,6 +14,7 @@ import {ModelGateway,executionConfigSchema,executionFingerprint} from '../runtim
 import {executeTask,validateTask} from '../worker/dispatcher.js';
 import {executionContext,governTool} from '../runtime/governance/index.js';
 import {manageDiscussion} from '../runtime/context-management.js';
+import {currentWorkingMemory} from '../memory/working-memory.js';
 import type {Config} from '../config.js';
 import type {EvaluationTask,Observation} from './task-schema.js';
 const empty=():Observation=>({metrics:{},trace:[],inputTokens:0,outputTokens:0,chargedTokens:0,modelCalls:0,toolCalls:0});
@@ -53,7 +54,8 @@ async function execute(task:EvaluationTask,signal:AbortSignal,result:Observation
   const messages:ThinkingMessage[]=Array.from({length:task.environment.initialState.messages},(_,index)=>({id:String(index),role:index%2?'assistant':'user',text:task.request.repeat(12),sources:[],status:'completed',createdAt:'synthetic'}));
   let summaries=0;
   const memory=await manageDiscussion(messages,undefined,16000,'synthetic discussion',async()=>{signal.throwIfAborted();summaries++;return '用户决定和未确认假设需分别保留。'});
-  result.metrics={compacted:!!memory,retainedMessages:messages.length-(memory?.through??0),summaryBytes:memory?Buffer.byteLength(memory.summary):0,summaries,semanticRecall:null};result.trace.push({action:'discussion_compaction'});return result;
+  const changed=messages.map((message,index)=>index===0?{...message,id:'replaced-source'}:message);
+  result.metrics={compacted:!!memory,retainedMessages:messages.length-(memory?.through??0),summaryBytes:memory?Buffer.byteLength(memory.summary):0,summaries,semanticRecall:null,provenanceComplete:!!memory&&currentWorkingMemory(messages,memory)===memory,staleSourcesRejected:!!memory&&currentWorkingMemory(changed,memory)===undefined,memorySchemaVersion:memory?.provenance?.schemaVersion??null};result.trace.push({action:'discussion_compaction'});return result;
  }
  if(task.stoppingCriteria.maxModelCalls<1)throw Error('EVAL_MODEL_BUDGET');
  const payload=task.capability==='review'?'{"findings":[]}':task.capability==='knowledge'?'{"entities":[],"assertions":[]}':task.capability==='creative'?'{"proposals":[]}':'这些是候选建议，需要作者确认。';

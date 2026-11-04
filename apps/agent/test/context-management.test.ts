@@ -48,13 +48,24 @@ test('45 Chinese turns compact through real Pi sessions, retain history, switch 
     assert.equal(host.get(id).view.messages[1]?.modelId,'deepseek');assert.equal(host.get(id).view.messages.at(-1)?.modelId,'gpt-oss');
     assert(host.get(id).view.messages.some(m=>m.text===question));
     assert(host.get(id).discussionMemory);
+    const provenance=structuredClone(host.get(id).discussionMemory!.provenance);
+    assert.equal(provenance?.schemaVersion,1);
+    assert(provenance!.messageIds.length>0);
     assert(host.get(id).events.some(e=>e.type==="compaction"));
     assert(payloads.every(p=>Buffer.byteLength(JSON.stringify(p)) < 32000));
     assert.equal(payloads.at(-1)?.max_completion_tokens,1024);assert.equal(payloads.at(-1)?.max_tokens,undefined);
     await host.close();host=new PiHost(config,new Store(state));await host.ready;
     assert.equal(host.get(id).view.messages.length,92);
+    assert.deepEqual(host.get(id).discussionMemory!.provenance,provenance);
+    const legacy=host.get(id);
+    legacy.discussionMemory={through:legacy.discussionMemory!.through,summary:legacy.discussionMemory!.summary};
+    await host.store.write(legacy);
+    await host.close();const callsBeforeMigration=count;
+    host=new PiHost(config,new Store(state));await host.ready;
+    assert.equal(count,callsBeforeMigration,'opening legacy working memory cannot make a paid call');
     scopes=['knowledge'];mode='loop';await send('查询作品资料','loop');
     assert.equal(host.get(id).view.messages.at(-1)?.status,'completed');
+    assert.equal(host.get(id).discussionMemory!.provenance!.schemaVersion,1);
     assert.equal(networkTools,1,'identical tool lookups are not repeated');
     assert.equal(payloads.at(-1)?.tool_choice,'none','last turn summarizes without tools');
     mode='limited';await send('限流测试','limited');assert.equal(host.get(id).view.messages.at(-1)?.status,'failed');
@@ -64,6 +75,7 @@ test('45 Chinese turns compact through real Pi sessions, retain history, switch 
 });
 
 import { manageDiscussion, inputBytes, discussionText, providerInput, inputTokenBound } from '../src/runtime/context-management.js';
+import {currentWorkingMemory,workingMemory} from '../src/memory/working-memory.js';
 
 
 test('measured input applies only to an unchanged provider prefix and tool definitions', () => {
@@ -91,4 +103,28 @@ test('oversized UTF-8 history reproduces the old guard; summary failure preserve
   assert(memory);
   assert(memory.summary.includes('未决：父亲失踪'));
   assert.equal(JSON.stringify(messages),before);
+});
+
+test('working memory rejects changed sources and migrates legacy prefix references without a model call',async()=>{
+ const messages=Array.from({length:40},(_,i)=>({id:String(i),role:i%2?'assistant' as const:'user' as const,text:'人物动机未定，保留作者的反对意见。'.repeat(16),status:'completed' as const,sources:[],createdAt:'2026-11-04T00:00:00Z'}));
+ const memory=workingMemory(messages,10,'候选动机。');
+ assert.equal(currentWorkingMemory(messages,memory),memory);
+ assert.equal(currentWorkingMemory(messages.slice(2),memory),undefined);
+ const changed=structuredClone(messages);changed[0]!.id='other-session-message';
+ assert.equal(currentWorkingMemory(changed,memory),undefined);
+ const revoked=messages.map(m=>m.id==='1'?{...m,status:'failed' as const}:m);
+ assert.equal(currentWorkingMemory(revoked,memory),undefined);
+ const legacy={through:10,summary:'旧格式的候选动机摘要'};
+ const migrated=currentWorkingMemory(messages,legacy)!;
+ assert.equal(migrated.summary,legacy.summary);
+ assert.deepEqual(migrated.provenance!.messageIds,messages.slice(0,10).map(m=>m.id));
+ let calls=0;
+ const rebuilt=await manageDiscussion(changed,memory,16000,'讨论',async text=>{calls++;assert(!text.includes(memory.summary));return '未确认动机；保留反对意见。'});
+ assert(calls>0);assert(rebuilt?.provenance);
+ assert.equal(currentWorkingMemory(changed,rebuilt),rebuilt);
+ assert.deepEqual(rebuilt.provenance.messageIds,changed.slice(0,rebuilt.through).map(m=>m.id));
+ // The old reader still sees through/summary; provenance is an additive private field.
+ assert.equal(JSON.parse(JSON.stringify(rebuilt)).summary,rebuilt.summary);
+ const migratedWithoutCall=await manageDiscussion(messages.slice(0,12),legacy,32000,'讨论',async()=>{throw Error('must not pay to migrate a short history')});
+ assert.deepEqual(migratedWithoutCall,migrated);
 });
