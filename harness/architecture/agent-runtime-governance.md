@@ -42,6 +42,8 @@ Thinking BudgetAdapter 复用 Saved.execution.modelRequests、usage 和 Store.wr
 
 闸门将执行取消、执行deadline与调用方的Request/init信号合并到实际fetch。该约束覆盖响应体读取；调用方未传signal也不能绕过执行期限。取消不释放费用预留，未知usage仍由原预算权威处理。真实本地HTTP测试覆盖执行取消、Request信号、init信号及deadline四种路径。
 
+工具调用的实际取消信号取任务deadline与工具timeout中较早者，并保留执行与调用方取消。工具HTTP响应体读取随该信号中断；超时沿用 `TOOL_TIMEOUT` 合同，失败后不发布工具成功审计或继续模型请求。
+
 `governTool` 包装所有注册工具，包括本地analysis skill与StoryWrites回执重放：校验schema/输入大小、scope、当前授权、取消和期限，然后执行原工具及检查输出大小。执行仍使用原顺序调度、原意图持久化和Go回执。Thinking重新核验作者、作品、session、授权版本、模型与scope；本地缓存不能绕过这项检查。
 
 Thinking的版本和白名单审计记录加入原 `RunExecution`，随业务检查点提交，并跟随既往attempt映射保留。Worker继续使用Go的任务、started、预算和完成/失败回执作为持久事实；治理关联日志不构成第二个数据库。治理指标按固定role/action计数，属于进程内统计，不是跨重启总账。

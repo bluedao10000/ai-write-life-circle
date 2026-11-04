@@ -93,3 +93,24 @@ test('stored story receipt and local skill both reauthorize without replaying a 
  assert(!JSON.stringify(governanceMetrics()).includes('execution'));
  assert.throws(()=>definition('unregistered-planner'),/UNSUPPORTED_TASK_KIND/);
 });
+
+test('tool gateway aborts HTTP body at the earlier execution deadline or tool timeout',async()=>{
+ for(const source of ['deadline','tool']){
+  const server=createServer((_request,response)=>{response.writeHead(200);response.flushHeaders()});
+  server.listen(0,'127.0.0.1');await once(server,'listening');
+  try{
+   const address=server.address();assert(address&&typeof address==='object');
+   const records:string[]=[];
+   const execution=executionContext({...context(),deadline:Date.now()+(source==='deadline'?200:10000),recordAudit:record=>records.push(record.action)});
+   const policy:ToolPolicy={name:'lookup',risk:'read',replay:'safe',requiredScopes:['creative'],maxInputBytes:100,maxOutputBytes:100,timeoutMs:source==='tool'?200:10000,idempotencyRequired:false};
+   let entered=false;
+   const tool=governTool({name:'lookup',description:'lookup',parameters:Type.Object({}),replay:'safe',execute:async(_args,_api,ctx)=>{
+    const response=await fetch(`http://127.0.0.1:${address.port}`,{signal:ctx.abortSignal});
+    entered=true;
+    return {output:[{type:'text',text:await response.text()}]};
+   }},policy,execution,{authorize:async()=>{}});
+   await assert.rejects(tool.execute({},{} as never,BACKGROUND_CONTEXT),/TOOL_TIMEOUT/);
+   assert(entered);assert.deepEqual(records,['tool_started','failed']);
+  }finally{server.closeAllConnections();await new Promise<void>((resolve,reject)=>server.close(error=>error?reject(error):resolve()))}
+ }
+});

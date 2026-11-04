@@ -6,7 +6,8 @@ import {assertCurrent,audit,type ExecutionContext,type AuthorizationManager} fro
 export type ToolPolicy={name:string;risk:'read'|'candidate'|'write';replay:'safe'|'unsafe';requiredScopes:readonly string[];maxInputBytes:number;maxOutputBytes:number;timeoutMs:number;idempotencyRequired:boolean};
 export function governTool(tool:ToolRegistration,policy:ToolPolicy,execution:ExecutionContext,authority:AuthorizationManager):ToolRegistration {
  return {...tool,async execute(args,api,context){
-  const signal=AbortSignal.any([execution.signal,AbortSignal.timeout(policy.timeoutMs),...(context.abortSignal?[context.abortSignal]:[])]);
+  const timeout=AbortSignal.timeout(Math.min(policy.timeoutMs,Math.max(1,Math.ceil(execution.deadline-Date.now()))));
+  const signal=AbortSignal.any([execution.signal,timeout,...(context.abortSignal?[context.abortSignal]:[])]);
   const current={...execution,signal};
   try{
    assertCurrent(current);
@@ -17,6 +18,10 @@ export function governTool(tool:ToolRegistration,policy:ToolPolicy,execution:Exe
    assertCurrent(current);
    if((result.output??[]).reduce((bytes,block)=>bytes+Buffer.byteLength(block.type==='text'?block.text:JSON.stringify(block)),0)>policy.maxOutputBytes)throw Error('TOOL_RESULT_TOO_LARGE');
    audit(current,'tool_finished');return result;
-  }catch(error){audit(current,'failed');throw error}
+  }catch(error){
+   audit(current,'failed');
+   if(timeout.aborted&&!execution.signal.aborted&&!context.abortSignal?.aborted)throw Error('TOOL_TIMEOUT');
+   throw error;
+  }
  }};
 }
