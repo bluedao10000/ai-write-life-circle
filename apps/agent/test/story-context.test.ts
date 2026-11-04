@@ -1,4 +1,5 @@
 import test from "node:test";
+import {BACKGROUND_CONTEXT, withAbortSignal} from "@earendil-works/chord/context";
 import assert from "node:assert/strict";
 import {createServer} from "node:http";
 import {mkdtempSync,rmSync} from "node:fs";
@@ -17,7 +18,7 @@ const args={changes:[{intent:"decide",kind:"character",patch:{name:"林舟"},evi
 const execution=():StoryExecution=>({messageId:"author-current",runId:"run-current",dialogueRecording:true,writes:{},persist:()=>{}});
 const registered=(ex:StoryExecution,scopes=["creative"])=>tools(config,"session","fixture",new AbortController().signal,()=>{},()=>true,scopes,ex);
 const invoke=async(tool:ReturnType<typeof registered>[number],input:unknown=args)=>{
-  const result=await tool.execute("call",input,new AbortController().signal,()=>{},{} as never);
+  const result=await tool.execute(input,{} as never,BACKGROUND_CONTEXT);
   return {...result,details:result.details as Record<string,unknown>};
 };
 
@@ -62,6 +63,33 @@ test("validation feedback is recoverable and successful logical-turn writes repl
     const conflict=await invoke(tool);assert.equal(conflict.details.code,"VERSION_CONFLICT");assert.equal(ex.writes.record_story_changes,undefined);
     const success=await invoke(tool);assert.match(JSON.stringify(success),/receipt-1/);
     const replay=await invoke(tool,{changes:[]});assert.equal(replay.details.alreadyRecorded,true);assert.equal(requests,2);assert(persisted>=3);
+  }finally{globalThis.fetch=original}
+});
+
+test("story writes await budget, intent and receipt commits",async()=>{
+  const original=globalThis.fetch,ex=execution(),order:string[]=[];
+  ex.persist=async()=>{await Promise.resolve();order.push(ex.writes.record_story_changes.result ? "receipt" : "intent")};
+  globalThis.fetch=async()=>{
+    assert.deepEqual(order,["budget","intent"]);
+    order.push("request");
+    return new Response('{"changeId":"persisted","status":"applied"}');
+  };
+  try {
+    const tool=tools(config,"session","fixture",new AbortController().signal,()=>{},async()=>{await Promise.resolve();order.push("budget");return true},["creative"],ex).find(t=>t.name==="record_story_changes")!;
+    await invoke(tool);
+    assert.deepEqual(order,["budget","intent","request","receipt"]);
+  }finally{globalThis.fetch=original}
+});
+
+test("Durable cancellation during the intent commit prevents a story write",async()=>{
+  const original=globalThis.fetch,ex=execution(),cancel=new AbortController();let requests=0;
+  ex.persist=async()=>{await Promise.resolve();cancel.abort(Error("cancelled"))};
+  globalThis.fetch=async()=>{requests++;return new Response('{"changeId":"unexpected","status":"applied"}')};
+  try {
+    const tool=registered(ex).find(t=>t.name==="record_story_changes")!;
+    await assert.rejects(tool.execute(args,{} as never,withAbortSignal(cancel.signal,BACKGROUND_CONTEXT)),/cancelled/);
+    assert.equal(requests,0);
+    assert.deepEqual(ex.writes.record_story_changes.arguments,args);
   }finally{globalThis.fetch=original}
 });
 

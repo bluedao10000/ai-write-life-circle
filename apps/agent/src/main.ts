@@ -31,6 +31,7 @@ async function main() {
   }
   const host = new PiHost(config, new Store(config.state)),
     http = server(host);
+  await host.ready;
   await new Promise<void>((resolve, reject) => {
     http.once("error", reject);
     http.listen(config.port, "127.0.0.1", resolve);

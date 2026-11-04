@@ -1,10 +1,12 @@
 # Pi Thinking：开发、手动发布与回滚
 
-本流程只准备独立 Thinking 服务；后台 Review/Knowledge/Creative 由同一 Pi 发布的 Worker 执行，见 [Pi Worker 流程](pi-worker.md)。自动 EC2 发布保持关闭。当前 PR 不运行本流程中的服务器命令。
+本流程只准备独立 Thinking 服务；后台 Review/Knowledge/Creative 由同一 Pi 发布的 Worker 执行，见 [Pi Worker 流程](pi-worker.md)。自动 EC2 发布保持关闭。
 
 ## 本地开发
 
 Node >=22.19.0，pnpm 10.15.1。`pnpm install && pnpm build:agent`。
+
+Thinking 使用固定版本 Pi Durable / Pi AI 1.5.0 和 Node 内置 SQLite。每个会话在 StateDirectory 保存一份 `<sessionId>.sqlite`，应用状态与执行任务共用持久化提交。服务完成存储初始化与旧任务中断清理后才接受请求；前端仍使用 `thinking-v1` 的会话、消息和事件接口。
 
 先在工作区之外建立两个不同的随机凭证文件（例如 `openssl rand -hex 32`），权限 0600：服务 Token 供 Go→Pi RPC，能力签名 Key 仅供 Go。不要复用公网 API Token。设置 `scripts/deploy/pi-go.env.example` 中的变量；本地能力 Key 文件和 RPC Token 路径替换为开发路径。Pi 另设 Token 文件、独立 StateDirectory 与 `WRITER_AGENT_PI_LLM_API_KEY`。仅 Pi 需要模型 Key；默认 DeepSeek endpoint/model 为 `https://api.deepseek.com` / `deepseek-flash`。也可显式使用原有 LLM 环境变量；切勿把生产环境文件加载进自动测试。
 
@@ -27,7 +29,7 @@ Node >=22.19.0，pnpm 10.15.1。`pnpm install && pnpm build:agent`。
 1. 使用与 Go 相同协议的发布提交，在构建机运行 `pnpm package:agent -- /path/to/new-release`，生成含依赖、dist、两个受控 skills、release.json 的独立目录。发布清单记录 Git revision、主入口 SHA256、协议；若本地未提交修改，先提交，再打包。不要把 Go StateDirectory、作者 Harness 或 `.env` 打进包。
 2. 在服务器安装 Node >=22.19.0。创建无登录用户 `writer-agent-pi` 及共享 RPC 组 `writer-agent-pi-rpc`；仅 `writer-agent` 与 `writer-agent-pi` 加入 RPC 组。`/etc/writer-agent-pi-rpc` root:该组 0750，service.token 0640。签名 Key 放 `/etc/writer-agent/pi-capability.key`，root:writer-agent 0640；Pi 用户不能读取。`/etc/writer-agent-pi` root:writer-agent-pi 0750，agent.env 0640，填入真实模型凭证。
 3. 将完整发布目录放 `/opt/writer-agent-pi/releases/<revision>`，root 所有、服务用户只读；使用临时 symlink + rename 将 `current` 指向它。先运行 `node scripts/deploy/verify-pi-release.mjs /opt/writer-agent-pi/current`，再在服务身份和受保护环境中执行 `node .../dist/main.js --check-config`。验证缺少凭证时拒绝启动、配置披露与预期相同。不要打印环境文件。
-4. 复制 `scripts/deploy/systemd/writer-agent-pi.service`。Go API 的 systemd drop-in 增加 `SupplementaryGroups=writer-agent-pi-rpc`；在现有 API env 添加 pi-go 示例的变量，保留原认证配置。先部署本 PR 对应 Go 二进制，重启 API，确认写作/保存正常、`127.0.0.1:8791` 工具监听仅本地。未启用时 Go 完全不监听该端口；配置错误时 Thinking 关闭，写作不受影响。
+4. 复制 `scripts/deploy/systemd/writer-agent-pi.service`。Go API 的 systemd drop-in 增加 `SupplementaryGroups=writer-agent-pi-rpc`；在现有 API env 添加 pi-go 示例的变量，保留原认证配置。先部署兼容的 Go 二进制，重启 API，确认写作/保存正常、`127.0.0.1:8791` 工具监听仅本地。未启用时 Go 完全不监听该端口；配置错误时 Thinking 关闭，写作不受影响。
 5. `systemctl daemon-reload` 后只启动 `writer-agent-pi`，后台 Worker 由独立 unit 管理。通过 `systemctl show` 核对 User/CPUQuota/MemoryMax、独立状态目录；`ss -ltnp` 核对 8790/8791 仅 loopback；公网 Caddy 仍仅转发 8787，**不要**代理 `/internal` 或新开安全组端口。实际目录有自定义路径时，相应扩展 unit 的 InaccessiblePaths，验证 Pi 用户无法读取所有 Go 状态/备份和 Harness。
 6. 以服务身份执行 `node .../dist/main.js --healthcheck`。健康响应含 `thinking-v1`、发布 revision 与模型披露，不能含 Key。作者登录后先用隔离作品验证确认范围→思考→取消→刷新。再验证 Agent 停机时保存仍正常，以及离线删除会话恢复后清除。首次向外部模型发送真实材料仍须作者在 UI 明确确认。
 
@@ -35,25 +37,18 @@ Node >=22.19.0，pnpm 10.15.1。`pnpm install && pnpm build:agent`。
 
 ## 回滚与恢复
 
-停止 Pi；私有状态目录做权限保持的完整备份。原子切回兼容发布 symlink，验证清单、配置、健康，再启动。不要回滚状态快照覆盖现有删除墓碑或恢复已经删除的讨论。当前 schema=1，可靠性增量包含 Run/lease/checkpoint/授权版本；旧 Pi 的严格 Session 校验不能直接读取新增字段。回滚先关闭 Thinking，保留最新状态，使用兼容版本；参见 [可靠性迁移与回滚](../reviews/archive/agent-reliability-review.md)。Thinking 无法启动时保留关闭状态，Go API 的编辑与保存继续可用。
+停止 Pi；私有状态目录做权限保持的完整备份，包含 SQLite、仍存在的 WAL/SHM 文件和删除墓碑。原子切回兼容发布 symlink，验证清单、配置、健康，再启动。不要回滚状态快照覆盖现有删除墓碑或恢复已经删除的讨论。Thinking 无法启动时保留关闭状态，Go API 的编辑与保存继续可用。
 
-正常退出会取消正在执行的请求，已接受消息/预算已落盘。SIGKILL 后 running 消息变为 interrupted，保留历史，不自动付费重跑。作者可在 UI 确认潜在额外费用后，从安全业务检查点 Resume；取消、删除、撤销授权及副作用未知的 Run 不可恢复。上下文超限使用作者确认的续谈要点，原讨论仍可读。存活 PID 的锁不抢占；未知 PID/权限错误或遗留 `.process-lock-admission` 需要运维核验，不按文件年龄删除。Go 文件锁异常残留仍遵循保守人工恢复流程。
+首次启动自动将旧 JSON 会话与事件归档一次性导入 SQLite，保留历史、请求回执、事件 cursor、费用预留和故事写入回执；旧未完成 Run 转为 interrupted。导入提交完成后移除旧 JSON 与归档，旧 SDK entries 不转为 Durable 任务检查点。上线前须在停机状态保留完整备份。
 
-删除先撤销 Go grant，再持久排队；每五秒重试 Pi 清理。即使 Node 离线也不能再次调用工具。Node 删除持久墓碑，抹除 transcript、Pi entries 与 events，防止迟到结果或创建重放复活。Session 列表中的孤立初始化 grant 可再次用同键创建或删除，不会发送模型请求。
+正常退出会取消正在执行的请求，已接受消息/预算已落盘。SIGKILL 后，启动先撤回旧排队输入并持久取消全部旧 live tasks，再启动调度完成清理。running 消息变为 interrupted，保留历史和未知费用预留，不自动付费重跑。作者可在 UI 确认潜在额外费用后创建新的 attempt；取消、删除、撤销授权及已进入 `request_turn_organize` 的 Run 不可恢复。上下文超限使用作者确认的续谈要点，原讨论仍可读。存活 PID 的锁不抢占；未知 PID/权限错误或遗留 `.process-lock-admission` 需要运维核验，不按文件年龄删除。Go 文件锁异常残留仍遵循保守人工恢复流程。
+
+删除先撤销 Go grant，再持久排队；每五秒重试 Pi 清理。即使 Node 离线也不能再次调用工具。Node 先写删除墓碑，阻止新输入和迟到结果；中止并等待执行结束、关闭 Harness 后，删除会话 SQLite、WAL/SHM、旧 JSON 和事件归档。墓碑保留，防止创建重放复活。Session 列表中的孤立初始化 grant 可再次用同键创建或删除，不会发送模型请求。
+
+### 存储兼容性
+
+回滚发布必须支持当前 SQLite / Durable 文档格式。旧 JSON 运行时和旧格式转换工具不能读取迁移后的状态；不能仅切换到旧 Pi 二进制恢复服务。恢复备份须保留更新的删除墓碑、取消栅栏和业务回执；开放 reservation 先由原计费权威结算或核账。不得用旧备份覆盖更新的作者状态。
 
 ## 可选真实合成 Eval
 
 `pnpm eval:thinking` 为 Mock；真实模型必须手动执行 `pnpm eval:thinking:live`，只用 `harness/evals/thinking-agent` 中的三章合成材料。默认仅一个问题、最多四次 provider 调用、最多 64,000 保守预留 Token；无自动重试。未提供模型 Key 会拒绝启动。保留 qualityValidated=false，人工复核引用所支持的推断后另存标注；成功返回不代表文学质量验证。
-
-### 离线回滚准备（只生成待核验副本）
-
-在停用 Thinking、停止 Go/Pi 并保留最新完整备份后，在构建工作区运行：
-
-```sh
-go build -C apps/api-go -o dist/thinking-rollback ./cmd/thinking-rollback
-node scripts/prepare-thinking-rollback.mjs --pi-state /private/stopped-pi --registry /private/stopped-go/thinking/sessions-v1.json --output /private/new-rollback --rollback-bin ./apps/api-go/dist/thinking-rollback --compatible-go
-```
-
-路径须按实际环境替换；输出目录必须不存在。兼容模式保留取消栅栏；`--legacy-go` 遇到无法表达的取消状态会拒绝。归档事件会展开为旧 Pi 格式。转换只准备副本，不安装、不启动服务、不发送模型请求。
-
-安装器仍待实现，当前不得将准备成功视为可直接回退上线。安装前须核验目标版本、文件权限、输出大小、墓碑、计费预留和回执；开放 reservation 必须先由原计费权威结算或核账。不得用旧备份覆盖更新的作者状态。

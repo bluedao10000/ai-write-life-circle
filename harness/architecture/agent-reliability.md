@@ -1,16 +1,26 @@
-# ADR：Thinking 的业务检查点与显式恢复
+# ADR：Thinking 的 Durable 执行与显式恢复
 
-日期：2026-10-29。状态：开发实现，未生产部署。沿用 Pi SDK 1.3.0、独立 Go 权威和原子 JSON Store，不引入框架。
+日期：2026-11-04。状态：开发实现，未生产部署。Thinking 使用 Pi Durable / Pi AI 1.5.0，Go 保持业务权威。
 
 ## 职责与状态
 
-Provider 只做推理；PiHost Harness 负责接收、预算、执行时限、checkpoint、终态、恢复与审计。Tool Registry 负责定义和硬权限；Session Store 保存历史、回执、私有 checkpoint 和执行租约。Go 保留作者/作品、能力授权、点数、正式写入和受控排队权威。
+Provider 只做推理；PiHost 负责接收、预算、执行时限、终态、显式恢复与审计，内部由 Durable Harness 执行任务和工具循环。Tool Registry 负责定义和硬权限。Go 保留作者/作品、能力授权、点数、正式写入和受控排队权威。
+
+每个 Thinking Session 使用一份 SQLite 和一个 Harness；每次 Run / attempt 使用独立 Conversation。Session 级 `writer.thinking` 文档保存公共视图、请求回执、费用预留、执行计数、epoch、租约、故事写入意图与回执、事件及投影位置；既往 attempt 的映射与费用预留保存在同一文档中。应用文档与 Durable 任务共用事务提交；Store 内存缓存只暴露已提交状态。
 
 公共 Session 视图通过 `X-Writer-Agent-Thinking: reliability-v1` 协商 Run 扩展；不带该头时 Go 去掉 run，旧严格解码客户端仍能读取历史。新 Worker 只转发该版本标记，不赋予权限。
 
 用户消息 completed 表示内容已接受（不是模型已完成）；assistant 消息 accepted/running/completed/failed/interrupted/cancelled 表示该次回复。Session idle/running/deleted 为兼容视图。独立 Run 有 runId、traceId、messageId、attempt、retryCount、modelCalls、provider/model、checkpointId、stepType、epoch、时间、failure。内部步骤为 accepted/provider/tool/completed，不把工具步骤冒充新任务。
 
-状态机：accepted → running ↔ checkpointed → completed / failed / interrupted / cancelled。accepted 时写用户输入、空回复、幂等回执、业务检查点和租约，再调用模型。模型发送前记录 reserve、incomplete、modelCalls；工具开始/结果边界写 checkpoint，终态写 usage/failure。Run 档案保留在私有 runs 中，公开 view.run 为最近一轮。
+状态机：accepted → running ↔ checkpointed → completed / failed / interrupted / cancelled。接受时在同一事务写入用户输入、空回复、幂等回执、业务检查点、租约和 Durable 编排任务，提交完成后才返回 202。编排任务取得新授权上下文、执行受预算约束的 `manageDiscussion()`，再提交本 attempt 的 Conversation 输入。模型发送前记录 reserve、incomplete、modelCalls；工具开始/结果边界写 checkpoint，终态写 usage/failure。Run 档案保留在私有 runs 中，公开 view.run 为最近一轮。
+
+公开事件使用独立单调 cursor，接受回执、最终回答、usage 和终态事件均随应用文档持久提交后发布。模型流的增量通过应用文档投影，Durable 的实时 watch 不承担关键状态的持久化边界。客户端断线后通过原有快照与 events 接口补齐结果。
+
+## 存储与启动
+
+服务等待存储初始化、旧状态导入和中断清理完成后接收请求。启动先 `inspect()`，逐一撤回旧 queued submissions，并为所有旧 live tasks 持久化取消标记；完成后才调用会启动调度的等待操作。旧业务 Run 变为 interrupted，未知 usage 的费用预留保留。启动清理不重新调用模型。
+
+旧 JSON 会话与事件归档一次性导入 SQLite，保留历史消息、请求回执、事件 cursor、预算、故事写入回执和删除墓碑。旧 SDK entries 不作为 Durable 执行检查点导入。导入提交完成后移除旧 JSON 与事件归档，后续可变状态只写 SQLite。
 
 ## 租约、栅栏与取消
 
@@ -20,7 +30,7 @@ accept 在异步 authorize 返回后重新读取 epoch；取消、删除、另�
 
 Pi 在线时取消返回同步后的 200；Pi 离线时 Go 返回 `202 {status:"cancelled",syncPending:true}`，并在 Session/events 上用 `cancellationPending` 展示下游待同步状态。Cleanup 复用消息准入的 Session lock，并只接受当前 nonce 的取消，因而旧请求迟到时不会停止后来创建的新任务。pending 存在时新消息被稳定拒绝为 `CANCELLATION_PENDING`；Pi 恢复并同步后清除 pending，已取消 Run 仍保持不可恢复。
 
-当前单写者锁 + 持久 epoch 不支持跨主机多副本；要扩展必须以事务存储替代文件锁，不能仅延长 lease。
+当前单写者锁 + 会话 SQLite + 持久 epoch 不支持跨主机多副本；扩展需要共享事务存储与领取协议，不能仅延长 lease。
 
 ## 恢复协议
 
@@ -30,15 +40,19 @@ Pi 在线时取消返回同步后的 200；Pi 离线时 Go 返回 `202 {status:"
 {"runId":"UUID","confirmAdditionalCost":true,"continuationContext":"可选，作者确认的续谈要点"}
 ```
 
-必须带新的稳定 Idempotency-Key。客户端保存键和意图指纹；丢失响应只重投同键。服务端重放原回执，不重复模型调用。runId 必须是最近 failed/interrupted、安全 resumable 的 Run。取消、删除、已完成、已变更范围/模型、旧 Run、进入副作用的 Run 拒绝。Run 绑定单调 authorizationVersion；即使先撤销再重新授予相同范围，旧 Run 也不能恢复。Go 必须重新鉴权并重新预留，Pi 也核对 grant 和当前配置；没有 fallback 模型。
+必须带新的稳定 Idempotency-Key。客户端保存键和意图指纹；丢失响应只重投同键。服务端重放原回执，不重复模型调用。runId 必须是最近 failed/interrupted、安全 resumable 的 Run。取消、删除、已完成、已变更范围/模型、旧 Run，以及已进入 `request_turn_organize` 等不可恢复副作用的 Run 拒绝。Run 绑定单调 authorizationVersion；即使先撤销再重新授予相同范围，旧 Run 也不能恢复。Go 必须重新鉴权并重新预留，Pi 也核对 grant 和当前配置；没有 fallback 模型。
 
-从原用户输入之前的 entries 重建 SDK，不重放原 SDK toolCall 状态，不恢复内部 stream，不假装能精确续 token。原 user messageId 保持，新增 assistant attempt 保留旧失败文本。只读工具可在新尝试重新读取；所有工具重新授权，原回合 Sources 不能直接作为新证据。
+作者确认恢复后创建新的 attempt 和 Conversation，保留原 user messageId 与旧失败文本。模型上下文只包含本次授权的故事状态、成功可见的历史对话与受控讨论摘要；旧工具原始结果不自动带入。只读工具可在新尝试重新读取，所有工具重新授权，原回合 Sources 不能直接作为新证据。
 
-`request_turn_organize` 开始前 durably resumable=false；即使执行结果未知也禁止重放。现有 Go AcceptTurn 的业务幂等仍保持，不依赖 Node 内存去重来保证副作用安全。未来新副作用工具必须显式加入该硬边界，并提供 Go 持久回执后才能开放恢复。
+读取工具声明 `replay: "safe"`，执行前仍检查授权、预算和结果边界。`record_story_changes`、`offer_story_changes`、`update_discussion_focus` 与 `request_turn_organize` 声明 `unsafe`。故事写入先持久保存原参数，再调用 Go；恢复查询权威回执，未知结果只允许原操作，去重身份仍是原作者 messageId。
+
+`request_turn_organize` 开始前 durably resumable=false；即使执行结果未知也禁止恢复。现有 Go AcceptTurn 的业务幂等仍保持。未来新副作用工具必须显式加入该硬边界，并提供 Go 持久回执后才能开放恢复。
 
 ## 预算与上下文
 
-每次网络调用前预留 token ceiling。确认有效 usage 时结算已知 reservation，缺失/冲突/超时/重启则保留 ceiling；以 accountingVersion=2 惰性结算旧会话已知但未释放的预留，不重置实际累计量，不扩大点数或会话预算。SDK retry 和 auto compaction 继续关闭。手动 SDK compact 旧入口现在拒绝并要求作者续谈要点，避免额外摘要调用被视为免费或无损。
+每次网络调用由受控 Models 出口重新检查授权和执行状态，按最终 payload 校验输入与输出上限，并在发送前持久预留 token ceiling。确认有效 usage 时结算已知 reservation，缺失/冲突/超时/重启则保留 ceiling；以 accountingVersion=2 惰性结算旧会话已知但未释放的预留，不重置实际累计量，不扩大点数或会话预算。模型、摘要、工具调用计数和已花预算均保存在应用文档中。
+
+Provider retry、Durable generation retry 和自动 compaction 均关闭；讨论摘要继续使用 `manageDiscussion()` 并计入同一预算。收尾回合固定禁止工具调用，并过滤模型仍返回的 toolCall。手动 compact 入口要求作者续谈要点。
 
 输入超限恢复时 continuationContext 必填，原正文历史、引用卡片保留；模型上下文只使用作者确认的要点和本次原问题。UI 明确“替代较早上下文”，提示保留重要引用、修订、已确认事项和假设。不自动丢弃决定，不把摘要作为 grant/canon。累计预算/存储上限不能 Resume 绕过；需要新话题或后续归档设计。
 

@@ -2,10 +2,40 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
 import type {AgentTask} from '@writer-agent/contracts';
-import {ModelGateway,GatewayError,executionConfigSchema,executionFingerprint} from '../src/runtime/model-gateway.js';
+import {ModelGateway,GatewayError,executionConfigSchema,executionFingerprint,configuredModel,boundedModelFetch} from '../src/runtime/model-gateway.js';
 import {strategy,validateReviewPrompt} from '../src/agents/review/prompt.js';
 const systemPrompt = 'Review the supplied sources. Return JSON with findings.';
 import {executeReview,validateReview} from '../src/agents/review/executor.js';
+test('Models awaits the final payload hook and keeps provider credentials isolated',async()=>{
+ const requests:{payload:Record<string,unknown>;authorization:string|undefined}[]=[];
+ const server=createServer(async(req,res)=>{let raw='';for await(const chunk of req)raw+=chunk;requests.push({payload:JSON.parse(raw),authorization:req.headers.authorization});res.writeHead(200,{'content-type':'text/event-stream'});res.end('data: '+JSON.stringify({id:'fixture',object:'chat.completion.chunk',model:'fixture',choices:[{index:0,delta:{role:'assistant',content:'ok'},finish_reason:'stop'}]})+'\n\ndata: [DONE]\n\n')});
+ await new Promise<void>(r=>server.listen(0,'127.0.0.1',r));const endpoint=`http://127.0.0.1:${(server.address() as {port:number}).port}/v1`;
+ try{
+  const first=await configuredModel(endpoint,'fixture','first-key',4096,256),second=await configuredModel(endpoint,'fixture','second-key',4096,256);
+  let entered!:()=>void,release!:()=>void;
+  const enteredHook=new Promise<void>(r=>{entered=r}),releasedHook=new Promise<void>(r=>{release=r});
+  const result=first.runtime.completeSimple(first.model,{messages:[{role:'user',content:'original',timestamp:0}]},{maxRetries:0,async onPayload(value){entered();await releasedHook;return {...value as Record<string,unknown>,messages:[{role:'user',content:'authorized payload'}]}}});
+  await enteredHook;assert.equal(requests.length,0,'authorization and reservation hooks must finish before transport');release();
+  assert.equal((await result).stopReason,'stop');
+  await second.runtime.completeSimple(second.model,{messages:[{role:'user',content:'second',timestamp:0}]},{maxRetries:0});
+  assert.deepEqual(requests.map(r=>r.authorization),['Bearer first-key','Bearer second-key']);
+  assert.deepEqual(requests[0].payload.messages,[{role:'user',content:'authorized payload'}]);
+  const blocked=await first.runtime.completeSimple(first.model,{messages:[{role:'user',content:'blocked',timestamp:0}]},{maxRetries:0,onPayload(){throw Error('GRANT_REVOKED')}});
+  assert.equal(blocked.stopReason,'error');assert.equal(requests.length,2,'rejected final payload must never reach the provider');
+ }finally{server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()))}
+});
+test('bounded transport honors SDK cancellation and business cancellation',async()=>{
+ let requests=0;const server=createServer((_req,res)=>{requests++;res.end('{}')});
+ await new Promise<void>(r=>server.listen(0,'127.0.0.1',r));const endpoint=`http://127.0.0.1:${(server.address() as {port:number}).port}/v1`,url=endpoint+'/chat/completions';
+ try{
+  const authority=new AbortController(),sdk=new AbortController();sdk.abort();
+  const bounded=boundedModelFetch(endpoint,1024,authority.signal);
+  await assert.rejects(bounded(url,{signal:sdk.signal}),{name:'AbortError'});
+  await assert.rejects(bounded(new Request(url,{signal:sdk.signal})),{name:'AbortError'});
+  authority.abort();await assert.rejects(bounded(url,{signal:new AbortController().signal}),{name:'AbortError'});
+  assert.equal(requests,0);
+ }finally{server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()))}
+});
 test('Pi bounded Review sends the task prompt and preserves dialect, usage and zero tools/retries',async()=>{
  const requests:Record<string,unknown>[]=[];const requestIds:string[]=[];let missing=false,invalid=false; let cached:number|undefined;
  const server=createServer(async(req,res)=>{let raw='';for await(const chunk of req)raw+=chunk;const value=JSON.parse(raw);requests.push(value);requestIds.push(String(req.headers['x-client-request-id']));res.writeHead(200,{'content-type':'text/event-stream'});res.end('data: '+JSON.stringify({id:'fixture',object:'chat.completion.chunk',model:'fixture',choices:[{index:0,delta:{role:'assistant',content:invalid?'invalid-json':'{"findings":[]}'},finish_reason:'stop'}],...(missing?{}:{usage:{prompt_tokens:33,completion_tokens:8,...(cached===undefined?{}:{prompt_cache_hit_tokens:cached,prompt_tokens_details:{cached_tokens:cached}})}})})+'\n\ndata: [DONE]\n\n')});

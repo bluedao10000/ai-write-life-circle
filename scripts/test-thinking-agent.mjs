@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { setTimeout as delay } from "node:timers/promises";
-import { readFile, readdir } from "node:fs/promises";
+import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import {
   startThinkingFixture,
@@ -180,14 +180,9 @@ try {
   await f.restartAgent();
   for (let i = 0; i < 150; i++) {
     const files = await readdir(join(f.root, "pi-state"));
-    const stored = files.includes(id + ".json")
-      ? JSON.parse(
-          await readFile(join(f.root, "pi-state", id + ".json"), "utf8"),
-        )
-      : null;
-    if (stored?.deleted) {
-      assert.equal(stored.entries.length, 0);
-      assert.equal(stored.view.messages.length, 0);
+    if (files.includes(id + ".json.deleted") && !files.some(file => file.startsWith(id + ".sqlite"))) {
+      assert(!files.includes(id + ".json"));
+      assert(!files.some(file => file.startsWith(id + ".") && file.endsWith(".events.json")));
       break;
     }
     if (i === 149) throw Error("offline deletion was not delivered");
@@ -219,22 +214,18 @@ try {
   });
   await f.restartAgent();
   for (let i = 0; i < 150; i++) {
-    const stored = JSON.parse(
-      await readFile(
-        join(f.root, "pi-state", doomedSession.sessionId + ".json"),
-        "utf8",
-      ),
-    );
-    if (stored.deleted) {
-      assert.deepEqual(stored.entries, []);
-      assert.deepEqual(stored.view.messages, []);
+    const files = await readdir(join(f.root, "pi-state"));
+    const sessionId = doomedSession.sessionId;
+    if (files.includes(sessionId + ".json.deleted") && !files.some(file => file.startsWith(sessionId + ".sqlite"))) {
+      assert(!files.includes(sessionId + ".json"));
+      assert(!files.some(file => file.startsWith(sessionId + ".") && file.endsWith(".events.json")));
       break;
     }
     if (i === 149) throw Error("deleted book left private session");
     await delay(50);
   }
   console.log(
-    "PASS: Go + real Pi SDK processes, 3 saved chapter sources, signed grants, short polling/SSE replay, multi-turn restart, stale citations, cancel, SIGKILL + explicit Resume, Go API restart, offline cancellation fence, offline deletion. Fixture model only; semantic quality unvalidated.",
+    "PASS: Go + Pi Durable processes, 3 saved chapter sources, signed grants, short polling/SSE replay, multi-turn restart, stale citations, cancel, SIGKILL + explicit Resume, Go API restart, offline cancellation fence, offline deletion. Fixture model only; semantic quality unvalidated.",
   );
 } finally {
   await f.close();

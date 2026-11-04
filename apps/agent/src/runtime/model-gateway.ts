@@ -1,17 +1,19 @@
 import {modelIdentity} from "./fingerprint.js";
 import {candidateBytes} from "./execution-policy.js";
-import { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
+import { createModels, createProvider, InMemoryCredentialStore, type Model } from "@earendil-works/pi-ai";
+import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { z } from "zod";
 import type { AgentTask, AgentModelResponse } from "@writer-agent/contracts";
 
 // The same adapter/credential isolation is used by sessions and bounded workflows.
 export async function configuredModel(endpoint: string, id: string, key: string, input: number, output: number) {
-  const runtime = await ModelRuntime.create({credentials:new InMemoryCredentialStore(),modelsPath:null,allowModelNetwork:false,refreshOnCreate:false});
-  runtime.registerProvider("story2u",{name:"Story2u configured provider",baseUrl:endpoint,api:"openai-completions",models:[{id,name:id,reasoning:false,input:["text"],cost:{input:0,output:0,cacheRead:0,cacheWrite:0},contextWindow:input,maxTokens:output}]});
-  await runtime.setRuntimeApiKey("story2u",key);
-  const model=runtime.getModel("story2u",id);
-  if(!model)throw Error("MODEL_UNAVAILABLE");
+  const runtime = createModels({credentials:new InMemoryCredentialStore()});
+  const model:Model<"openai-completions">={id,name:id,api:"openai-completions",provider:"story2u",baseUrl:endpoint,reasoning:false,input:["text"],cost:{input:0,output:0,cacheRead:0,cacheWrite:0},contextWindow:input,maxTokens:output};
+  runtime.setProvider(createProvider({
+    id:"story2u",name:"Story2u configured provider",baseUrl:endpoint,models:[model],
+    auth:{apiKey:{name:"Story2u API key",resolve:async()=>({auth:{apiKey:key}})}},
+    api:openAICompletionsApi(),
+  }));
   return {runtime,model};
 }
 export class GatewayError extends Error {
@@ -22,8 +24,10 @@ export function boundedModelFetch(endpoint:string,maxBytes:number,signal:AbortSi
     const url=new URL(typeof request==="string"?request:request instanceof URL?request.href:request.url);
     const base=new URL(endpoint);
     if(url.origin!==base.origin||url.pathname!==base.pathname.replace(/\/$/,"")+"/chat/completions")throw new GatewayError("LLM_INVALID_CONFIG");
+    const requestSignal=init?.signal??(request instanceof Request?request.signal:undefined);
+    const abort=requestSignal?AbortSignal.any([signal,requestSignal]):signal;
     let response:Response;
-    try{response=await fetch(request,{...init,redirect:"error",signal})}catch(e){onError?.("LLM_NETWORK_ERROR");throw e}
+    try{response=await fetch(request,{...init,redirect:"error",signal:abort})}catch(e){onError?.("LLM_NETWORK_ERROR");throw e}
     if(!response.ok)onError?.("LLM_HTTP_ERROR",response.status);
     if(response.status===400 && response.body){
       const reader=response.body.getReader(),chunks:Uint8Array[]=[];let bytes=0;

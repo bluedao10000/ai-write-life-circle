@@ -5,12 +5,10 @@ import {
   replyStyleInstruction,
   replyStylePolicy,
 } from "../src/agents/thinking/reply-style.generated.js";
-import { loader } from "../src/runtime/pi-host.js";
 
 test("Thinking runtime injects the generated RAS-001 instruction without weakening existing boundaries", () => {
   assert.equal(replyStylePolicy.id, "RAS-001");
   assert(systemPrompt.includes(replyStyleInstruction));
-  assert.equal(loader().getSystemPrompt(), systemPrompt);
   assert(!systemPrompt.includes("Offer alternatives and questions to the author."));
   assert(systemPrompt.includes("Present mutually exclusive options as alternatives"));
   assert(systemPrompt.includes("Use only registered tools."));

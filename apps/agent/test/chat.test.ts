@@ -50,7 +50,7 @@ test('ordinary creativity uses one call; ten messages, model switch, replay and 
     assert.equal(host.get(id).view.messages[1]?.modelId,'deepseek');assert.equal(host.get(id).view.messages.at(-1)?.modelId,'gpt-oss');
     assert(JSON.stringify(payloads.at(-1)).includes(question));
     assert.equal(payloads.at(-1)?.max_completion_tokens,1024);assert.equal(payloads.at(-1)?.max_tokens,undefined);
-    await host.close();host=new PiHost(config,new Store(state));
+    await host.close();host=new PiHost(config,new Store(state));await host.ready;
     assert.equal(host.get(id).view.messages.length,22);
     scopes=['knowledge'];mode='loop';await send('查询作品资料','loop');
     assert.equal(host.get(id).view.messages.at(-1)?.status,'completed');

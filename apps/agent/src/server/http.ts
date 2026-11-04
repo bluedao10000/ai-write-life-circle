@@ -52,6 +52,7 @@ export function server(host: PiHost) {
     { maxHeaderSize: 16384, requestTimeout: 15000, headersTimeout: 5000 },
     async (req, res) => {
       try {
+        await host.ready;
         const provided = Buffer.from(req.headers.authorization ?? ""),
           expected = Buffer.from("Bearer " + host.config.token);
         if (

@@ -49,7 +49,7 @@ async function fixture({scopes=[] as string[],duration=3000}={}) {
     entered(){return new Promise<void>(r=>{notify=r})},
     async send(key="one",text="Synthetic question") {const result=await host.accept(id,{text},key,"fixture");await host.active.get(id)?.done;return result},
     async resume(key="resume",context?:string) {const run=host.get(id).view.run!;const result=await host.accept(id,{text:"Resume accepted message",recovery:{runId:run.runId,confirmAdditionalCost:true,...(context?{continuationContext:context}:{})}},key,"fixture");await host.active.get(id)?.done;return result},
-    restart(){host.store.close();host=new PiHost(config,new Store(state))},
+    async restart(){await host.store.close();host=new PiHost(config,new Store(state));await host.ready},
     async close(){await host.close();provider.closeAllConnections();story.closeAllConnections();provider.close();story.close();rmSync(state,{recursive:true,force:true})},
   };
 }
@@ -96,24 +96,24 @@ test("known usage settles the reservation so repeated small turns do not exhaust
   }finally{await f.close()}
 });
 
-test("an admission guard fences stale lock takeover; repeated close cannot unlink the next owner",()=>{
+test("an admission guard fences stale lock takeover; repeated close cannot unlink the next owner",async()=>{
  const state=mkdtempSync(join(tmpdir(),"pi-lock-admission-"));
  try{
   writeFileSync(join(state,".process-lock"),"99999999");
   writeFileSync(join(state,".process-lock-admission"),"synthetic-other-starter");
   assert.throws(()=>new Store(state),/AGENT_LOCK_ADMISSION_REQUIRED/);
   rmSync(join(state,".process-lock-admission"));
-  const first=new Store(state);first.close();const second=new Store(state);first.close();
-  assert.throws(()=>new Store(state),/AGENT_ALREADY_RUNNING/);second.close();
+  const first=new Store(state);await first.close();const second=new Store(state);await first.close();
+  assert.throws(()=>new Store(state),/AGENT_ALREADY_RUNNING/);await second.close();
  }finally{rmSync(state,{recursive:true,force:true})}
 });
 
 test("legacy known reservations migrate lazily while unknown costs are never released",async()=>{
  const f=await fixture();try{
   const saved=f.host.get(f.id);delete saved.accountingVersion;
-  saved.view.usage={input:100,output:20,charged:17000,incomplete:false};f.host.store.write(saved);
+  saved.view.usage={input:100,output:20,charged:17000,incomplete:false};await f.host.store.write(saved);
   assert.equal(f.host.get(f.id).view.usage.charged,120);
-  saved.view.usage.incomplete=true;f.host.store.write(saved);
+  saved.view.usage.incomplete=true;await f.host.store.write(saved);
   assert.equal(f.host.get(f.id).view.usage.charged,17000);
  }finally{await f.close()}
 });
@@ -123,7 +123,7 @@ test("restart preserves a completed answer persisted before legacy session final
   await f.send();const saved=f.host.get(f.id),runId=saved.view.run!.runId,calls=f.calls;
   saved.view.status="running";saved.view.run!.resumable=true;
   saved.events=saved.events.filter(e=>e.type!=="session_completed");
-  f.host.store.write(saved);f.restart();
+  await f.host.store.write(saved);await f.restart();
   const restored=f.host.get(f.id).view;
   assert.equal(restored.status,"idle");assert.equal(restored.run?.runId,runId);
   assert.equal(restored.run?.status,"completed");assert.equal(restored.run?.resumable,false);
@@ -140,7 +140,7 @@ test("safe accepted checkpoint survives restart without automatic model invocati
     saved.view.status="running";saved.view.messages=[{id:mid,role:"user",text:"Synthetic persisted input",status:"completed",sources:[],createdAt:"now"},{id:mid+"-answer",role:"assistant",text:"",status:"accepted",sources:[],createdAt:"now"}];
     saved.checkpoint={input:{text:"Synthetic persisted input"},entries:[],messageId:mid};
     saved.view.run={runId:randomUUID(),traceId:randomUUID(),messageId:mid,status:"accepted",stepType:"accepted",checkpointId:randomUUID(),epoch:1,attempt:1,retryCount:0,modelCalls:0,resumable:true,provider:"fixture",model:"synthetic",startedAt:"now",updatedAt:"now",durationMs:0};
-    f.host.store.write(saved);f.restart();
+    await f.host.store.write(saved);await f.restart();
     assert.equal(f.calls,0);assert.equal(f.host.get(f.id).view.run?.status,"interrupted");
     await f.resume();assert.equal(f.calls,1);assert.equal(f.host.get(f.id).view.messages[0].text,"Synthetic persisted input");
     assert.equal(f.host.get(f.id).view.run?.status,"completed");

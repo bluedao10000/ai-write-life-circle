@@ -7,10 +7,12 @@
 生产运行时固定为三个进程：
 
 1. **Go API**：身份、作品与 Revision、授权快照、任务领取、预算预留/结算、候选证据验证和业务提交。它只读取无密钥的公共模型配置，不创建模型客户端。
-2. **Pi Thinking**：作者主动对话的 Session、只读工具循环和对话事件。Thinking 与后台任务使用独立用户、状态目录、RPC 凭证和额度。
+2. **Pi Thinking**：作者主动对话的 Session、受控故事工具和对话事件。PiHost 内部使用 Pi Durable 执行任务，每个 Session 保存一份 SQLite，每次 Run / attempt 使用独立 Conversation。Thinking 与后台任务使用独立用户、状态目录、RPC 凭证和额度。
 3. **Pi Worker**：通过私有 `agent-tasks-v1` 协议领取 Review、Knowledge、Creative 任务，调用模型并回传候选。它不能读取 Go 状态目录、正文库或 Thinking 会话目录。
 
 不存在 Go 模型执行进程、API 内嵌执行器或进程内后台模型循环。`writer-agent-worker`、`cmd/agent-worker` 与 `cmd/creative-eval` 已删除。
+
+Thinking 的接受回执、预算、执行 epoch、事件与 Durable 任务共用持久化提交。进程重启先中断旧任务，作者确认额外费用并重新授权后才创建新 attempt；Go 继续负责授权、费用与正式业务提交。模型出口使用共享 Pi AI 1.5.0 Models 接口。Worker 沿用现有领取、单次生成与候选交付协议；候选跨进程持久交付属于独立后续改造。Thinking 的恢复与旧 JSON 导入规则见 [Durable 执行与显式恢复](agent-reliability.md)。
 
 ## 分域任务
 

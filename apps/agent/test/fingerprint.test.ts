@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {BACKGROUND_CONTEXT} from '@earendil-works/chord/context';
 import assert from 'node:assert/strict';
 import {canonicalJSON} from '../src/runtime/fingerprint.js';
 import {tools} from '../src/tools/registry.js';
@@ -12,8 +13,8 @@ test('tool deduplication canonicalizes nested property order and avoids the seco
  try {
   const config={storyOrigin:'http://127.0.0.1:8791',model:{limits:{maxToolResultBytes:1000}}} as Config;
   const tool=tools(config,'session','fixture',new AbortController().signal,()=>{},()=>true,['chapters']).find(t=>t.name==='read_chapter')!;
-  await tool.execute('first',{chapterId:'one',revisionId:'two'},new AbortController().signal,()=>{},{} as never);
-  await tool.execute('second',{revisionId:'two',chapterId:'one'},new AbortController().signal,()=>{},{} as never);
+  await tool.execute({chapterId:'one',revisionId:'two'},{} as never,BACKGROUND_CONTEXT);
+  await tool.execute({revisionId:'two',chapterId:'one'},{} as never,BACKGROUND_CONTEXT);
   assert.equal(network,1);
  } finally {globalThis.fetch=original}
 });
