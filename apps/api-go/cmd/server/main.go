@@ -224,7 +224,10 @@ func run() error {
 			slog.Warn("Thinking private listener unavailable")
 			thought.Origin = ""
 		} else {
-			private = &http.Server{Handler: thought.PrivateHandler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16384}
+			privateMux := http.NewServeMux()
+			privateMux.Handle("/internal/v1/runtime/health", agentruntime.RuntimeHealthHandler(c.State, modelConfig, thought.Origin, thought.ServiceToken))
+			privateMux.Handle("/", thought.PrivateHandler())
+			private = &http.Server{Handler: privateMux, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16384}
 			go func() {
 				if err := private.Serve(l); err != nil && err != http.ErrServerClosed {
 					slog.Warn("Thinking private listener stopped")

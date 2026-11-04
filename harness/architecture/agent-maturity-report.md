@@ -253,3 +253,15 @@ Go Thinking/Creative测试、Go API构建通过。现有Memory评测3/3通过，
 验证：130项Agent测试通过；工具超时持久化/重启相关20项可靠性测试通过；类型检查、lint及Go/Agent构建通过。统计测试确认按调用而非任务聚合、无数据返回null、无效样本不计入。报告与原始耗时样本保留于本地 `.local/evals/agent/dev-memory.json`。
 
 后续仍需代表性数据规模与并发基准、Worker吞吐、投影延迟以及跨进程诊断聚合。Phase 4继续部分实现。
+
+## 跨进程Runtime Health汇总
+
+Go现有Thinking私有监听器新增 `GET /internal/v1/runtime/health`，原服务Token鉴权，公网路径返回404。Worker状态直接读取原Go执行权政策与心跳；Thinking通过原readiness接口探测，最长2秒、禁止重定向、32KiB响应上限。返回固定组件状态与计数，不转发正文、凭证或任意错误。Go liveness、整体readiness与局部degraded分别报告；失效心跳的待办数返回null，Provider固定not_probed。
+
+验收：
+
+- Go agentruntime与server race测试通过，覆盖授权前零探测、状态字段过滤、无效响应、方法限制、调用方期限、Worker启用/禁用与失效计数。
+- `pnpm test:runtime`通过真实Go/Pi进程验证Thinking停止/重启、Worker心跳到期、独立组件状态、私有路由隔离和全程零模型调用；命令已加入verify。
+- 原Thinking跨进程回归通过，包括工具调用、签名授权、轮询/SSE、取消、SIGKILL、显式恢复、Go重启与离线删除栅栏。Go与Agent构建通过。
+
+该汇总需要原Thinking私有监听器已配置；未配置的部署继续使用已有Worker状态接口。接口只读派生现有状态，无数据格式迁移，回滚Go构建即可移除新增路由。Phase 4仍缺跨进程历史指标、代表性并发基准和完整安全验收；本批未部署。

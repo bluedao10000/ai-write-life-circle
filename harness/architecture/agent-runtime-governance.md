@@ -67,3 +67,9 @@ Thinking的版本和白名单审计记录加入原 `RunExecution`，随业务检
 Tool Gateway使用单调时钟记录每次调用的耗时。tool_started包含注册工具名，tool_finished/failed包含工具名与durationMs；计时从进入网关开始，包含参数校验、授权、实际执行和输出校验，不包含此前的模型响应等待。字段加入原RunExecution审计及关联日志，随原检查点持久化，不建立独立统计权威。工具名取注册定义，不取模型参数；审计仍不记录输入、输出、错误正文或凭证。
 
 新增字段可选，旧审计继续可读。代码回滚忽略这些元数据，保留原任务、费用和回执。重启回归验证工具超时的耗时记录持久保留。当前不提供跨进程历史聚合或生产延迟SLO。
+
+## Go跨进程健康汇总
+
+Go在原Thinking私有监听器提供服务令牌保护的Runtime Health路由。Worker就绪从原executorpolicy与心跳派生，Thinking通过受保护readiness接口读取；没有第二个心跳来源或持久状态。请求至多2秒，固定字段投影排除正文、凭证和任意错误。组件故障保持Go liveness可响应，整体readiness和degraded独立报告。失效Worker心跳的待办数为未知，不推导为零。
+
+现有公网agent-runtime响应、Go healthz与各进程healthcheck行为不变。新增接口需要原Thinking私有监听器已配置；未配置时继续使用已有Worker状态接口。详细字段与状态见thinking-internal-v1私有协议。跨进程历史指标和自动故障处置仍不在此读取接口中实现。

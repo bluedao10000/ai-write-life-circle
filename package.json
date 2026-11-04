@@ -10,7 +10,7 @@
     "typecheck": "pnpm --filter @writer-agent/contracts typecheck && pnpm --filter @writer-agent/web typecheck && pnpm typecheck:agent",
     "lint": "pnpm --filter @writer-agent/web lint && ./apps/web/node_modules/.bin/eslint --config apps/web/eslint.config.js packages/contracts/src && pnpm --filter @writer-agent/agent lint",
     "test": "pnpm test:api:go && pnpm test:webhook && pnpm --filter @writer-agent/web test && pnpm test:agent && pnpm test:thinking && pnpm openapi:check && pnpm style:check && pnpm test:story",
-    "verify": "pnpm test:api:go && pnpm test:webhook && pnpm test:review && pnpm test:publication && pnpm test:knowledge && pnpm --filter @writer-agent/web test && pnpm test:agent && pnpm test:style && pnpm test:thinking && pnpm test:creative && pnpm test:agent:tasks && pnpm test:pi:worker && pnpm test:pi:knowledge && pnpm test:story && pnpm test:memory",
+    "verify": "pnpm test:api:go && pnpm test:webhook && pnpm test:review && pnpm test:publication && pnpm test:knowledge && pnpm --filter @writer-agent/web test && pnpm test:agent && pnpm test:style && pnpm test:thinking && pnpm test:creative && pnpm test:agent:tasks && pnpm test:pi:worker && pnpm test:pi:knowledge && pnpm test:story && pnpm test:memory && pnpm test:runtime",
     "openapi:generate": "pnpm exec tsx scripts/build-openapi.mts",
     "openapi:check": "pnpm exec tsx scripts/build-openapi.mts --check",
     "style:sync": "node scripts/sync-agent-reply-style.mjs",
@@ -63,7 +63,8 @@
     "eval:agent:safety": "pnpm eval:agent -- --category=safety",
     "eval:agent:performance": "pnpm eval:agent -- --category=performance",
     "eval:agent:judge": "pnpm --filter @writer-agent/contracts build && pnpm --filter @writer-agent/agent exec tsx scripts/evaluate-judge.ts",
-    "test:memory": "pnpm build:api:go && pnpm build:agent && node scripts/test-procedural-memory.mjs"
+    "test:memory": "pnpm build:api:go && pnpm build:agent && node scripts/test-procedural-memory.mjs",
+    "test:runtime": "pnpm build:api:go && pnpm build:agent && node scripts/test-runtime-health.mjs"
   },
   "devDependencies": {
     "@redocly/cli": "2.63.0",

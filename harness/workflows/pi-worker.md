@@ -157,3 +157,15 @@ pnpm eval:pi:knowledge:live -- --confirm-fixtures
 ```
 
 这些命令不读取作者正文，不自动重试付费调用，也不会由普通 CI 自动执行。
+
+## 跨进程健康汇总
+
+配置了Thinking私有监听器的部署可在Go私有端口读取 `GET /internal/v1/runtime/health`，使用现有 `WRITER_AGENT_PI_SERVICE_TOKEN_FILE` 对应的Bearer服务令牌。请求不经过公网，令牌不写入日志。协议见 [私有Runtime汇总](../contracts/thinking-internal-v1.md#go-私有-runtime-汇总)。
+
+- `liveness=true`说明Go处理器仍响应；Thinking或Worker故障不会把它变为false。
+- `readiness=false`时检查thinking.status及worker.status，分别定位进程不可达、心跳失效或配置不兼容。
+- Thinking就绪但degraded时，failedSessions、unpublishedSessions、recoveryPending帮助区分局部存储/投影恢复问题。
+- Worker离线时pendingTasks为null，需恢复心跳后再读取当前队列统计。
+- Provider始终not_probed；健康检查不触发模型付费请求。
+
+本地命令 `pnpm test:runtime`启动隔离的Go/Pi进程，验证鉴权、Thinking停止与重启、Worker心跳过期、状态隔离和零模型调用。此测试已加入 `pnpm verify`。

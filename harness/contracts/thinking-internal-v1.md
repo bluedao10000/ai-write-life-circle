@@ -36,3 +36,25 @@ creative scope 下，作品开启 dialogueRecording 时注册 record_story_chang
 read_chapter 按 UTF-16 窗口读取已保存 Revision，返回 totalUTF16/truncated；quote 模式要求唯一且≤4000字符，用于作者选区。相关章最多扫描64个候选、返回8条摘要；不是全书检索保证。知识保持既有 observation/claim/inference 与有效来源状态；没有数据时不伪造。大笔记集合显式报 TOO_LARGE，不静默省略。
 
 错误仅 `{code}` 或标准 problem，401/403 为无授权/撤销，404 为未知/无归属，409 为正在运行/模型需重新确认，422 为非法输入/正文定位失败，429 为预算/并发，503 为服务不可用。不得返回原始模型错误、Key、Token、系统路径或未脱敏工具结果。
+
+## Go 私有 Runtime 汇总
+
+`GET /internal/v1/runtime/health`安装在现有Go私有loopback监听器（默认8791），使用与Thinking RPC相同的服务Token。公网API不提供该路径。未授权返回401，非GET返回405；有效汇总返回200与`Cache-Control: no-store`，组件故障通过JSON表达。
+
+输出`schemaVersion=1`：
+
+| 字段 | 含义 |
+| --- | --- |
+| liveness | 当前Go私有HTTP处理器可响应 |
+| readiness | 所有启用Worker执行器及配置的Thinking就绪 |
+| degraded / status | 组件不可用或Thinking局部存储/投影降级；status为ready或degraded |
+| api | ready表示Go处理器可服务该探测，不执行业务数据写入探测 |
+| provider | 固定not_probed，不产生模型调用 |
+| worker | status、readiness、enabledExecutors、onlineExecutors、pendingTasks |
+| thinking | status、readiness、degraded、counts |
+
+Worker复用Go已有执行权政策与5秒心跳有效期；禁用的执行器不参与就绪判断。仅当所有启用执行器在线时返回pendingTasks，否则为null，不把旧心跳中的任务数当作当前值。Worker status为ready/degraded/unavailable/disabled。
+
+Thinking通过原服务Token读取`/internal/v1/readiness`，单次探测至多2秒，并服从更短的调用方期限；禁止重定向，响应最多32KiB。仅投影固定状态与activeTasks/pendingAdmissions/failedSessions/unpublishedSessions/recoveryPending计数，不转发任意错误或未知字段。无法连接/超时为unavailable，合同不匹配为invalid_response，未配置为disabled；有效响应保留ready/degraded/not_ready。只有有效响应中的固定计数可读取，无法取得有效响应时counts为null。
+
+该接口不新增心跳、数据库或调度权威，不替代进程自己的liveness探针。Go API可响应与完整业务数据健康是不同观测；汇总readiness表示启用Agent执行组件可用。
