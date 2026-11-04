@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { BOOK_NAV, type BookSection } from '../../components/vnext/BookView'
 import { Btn } from '../../components/vnext/ui'
 import { proceduralMemoryApi as api, type ProceduralMemory, type TaskEvidence, type MemoryDecision, type MemoryMerge } from '../../services/api/proceduralMemoryApi'
+import MemorySourcePreview from './MemorySourcePreview'
 import { ApiProblemError } from '../../services/writerAgent'
 
 type Props = { bookId: string; bookTitle: string; demo?: boolean; onSection: (section: BookSection) => void }
@@ -120,7 +121,7 @@ function MemoryPanel({ bookId, bookTitle, demo, onSection }: Props) {
           <fieldset disabled={busy || loading} className="space-y-2">
             <legend className="mb-2 text-ui">任务来源（最多 8 项）</legend>
             {!loading && sources.length === 0 && <p className="text-ui-sm text-ink-3">还没有可用的已完成任务。完成内容审查、知识整理或创作任务后再来总结。</p>}
-            <div className="max-h-56 space-y-2 overflow-auto">{sources.map(s => <label key={s.taskId} className="flex items-start gap-2 text-ui-sm"><input type="checkbox" checked={selected.includes(s.taskId)} disabled={!selected.includes(s.taskId) && selected.length >= 8} onChange={e => setSelected(ids => e.target.checked ? [...ids, s.taskId] : ids.filter(id => id !== s.taskId))} /><span>{kindLabel(s.kind)} · {date(s.completedAt)}<span className="block text-micro break-all text-ink-3">任务 {s.taskId} · 方法 {s.strategyVersion}</span></span></label>)}</div>
+            <div className="max-h-56 space-y-2 overflow-auto">{sources.map(s => <div key={s.taskId} className="space-y-1"><label className="flex items-start gap-2 text-ui-sm"><input type="checkbox" checked={selected.includes(s.taskId)} disabled={!selected.includes(s.taskId) && selected.length >= 8} onChange={e => setSelected(ids => e.target.checked ? [...ids, s.taskId] : ids.filter(id => id !== s.taskId))} /><span>{kindLabel(s.kind)} · {date(s.completedAt)}<span className="block text-micro break-all text-ink-3">任务 {s.taskId} · 方法 {s.strategyVersion}</span></span></label><MemorySourcePreview bookId={bookId} taskId={s.taskId} /></div>)}</div>
           </fieldset>
           <p className="text-ui-sm text-ink-3">显示最近 100 个已完成任务。确认经验需要同类、同版本且输入不同的至少两个成功任务。</p>
           <Btn type="submit" disabled={!valid || busy || loading}>保存候选</Btn>
@@ -130,7 +131,7 @@ function MemoryPanel({ bookId, bookTitle, demo, onSection }: Props) {
           {items.filter(x => x.status !== 'deleted').map(item => <article key={item.id} className="space-y-3 rounded-xl border border-line-soft p-4" aria-label={item.content}>
             <p className="whitespace-pre-wrap text-ui">{item.content}</p>
             <p className="text-ui-sm text-ink-3">{item.available ? '已确认 · 可供 AI 参考' : item.unavailableReason === 'expired' ? '已过期' : item.unavailableReason === 'source_unavailable' ? '来源已不可用' : item.status === 'rejected' ? '已撤回' : '待确认'}{item.expiresAt ? ` · 有效期至 ${date(item.expiresAt)}` : ''}</p>
-            <details><summary className="cursor-pointer text-ui-sm">查看任务来源（{item.provenance?.length ?? 0}）</summary><ul className="mt-2 space-y-2 text-ui-sm text-ink-3">{item.provenance?.map(s => <li key={s.taskId}>{kindLabel(s.kind)} · {date(s.completedAt)}<br />任务 {s.taskId} · 方法 {s.strategyVersion}</li>)}</ul></details>
+            <details><summary className="cursor-pointer text-ui-sm">查看任务来源（{item.provenance?.length ?? 0}）</summary><ul className="mt-2 space-y-2 text-ui-sm text-ink-3">{item.provenance?.map(s => <li key={s.taskId}>{kindLabel(s.kind)} · {date(s.completedAt)}<br />任务 {s.taskId} · 方法 {s.strategyVersion}<MemorySourcePreview bookId={bookId} taskId={s.taskId} /></li>)}</ul></details>
             {item.status === 'candidate' && !independent(item.provenance ?? []) && <p className="text-ui-sm text-ink-3">来源尚不足以确认，需要同类、同版本且输入不同的至少两个成功任务。</p>}
             {merges.has(item.id) && <p className="text-ui-sm text-ink-3">发现 {merges.get(item.id)!.sources.length + 1} 条相同候选。合并会汇总任务来源、保留最早有效期，并撤回重复项。</p>}
             <div className="flex flex-wrap gap-3">

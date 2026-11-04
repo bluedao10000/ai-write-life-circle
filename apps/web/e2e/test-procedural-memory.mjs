@@ -39,6 +39,19 @@ try {
   await page.getByRole('tab', { name: '书', exact: true }).click()
   await page.getByRole('navigation', { name: '书的分区' }).getByRole('button', { name: '操作经验' }).click()
   await expect(page.getByRole('checkbox')).toHaveCount(2)
+  const evidence = (await f.call(base + '/procedural-memory/evidence')).items
+  const preview = await f.call(base + '/procedural-memory/evidence/' + evidence[0].taskId)
+  expect(preview.source.type).toBe('chapter')
+  expect(['林舟在北港等待。', '林舟在南港整理旧信。']).toContain(preview.source.text)
+  const callsBeforePreview = f.calls
+  await page.getByRole('button', { name: `查看任务 ${evidence[0].taskId} 的原始来源`, exact: true }).click()
+  await expect(page.getByRole('region', { name: '原始任务来源' }).getByText(preview.source.text, { exact: true })).toBeVisible()
+  expect(f.calls).toBe(callsBeforePreview)
+  const output = new URL('../../../.local/memory-ui/', import.meta.url)
+  await mkdir(output, { recursive: true })
+  await page.getByRole('region', { name: '原始任务来源' }).scrollIntoViewIfNeeded()
+  await page.screenshot({ path: new URL('source-preview.png', output).pathname, fullPage: true })
+  await page.getByRole('button', { name: `收起任务 ${evidence[0].taskId} 的原始来源`, exact: true }).click()
   for (const index of [0, 1]) {
     await page.getByRole('textbox', { name: '经验内容' }).fill('核对原文证据后，再整理人物观察。')
     await page.getByRole('checkbox').nth(index).check()
@@ -61,8 +74,6 @@ try {
   expect((await f.call(base + '/procedural-memory')).items.find(item => item.id === target.id).available).toBe(true)
   await page.getByRole('article').filter({ has: page.getByText(/^已撤回/) }).getByRole('button', { name: '删除', exact: true }).click()
   await expect(page.getByRole('article')).toHaveCount(1)
-  const output = new URL('../../../.local/memory-ui/', import.meta.url)
-  await mkdir(output, { recursive: true })
   await page.screenshot({ path: new URL('desktop.png', output).pathname, fullPage: true })
   await page.reload()
   await page.getByRole('navigation', { name: '书的分区' }).getByRole('button', { name: '操作经验' }).click()
@@ -78,7 +89,7 @@ try {
   await expect(page.getByText('还没有操作经验。')).toBeVisible()
   expect((await f.call(base + '/procedural-memory')).items).toEqual([])
   expect(errors).toEqual([])
-  console.log('PASS: browser + Go + Pi Worker, real task receipts, create/merge/separate confirmation/reload/withdraw/delete, desktop and mobile. Synthetic provider only.')
+  console.log('PASS: browser + Go + Pi Worker, real task receipts and original-source preview, create/merge/separate confirmation/reload/withdraw/delete, desktop and mobile. Synthetic provider only.')
 } finally {
   await browser?.close()
   if (vite && vite.exitCode === null) { const exited = new Promise(resolve => vite.once('exit', resolve)); vite.kill('SIGTERM'); await exited }

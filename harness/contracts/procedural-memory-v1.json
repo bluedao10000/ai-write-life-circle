@@ -13,6 +13,62 @@
     }
   ],
   "paths": {
+    "/v1/studio/books/{bookId}/procedural-memory/evidence/{taskId}": {
+      "parameters": [
+        {
+          "name": "bookId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "taskId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "readProceduralSource",
+        "summary": "readProceduralSource",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/proceduralSource"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Author authentication required"
+          },
+          "404": {
+            "description": "Book or source unavailable"
+          },
+          "409": {
+            "description": "Version or lifecycle conflict"
+          },
+          "410": {
+            "description": "Memory deleted"
+          },
+          "422": {
+            "description": "Invalid input or insufficient evidence"
+          }
+        }
+      }
+    },
     "/v1/studio/books/{bookId}/procedural-memory/{memoryId}/merge": {
       "parameters": [
         {
@@ -667,6 +723,130 @@
           "version",
           "createdAt",
           "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "proceduralSource": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "evidence": {
+            "type": "object",
+            "properties": {
+              "taskId": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "strategyVersion": {
+                "type": "string"
+              },
+              "inputHash": {
+                "type": "string"
+              },
+              "completedAt": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "taskId",
+              "kind",
+              "strategyVersion",
+              "inputHash",
+              "completedAt"
+            ],
+            "additionalProperties": false
+          },
+          "source": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "chapter"
+                  },
+                  "chapterId": {
+                    "type": "string"
+                  },
+                  "revisionId": {
+                    "type": "string"
+                  },
+                  "contentHash": {
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "chapterId",
+                  "revisionId",
+                  "contentHash"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "discussion"
+                  },
+                  "sessionId": {
+                    "type": "string"
+                  },
+                  "messageId": {
+                    "type": "string"
+                  },
+                  "messages": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "messageId": {
+                          "type": "string"
+                        },
+                        "role": {
+                          "type": "string",
+                          "enum": [
+                            "user",
+                            "assistant"
+                          ]
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "messageId",
+                        "role",
+                        "text"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "type",
+                  "sessionId",
+                  "messageId",
+                  "messages"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "evidence",
+          "source",
+          "truncated"
         ],
         "additionalProperties": false
       },

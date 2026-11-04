@@ -8,3 +8,12 @@ export const proceduralListSchema=z.object({items:z.array(proceduralViewSchema)}
 export const proceduralEvidenceListSchema=z.object({items:z.array(proceduralEvidenceSchema),limit:z.literal(100)}).strict();
 
 export const proceduralMergeSchema=z.object({baseVersion:z.number().int().positive(),sources:z.array(z.object({id:z.string().min(1),baseVersion:z.number().int().positive()}).strict()).min(1).max(7)}).strict();
+
+export const proceduralSourceSchema=z.object({
+ evidence:proceduralEvidenceSchema,
+ source:z.discriminatedUnion('type',[
+  z.object({type:z.literal('chapter'),chapterId:z.string(),revisionId:z.string(),contentHash:z.string(),text:z.string().optional()}).strict(),
+  z.object({type:z.literal('discussion'),sessionId:z.string(),messageId:z.string(),messages:z.array(z.object({messageId:z.string(),role:z.enum(['user','assistant']),text:z.string()}).strict())}).strict(),
+ ]),
+ truncated:z.boolean(),
+}).strict();

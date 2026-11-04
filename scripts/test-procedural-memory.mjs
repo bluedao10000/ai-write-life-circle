@@ -18,6 +18,16 @@ try{
  const evidence=await until(async()=>{const page=proceduralEvidenceListSchema.parse(await f.call(root+'/evidence'));return page.items.filter(item=>item.kind==='knowledge.extract').length===2&&page},'completed task receipts');
  const ids=evidence.items.filter(item=>item.kind==='knowledge.extract').map(item=>item.taskId);
  assert.equal(ids.length,2);assert.notEqual(evidence.items[0].inputHash,evidence.items[1].inputHash);
+ const previews=[];
+ for(const taskId of ids){
+  const source=await f.call(root+'/evidence/'+taskId);
+  assert.equal(source.evidence.taskId,taskId);assert.equal(source.source.type,'chapter');assert.equal(source.truncated,false);
+  previews.push(source.source.text);
+  assert(!JSON.stringify(source).includes('leaseToken'));
+ }
+ assert.deepEqual(previews.sort(),['林舟在北港等待。','林舟在南港整理旧信。'].sort());
+ await f.call(root+'/evidence/'+ids[0],{user:{id:'other-author',email:'other@example.com'},status:404});
+
  const candidate=proceduralRecordSchema.parse(await f.call(root,{method:'POST',key:'create-memory',status:201,body:{content:'PROCEDURAL_REVIEWED_RULE: 核对林舟的原文证据后再整理人物观察。',taskIds:[ids[0]]}}));
  assert.equal(candidate.status,'candidate');
  assert.equal(proceduralListSchema.parse(await f.call(root)).items[0].available,false);
