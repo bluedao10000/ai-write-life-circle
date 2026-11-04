@@ -283,3 +283,18 @@ Go现有Thinking私有监听器新增 `GET /internal/v1/runtime/health`，原服
 验收：`pnpm eval:agent:safety` 8/8通过，合计10次合成模型调用、9次工具尝试、3780个合成usage tokens。新增样本3次模型调用、2次工具尝试、1200 tokens，成功对照与所有撤销约束均通过。133项Agent测试、类型检查、lint及Go/Agent构建通过。
 
 报告为本地 `.local/evals/agent/dev-safety.json`。本批覆盖写工具执行前的授权撤销，未宣称所有写工具与全部并发时序已验收，也未运行真实付费模型攻击评测。Phase 4继续部分实现。
+
+## Worker吞吐量基准
+
+新增 `pnpm bench:agent:worker`，在隔离Go/Pi进程中比较1个和2个Worker（每进程1槽）。每轮2部作品、每部6章，各3轮并交替顺序。计时排除EPUB导入和进程启动，从批次启用到全部Go任务回执可读取；完成延迟包含排队。合成Provider返回空知识候选，不测语义质量。
+
+环境：Apple M5、10逻辑CPU、darwin/arm64、Node v22.22.3、Go 1.27.3。六轮72个任务全部完成，预期章节与回执唯一、usage完整、Canon无新增。
+
+| 配置 | 完成任务 | 吞吐（任务/秒） | 完成延迟P50 | 完成延迟P95 | 模型调用 | 额外调用 | 合成usage tokens |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 Worker × 1槽 | 36 | 2.51 | 3027 ms | 4720 ms | 36 | 0 | 9000 |
+| 2 Worker × 1槽 | 36 | 3.08 | 2686 ms | 3749 ms | 36 | 0 | 9000 |
+
+报告为本地 `.local/benchmarks/agent-worker.json`，记录Runtime/策略版本、commit/dirty、环境及每轮原始完成延迟；复现步骤见 [Agent性能基准](../workflows/agent-benchmarks.md)。Go/Agent构建、脚本语法检查及全部基准断言通过，无真实模型调用。
+
+双Worker在该小规模合成负载中吞吐更高，未形成生产并发建议。真实模型成本与质量、代表性长正文、持续负载和多Agent编排收益仍需单独验证。

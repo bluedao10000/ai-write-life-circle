@@ -14,6 +14,7 @@
 | Pi Thinking Agent | [pi-agent](workflows/pi-agent.md) | [ADR](architecture/adr/pi-agent-runtime.md)、[回复风格 RAS-001](architecture/agent-reply-style.md)、[私有协议](contracts/thinking-internal-v1.md)、apps/agent/ |
 | Agent 回复风格 / Eval | [RAS-001](architecture/agent-reply-style.md) | scripts/sync-agent-reply-style.mjs、scripts/eval-agent-reply-style.mjs、harness/evals/agent-reply-style/ |
 | Pi 后台 Review / Knowledge / Creative | [pi-worker](workflows/pi-worker.md) | [统一 Runtime ADR](architecture/pi-unified-agent-runtime.md)、[任务协议](contracts/agent-tasks-v1.md)、[迁移报告](reviews/archive/pi-worker-migration-report.md) |
+| Agent 性能基准 | [Worker 与 Memory 基准](workflows/agent-benchmarks.md) | scripts/benchmark-agent-worker.mjs、[成熟度报告](architecture/agent-maturity-report.md) |
 | EPUB 导入 | [epub-import](architecture/epub-import.md) | 导入 ADR、管理 API、相关 Go/Web 测试 |
 | 表达研究 | [inspire](workflows/inspire.md) | references/、notes/ |
 | 接受提案 | [accept](workflows/accept.md) | proposals/、decisions/ |
