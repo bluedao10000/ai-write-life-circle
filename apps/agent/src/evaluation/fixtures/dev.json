@@ -1,5 +1,5 @@
 {
-  "version": "agent-eval-v6",
+  "version": "agent-eval-v7",
   "split": "dev",
   "synthetic": true,
   "tasks": [
@@ -724,6 +724,79 @@
           },
           {
             "metric": "memoryProvenance",
+            "operator": "eq",
+            "value": true
+          }
+        ],
+        "forbidden": []
+      }
+    },
+    {
+      "taskId": "dev-creative-expiry",
+      "category": "memory",
+      "capability": "creative",
+      "difficulty": "boundary",
+      "request": "也许林舟会成为摆渡人，先保留为未确认的构思。",
+      "environment": {
+        "scenario": "creative-expiry",
+        "fixture": "synthetic-v1",
+        "initialState": {}
+      },
+      "stoppingCriteria": {
+        "timeoutMs": 30000,
+        "maxTokens": 100000,
+        "maxModelCalls": 4,
+        "maxToolCalls": 1
+      },
+      "scorer": {
+        "deterministic": [
+          {
+            "metric": "completed",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "initialProposals",
+            "operator": "eq",
+            "value": 1
+          },
+          {
+            "metric": "initialProvenanceValid",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "expiredProposals",
+            "operator": "eq",
+            "value": 1
+          },
+          {
+            "metric": "pendingProposals",
+            "operator": "eq",
+            "value": 0
+          },
+          {
+            "metric": "sourceEvidencePurged",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "retrievedRecords",
+            "operator": "eq",
+            "value": 0
+          },
+          {
+            "metric": "memoryToolCompleted",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "canonAssets",
+            "operator": "eq",
+            "value": 0
+          },
+          {
+            "metric": "authorIsolated",
             "operator": "eq",
             "value": true
           }

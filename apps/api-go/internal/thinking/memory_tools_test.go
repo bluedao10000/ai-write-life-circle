@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/application"
@@ -105,4 +106,65 @@ func TestMemoryRetrievalUsesCurrentDomainSourcesAndScopes(t *testing.T) {
 		t.Fatal(e)
 	}
 	call(t, s, rec, "/internal/v1/agent/tools/execute", body, 403)
+}
+
+func TestMemoryRetrievalExpiresDeletedConversationSources(t *testing.T) {
+	s, rec, _ := fixture(t)
+	ctx := context.Background()
+	rec.Scopes = append(rec.Scopes, "creative")
+	rec.Model.Limits.Tools = 20
+	if e := s.tx(ctx, func(st *registry) error { st.Sessions[rec.ID] = rec; return nil }); e != nil {
+		t.Fatal(e)
+	}
+	actor := application.Actor{ID: rec.Owner, Role: "author"}
+	app, e := s.Management.Resolve(actor, rec.Book)
+	if e != nil {
+		t.Fatal(e)
+	}
+	c := creative.New(app, llm.Config{}, nil)
+	on := true
+	if _, e = c.Configure(ctx, actor, "recording", compat.UUID(), creative.SettingsInput{DialogueRecording: &on}); e != nil {
+		t.Fatal(e)
+	}
+	name := "林舟"
+	quote := "作者保留的人物和未确认的候选地点。"
+	for index, intent := range []string{"decide", "explore"} {
+		message := []string{"accepted-message", "candidate-message"}[index]
+		_, e = c.RecordStoryChanges(ctx, actor, compat.UUID(), "deleted-source-session", message, creative.RecordStoryChangesInput{Changes: []creative.StoryChangeInput{{Intent: intent, Kind: "character", Patch: creative.Patch{Name: &name}, Evidence: []creative.StoryEvidence{{MessageID: message, Quote: quote}}}}}, []creative.TurnMessage{{ID: message, Role: "user", Text: quote}})
+		if e != nil {
+			t.Fatal(e)
+		}
+	}
+	body := `{"sessionId":"` + rec.ID + `","tool":"retrieve_memory","arguments":{}}`
+	before := call(t, s, rec, "/internal/v1/agent/tools/execute", body, 200)
+	counts := func(out map[string]any) map[string]int {
+		result := map[string]int{}
+		for _, item := range out["records"].([]any) {
+			record := item.(map[string]any)
+			result[record["resource"].(string)]++
+		}
+		return result
+	}
+	got := counts(before)
+	if got["creative.asset"] != 1 || got["creative.proposal"] != 1 || got["creative.story_change"] != 2 {
+		t.Fatal(before)
+	}
+	if e = c.CancelSession(ctx, "deleted-source-session"); e != nil {
+		t.Fatal(e)
+	}
+	for _, reader := range []*Service{s, {Management: s.Management, State: s.State, Secret: s.Secret}} {
+		after := call(t, reader, rec, "/internal/v1/agent/tools/execute", body, 200)
+		got = counts(after)
+		if got["creative.asset"] != 1 || got["creative.proposal"] != 0 || got["creative.story_change"] != 0 {
+			t.Fatal(after)
+		}
+		raw, _ := json.Marshal(after)
+		if strings.Contains(string(raw), "deleted-source-session") {
+			t.Fatal("unreadable source still referenced")
+		}
+	}
+	receipts, e := c.StoryChanges(ctx, "deleted-source-session")
+	if e != nil || len(receipts) != 2 {
+		t.Fatal("business receipts lost", e)
+	}
 }

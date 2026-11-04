@@ -95,7 +95,19 @@ async function creative(fixture,task,result,wait,children){
  usage(result,jobs);
  if(result.chargedTokens!==null&&!thinking.usage.incomplete){result.inputTokens+=thinking.usage.input;result.outputTokens+=thinking.usage.output;result.chargedTokens+=thinking.usage.charged}else{result.inputTokens=null;result.outputTokens=null;result.chargedTokens=null}
  result.metrics={completed:turn.status==='organized',businessCommitted:turn.status==='organized',proposals:proposals.items.length,provenanceValid:proposals.items.length>0&&proposals.items.every(p=>p.source.messageId===messageId&&p.evidence.every(e=>e.role==='user'&&task.request.includes(e.quote))),canonAssets:(await fixture.call(root+'/assets')).total,sourceUnchanged:(await fixture.call(chapter)).headRevision.revisionId===before.headRevision.revisionId,authorIsolated:await isolated(fixture,root),promptVersion:jobs[0]?.strategyVersion??null,model:jobs[0]?.model.model??null};
- result.trace.push({action:'go_creative_terminal_read',name:turn.status});return result;
+ result.trace.push({action:'go_creative_terminal_read',name:turn.status});
+ if(task.environment.scenario==='creative-expiry'){
+  result.metrics.initialProposals=result.metrics.proposals;delete result.metrics.proposals;
+  result.metrics.initialProvenanceValid=result.metrics.provenanceValid;delete result.metrics.provenanceValid;
+  await fixture.call(path,{method:'DELETE',status:204});
+  const after=await fixture.call(root+'/proposals?sessionId='+session.sessionId);
+  result.metrics.expiredProposals=after.items.filter(p=>p.status==='expired').length;
+  result.metrics.pendingProposals=after.items.filter(p=>p.status==='proposed').length;
+  result.metrics.sourceEvidencePurged=after.items.length>0&&after.items.every(p=>p.source.sessionDeleted===true&&p.evidence.every(e=>e.quote===''));
+  result.trace.push({action:'source_session_deleted'});
+  await memoryProbe(fixture,task,result,wait,children,base,false);
+ }
+ return result;
 }
 
 async function knowledgeFault(fixture,task,result,wait,worker,children,root,saved,chapter){
@@ -120,9 +132,9 @@ async function knowledgeFault(fixture,task,result,wait,worker,children,root,save
  result.trace.push({action:'go_budget_and_jobs_read'});return result;
 }
 
-async function memoryProbe(fixture,task,result,wait,children,base){
- const pi=fixture.start('pi');children.push(pi);
- await wait(()=>{if(pi.exitCode!==null)throw Error('EVAL_THINKING_EXIT');return pi.output.includes('agent_started')});
+async function memoryProbe(fixture,task,result,wait,children,base,start=true){
+ if(start){const pi=fixture.start('pi');children.push(pi);
+ await wait(()=>{if(pi.exitCode!==null)throw Error('EVAL_THINKING_EXIT');return pi.output.includes('agent_started')});}
  await fetch(fixture.origin+'/control',{method:'POST',body:JSON.stringify({mode:'memory-read'})});
  const model=await fixture.call(base+'/thinking/capabilities');
  const session=await fixture.call(base+'/thinking/sessions',{method:'POST',status:201,body:{consent:true,model,scopes:['creative','knowledge']}});
@@ -132,6 +144,7 @@ async function memoryProbe(fixture,task,result,wait,children,base){
  const memories=fixture.requests.flatMap(request=>request.messages.filter(m=>m.role==='tool').flatMap(message=>{try{const value=JSON.parse(message.content);return Array.isArray(value.records)?[value]:[]}catch{return []}}));
  const memory=memories.at(-1);
  result.metrics.memoryToolCompleted=completed.messages.at(-1)?.status==='completed';
+ result.metrics.retrievedRecords=memory?.records.length??null;
  result.metrics.retrievedObservations=memory?.records.filter(record=>record.resource==='knowledge.assertion'&&record.status==='observed').length??null;
  result.metrics.retrievedConfirmed=memory?.records.filter(record=>record.status==='confirmed').length??null;
  result.metrics.memoryProvenance=!!memory&&memory.records.length>0&&memory.records.every(record=>record.provenance&&record.versionResource);

@@ -137,3 +137,11 @@ Phase 2仍未完整验收：Thinking独立业务终态、故障轨迹、独立�
 验收：120项Agent测试通过，Go Thinking/Creative/Knowledge测试通过，类型检查、lint及构建通过。Memory分类2/2工程通过；新增案例由真实Go/Pi Thinking调用该工具，返回2条observed记录、0条confirmed记录和有效来源。共3次合成模型调用、1次工具调用，310 tokens。Go测试覆盖原文替换后失效、归档后重启读取为空、版本冲突、双scope与跨作品参数拒绝，以及输出容量边界。
 
 Phase 3剩余：Procedural记忆、统一冲突/过期/整理审核流程和完整召回/删除验收。Phase 2保留集、人工校准和其余故障/性能评测，以及Phase 4–6仍需继续实施。
+
+### 来源删除生命周期
+
+StoryContext在构造最近历史前排除来源会话已删除的回执，统一记忆与自动上下文均不再引用该来源。Creative原有提案过期、证据清除、focus删除及作者已确认资产保留规则继续生效；业务审计回执保留，不作为模型检索材料。没有数据迁移或新的权威状态。
+
+新增`creative-expiry`真实进程评测：生成1条未确认候选后删除会话，读取到1条expired、0条proposed，来源原话已清除；新Thinking会话调用统一记忆工具返回0条记录。该案例4次合成模型调用、1次工具调用，270 tokens。
+
+验收：Go Thinking/Creative测试通过，120项Agent测试、类型检查、lint及构建通过；Memory分类3/3工程通过，合计7次模型调用、2次工具调用，580 tokens。报告位于`.local/evals/agent/dev-memory.json`。Procedural记忆和其余阶段仍未完成，不能据此声明完整记忆平台已验收。

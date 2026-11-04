@@ -524,6 +524,9 @@ func (s *Service) StoryContext(ctx context.Context, session, query string) (Stor
 		}
 	}
 	for _, r := range storyReceipts(st, "") {
+		if st.StoryChanges[r.ChangeID].SourceDeleted {
+			continue
+		}
 		if len(out.RecentChanges) >= 3 {
 			out.Truncated = true
 			break

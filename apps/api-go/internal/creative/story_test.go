@@ -275,6 +275,14 @@ func TestStorySessionDeletionScrubsSourcesAndFocus(t *testing.T) {
 			t.Fatal(p)
 		}
 	}
+	view, e := f.s.StoryContext(ctx, "another-session", "林舟")
+	if e != nil || len(view.RecentChanges) != 0 || len(view.Alternatives) != 0 || len(view.Confirmed) != 1 {
+		t.Fatalf("deleted sources reached model context: %+v %v", view, e)
+	}
+	receipts, e := f.s.StoryChanges(ctx, "s1")
+	if e != nil || len(receipts) != 2 {
+		t.Fatalf("business audit receipts must remain: %+v %v", receipts, e)
+	}
 }
 
 func TestStoryContextBudgetPrioritiesAndLegacyState(t *testing.T) {
