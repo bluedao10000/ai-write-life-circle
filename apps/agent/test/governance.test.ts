@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {createServer} from 'node:http';
+import {once} from 'node:events';
 import {Type} from 'typebox';
 import {BACKGROUND_CONTEXT} from '@earendil-works/chord/context';
 import {ModelRequestGate,executionContext,definition,governanceMetrics} from '../src/runtime/governance/runtime.js';
@@ -8,6 +10,28 @@ import {tools,type StoryExecution} from '../src/tools/registry.js';
 import type {Config} from '../src/config.js';
 const context=(signal=new AbortController().signal)=>executionContext({executionId:'execution',traceId:'trace',role:'thinking',authorizationVersion:1,scopes:['creative'],deadline:Date.now()+10000,signal});
 const deferred=()=>{let resolve!:()=>void;const promise=new Promise<void>(r=>{resolve=r});return {promise,resolve}};
+
+test('model gate cancels actual HTTP transport on execution, caller and deadline cancellation',async()=>{
+ for(const source of ['execution','request','options','deadline']){
+  const entered=deferred();
+  const server=createServer((_request,response)=>{response.writeHead(200);response.flushHeaders();entered.resolve()});
+  server.listen(0,'127.0.0.1');await once(server,'listening');
+  try{
+   const address=server.address();assert(address&&typeof address==='object');
+   const url=`http://127.0.0.1:${address.port}`;
+   const execution=new AbortController(),caller=new AbortController();
+   const ctx=context(execution.signal);
+   const gate=new ModelRequestGate({...ctx,deadline:Date.now()+(source==='deadline'?200:10000)},{authorize:async()=>{}});
+   await gate.prepare({reserve:async()=>{}});
+   const response=await gate.transport(fetch)(source==='request'?new Request(url,{signal:caller.signal}):url,source==='options'?{signal:caller.signal}:undefined);
+   await entered.promise;
+   const body=response.text();
+   if(source==='execution')execution.abort();
+   if(source==='request'||source==='options')caller.abort();
+   await assert.rejects(body,/abort|timeout/i);
+  }finally{server.closeAllConnections();await new Promise<void>((resolve,reject)=>server.close(error=>error?reject(error):resolve()))}
+ }
+});
 
 test('model transport waits for durable reservation and refuses concurrent preparation and replay',async()=>{
  const hold=deferred(),entered=deferred();let sent=0;

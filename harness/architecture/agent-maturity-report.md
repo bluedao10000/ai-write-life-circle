@@ -48,7 +48,7 @@ Phase 0 已完成源码审计和架构设计；Phase 1 已完成本地代码接�
 
 Phase 0无运行时或数据变更，可直接回退文档提交。后续版本元数据先兼容读取旧记录，旧运行只可安全中断或按原合同完成。新增持久格式必须提供真实旧数据导入、SIGKILL、未知费用/墓碑保存和兼容回滚验证。生产采用现有双数据库完整停机备份，不能以旧备份覆盖开放后的新费用和回执。
 
-尚未解决：统一入口接入、持久审计容量策略、记忆权威接口扩展、父子预算事务、独立held-out评测和真实模型质量证据。多角色只有在相同预算下验证收益后才可启用。LLM Judge抗注入提示不能保证评分免受影响，程序约束与人工校准必须独立存在。
+尚未解决：持久审计容量策略、记忆权威接口扩展、父子预算事务、独立held-out评测和真实模型质量证据。多角色只有在相同预算下验证收益后才可启用。LLM Judge抗注入提示不能保证评分免受影响，程序约束与人工校准必须独立存在。
 
 Phase 0验收依据为当前源码入口、契约、已有测试与基线验证记录；没有新增运行时代码，也未产生新的红队、真实模型或性能结果。Phase 1需以代码接入和运行回归验收，不以本ADR作为实现证明。
 
@@ -59,6 +59,7 @@ Phase 0验收依据为当前源码入口、契约、已有测试与基线验证�
 | 验收项 | 证据 |
 | --- | --- |
 | 模型必须预留后发送 | governance.test.ts：未准备、预留等待、失败与取消均零发送；重复准备/发送拒绝 |
+| 模型传输取消与期限 | governance.test.ts：真实HTTP响应体在执行取消、Request/init取消及deadline到达后中断 |
 | Go started失败阻止Provider | gateway.test.ts：真实SDK与本地HTTP，拒绝admission或缺少adapter时请求数为零 |
 | 工具重放重新授权 | governance.test.ts：已有故事回执与本地skill在撤销后拒绝 |
 | 参数/权限/迟到结果 | governance.test.ts：额外bookId拒绝、scope扩权拒绝、取消后不发布结果 |
@@ -68,6 +69,8 @@ Phase 0验收依据为当前源码入口、契约、已有测试与基线验证�
 | 静态与构建 | typecheck:agent、Agent lint、build:agent通过；Go API/control构建通过 |
 
 命令：`pnpm test:agent`、`pnpm typecheck:agent`、`pnpm --filter @writer-agent/agent lint`、`pnpm build:agent`；构建Go后执行 `scripts/test-thinking-agent.mjs`、`scripts/test-story-continuity.mjs`、`scripts/test-pi-review-worker.mjs`、`scripts/test-creative-workflow.mjs`、`scripts/test-pi-knowledge-worker.mjs --quick`、`scripts/test-pi-knowledge-faults.mjs`。
+
+2026-11-04追加验收：模型闸门自身实施传输取消与deadline，110项Agent测试、类型检查、lint及构建通过。使用当前Agent构建和现有Go二进制再次运行Thinking与Review Worker跨进程脚本，均通过；覆盖取消、SIGKILL、显式恢复、重复Worker、Go API重启及Thinking隔离。模型服务为本地HTTP合成fixture，无付费调用。该改动不改变持久格式，回滚只需恢复上一Agent构建，保留现有状态和费用回执。
 
 证据仅证明工程边界。未调用真实付费模型，未产生新的质量分数或性能改善结论，未部署本批代码。Phase 2下一步为统一评测schema/split/runner及Thinking事件全分页。后续仍需父子预算、长期记忆、全局持久诊断与编排审批；这些不因Registry已存在而视为完成。
 

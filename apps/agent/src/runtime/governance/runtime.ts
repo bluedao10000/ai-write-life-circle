@@ -61,8 +61,12 @@ export class ModelRequestGate {
   return async(request,options)=>{
    assertCurrent(this.context);
    if(!this.ready||this.sent)throw Error('MODEL_RESERVATION_REQUIRED');
+   const deadline=AbortSignal.timeout(Math.min(2_147_483_647,Math.max(1,Math.ceil(this.context.deadline-Date.now()))));
+   const requestSignal=options?.signal??(request instanceof Request?request.signal:undefined);
+   const signal=AbortSignal.any([this.context.signal,deadline,...(requestSignal?[requestSignal]:[])]);
+   signal.throwIfAborted();
    this.sent=true;audit(this.context,'model_started');
-   return fetcher(request,options);
+   return fetcher(request,{...options,signal});
   };
  }
  finished(){audit(this.context,'model_finished')}
