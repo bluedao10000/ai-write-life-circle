@@ -59,6 +59,7 @@ for(const [mode,code] of [["429","RATE_LIMITED"],["500","PROVIDER_UNAVAILABLE"],
     const f=await fixture();try {
       f.mode(mode);const original=await f.send();const failed=f.host.get(f.id).view;
       assert.equal(failed.run?.status,"failed");assert.equal(failed.run?.failure?.code,code);assert.equal(failed.run?.failure?.autoRecoverable,false);assert.equal(f.calls,1);
+      assert.equal(f.host.health().status,"ready");assert.equal(f.host.health().components.provider,"not_probed");
       const recovery={text:"Resume accepted message",recovery:{runId:failed.run!.runId,confirmAdditionalCost:true as const}};
       f.mode("ok");const start=performance.now();
       await f.host.accept(f.id,recovery,"recovery","fixture");await f.host.active.get(f.id)?.done;

@@ -20,7 +20,7 @@ async function main() {
   }
   if (process.argv.includes("--healthcheck")) {
     const r = await fetch(
-      `http://127.0.0.1:${config.port}/internal/v1/health`,
+      `http://127.0.0.1:${config.port}/internal/v1/readiness`,
       {
         headers: { Authorization: "Bearer " + config.token },
         signal: AbortSignal.timeout(3000),

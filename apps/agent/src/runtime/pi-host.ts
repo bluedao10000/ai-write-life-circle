@@ -1,5 +1,6 @@
 import {ModelRequestGate,executionContext,runtimeVersion} from './governance/runtime.js';
 import {currentWorkingMemory} from '../memory/working-memory.js';
+import {runtimeHealth,runtimeDiagnostics} from '../observability/runtime-health.js';
 import {manageDiscussion, memoryInstruction, providerInput, inputTokenBound, inputBytes, discussionText, type MeasuredInput, type ProviderInput} from "./context-management.js";
 import { failureFor, traceRun } from "./reliability.js";
 import { canonicalJSON, modelIdentity } from "./fingerprint.js";
@@ -69,6 +70,9 @@ export class PiHost {
   get(id: string) {
     return this.view(id,true);
   }
+  private healthSnapshot(){return {storage:this.store.health(),closing:this.closing,activeTasks:this.active.size,pendingAdmissions:this.admissions.size,enabledModels:modelEntries(this.config).filter(entry=>entry.enabled).length}}
+  health(){return runtimeHealth(this.healthSnapshot())}
+  diagnostics(){return runtimeDiagnostics(this.healthSnapshot())}
   getRecent(id:string) {
     return this.view(id,false);
   }

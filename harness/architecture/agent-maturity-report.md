@@ -9,7 +9,7 @@ Phase 0 已完成源码审计和架构设计；Phase 1 已完成本地代码接�
 | 能力 | 当前成熟度 | 实现与证据 | 缺口 / 下一步 |
 | --- | --- | --- | --- |
 | Durable执行 | 工程验证 | runtime/durable.ts、durable-crash/lifecycle测试；启动中断旧任务 | 治理生命周期映射，禁止自动付费恢复 |
-| 分层存储 | 工程验证 | sessions/store/event-store/projection；layered-storage-crash测试、10万事件基准 | 统一健康、投影指标与诊断 |
+| 分层存储 | 工程验证 | sessions/store/event-store/projection；layered-storage-crash测试、10万事件基准；Thinking投影健康与诊断 | 待跨进程聚合及历史指标 |
 | 预算 | 工程验证，分路径治理 | PiHost payload后预留与usage检查点；Go agenttasks started/complete；budget/turn-budget测试 | 已接入原权威预算适配；尚无父子预算分配 |
 | 授权及工具 | 部分覆盖 | tools/registry、Go工具RPC、strict schema、scope、epoch及StoryWrites | 本地重放前授权及ToolPolicy已接入；待扩展独立攻击集 |
 | Worker | 工程验证 | scheduler/dispatcher/TaskClient，四种Go任务；Review/Knowledge/Creative集成 | 统一合同已接入；待完善持久关联审计 |
@@ -17,7 +17,7 @@ Phase 0 已完成源码审计和架构设计；Phase 1 已完成本地代码接�
 | 长期记忆 | 部分领域覆盖 | Go creative决定/提案/资产，knowledge检索，讨论focus | 缺统一来源/过期/冲突/审核模型和召回评测 |
 | Evaluation | 部分覆盖 | 统一schema/split/runner、Go业务和故障适配、受治理Judge、人工标注导入 | 待完成独立数据集、保留集、人工校准与性能验收 |
 | 安全 | 部分覆盖 | capability、隔离进程、工具授权、取消及幂等测试 | 缺独立红队数据、记忆污染、子角色扩权验证 |
-| 可观测性 | 部分覆盖 | reliability.traceRun及内存计数；Worker有限任务日志 | 缺模型/工具关联、持久诊断、投影与未知费用指标 |
+| 可观测性 | 部分覆盖 | 治理关联日志、进程计数；Thinking鉴权健康/诊断包含投影失败、恢复与未知费用会话数 | 缺跨进程聚合、持久诊断及历史指标 |
 | 多角色协作 | 未实现 | 三领域Worker是任务执行器，不是协调层 | Creative只读试点，单/多角色同条件比较 |
 | 自主规划 | 未实现 | 有限模型/工具循环与显式恢复 | 有界Goal/Plan与审批版本绑定，须后置 |
 
@@ -145,3 +145,21 @@ StoryContext在构造最近历史前排除来源会话已删除的回执，统�
 新增`creative-expiry`真实进程评测：生成1条未确认候选后删除会话，读取到1条expired、0条proposed，来源原话已清除；新Thinking会话调用统一记忆工具返回0条记录。该案例4次合成模型调用、1次工具调用，270 tokens。
 
 验收：Go Thinking/Creative测试通过，120项Agent测试、类型检查、lint及构建通过；Memory分类3/3工程通过，合计7次模型调用、2次工具调用，580 tokens。报告位于`.local/evals/agent/dev-memory.json`。Procedural记忆和其余阶段仍未完成，不能据此声明完整记忆平台已验收。
+
+## Runtime Governance 本地验收补充
+
+Thinking回复、讨论压缩与Worker模型请求通过ModelRequestGate；所有已注册工具通过governTool。预算预留与授权适配沿用Durable检查点和Go任务协议，业务权威及三个进程边界保持不变。
+
+Thinking新增受服务令牌保护的`/internal/v1/liveness`、`readiness`与`diagnostics`。原health响应保留并附加runtime字段；进程探针使用readiness。诊断展示存储/投影状态、活动任务、恢复待处理与未知费用会话计数，以及进程范围治理指标。
+
+验收证据：
+
+- `pnpm test:agent`：121/121通过，包含模型预留闸门、授权撤销、取消传播、工具重放、审计脱敏和持久化。
+- `runtime-health.test.ts`：真实SQLite投影写入失败后degraded、重启outbox恢复ready、HTTP鉴权、关闭后readiness=503且liveness=200；诊断不含会话ID、正文、凭证和任意错误文本。
+- `reliability.test.ts`：Provider错误不将本地存储标为损坏，Provider状态明确为not_probed。
+- Agent类型检查、lint、Agent及Go API构建通过。
+- `test-thinking-agent.mjs`与`test-pi-review-worker.mjs`：真实Go/Pi进程通过授权、SSE重放、取消、SIGKILL、显式恢复、重复Worker、API重启及Thinking/Worker隔离。
+
+### 限制
+
+模型响应来自本地合成Provider，不代表真实模型质量验收。健康为Thinking本地状态投影，未完成三个进程的统一聚合、历史指标及持久诊断。生产入口在Store初始化完成后监听；初始化失败直接退出。Phase 1本地工程验收完成，Phase 4完整可观测性验收仍待后续实施。

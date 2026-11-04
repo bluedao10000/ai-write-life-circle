@@ -40,7 +40,6 @@ export function server(host: PiHost) {
     { maxHeaderSize: 16384, requestTimeout: 15000, headersTimeout: 5000 },
     async (req, res) => {
       try {
-        await host.ready;
         const provided = Buffer.from(req.headers.authorization ?? ""),
           expected = Buffer.from("Bearer " + host.config.token);
         if (
@@ -49,11 +48,22 @@ export function server(host: PiHost) {
         )
           throw new AgentError("UNAUTHORIZED", 401);
         const url = new URL(req.url ?? "/", "http://127.0.0.1");
+        if(req.method==='GET'&&url.pathname==='/internal/v1/liveness'){
+          json(res,200,{liveness:true});return;
+        }
+        if(req.method==='GET'&&url.pathname==='/internal/v1/readiness'){
+          const health=host.health();json(res,health.readiness?200:503,health);return;
+        }
+        if(req.method==='GET'&&url.pathname==='/internal/v1/diagnostics'){
+          json(res,200,host.diagnostics());return;
+        }
+        await host.ready;
         if (req.method === "GET" && url.pathname === "/internal/v1/health") {
           json(res, 200, {
             protocol: "thinking-v1",
             version: host.config.version,
             reliability: reliabilityMetrics(),
+            runtime:host.health(),
             model: host.config.model,
             models: modelEntries(host.config).map(({model, enabled, description}) => ({model, enabled, description})),
           });

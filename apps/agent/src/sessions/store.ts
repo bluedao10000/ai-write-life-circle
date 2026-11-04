@@ -55,6 +55,8 @@ export class Store implements ExecutionAuthority {
   private readonly projections = new Map<string, EventStore>();
   private readonly queues = new Map<string, Promise<unknown>>();
   private readonly failed = new Set<string>();
+  private readonly unpublished = new Set<string>();
+  private initialization: 'starting'|'ready'|'failed' = 'starting';
   readonly ready: Promise<void>;
   constructor(readonly dir: string, private readonly options:StoreOptions = {}) {
     mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -91,7 +93,8 @@ export class Store implements ExecutionAuthority {
       closeSync(admission);
       rmSync(guard);
     }
-    this.ready = this.initialize().catch(async error => {
+    this.ready = this.initialize().then(()=>{this.initialization='ready'}).catch(async error => {
+      this.initialization='failed';
       await Promise.allSettled([...this.runtimes.values()].map(async runtime => (await runtime).harness.close(durableContext)));
       for (const projection of this.projections.values()) projection.close();
       this.closed = true;
@@ -102,6 +105,16 @@ export class Store implements ExecutionAuthority {
   path(id: string) {
     if (!idPattern.test(id)) throw Error("INVALID_SESSION_ID");
     return join(this.dir, id + ".sqlite");
+  }
+  health() {
+    let sessions=0,recoveryPending=0,unknownUsageSessions=0;
+    for(const value of this.saved.values()){
+      if(value.deleted)continue;
+      sessions++;
+      if(value.view.run?.resumable&&['failed','interrupted'].includes(value.view.run.status))recoveryPending++;
+      if(value.view.usage?.incomplete)unknownUsageSessions++;
+    }
+    return {state:this.initialization==='failed'?'failed' as const:this.closed||this.closing?'closed' as const:this.initialization,sessions,failedSessions:this.failed.size,unpublishedSessions:this.unpublished.size,recoveryPending,unknownUsageSessions};
   }
   private legacyPath(id: string) {
     this.path(id);
@@ -327,7 +340,7 @@ export class Store implements ExecutionAuthority {
       await this.options.onPhase?.("state_committed");
       if(!committed.deleted)await this.publish(id,committed,pendingEvents);
       this.saved.set(id,committed);
-    } catch(error){this.failed.add(id);throw error}
+    } catch(error){this.failed.add(id);this.unpublished.add(id);throw error}
     return result;
   }
   async recover() {
@@ -403,6 +416,7 @@ export class Store implements ExecutionAuthority {
     const current=this.saved.get(id);
     if(current)this.saved.set(id,{schema:1,accountingVersion:2,owner:current.owner,deleted:true,entries:[],events:[],requests:{},view:{...current.view,status:"deleted",messages:[],run:undefined}});
     this.failed.delete(id);
+    this.unpublished.delete(id);
     const projection=this.projections.get(id);
     if(projection){projection.close();this.projections.delete(id)}
     const runtime = this.runtimes.get(id);

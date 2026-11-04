@@ -51,3 +51,11 @@ Thinking的版本和白名单审计记录加入原 `RunExecution`，随业务检
 验收：106项Agent测试通过，包含治理预留闸门、失败零网络、撤销后的本地重放、严格参数、迟到结果拒绝及审计脱敏/持久记录；类型检查、lint和构建通过。真实Go/Pi集成通过Thinking、story-continuity、Review Worker、Creative workflow、Knowledge 10章及Knowledge faults，全部合成HTTP模型。
 
 本阶段不启用子任务、父子预算划分、通用审批存储或长期记忆。高风险业务仍依赖现有作者同意、消息证据和Go确认规则。全局持久诊断、历史指标与统一健康聚合属于后续Observability阶段；不将本地日志标为完整持久审计。
+
+## Thinking健康与诊断合同
+
+健康从当前进程、Store初始化/关闭状态、失败会话、待投影提交及活动任务派生，不新增任务权威。liveness表示HTTP进程响应；readiness表示本地存储已初始化、未关闭且存在启用模型；degraded表示部分会话需要修复或投影恢复，健康会话仍可服务。Provider可用性不在健康探测时调用模型，显示not_probed；单次模型失败不等于存储损坏。
+
+保留原health响应，新增runtime字段；新增同服务令牌保护的liveness/readiness/diagnostics路径。诊断仅返回固定字段、有限标签的计数和组件状态，不含会话ID、正文、凭证或任意错误文本。失败和恢复计数来自Store内已有运行状态，投影重放后重新派生；进程累计指标明确标为process，不作为跨重启账本。Worker仍以Go现有heartbeat/status为权威，后续聚合不引入第二心跳服务。
+
+生产入口仍在Store初始化成功后监听端口，启动失败直接退出；liveness不是迁移期间的进度接口。`--healthcheck`使用readiness。unpublishedSessions表示已观察到的提交后发布失败，不统计正在正常投影的短暂提交。
