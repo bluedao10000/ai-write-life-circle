@@ -1,7 +1,7 @@
 // Actual Go API/private listener ↔ shared Zod contract; no model requests.
 import assert from 'node:assert/strict';
 import {setTimeout as delay} from 'node:timers/promises';
-import {agentTaskClaimResultSchema,agentTaskEnvelopeSchema,agentTaskAcknowledgementSchema} from '../packages/contracts/dist/index.js';
+import {agentTaskClaimResultSchema,agentTaskEnvelopeSchema,agentTaskAcknowledgementSchema,agentTaskDiagnosticsSchema} from '../packages/contracts/dist/index.js';
 import {startThinkingFixture,seedThinkingBook} from './lib/thinking-fixture.mjs';
 const f=await startThinkingFixture({taskProtocol:true});
 try{
@@ -24,12 +24,20 @@ try{
  const instance=winner===0?'fixture':'other';
  assert.equal(task.kind,'knowledge.extract');assert.equal(task.bookId,book.bookId);
  const input=agentTaskEnvelopeSchema.parse({leaseToken:task.leaseToken,executorEpoch:task.executorEpoch,attempt:task.attempt,kind:task.kind,inputHash:task.inputHash,instance,response:{text:'{"entities":[],"assertions":[]}',usage:{inputTokens:10,outputTokens:10}}});
+ const accepted=agentTaskDiagnosticsSchema.parse(await taskCall(task.taskId+'/diagnostics'));
+ assert.equal(accepted.outcome,'accepted');assert.equal(accepted.started,false);
+ await taskCall(task.taskId+'/diagnostics',undefined,instance,401,f.token);
+ await taskCall('00000000-0000-4000-8000-000000000000/diagnostics',undefined,instance,404);
  await taskCall(task.taskId+'/complete',input,instance,409);
  agentTaskAcknowledgementSchema.parse(await taskCall(task.taskId+'/started',input,instance));
  agentTaskAcknowledgementSchema.parse(await taskCall(task.taskId+'/started',input,instance));
  agentTaskAcknowledgementSchema.parse(await taskCall(task.taskId+'/heartbeat',input,instance));
  agentTaskAcknowledgementSchema.parse(await taskCall(task.taskId+'/complete',input,instance));
  agentTaskAcknowledgementSchema.parse(await taskCall(task.taskId+'/complete',input,instance));
+ const diagnostics=agentTaskDiagnosticsSchema.parse(await taskCall(task.taskId+'/diagnostics'));
+ assert.equal(diagnostics.taskId,task.taskId);assert.equal(diagnostics.outcome,'completed');assert.equal(diagnostics.finished,true);
+ for(const secret of [task.leaseToken,f.taskToken,f.token,task.configFingerprint,input.response.text])assert(!JSON.stringify(diagnostics).includes(secret));
+ const publicDiagnostics=await fetch(f.api+'/internal/v1/agent/tasks/'+task.taskId+'/diagnostics',{headers:{authorization:'Bearer '+f.bearer}});assert.equal(publicDiagnostics.status,404);
  assert.equal(f.calls.length,0,'Protocol preparation must never call an external model');
  const publicRoute=await fetch(f.api+'/internal/v1/agent/tasks/claim',{method:'POST',headers:{authorization:'Bearer '+f.bearer}});assert.equal(publicRoute.status,404);
  console.log('PASS: real Go task API / Zod, Pi default ownership, creative contract, distinct service identity, racing claims, started, heartbeat, idempotent completion, public denial; zero LLM calls.');

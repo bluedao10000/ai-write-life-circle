@@ -15,3 +15,5 @@ export type AgentModelResponse=z.infer<typeof agentModelResponseSchema>;
 export type AgentTaskEnvelope=z.infer<typeof agentTaskEnvelopeSchema>;
 
 export const agentWorkerHeartbeatSchema=z.object({instance:z.string().min(1).max(128),version:z.string().min(1).max(128),configFingerprint:z.string().max(5000),kinds:z.array(z.enum(["review","knowledge","creative","memory"])).min(1).max(4),activeTasks:z.array(z.string().uuid()).max(8),ready:z.boolean()}).strict();
+
+export const agentTaskDiagnosticsSchema=z.object({schemaVersion:z.literal(1),taskId:z.string().uuid(),bookId:z.string(),kind:agentTaskSchema.shape.kind,strategyVersion:z.string(),outputSchemaVersion:agentTaskSchema.shape.outputSchemaVersion,executorEpoch:z.number().int().positive(),attempt:z.number().int().positive(),deadline:z.string().datetime({offset:true}),started:z.boolean(),finished:z.boolean(),outcome:z.enum(['accepted','running','completed','failed','cancelled','interrupted','unknown']),completedAt:z.string().datetime({offset:true}).optional(),sourceTaskIds:z.array(z.string()).max(4)}).strict();

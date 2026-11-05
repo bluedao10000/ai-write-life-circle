@@ -60,6 +60,14 @@ func (s *Service) Handler() http.Handler {
 			reply(w, s.WorkerStatus(), nil)
 			return
 		}
+		if r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/internal/v1/agent/tasks/") && strings.HasSuffix(r.URL.Path, "/diagnostics") {
+			parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/internal/v1/agent/tasks/"), "/")
+			if len(parts) == 2 && len(parts[0]) == 36 {
+				result, err := s.Diagnostics(r.Context(), parts[0])
+				reply(w, result, err)
+				return
+			}
+		}
 		if r.Method != "POST" {
 			reply(w, nil, application.Fail(404, "NOT_FOUND", "Unknown task route."))
 			return

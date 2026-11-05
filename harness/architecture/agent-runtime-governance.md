@@ -79,3 +79,11 @@ Tool Gateway使用单调时钟记录每次调用的耗时。tool_started包含�
 Go在原Thinking私有监听器提供服务令牌保护的Runtime Health路由。Worker就绪从原executorpolicy与心跳派生，Thinking通过受保护readiness接口读取；没有第二个心跳来源或持久状态。请求至多2秒，固定字段投影排除正文、凭证和任意错误。组件故障保持Go liveness可响应，整体readiness和degraded独立报告。失效Worker心跳的待办数为未知，不推导为零。
 
 现有公网agent-runtime响应、Go healthz与各进程healthcheck行为不变。新增接口需要原Thinking私有监听器已配置；未配置时继续使用已有Worker状态接口。详细字段与状态见thinking-internal-v1私有协议。跨进程历史指标和自动故障处置仍不在此读取接口中实现。
+
+## Worker任务回执诊断
+
+私有Worker监听器提供`GET /internal/v1/agent/tasks/{taskId}/diagnostics`，使用原Worker服务凭证。公开API不转发该路径。输出从原`tasks-v1.json`投影任务身份、作品、类型、策略/输出版本、epoch、attempt、deadline、started/finished、业务终态及终态时间；后台整理额外返回原来源任务ID，支持由候选的RunID定位整理任务再定位来源任务。
+
+接口不写状态、不延长租约、不启动恢复或模型请求；不返回租约Token、实例、配置指纹、授权凭证、模型请求、正文、响应或任意错误文本。历史记录缺失终态时明确返回unknown；过期回执映射为interrupted。该投影用于诊断已持久化的当前执行事实，不能还原未保存的逐事件时间线。
+
+新增字段均为读取投影，无存储格式迁移；回滚只移除接口。Go回归覆盖接受、运行、完成、失败、中断、历史unknown和重启读取。真实Go API/Zod验收覆盖服务身份隔离、公开路由拒绝、缺失任务及正文/凭证不泄漏。

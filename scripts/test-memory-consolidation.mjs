@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {createPiWorkerFixture,sleep,until} from './lib/pi-worker-fixture.mjs';
-import {proceduralListSchema} from '../packages/contracts/dist/index.js';
+import {proceduralListSchema,agentTaskDiagnosticsSchema} from '../packages/contracts/dist/index.js';
 
 const f=await createPiWorkerFixture({modelBudget:{maxModelCalls:10,maxTokens:240000}});
 let worker;
@@ -119,6 +119,13 @@ try{
   return Object.values(records).find(record=>record.task.kind==='memory.consolidate'&&record.outcome==='interrupted'&&record.finished);
  },'crashed consolidation expired',25000);
  assert.equal(interrupted.started,true);
+ const diagnosticResponse=await fetch(f.taskOrigin+'/internal/v1/agent/tasks/'+interrupted.task.taskId+'/diagnostics',{headers:{authorization:'Bearer '+f.keys.task}});
+ assert.equal(diagnosticResponse.status,200);
+ const diagnostic=agentTaskDiagnosticsSchema.parse(await diagnosticResponse.json());
+ assert.equal(diagnostic.outcome,'interrupted');
+ assert.deepEqual(diagnostic.sourceTaskIds,interrupted.memory.sources.map(source=>source.taskId));
+ assert.equal(diagnostic.completedAt,interrupted.completedAt);
+ assert(!JSON.stringify(diagnostic).includes(interrupted.task.leaseToken));
  assert.equal(interrupted.task.request.input,'');
  assert.equal(interrupted.memory.request.input,'');
  assert.equal((await f.call(base+'/creative')).settings.budgetTokens,crashBudget+interrupted.memory.reservedTokens);

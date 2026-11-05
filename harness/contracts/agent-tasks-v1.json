@@ -328,6 +328,46 @@
           }
         }
       }
+    },
+    "/internal/v1/agent/tasks/{taskId}/diagnostics": {
+      "parameters": [
+        {
+          "name": "taskId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "agentTaskDiagnostics",
+        "summary": "Read persisted task receipt metadata without payloads or credentials",
+        "security": [
+          {
+            "workerService": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Persisted lifecycle projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/agentTaskDiagnostics"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid Worker credential"
+          },
+          "404": {
+            "description": "Task receipt not found"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -680,6 +720,109 @@
           "instance",
           "configFingerprint",
           "contracts"
+        ],
+        "additionalProperties": false
+      },
+      "agentTaskDiagnostics": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "schemaVersion": {
+            "type": "number",
+            "const": 1
+          },
+          "taskId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "bookId": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "review.execute",
+              "knowledge.extract",
+              "creative.organize",
+              "creative.plan_check",
+              "memory.consolidate"
+            ]
+          },
+          "strategyVersion": {
+            "type": "string"
+          },
+          "outputSchemaVersion": {
+            "type": "string",
+            "enum": [
+              "review-candidates-v1",
+              "knowledge-candidates-v1",
+              "creative-organize-candidates-v1",
+              "creative-plan_check-candidates-v1",
+              "creative-plan-check-candidates-v2",
+              "memory-candidate-v1"
+            ]
+          },
+          "executorEpoch": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "attempt": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "deadline": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "started": {
+            "type": "boolean"
+          },
+          "finished": {
+            "type": "boolean"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "running",
+              "completed",
+              "failed",
+              "cancelled",
+              "interrupted",
+              "unknown"
+            ]
+          },
+          "completedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "sourceTaskIds": {
+            "maxItems": 4,
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "schemaVersion",
+          "taskId",
+          "bookId",
+          "kind",
+          "strategyVersion",
+          "outputSchemaVersion",
+          "executorEpoch",
+          "attempt",
+          "deadline",
+          "started",
+          "finished",
+          "outcome",
+          "sourceTaskIds"
         ],
         "additionalProperties": false
       },
