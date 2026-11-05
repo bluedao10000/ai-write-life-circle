@@ -43,7 +43,7 @@ async function execute(task:EvaluationTask,signal:AbortSignal,result:Observation
   const {executeThinkingEvaluation}=await import(modulePath) as {executeThinkingEvaluation:(task:EvaluationTask,signal:AbortSignal,result:Observation)=>Promise<Observation>};
   return executeThinkingEvaluation(task,signal,result);
  }
- if(task.environment.scenario.startsWith('procedural-')||task.environment.scenario==='creative-expiry'||task.environment.scenario==='creative-plan-comparison'||task.environment.scenario.startsWith('review-')||task.environment.scenario.startsWith('knowledge-')||task.environment.scenario.endsWith('-business')){
+ if(task.environment.scenario.startsWith('procedural-')||task.environment.scenario==='creative-expiry'||task.environment.scenario==='creative-plan-comparison'||task.environment.scenario==='creative-plan-failure'||task.environment.scenario.startsWith('review-')||task.environment.scenario.startsWith('knowledge-')||task.environment.scenario.endsWith('-business')){
   const modulePath=new URL('../../../../scripts/lib/evaluation-business.mjs',import.meta.url).href;
   const {executeBusinessEvaluation}=await import(modulePath) as {executeBusinessEvaluation:(task:EvaluationTask,signal:AbortSignal,result:Observation)=>Promise<Observation>};
   return executeBusinessEvaluation(task,signal,result);

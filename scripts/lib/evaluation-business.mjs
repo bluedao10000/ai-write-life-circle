@@ -14,13 +14,15 @@ export async function executeBusinessEvaluation(task,signal,result){
  const wait=async(fn)=>{for(;;){signal.throwIfAborted();const value=await fn();if(value)return value;await sleep(40)}};
  try{
   signal.throwIfAborted();
-  await fixture.select({...fixture.cases[0],id:task.taskId,target:task.request,fake:task.environment.scenario==='review-evidence'?'fake-source':'valid'});
+  const fake=task.environment.scenario==='review-evidence'?'fake-source':task.environment.scenario==='creative-plan-failure'?'creative-plan-failure':'valid';
+  await fixture.select({...fixture.cases[0],id:task.taskId,target:task.request,fake});
   const sources=await fixture.sourceBytes();
   const worker=fixture.start('pi-worker');children.push(worker);
   await wait(()=>{if(worker.exitCode!==null)throw Error('EVAL_WORKER_EXIT');return worker.output.includes('worker_started')});
   if(task.environment.scenario.startsWith('procedural-'))return await procedural(fixture,task,result,wait,children);
   if(task.capability==='knowledge')return await knowledge(fixture,task,result,wait,worker,children);
   if(task.environment.scenario==='creative-plan-comparison')return await creativePlanComparison(fixture,task,result,wait,worker);
+  if(task.environment.scenario==='creative-plan-failure')return await creativePlanFailure(fixture,task,result,wait,worker);
   if(task.capability==='creative')return await creative(fixture,task,result,wait,children);
   if(task.environment.scenario==='review-receipt')fixture.dropCompletion();
   const run=await fixture.enqueue();result.trace.push({action:'go_accepted'});
@@ -196,6 +198,69 @@ async function creativePlanComparison(fixture,task,result,wait,worker){
   qualityEquivalent:null,
  };
  result.trace.push({action:'single_plan_check_completed'},{action:'multi_plan_check_completed'},{action:'go_plan_versions_verified'});
+ return result;
+}
+
+async function creativePlanFailure(fixture,task,result,wait,worker){
+ const lines=task.request.split('\n').map(line=>line.trim()).filter(Boolean);
+ const planText=lines.find(line=>line.startsWith('计划：'))?.slice(3);
+ const chapterIndex=lines.findIndex(line=>line.startsWith('正文：'));
+ const chapterText=chapterIndex>=0?lines[chapterIndex].slice(3).trim():'';
+ if(!planText||!chapterText.includes('最终选择留下'))throw Error('EVAL_PLAN_SCENARIO_INPUT');
+ const {book,base}=await createBook(fixture,task),creative=base+'/creative';
+ const chapter=`/v1/projects/${book.bookId}/chapters/${book.chapters[0].chapterId}`;
+ const head=await fixture.call(chapter);
+ const saved=await fixture.call(chapter+'/revisions',{method:'POST',status:201,body:{baseRevisionId:head.headRevision.revisionId,markdown:chapterText}});
+ const plan=await fixture.call(creative+'/assets',{method:'POST',status:201,body:{kind:'event',status:'accepted',content:{name:planText,aliases:[],summary:planText,fields:[],plan:{chapterId:book.chapters[0].chapterId}}}});
+ await fixture.call(creative+'/settings/orchestration',{method:'POST',body:{multiAgentPlanCheck:true}});
+ const taskPath=join(fixture.state,'agent-runtime','tasks-v1.json');
+ const creativePath=join(fixture.state,'creative',Buffer.from(book.bookId).toString('base64url'),'state-v1.json');
+ const json=async path=>{try{return JSON.parse(await readFile(path,'utf8'))}catch{return null}};
+ const currentJob=async jobId=>{
+  const state=await json(creativePath);
+  return state?.jobs?.find(job=>job.jobId===jobId)??null;
+ };
+ const queued=async()=>{
+  const state=await json(creativePath);
+  return state?.jobs?.find(job=>job.strategyVersion==='creative-plan-check-readonly-v1'&&job.chapterId===book.chapters[0].chapterId&&job.revisionId===saved.revisionId)??null;
+ };
+ const taskRecord=async jobId=>{
+  const state=await json(taskPath);
+  return Object.values(state?.tasks??{}).find(record=>record.task?.kind==='creative.plan_check'&&record.task?.bookId===book.bookId&&record.creative?.Claim?.Job?.jobId===jobId)??null;
+ };
+ const start=fixture.requests.length;
+ await fixture.call(creative+'/plan-checks',{method:'POST',status:202,body:{chapterId:book.chapters[0].chapterId}});
+ const queuedJob=await wait(queued,'failed plan-check job');
+ const record=await wait(()=>taskRecord(queuedJob.jobId),'failed plan-check task');
+ const failed=await wait(async()=>{const job=await currentJob(queuedJob.jobId);return job?.status==='failed'&&job},'failed plan-check receipt');
+ const callsAtFailure=fixture.requests.length;
+ await sleep(2200);
+ const afterFailure=await currentJob(queuedJob.jobId);
+ const requests=fixture.requests.slice(start);
+ const systems=requests.map(request=>request.messages.find(message=>message.role==='system')?.content??'');
+ const governance=(worker.output??'').split('\n').flatMap(line=>{try{const event=JSON.parse(line);return event.event==='agent_governance'&&event.taskId===record.task.taskId?[event]:[]}catch{return []}});
+ const plannerActions=governance.filter(event=>event.role==='creative.plan.planner').map(event=>event.action);
+ const divergencePage=await fixture.call(creative+'/divergences?chapterId='+book.chapters[0].chapterId);
+ const afterPlan=await fixture.call(creative+'/assets/'+plan.assetId),afterChapter=await fixture.call(chapter);
+ usage(result,[failed]);
+ result.budgetExposure={tokens:record.task.reservedTokens,authority:'go'};
+ result.metrics={
+  failedWithProviderError:failed.status==='failed'&&failed.failureCode==='LLM_HTTP_ERROR',
+  unknownUsageRetained:failed.usage==null&&failed.usageIncomplete===true,
+  parentReservationRetained:failed.reservedTokens===record.task.reservedTokens&&failed.reservedTokens>0,
+  noAutomaticRetry:afterFailure?.status==='failed'&&afterFailure.attempts===1&&fixture.requests.length===callsAtFailure,
+  noCoordinator:systems.every(system=>!system.startsWith('You compare an author\'s accepted plans for one chapter'))&&governance.every(event=>event.role!=='creative.plan.coordinator'),
+  callsBounded:failed.modelCalls>0&&failed.modelCalls<5,
+  plannerGoverned:JSON.stringify(plannerActions)===JSON.stringify(['authorized','reserved','model_started','model_finished']),
+  parentLinksValid:governance.length>0&&governance.every(event=>event.parentTaskId===record.task.taskId),
+  toolEvents:governance.filter(event=>event.toolName).length,
+  authoritativeDivergences:divergencePage.items.length,
+  planUnchanged:afterPlan.asset.version===plan.version&&afterPlan.asset.summary===planText,
+  sourceUnchanged:afterChapter.headRevision.revisionId===saved.revisionId,
+  toolCalls:0,
+  qualityEquivalent:null,
+ };
+ result.trace.push({action:'provider_failure_reported'},{action:'unknown_usage_reservation_retained'},{action:'automatic_retry_absent'});
  return result;
 }
 

@@ -1,5 +1,5 @@
 {
-  "version": "agent-eval-v17",
+  "version": "agent-eval-v18",
   "split": "dev",
   "synthetic": true,
   "tasks": [
@@ -2483,6 +2483,94 @@
             "metric": "authoritativeDivergences",
             "operator": "eq",
             "value": 1
+          },
+          {
+            "metric": "toolCalls",
+            "operator": "eq",
+            "value": 0
+          }
+        ],
+        "forbidden": []
+      }
+    },
+    {
+      "taskId": "dev-creative-plan-failure",
+      "category": "reliability",
+      "capability": "creative",
+      "difficulty": "boundary",
+      "request": "计划：林舟会在灯塔熄灭后离开组织。\n正文：暴雨里，林舟收好行囊；天亮时，他最终选择留下修复灯塔。",
+      "environment": {
+        "scenario": "creative-plan-failure",
+        "fixture": "synthetic-v1",
+        "initialState": {}
+      },
+      "stoppingCriteria": {
+        "timeoutMs": 45000,
+        "maxTokens": 200000,
+        "maxModelCalls": 4,
+        "maxToolCalls": 0
+      },
+      "scorer": {
+        "deterministic": [
+          {
+            "metric": "failedWithProviderError",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "unknownUsageRetained",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "parentReservationRetained",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "noAutomaticRetry",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "noCoordinator",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "callsBounded",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "plannerGoverned",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "parentLinksValid",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "toolEvents",
+            "operator": "eq",
+            "value": 0
+          },
+          {
+            "metric": "authoritativeDivergences",
+            "operator": "eq",
+            "value": 0
+          },
+          {
+            "metric": "planUnchanged",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "sourceUnchanged",
+            "operator": "eq",
+            "value": true
           },
           {
             "metric": "toolCalls",

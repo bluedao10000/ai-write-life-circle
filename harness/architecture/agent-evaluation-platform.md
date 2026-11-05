@@ -89,3 +89,9 @@ Safety分类以本地合成Provider运行9/9工程通过，共12次模型调用�
 确定性评分要求两种模式对同一计划/正文给出相同评估、引文、解释和问题；同一输入由持久 `inputHash`、Revision ID 和 Content Hash 核对。单角色恰好1次模型调用，五角色恰好5次且 Planner、Researcher、Analyst、Critic、Coordinator 各一次。五组治理事件必须依次出现 `authorized`、`reserved`、`model_started`、`model_finished`，共享父 taskId，不发生工具事件。两种模式的总预留不得超出父任务上限，测试场景的实际预留比为5；计划正文、章节 Revision 和 Go 业务提交均须保持不变。
 
 开发分类8/8、保留分类5/5工程通过。新增对照各消耗6次合成模型调用和1800个合成usage tokens，单角色/五角色预留分别为22240/111200；开发与保留场景的任务耗时分别约6.43秒和6.52秒。开发对照为14次分类总调用中的6次；保留对照为10次分类总调用中的6次。`qualityEquivalent` 保持 `null`：两种合成模式的一致只能证明执行合同和确定性结果等价，不能证明真实模型下的质量收益、冲突处理能力、角色独立判断或代表性P95。
+
+## 只读编排失败与未知费用
+
+`agent-eval-v18`与保留集`agent-eval-v3`新增`creative-plan-failure`可靠性样本。五个角色中任一已发送请求没有返回usage时，编排器不再把其他角色已知的部分usage冒充完整结算；父响应改为未知usage，由Go在`UsageIncomplete`状态保留整笔父预留。场景还检查失败后不调用Coordinator、不生成Divergence、不改计划或正文，并在2.2秒观察窗口内确认没有自动启动新attempt。
+
+开发可靠性分类9/9、保留可靠性分类2/2工程通过。开发运行发出3次、保留运行发出2次合成模型调用，均低于5次上限；Go保留111200 tokens的父预留，token测量值保持`null`，未发生工具调用或业务提交。Agent完整回归144/144、类型检查、lint与构建通过。该结果验证失败和计费边界，不证明真实Provider的失败率、重试收益或错误内容质量。

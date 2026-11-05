@@ -60,6 +60,7 @@ export async function createReviewFixture({modelBudget}={}) {
   res.writeHead(200,{'Content-Type':'text/event-stream'});res.end('data: '+JSON.stringify({id:'creative-planner',object:'chat.completion.chunk',model:request.model,choices:[{index:0,delta:{role:'assistant',content},finish_reason:'stop'}],usage:{prompt_tokens:200,completion_tokens:100}})+'\n\ndata: [DONE]\n\n');return
  }
  if(system.startsWith('You are the evidence researcher in a read-only story-plan review')){
+  if(mode==='creative-plan-failure'){res.writeHead(503).end('private-provider-message');return}
   const {source}=JSON.parse(request.messages.find(m=>m.role==='user').content);
   const content=JSON.stringify({findings:source.plans.map((plan)=>({assetId:plan.assetId,quote:'最终选择留下',observation:'正文明确写角色留下。',assessment:'diverged'}))});
   res.writeHead(200,{'Content-Type':'text/event-stream'});res.end('data: '+JSON.stringify({id:'creative-researcher',object:'chat.completion.chunk',model:request.model,choices:[{index:0,delta:{role:'assistant',content},finish_reason:'stop'}],usage:{prompt_tokens:200,completion_tokens:100}})+'\n\ndata: [DONE]\n\n');return

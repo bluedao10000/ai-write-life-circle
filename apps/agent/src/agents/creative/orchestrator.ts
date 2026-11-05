@@ -66,24 +66,35 @@ function outputLimits(total:number){
 class SharedUsage {
   calls=0;
   usage:AgentModelResponse['usage']=null;
+  incomplete=false;
   add(response:AgentModelResponse,limit:number,childLimit:number){
     const calls=response.modelCalls??1;
     this.calls+=calls;
-    if(!response.usage||this.calls>readonlyPlanModelCalls)throw new GatewayError('LLM_INVALID_USAGE',{text:'',usage:this.usage,modelCalls:Math.max(1,this.calls)});
-    if(response.usage.inputTokens+response.usage.outputTokens>childLimit)throw new GatewayError('LLM_BUDGET_EXCEEDED',{text:'',usage:response.usage,modelCalls:this.calls});
+    if(!response.usage||this.calls>readonlyPlanModelCalls){
+      this.incomplete=true;
+      throw new GatewayError('LLM_INVALID_USAGE',{text:'',usage:null,modelCalls:Math.max(1,this.calls)});
+    }
     const previous=this.usage;
     const next={
       inputTokens:(previous?.inputTokens??0)+response.usage.inputTokens,
       outputTokens:(previous?.outputTokens??0)+response.usage.outputTokens,
       cachedInputTokens:(previous?.cachedInputTokens??0)+(response.usage.cachedInputTokens??0),
     };
-    if(next.inputTokens+next.outputTokens>limit)throw new GatewayError('LLM_BUDGET_EXCEEDED',{text:'',usage:next,modelCalls:this.calls});
-    if(next.cachedInputTokens>next.inputTokens)throw new GatewayError('LLM_INVALID_USAGE',{text:'',usage:next,modelCalls:this.calls});
+    if(next.cachedInputTokens>next.inputTokens){
+      this.incomplete=true;
+      throw new GatewayError('LLM_INVALID_USAGE',{text:'',usage:null,modelCalls:this.calls});
+    }
     this.usage=next;
+    if(response.usage.inputTokens+response.usage.outputTokens>childLimit||next.inputTokens+next.outputTokens>limit)throw new GatewayError('LLM_BUDGET_EXCEEDED',{text:'',usage:next,modelCalls:this.calls});
   }
   fail(error:unknown){
     if(!(error instanceof GatewayError))return;
-    this.calls+=error.response.modelCalls??0;
+    const calls=error.response.modelCalls??0;
+    this.calls+=calls;
+    if(calls>0&&!error.response.usage){
+      this.incomplete=true;
+      return;
+    }
     if(error.response.usage){
       const previous=this.usage;
       this.usage={
@@ -115,18 +126,17 @@ export async function orchestratePlanCheck(task:AgentTask,gateway:StepGateway,si
   const step=(role:AgentRole,callIndex:number,system:string,input:string,schemaName:string,schema:Record<string,unknown>,maxOutputTokens:number,callSignal=signal)=>
     gateway.executeStep(task,callSignal,{role,callIndex,maxModelCalls:readonlyPlanModelCalls,parentTaskId:task.taskId,system,input,schemaName,schema,maxTokens:tokenLimit(callIndex),maxOutputTokens});
   const collect=async(promise:Promise<AgentModelResponse>,callIndex:number)=>{
-    try{
-      const response=await promise;
-      usage.add(response,task.reservedTokens,tokenLimit(callIndex));
-      return response;
-    }catch(error){
+    let response:AgentModelResponse;
+    try{response=await promise}catch(error){
       usage.fail(error);
       throw error;
     }
+    usage.add(response,task.reservedTokens,tokenLimit(callIndex));
+    return response;
   };
   const failed=(error:unknown):never=>{
     const code=error instanceof GatewayError?error.code:'LLM_INVALID_RESPONSE';
-    throw new GatewayError(code,{text:'',usage:usage.usage,modelCalls:Math.max(1,usage.calls)});
+    throw new GatewayError(code,{text:'',usage:usage.incomplete?null:usage.usage,modelCalls:Math.max(1,usage.calls)});
   };
   const validIds=(values:string[])=>{
     if(values.some(id=>!assetIds.has(id))||new Set(values).size!==values.length)throw new GatewayError('LLM_INVALID_OUTPUT',{text:'',usage:usage.usage,modelCalls:Math.max(1,usage.calls)});

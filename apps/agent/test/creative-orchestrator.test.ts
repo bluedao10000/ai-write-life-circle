@@ -83,7 +83,15 @@ test('readonly plan orchestration rejects parent or foreign assets before public
 
 test('readonly plan orchestration stops when a provider hides usage',async()=>{
  const gateway={config:{MaxOutputTokens:2048},executeStep:async()=>({text:JSON.stringify({items:[{assetId:'plan-1',focus:'focus'}]}),usage:null,modelCalls:1})};
- await assert.rejects(()=>orchestratePlanCheck(task(),gateway,AbortSignal.timeout(1000)),(error)=>error instanceof GatewayError&&error.code==='LLM_INVALID_USAGE');
+ await assert.rejects(()=>orchestratePlanCheck(task(),gateway,AbortSignal.timeout(1000)),(error)=>error instanceof GatewayError&&error.code==='LLM_INVALID_USAGE'&&error.response.modelCalls===1&&error.response.usage===null);
+});
+
+test('readonly plan orchestration never presents partial usage as a complete settled cost',async()=>{
+ const gateway={config:{MaxOutputTokens:2048},executeStep:async(_task:AgentTask,_signal:AbortSignal,step:ModelStep)=>{
+  if(step.role==='creative.plan.planner')return responseFor(step);
+  throw new GatewayError('LLM_HTTP_ERROR',{text:'',usage:null,modelCalls:1});
+ }};
+ await assert.rejects(()=>orchestratePlanCheck(task(),gateway,new AbortController().signal),(error)=>error instanceof GatewayError&&error.code==='LLM_HTTP_ERROR'&&error.response.modelCalls===4&&error.response.usage===null);
 });
 
 test('readonly plan orchestration aborts parallel siblings when one role fails',async()=>{

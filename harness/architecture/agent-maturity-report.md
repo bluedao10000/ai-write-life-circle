@@ -10,7 +10,7 @@ Phase 0 已完成源码审计和架构设计；Phase 1 已完成本地代码接�
 | --- | --- | --- | --- |
 | Durable执行 | 工程验证 | runtime/durable.ts、durable-crash/lifecycle测试；启动中断旧任务 | 治理生命周期映射，禁止自动付费恢复 |
 | 分层存储 | 工程验证 | sessions/store/event-store/projection；layered-storage-crash测试、10万事件基准；Thinking投影健康与诊断 | 待跨进程聚合及历史指标 |
-| 预算 | 工程验证，分路径治理 | PiHost payload后预留与usage检查点；Go agenttasks started/complete；Creative只读试点的五调用父预算与子预算总和校验 | 尚无跨Go任务的通用父子预算事务 |
+| 预算 | 工程验证，分路径治理 | PiHost payload后预留与usage检查点；Go agenttasks started/complete；Creative只读试点的五调用父预算、子预算总和及失败未知费用保留 | 尚无跨Go任务的通用父子预算事务 |
 | 授权及工具 | 部分覆盖 | tools/registry、Go工具RPC、strict schema、scope、epoch及StoryWrites | 本地重放前授权及ToolPolicy已接入；待扩展独立攻击集 |
 | Worker | 工程验证 | scheduler/dispatcher/TaskClient，四种Go任务；Review/Knowledge/Creative集成 | 统一合同已接入；待完善持久关联审计 |
 | 上下文 | 部分覆盖 | context-management、Working Memory来源绑定与无付费旧格式迁移；重启测试 | 摘要并非长期已确认事实 |
@@ -438,4 +438,6 @@ Go按严格来源合同返回422，没有候选发布；正式经验和Canon不�
 
 开发分类8/8、保留分类5/5工程通过。两种模式对计划与正文给出相同评估、引文、解释和问题；单角色1次、五角色5次模型调用，五个角色各一次。两次执行总预留为133440 tokens，比例为5；所有治理事件按授权、预留、模型开始、模型完成排列，20个事件共享治理父任务，无工具事件。计划、章节Revision和Go业务提交均未变化。
 
-Agent完整回归142/142、类型检查、lint及构建通过；Review API的155项检查和Creative真实Go/Pi流程保持通过。这项对照补齐了开发集与held-out上的确定性工程验收，不评价真实模型质量。`qualityEquivalent`保持`null`；角色独立判断、冲突处理、真实模型同预算质量、角色级P95和货币成本仍未测量。五角色试点继续默认关闭，Phase 5尚未完成真实收益验收。
+Agent完整回归144/144、类型检查、lint及构建通过；Review API的155项检查和Creative真实Go/Pi流程保持通过。这项对照补齐了开发集与held-out上的确定性工程验收，不评价真实模型质量。`qualityEquivalent`保持`null`；角色独立判断、冲突处理、真实模型同预算质量、角色级P95和货币成本仍未测量。五角色试点继续默认关闭，Phase 5尚未完成真实收益验收。
+
+同一数据集版本还加入“Leader阶段结束后Provider失败”的可靠性场景。任一已发送角色缺失usage时，编排器将父usage降为未知，不把部分成功角色的数值当作完整成本。开发可靠性9/9与保留可靠性2/2通过：实际发出2–3次调用后Job进入`failed`，Coordinator未调用，无Divergence或正文/计划变化，2.2秒内没有自动重试；Go保留111200 tokens父预留且报告usage为null。该验证证明失败费用与提交边界，不评价真实Provider的错误率或恢复收益。
