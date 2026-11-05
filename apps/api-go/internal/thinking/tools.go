@@ -159,11 +159,16 @@ func (s *Service) PrivateHandler() http.Handler {
 				reply(w, nil, fail(403, "SCOPE_FORBIDDEN"), 0)
 				return
 			}
-			items, e := s.memoryExtractionContext(r.Context(), rec)
+			data, e := s.memoryExtractionContext(r.Context(), rec)
 			if e == nil {
 				_, e = s.authorize(Bearer(r))
 			}
-			reply(w, map[string]any{"binding": rec.MemoryExtraction, "items": items}, e, 200)
+			payload := map[string]any{"binding": rec.MemoryExtraction, "items": data.Items}
+			if rec.MemoryExtraction.Version == 2 {
+				payload["comparisons"] = data.Comparisons
+				payload["comparisonOmitted"] = data.ComparisonOmitted
+			}
+			reply(w, payload, e, 200)
 			return
 		}
 		if r.URL.Path == "/internal/v1/agent/story-context" {

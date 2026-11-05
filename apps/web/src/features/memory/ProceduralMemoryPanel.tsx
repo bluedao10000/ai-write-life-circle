@@ -29,6 +29,24 @@ function failureMessage(error: unknown) {
   }
   return error instanceof Error ? error.message : '操作未完成，请重试。'
 }
+const relationLabel = { duplicate: '可能重复', conflict: '可能冲突', refinement: '可能是细化' } as const
+function MemoryRelations({ item, items }: { item: ProceduralMemory; items: ProceduralMemory[] }) {
+  const relations = (item.extractions ?? []).flatMap(origin => (origin.relations ?? []).map(relation => ({ ...relation, origin })))
+  if (!relations.length) return null
+  return <div className="space-y-1 rounded-lg border border-line-soft p-3" aria-label="AI 关系建议">
+    <p className="text-ui-sm text-ink-2">AI 关系建议 · 仍需你判断，不会自动确认或替代</p>
+    <ul className="space-y-2 text-ui-sm text-ink-3">
+      {relations.map(relation => {
+        const target = items.find(candidate => candidate.id === relation.memoryId)
+        const stale = !target || target.version !== relation.memoryVersion || !target.available
+        return <li key={`${relation.origin.runId}:${relation.memoryId}`}>
+          <span className="font-medium text-ink-2">{stale ? '关系建议已过期：' : `${relationLabel[relation.kind]}：`}</span>{target?.content || '该经验已不可用'}（建议时版本 {relation.memoryVersion}）
+          <span className="block">{relation.reason}</span>
+        </li>
+      })}
+    </ul>
+  </div>
+}
 export default function ProceduralMemoryPanel(props: Props) { return <MemoryPanel key={props.bookId} {...props} /> }
 function MemoryPanel({ bookId, bookTitle, demo, onSection }: Props) {
   const [items, setItems] = useState<ProceduralMemory[]>([])
@@ -143,6 +161,7 @@ function MemoryPanel({ bookId, bookTitle, demo, onSection }: Props) {
           {items.filter(x => x.status !== 'deleted').map(item => <article key={item.id} className="space-y-3 rounded-xl border border-line-soft p-4" aria-label={item.content}>
             <p className="whitespace-pre-wrap text-ui">{item.content}</p>
             {!!item.extractions?.length&&<p className="text-ui-sm text-ink-3">AI 提取 · {Array.from(new Set(item.extractions.map(source=>source.model))).join("、")}</p>}
+            <MemoryRelations item={item} items={items}/>
             <p className="text-ui-sm text-ink-3">{item.available ? '已确认 · 可供 AI 参考' : item.unavailableReason === 'superseded' ? '已由新经验替代' : item.unavailableReason === 'expired' ? '已过期' : item.unavailableReason === 'source_unavailable' ? '来源已不可用' : item.status === 'rejected' ? '已撤回' : '待确认'}{item.expiresAt ? ` · 有效期至 ${date(item.expiresAt)}` : ''}</p>
             <details><summary className="cursor-pointer text-ui-sm">查看任务来源（{item.provenance?.length ?? 0}）</summary><ul className="mt-2 space-y-2 text-ui-sm text-ink-3">{item.provenance?.map(s => <li key={s.taskId}>{kindLabel(s.kind)} · {date(s.completedAt)}<br />任务 {s.taskId} · 方法 {s.strategyVersion}<MemorySourcePreview bookId={bookId} taskId={s.taskId} /></li>)}</ul></details>
             {item.status === 'candidate' && !independent(item.provenance ?? []) && <p className="text-ui-sm text-ink-3">来源尚不足以确认，需要同类、同版本且输入不同的至少两个成功任务。</p>}

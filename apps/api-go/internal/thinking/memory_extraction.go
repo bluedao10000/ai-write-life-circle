@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/agenttasks"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/application"
@@ -21,13 +23,34 @@ type MemoryExtractionSource struct {
 	TaskID        string `json:"taskId"`
 	ResultVersion int64  `json:"resultVersion"`
 }
+type MemoryExtractionComparison struct {
+	MemoryID      string `json:"memoryId"`
+	MemoryVersion int    `json:"memoryVersion"`
+}
 type MemoryExtraction struct {
-	Version int                      `json:"version"`
-	Tasks   []MemoryExtractionSource `json:"tasks"`
+	Version           int                          `json:"version"`
+	Tasks             []MemoryExtractionSource     `json:"tasks"`
+	Comparisons       []MemoryExtractionComparison `json:"comparisons"`
+	ComparisonOmitted int                          `json:"comparisonOmitted"`
 }
 type memoryExtractionItem struct {
 	Source  agenttasks.MemorySource  `json:"source"`
 	Outcome agenttasks.MemoryOutcome `json:"outcome"`
+}
+type memoryExtractionComparison struct {
+	MemoryID      string `json:"memoryId"`
+	MemoryVersion int    `json:"memoryVersion"`
+	Content       string `json:"content"`
+}
+type memoryExtractionContext struct {
+	Items             []memoryExtractionItem       `json:"items"`
+	Comparisons       []memoryExtractionComparison `json:"comparisons"`
+	ComparisonOmitted int                          `json:"comparisonOmitted"`
+}
+type memoryExtractionRelation struct {
+	MemoryID string `json:"memoryId"`
+	Kind     string `json:"kind"`
+	Reason   string `json:"reason"`
 }
 
 func (s *Service) memoryTasks() *agenttasks.Service {
@@ -37,7 +60,7 @@ func (s *Service) bindMemoryExtraction(ctx context.Context, actor application.Ac
 	if len(in.TaskIDs) < 1 || len(in.TaskIDs) > 4 {
 		return nil, fail(422, "INVALID_MEMORY_EVIDENCE")
 	}
-	binding := &MemoryExtraction{Version: 1, Tasks: []MemoryExtractionSource{}}
+	binding := &MemoryExtraction{Version: 2, Tasks: []MemoryExtractionSource{}, Comparisons: []MemoryExtractionComparison{}}
 	seen := map[string]bool{}
 	for _, id := range in.TaskIDs {
 		if seen[id] {
@@ -50,30 +73,80 @@ func (s *Service) bindMemoryExtraction(ctx context.Context, actor application.Ac
 		}
 		binding.Tasks = append(binding.Tasks, MemoryExtractionSource{id, result.Version})
 	}
+	app, e := s.Management.Resolve(actor, book)
+	if e != nil {
+		return nil, e
+	}
+	views, e := (&procedural.Service{App: app, Tasks: s.memoryTasks(), ValidateExtraction: s.ValidateMemoryExtraction}).List(ctx, actor)
+	if e != nil {
+		return nil, e
+	}
+	for _, view := range views {
+		if view.Available && view.Status == "confirmed" {
+			if len(binding.Comparisons) < 8 {
+				binding.Comparisons = append(binding.Comparisons, MemoryExtractionComparison{view.ID, view.Version})
+			} else {
+				binding.ComparisonOmitted++
+			}
+		}
+	}
 	return binding, nil
 }
-func (s *Service) memoryExtractionContext(ctx context.Context, rec Record) ([]memoryExtractionItem, error) {
+func (s *Service) memoryExtractionContext(ctx context.Context, rec Record) (memoryExtractionContext, error) {
+	out, e := s.memoryExtractionSources(ctx, rec)
+	if e != nil {
+		return out, e
+	}
 	binding := rec.MemoryExtraction
-	if binding == nil || binding.Version != 1 || len(binding.Tasks) < 1 || len(binding.Tasks) > 4 || len(rec.Scopes) > 0 || rec.CancelPending || rec.ResumeBlocked {
-		return nil, fail(403, "MEMORY_EXTRACTION_UNAVAILABLE")
+	if binding.Version == 2 && len(binding.Comparisons) > 0 {
+		actor := application.Actor{ID: rec.Owner, Role: "author"}
+		app, e := s.Management.Resolve(actor, rec.Book)
+		if e != nil {
+			return out, e
+		}
+		views, e := (&procedural.Service{App: app, Tasks: s.memoryTasks(), ValidateExtraction: s.ValidateMemoryExtraction}).List(ctx, actor)
+		if e != nil {
+			return out, e
+		}
+		current := map[string]procedural.View{}
+		for _, view := range views {
+			if view.Available && view.Status == "confirmed" {
+				current[view.ID] = view
+			}
+		}
+		for _, ref := range binding.Comparisons {
+			view, ok := current[ref.MemoryID]
+			if !ok || view.Version != ref.MemoryVersion || view.Content == "" {
+				return out, fail(409, "MEMORY_SOURCE_CHANGED")
+			}
+			out.Comparisons = append(out.Comparisons, memoryExtractionComparison{ref.MemoryID, ref.MemoryVersion, view.Content})
+		}
+	}
+	out.ComparisonOmitted = binding.ComparisonOmitted
+	return out, nil
+}
+func (s *Service) memoryExtractionSources(ctx context.Context, rec Record) (memoryExtractionContext, error) {
+	out := memoryExtractionContext{Items: []memoryExtractionItem{}, Comparisons: []memoryExtractionComparison{}}
+	binding := rec.MemoryExtraction
+	if binding == nil || (binding.Version != 1 && binding.Version != 2) || len(binding.Tasks) < 1 || len(binding.Tasks) > 4 || len(binding.Comparisons) > 8 || binding.ComparisonOmitted < 0 || len(rec.Scopes) > 0 || rec.CancelPending || rec.ResumeBlocked || (binding.Version == 1 && (len(binding.Comparisons) != 0 || binding.ComparisonOmitted != 0)) {
+		return out, fail(403, "MEMORY_EXTRACTION_UNAVAILABLE")
 	}
 	actor := application.Actor{ID: rec.Owner, Role: "author"}
-	items := []memoryExtractionItem{}
 	for _, ref := range binding.Tasks {
 		source, e := s.memoryTasks().MemorySource(ctx, actor, rec.Book, ref.TaskID)
 		if e != nil {
-			return nil, e
+			return out, e
 		}
 		outcome, e := s.memoryTasks().MemoryOutcome(ctx, actor, rec.Book, ref.TaskID)
 		if e != nil {
-			return nil, e
+			return out, e
 		}
 		if outcome.Version != ref.ResultVersion {
-			return nil, fail(409, "MEMORY_SOURCE_CHANGED")
+			return out, fail(409, "MEMORY_SOURCE_CHANGED")
 		}
-		items = append(items, memoryExtractionItem{source, outcome})
+		out.Items = append(out.Items, memoryExtractionItem{source, outcome})
 	}
-	return items, nil
+	return out, nil
 }
 
 // Only an author can import a completed, source-bound result into candidate storage.
@@ -119,8 +192,9 @@ func (s *Service) memoryCandidate(w http.ResponseWriter, r *http.Request, actor 
 			return fail(409, "MEMORY_EXTRACTION_INCOMPLETE")
 		}
 		var output struct {
-			Content string   `json:"content"`
-			TaskIDs []string `json:"taskIds"`
+			Content   string          `json:"content"`
+			TaskIDs   []string        `json:"taskIds"`
+			Relations json.RawMessage `json:"relations"`
 		}
 		decoder := json.NewDecoder(bytes.NewBufferString(last.Text))
 		decoder.DisallowUnknownFields()
@@ -136,6 +210,32 @@ func (s *Service) memoryCandidate(w http.ResponseWriter, r *http.Request, actor 
 				return fail(422, "INVALID_MEMORY_EVIDENCE")
 			}
 			delete(allowed, id)
+		}
+		relations := []procedural.ExtractionRelation{}
+		if current.MemoryExtraction.Version == 1 {
+			if len(output.Relations) != 0 {
+				return fail(422, "INVALID_MEMORY_EXTRACTION")
+			}
+		} else {
+			var outputRelations []memoryExtractionRelation
+			if len(output.Relations) == 0 || json.Unmarshal(output.Relations, &outputRelations) != nil || outputRelations == nil {
+				return fail(422, "INVALID_MEMORY_EXTRACTION")
+			}
+			comparisons := map[string]int{}
+			for _, ref := range current.MemoryExtraction.Comparisons {
+				comparisons[ref.MemoryID] = ref.MemoryVersion
+			}
+			seen := map[string]bool{}
+			for _, relation := range outputRelations {
+				version, ok := comparisons[relation.MemoryID]
+				kind := relation.Kind
+				reason := strings.TrimSpace(relation.Reason)
+				if !ok || seen[relation.MemoryID] || !map[string]bool{"duplicate": true, "conflict": true, "refinement": true}[kind] || len(reason) == 0 || len(reason) > 1000 {
+					return fail(422, "INVALID_MEMORY_EXTRACTION")
+				}
+				seen[relation.MemoryID] = true
+				relations = append(relations, procedural.ExtractionRelation{MemoryID: relation.MemoryID, MemoryVersion: version, Kind: kind, Reason: reason})
+			}
 		}
 		// Source reads and Pi I/O may overlap a preference revocation.
 		latest, e := s.owned(actor, rec.Book, rec.ID)
@@ -162,7 +262,7 @@ func (s *Service) memoryCandidate(w http.ResponseWriter, r *http.Request, actor 
 			if fresh.Deleted || fresh.Nonce != current.Nonce || fresh.AuthorizationVersion != current.AuthorizationVersion || fresh.CancelPending || fresh.ResumeBlocked {
 				return fail(403, "CAPABILITY_REVOKED")
 			}
-			result, e = memories.CreateExtracted(r.Context(), actor, "extract:"+view.Run.ID, procedural.Input{Content: output.Content, TaskIDs: output.TaskIDs}, procedural.Extraction{SessionID: rec.ID, RunID: view.Run.ID, Provider: current.Model.Provider, Model: current.Model.Model, PromptVersion: "memory-extraction-v1", AuthorizationVersion: current.AuthorizationVersion})
+			result, e = memories.CreateExtracted(r.Context(), actor, "extract:"+view.Run.ID, procedural.Input{Content: output.Content, TaskIDs: output.TaskIDs}, procedural.Extraction{SessionID: rec.ID, RunID: view.Run.ID, Provider: current.Model.Provider, Model: current.Model.Model, PromptVersion: fmt.Sprintf("memory-extraction-v%d", current.MemoryExtraction.Version), AuthorizationVersion: current.AuthorizationVersion, Relations: relations})
 			return e
 		})
 		return e
@@ -176,9 +276,26 @@ func (s *Service) ValidateMemoryExtraction(ctx context.Context, actor applicatio
 	if e != nil {
 		return e
 	}
-	if rec.AuthorizationVersion != origin.AuthorizationVersion || rec.MemoryExtraction == nil || origin.PromptVersion != "memory-extraction-v1" {
+	binding := rec.MemoryExtraction
+	if binding == nil || rec.AuthorizationVersion != origin.AuthorizationVersion || origin.PromptVersion != fmt.Sprintf("memory-extraction-v%d", binding.Version) {
 		return fail(403, "CAPABILITY_REVOKED")
 	}
-	_, e = s.memoryExtractionContext(ctx, rec)
+	allowed := map[string]int{}
+	for _, ref := range binding.Comparisons {
+		allowed[ref.MemoryID] = ref.MemoryVersion
+	}
+	seen := map[string]bool{}
+	for _, relation := range origin.Relations {
+		version, ok := allowed[relation.MemoryID]
+		reason := strings.TrimSpace(relation.Reason)
+		if !ok || seen[relation.MemoryID] || version != relation.MemoryVersion || !map[string]bool{"duplicate": true, "conflict": true, "refinement": true}[relation.Kind] || len(reason) == 0 || len(reason) > 1000 {
+			return fail(403, "CAPABILITY_REVOKED")
+		}
+		seen[relation.MemoryID] = true
+	}
+	if binding.Version == 1 && len(origin.Relations) != 0 {
+		return fail(403, "CAPABILITY_REVOKED")
+	}
+	_, e = s.memoryExtractionSources(ctx, rec)
 	return e
 }

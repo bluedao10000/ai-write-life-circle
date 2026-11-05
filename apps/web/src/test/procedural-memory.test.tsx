@@ -185,3 +185,43 @@ it('explicitly replaces one active experience while preserving the draft and bot
     body: { baseVersion: 1, replaces: [{ id: 'old', baseVersion: 4 }] },
   })
 })
+it('shows governed semantic relation suggestions without applying them', async () => {
+  fixture([
+    candidate({ id: 'old', content: '先按人物出场顺序核对背景。', status: 'confirmed', version: 4, available: true, unavailableReason: undefined }),
+    candidate({
+      id: 'new',
+      content: '先核对当前修订，再按人物关系整理背景。',
+      extractions: [{
+        sessionId: 'th-extract',
+        runId: '44444444-4444-4444-8444-444444444444',
+        provider: 'fixture',
+        model: 'fixture-model',
+        promptVersion: 'memory-extraction-v2',
+        authorizationVersion: 2,
+        relations: [{ memoryId: 'old', memoryVersion: 4, kind: 'conflict', reason: '两条方法对修订与人物关系的顺序不同。' }],
+      }],
+    }),
+  ])
+  render(panel())
+  const suggestion = await screen.findByLabelText('AI 关系建议')
+  expect(within(suggestion).getByText(/可能冲突/)).toBeInTheDocument()
+  expect(within(suggestion).getByText(/两条方法对修订与人物关系的顺序不同/)).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '替代并启用' })).toBeDisabled()
+})
+it('marks semantic relation suggestions stale after the target version changes', async () => {
+  fixture([
+    candidate({ id: 'old', content: '作者已更新的经验。', status: 'confirmed', version: 5, available: true, unavailableReason: undefined }),
+    candidate({
+      id: 'new',
+      extractions: [{
+        sessionId: 'th-extract', runId: '55555555-5555-4555-8555-555555555555', provider: 'fixture', model: 'fixture-model',
+        promptVersion: 'memory-extraction-v2', authorizationVersion: 2,
+        relations: [{ memoryId: 'old', memoryVersion: 4, kind: 'refinement', reason: '建议基于旧版本。' }],
+      }],
+    }),
+  ])
+  render(panel())
+  const suggestion = await screen.findByLabelText('AI 关系建议')
+  expect(within(suggestion).getByText(/关系建议已过期/)).toBeInTheDocument()
+  expect(within(suggestion).getByText(/建议时版本 4/)).toBeInTheDocument()
+})

@@ -30,12 +30,19 @@ type Record struct {
 	ReviewedBy   string                    `json:"reviewedBy,omitempty"`
 }
 type Extraction struct {
-	SessionID            string `json:"sessionId"`
-	RunID                string `json:"runId"`
-	Provider             string `json:"provider"`
-	Model                string `json:"model"`
-	PromptVersion        string `json:"promptVersion"`
-	AuthorizationVersion int    `json:"authorizationVersion"`
+	SessionID            string               `json:"sessionId"`
+	RunID                string               `json:"runId"`
+	Provider             string               `json:"provider"`
+	Model                string               `json:"model"`
+	PromptVersion        string               `json:"promptVersion"`
+	AuthorizationVersion int                  `json:"authorizationVersion"`
+	Relations            []ExtractionRelation `json:"relations,omitempty"`
+}
+type ExtractionRelation struct {
+	MemoryID      string `json:"memoryId"`
+	MemoryVersion int    `json:"memoryVersion"`
+	Kind          string `json:"kind"`
+	Reason        string `json:"reason"`
 }
 type Input struct {
 	Content   string   `json:"content"`
@@ -96,6 +103,22 @@ func (s *Service) load(actor application.Actor) (state, error) {
 		}
 		if len(r.Supersedes) > 7 || r.SupersededBy == id {
 			return st, problem(500, "MEMORY_STATE_INVALID", "Invalid procedural history.")
+		}
+		if len(r.Extractions) > 8 {
+			return st, problem(500, "MEMORY_STATE_INVALID", "Invalid procedural extraction history.")
+		}
+		for _, origin := range r.Extractions {
+			seen := map[string]bool{}
+			if len(origin.Relations) > 8 {
+				return st, problem(500, "MEMORY_STATE_INVALID", "Invalid procedural relation history.")
+			}
+			for _, relation := range origin.Relations {
+				reason := strings.TrimSpace(relation.Reason)
+				if seen[relation.MemoryID] || relation.MemoryID == id || relation.MemoryVersion < 1 || !map[string]bool{"duplicate": true, "conflict": true, "refinement": true}[relation.Kind] || len(reason) == 0 || len(reason) > 1000 {
+					return st, problem(500, "MEMORY_STATE_INVALID", "Invalid procedural relation.")
+				}
+				seen[relation.MemoryID] = true
+			}
 		}
 	}
 	return st, nil

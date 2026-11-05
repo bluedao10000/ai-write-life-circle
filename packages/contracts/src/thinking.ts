@@ -36,7 +36,12 @@ export const thinkingModelSchema = z
     limits: thinkingLimitsSchema,
   })
   .strict();
-export const memoryExtractionBindingSchema=z.object({version:z.literal(1),tasks:z.array(z.object({taskId:z.string().min(1),resultVersion:z.number().int().nonnegative()}).strict()).min(1).max(4)}).strict();
+const memoryExtractionTaskSchema=z.object({taskId:z.string().min(1),resultVersion:z.number().int().nonnegative()}).strict();
+const memoryExtractionComparisonSchema=z.object({memoryId:z.string().min(1),memoryVersion:z.number().int().positive()}).strict();
+export const memoryExtractionBindingSchema=z.union([
+  z.object({version:z.literal(1),tasks:z.array(memoryExtractionTaskSchema).min(1).max(4)}).strict(),
+  z.object({version:z.literal(2),tasks:z.array(memoryExtractionTaskSchema).min(1).max(4),comparisons:z.array(memoryExtractionComparisonSchema).max(8),comparisonOmitted:z.number().int().nonnegative()}).strict(),
+]);
 export const thinkingMemoryCandidateInputSchema=z.object({runId:z.string().uuid()}).strict();
 export const thinkingCreateSchema = z
   .object({

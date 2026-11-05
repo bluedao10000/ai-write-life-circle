@@ -3,7 +3,7 @@ import {readFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {createPiWorkerFixture,until} from './lib/pi-worker-fixture.mjs';
 import {thinkingSessionSchema,proceduralRecordSchema} from '../packages/contracts/dist/index.js';
-const f=await createPiWorkerFixture({modelBudget:{maxModelCalls:8,maxTokens:200000}});
+const f=await createPiWorkerFixture({modelBudget:{maxModelCalls:10,maxTokens:240000}});
 try{
  const worker=f.start('pi-worker');await until(()=>worker.output.includes('worker_started'),'worker');
  let pi=f.start('pi');await until(()=>pi.output.includes('agent_started'),'thinking');
@@ -16,7 +16,7 @@ try{
  await f.call(root+'/sessions',{method:'POST',status:422,body:{...body,consent:false}});
  await f.call(root+'/sessions',{method:'POST',status:422,body:{...body,scopes:['creative']}});
  await f.call(root+'/sessions',{method:'POST',status:404,body,user:{id:'other-author',email:'other@example.com'}});
- async function create(){const s=thinkingSessionSchema.parse(await f.call(root+'/sessions',{method:'POST',status:201,body}));assert.deepEqual(s.scopes,[]);assert.equal(s.memoryExtraction.version,1);return root+'/sessions/'+s.sessionId}
+ async function create(){const s=thinkingSessionSchema.parse(await f.call(root+'/sessions',{method:'POST',status:201,body}));assert.deepEqual(s.scopes,[]);assert.equal(s.memoryExtraction.version,2);assert.equal(s.memoryExtraction.comparisons.length,0);return root+'/sessions/'+s.sessionId}
  async function send(path,key=crypto.randomUUID()){return f.call(path+'/messages',{method:'POST',status:202,key,body:{text:'请从选中任务提取可复用的操作经验。'}})}
  async function done(path){return until(async()=>{const s=thinkingSessionSchema.parse(await f.call(path));return s.status==='idle'&&s.run&&s},'extraction completion')}
  const path=await create();
@@ -30,16 +30,18 @@ try{
  assert(prompt.includes(evidence.taskId));assert(prompt.includes(reviewed.findings[0].findingId));assert(prompt.includes('"type":"chapter"'));
  assert.equal((await f.call(memories)).items.length,0,'model completion alone must not publish memory');
  const candidate=proceduralRecordSchema.parse(await f.call(path+'/memory-candidate',{method:'POST',status:201,body:{runId:state.run.runId}}));
- assert.equal(candidate.status,'candidate');assert.equal(candidate.extractions[0].runId,state.run.runId);assert.equal(candidate.provenance[0].taskId,evidence.taskId);
+ assert.equal(candidate.status,'candidate');assert.equal(candidate.extractions[0].runId,state.run.runId);assert.equal(candidate.extractions[0].promptVersion,'memory-extraction-v2');assert.equal(candidate.provenance[0].taskId,evidence.taskId);
  assert.equal((await f.call(memories)).items[0].available,false);
  await send(path,'extract-once');assert.equal(f.calls,start+1);
  await f.stop(pi);pi=f.start('pi');await until(()=>pi.output.includes('agent_started'),'thinking restart');
  await f.stop(f.api());await f.startAPI();
  assert.deepEqual(await f.call(path+'/memory-candidate',{method:'POST',status:201,body:{runId:state.run.runId}}),candidate);
  assert.equal(f.calls,start+1,'restart and import replay must not invoke a model');
- for(const value of ['memory-extract-invalid','memory-extract-foreign']){
+ for(const value of ['memory-extract-invalid','memory-extract-foreign','memory-extract-missing-relations']){
   await mode(value);const p=await create();await send(p);const s=await done(p);
   await f.call(p+'/memory-candidate',{method:'POST',status:422,body:{runId:s.run.runId}});
+  await f.call(p,{method:'DELETE',status:204});
+  await until(async()=>Object.values(JSON.parse(await readFile(join(f.state,'thinking','sessions-v1.json'),'utf8')).sessions).every(session=>!session.billOp),'invalid extraction reservations settled');
  }
  await mode('memory-extract-slow');const cancelled=await create(),before=f.calls;await send(cancelled);await until(()=>f.calls===before+1,'provider entered');
  await f.call(cancelled+'/cancel',{method:'POST',body:{}});const stopped=await done(cancelled);assert.equal(stopped.run.status,'cancelled');
@@ -75,5 +77,5 @@ try{
   for(const [id,record]of Object.entries(ledgerBefore)){assert.equal(ledgerAfter[id].billedPoints,record.billedPoints);assert.equal(ledgerAfter[id].deleted,true)}
   assert.equal(f.calls,callCount);console.log('PASS: prior Go'+(rollbackPi?' and Pi':'')+' binaries read retired extraction state; task receipts and charged points preserved; no model calls.');
  }
- console.log('PASS: governed extraction from real task evidence, zero tools, source/version binding, consent, candidate-only import, provenance, restart/idempotency, invalid output, source expansion and cancellation. Synthetic model only.');
+ console.log('PASS: governed extraction from real task evidence, zero tools, source/version binding, comparison binding, consent, candidate-only import, provenance, restart/idempotency, invalid output, source expansion and cancellation. Synthetic model only.');
 }finally{await f.close()}

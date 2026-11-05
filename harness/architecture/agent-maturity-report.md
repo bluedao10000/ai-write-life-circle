@@ -14,7 +14,7 @@ Phase 0 已完成源码审计和架构设计；Phase 1 已完成本地代码接�
 | 授权及工具 | 部分覆盖 | tools/registry、Go工具RPC、strict schema、scope、epoch及StoryWrites | 本地重放前授权及ToolPolicy已接入；待扩展独立攻击集 |
 | Worker | 工程验证 | scheduler/dispatcher/TaskClient，四种Go任务；Review/Knowledge/Creative集成 | 统一合同已接入；待完善持久关联审计 |
 | 上下文 | 部分覆盖 | context-management、Working Memory来源绑定与无付费旧格式迁移；重启测试 | 摘要并非长期已确认事实 |
-| 长期记忆 | 部分覆盖 | Working来源、Semantic/Episodic检索、版本冲突提示、Procedural作者审核、重复候选合并与过期检索 | 主动模型提取已实现；待后台整理、语义冲突与召回质量评测 |
+| 长期记忆 | 部分覆盖 | Working来源、Semantic/Episodic检索、版本冲突提示、Procedural作者审核、模型关系建议、重复/替代/过期生命周期 | 主动提取和模型冲突建议已实现；待后台整理、真实关系准确率与召回质量评测 |
 | Evaluation | 部分覆盖 | 统一schema/split/runner、Go业务和故障适配、受治理Judge、人工标注导入 | 待完成独立数据集、保留集、人工校准与性能验收 |
 | 安全 | 部分覆盖 | capability、隔离进程、工具授权、取消及幂等测试 | 缺独立红队数据、记忆污染、子角色扩权验证 |
 | 可观测性 | 部分覆盖 | 治理关联日志、进程计数；Thinking鉴权健康/诊断包含投影失败、恢复与未知费用会话数 | 缺跨进程聚合、持久诊断及历史指标 |
@@ -390,6 +390,22 @@ Cloudflare Worker的正式代理白名单同步增加procedural-memory的查询�
 
 2026-11-05，`agent-eval-v15`新增提取候选、来源结果版本变化、授权撤销三个场景。每项使用真实Go/Pi进程建立Review来源并提取经验，评分读取候选状态、来源、幂等回执与治理审计，覆盖零工具、预留先于请求、无自动发布、重复导入零新增调用、失效后导入/确认拒绝及正文不变。
 
-`pnpm eval:agent:memory`：9/9工程通过，共31次合成模型调用、8次工具调用、3520 tokens；新增三项各2次调用、0次工具、360 tokens，均在各自预算与45秒期限内。报告保存在`.local/evals/agent/dev-memory.json`，记录提示版本`memory-extraction-v1`。134项Agent回归及17项Evaluation定向测试通过，类型检查、lint和构建通过。评分负向测试逐项拒绝缺失或违反约束的观察。
+`pnpm eval:agent:memory`：9/9工程通过，共31次合成模型调用、8次工具调用，Memory Retrieval P50 **12.76 ms**、P95 **47.41 ms**；提取场景均在各自预算与45秒期限内。报告保存在`.local/evals/agent/dev-memory.json`，记录提示版本`memory-extraction-v2`。134项Agent回归及17项Evaluation定向测试通过，类型检查、lint和构建通过。评分负向测试逐项拒绝缺失或违反约束的观察。
 
-这批完成提取执行的可重复工程验收。真实模型经验质量、保留集验收、后台整理、语义冲突和后续多Agent阶段仍待完成；合成结果不用于声明泛化能力。
+这批完成提取执行的可重复工程验收。真实模型经验质量、关系判断准确率、保留集验收、后台整理和后续多Agent阶段仍待完成；合成结果不用于声明泛化能力。
+
+## 操作经验语义关系建议
+
+作者主动提取现在使用`memory.extract.v2`。Go在创建专用Thinking会话时固定1–4个成功任务及结果版本，并固定至多8条当前可检索的已确认经验及版本；额外规则只进入省略计数。Pi通过与模型请求相同的授权和费用闸门读取来源，prompt要求返回`content`、任务子集及严格`relations`。关系类型限定为`duplicate`、`conflict`或`refinement`，每条引用已绑定经验、保存固定版本和理由。
+
+Go导入候选时拒绝未绑定经验、非法类型、重复目标和无理由关系。关系建议只是候选元数据，不能确认、合并或替代经验；作者仍需通过既有版本绑定操作决定。工作台显示目标正文和建议时版本，目标版本变化或不可用后标为过期，避免把旧判断继续显示为当前结论。
+
+验收：
+
+- 真实Go/Pi进程从已完成任务与已确认经验创建v2提取会话，模型关系建议连同目标版本进入candidate；未绑定`pm-foreign`关系返回422，原经验没有被自动修改。
+- v1提取记录和旧UI会话继续可读；v2执行审计角色为`memory.extract.v2`，OpenAPI/Zod严格合同通过。
+- Agent 134/134、前端291/291和认证Worker 25/25通过；Go procedural/thinking race、Web类型检查、lint、构建及11份OpenAPI检查通过。关系建议组件测试覆盖未自动操作和目标版本过期。
+- `scripts/test-procedural-memory.mjs`覆盖真实任务、确认旧经验、固定比较、关系导入、非法关系拒绝、替代、重启、检索和删除；全程无真实付费请求。
+- `pnpm eval:agent:memory`为9/9工程通过、31次合成模型调用、8次工具调用，Memory Retrieval P50 12.76 ms、P95 47.41 ms。
+
+质量成功率和真实模型关系判断准确率均为`null`。比较集合上限、模型误判、后台定时整理和held-out泛化仍需后续验证；该能力不等同于自动语义冲突处置。

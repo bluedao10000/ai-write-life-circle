@@ -130,7 +130,7 @@ try {
   await page.getByRole('button',{name:'保存提取候选',exact:true}).click()
   await expect(page.getByRole('article')).toHaveCount(1)
   const extracted=(await f.call(base+'/procedural-memory')).items[0]
-  expect(extracted.status).toBe('candidate');expect(extracted.available).toBe(false);expect(extracted.extractions[0].promptVersion).toBe('memory-extraction-v1');expect(extracted.provenance).toHaveLength(2)
+  expect(extracted.status).toBe('candidate');expect(extracted.available).toBe(false);expect(extracted.extractions[0].promptVersion).toBe('memory-extraction-v2');expect(extracted.provenance).toHaveLength(2)
   expect(await page.evaluate(()=>globalThis.document.documentElement.scrollWidth<=globalThis.innerWidth)).toBe(true)
   await page.getByRole('region',{name:'AI 提取经验'}).scrollIntoViewIfNeeded()
   await page.screenshot({path:new URL('extraction-mobile.png',output).pathname,fullPage:true})

@@ -4,6 +4,7 @@ export const runtimeVersion='governance-v1';
 export const definitions=Object.freeze({
  'evaluation.judge':{version:1,capability:'evaluation',mode:'evaluation',retry:'explicit',output:'judge-v1',tools:'none',modelCalls:1},
  'memory.extract':{version:1,capability:'memory',mode:'durable',retry:'explicit',output:'memory-candidate-v1',tools:'none',modelCalls:'run-budget'},
+ 'memory.extract.v2':{version:2,capability:'memory',mode:'durable',retry:'explicit',output:'memory-candidate-v2',tools:'none',modelCalls:'run-budget'},
  thinking:{version:1,capability:'thinking',mode:'durable',retry:'explicit',output:'thinking-v1',tools:'scoped',modelCalls:'run-budget'},
  'review.execute':{version:1,capability:'review',mode:'go-task',retry:'go',output:'review-candidates-v1',tools:'none',modelCalls:1},
  'knowledge.extract':{version:1,capability:'knowledge',mode:'go-task',retry:'go',output:'knowledge-candidates-v1',tools:'none',modelCalls:1},

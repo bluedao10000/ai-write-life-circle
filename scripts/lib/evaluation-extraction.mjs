@@ -44,11 +44,12 @@ export async function executeExtractionEvaluation(task,signal,result){
    boundSource:session.memoryExtraction.tasks.length===1&&session.memoryExtraction.tasks[0].taskId===evidence.taskId&&session.memoryExtraction.tasks[0].resultVersion===outcome.version,
    evidenceInPayload:prompt.includes(evidence.taskId)&&prompt.includes(reviewed.findings[0]?.findingId),
    zeroTools:session.scopes.length===0&&!(extractionRequest.tools?.length),
-   reservedBeforeModel:reserved>=0&&sent>reserved&&audit[sent].role==='memory.extract',
+   reservedBeforeModel:reserved>=0&&sent>reserved&&['memory.extract','memory.extract.v2'].includes(audit[sent].role),
    noAutomaticPublication:before.length===0,candidateOnly:candidate.status==='candidate'&&stored.every(item=>!item.available),
-   provenanceValid:candidate.provenance.length===1&&candidate.provenance[0].taskId===evidence.taskId&&candidate.extractions[0].runId===completed.run.runId&&candidate.extractions[0].sessionId===session.sessionId&&candidate.extractions[0].promptVersion==='memory-extraction-v1',
+   comparisonBound:session.memoryExtraction.version===2&&session.memoryExtraction.comparisons.length===0,
+   provenanceValid:candidate.provenance.length===1&&candidate.provenance[0].taskId===evidence.taskId&&candidate.extractions[0].runId===completed.run.runId&&candidate.extractions[0].sessionId===session.sessionId&&candidate.extractions[0].promptVersion==='memory-extraction-v2',
    duplicateCandidates:stored.length-1,sameReceipt:JSON.stringify(replay)===JSON.stringify(candidate),
-   replayModelCalls:f.calls-callCount,promptVersion:'memory-extraction-v1',model:completed.model.model,
+   replayModelCalls:f.calls-callCount,promptVersion:'memory-extraction-v2',model:completed.model.model,
   };
   const scenario=task.environment.scenario;
   if(scenario==='extraction-source-change'||scenario==='extraction-revoked'){

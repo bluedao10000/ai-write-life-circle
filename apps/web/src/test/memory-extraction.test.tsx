@@ -46,3 +46,14 @@ it('opens an existing interrupted extraction without starting another model call
  await userEvent.selectOptions(screen.getByRole('combobox',{name:'已有提取'}),'th-fixture');await screen.findByText('本次提取已停止。')
  expect(api.create).not.toHaveBeenCalled();expect(api.send).not.toHaveBeenCalled();expect(screen.queryByRole('button',{name:'保存提取候选'})).not.toBeInTheDocument()
 })
+it('discloses bounded comparison with confirmed experiences and leaves relations for review',async()=>{
+ setup()
+ const compared={...session,memoryExtraction:{version:2,tasks:[{taskId:'t1',resultVersion:1}],comparisons:[{memoryId:'m1',memoryVersion:3},{memoryId:'m2',memoryVersion:1}],comparisonOmitted:1},messages:[{role:'assistant',text:JSON.stringify({content:'新的操作经验。',taskIds:['t1'],relations:[{memoryId:'m1',kind:'conflict',reason:'适用顺序不同。'}]})}],run:{runId:'run',status:'completed'}} as ThinkingSession
+ vi.mocked(api.create).mockResolvedValue(compared);vi.mocked(api.get).mockResolvedValue(compared)
+ render(<MemoryExtraction bookId="book" taskIds={['t1']} onSaved={async()=>{}}/>)
+ await userEvent.click(screen.getByRole('button',{name:'AI 提取经验'}));await screen.findByRole('option',{name:'测试模型 · 本地测试'})
+ await userEvent.click(screen.getByRole('button',{name:'同意发送并提取'}))
+ await screen.findByText('本次比较了 2 条已确认经验，另有 1 条因数量上限未比较。关系建议需要你判断。')
+ expect(screen.getByText('新的操作经验。')).toBeInTheDocument()
+ expect(api.memoryCandidate).not.toHaveBeenCalled()
+})

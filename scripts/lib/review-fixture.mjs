@@ -21,7 +21,7 @@ export async function createReviewFixture({modelBudget}={}) {
       let data = ''; for await (const chunk of req) data += chunk
       mode = JSON.parse(data).mode; res.end('{}'); return
     }
-    if (req.url === '/stats') { res.end(JSON.stringify({ calls, reviewCalls })); return }
+    if (req.url === '/stats') { res.end(JSON.stringify({ calls, reviewCalls, mode })); return }
     if (req.url !== '/v1/chat/completions') { res.writeHead(404).end(); return }
     calls++
     let body = ''; for await (const chunk of req) body += chunk
@@ -34,7 +34,11 @@ export async function createReviewFixture({modelBudget}={}) {
   const selected=mode,system=request.messages.find(m=>m.role==='system').content;
   if(selected==='memory-extract-slow')await new Promise(r=>setTimeout(r,1800));
   const taskIds=[...new Set([...system.matchAll(/"taskId":"([^"]+)"/g)].map(m=>m[1]))];
-  const content=selected==='memory-extract-invalid'?'invalid-json':JSON.stringify({content:'适用于对照章节的内容审查：先逐条核对原文证据，再结合作者反馈判断差异。成功执行不代表质量已经验证；需更多独立任务验证适用性。',taskIds:selected==='memory-extract-foreign'?['unselected-task']:taskIds});
+  const memoryIds=[...new Set([...system.matchAll(/"memoryId":"([^"]+)"/g)].map(m=>m[1]))];
+  const relationMode=system.includes('Return only a JSON object with exactly three fields');
+  const relations=relationMode&&selected==='memory-relation-foreign'?[{memoryId:'pm-foreign',kind:'conflict',reason:'合成比较：不存在的目标。'}]:relationMode&&selected==='memory-relation'&&memoryIds.length?[{memoryId:memoryIds[0],kind:'conflict',reason:'合成比较：两条方法对当前修订的使用顺序不同。'}]:[];
+  const output={content:'适用于对照章节的内容审查：先逐条核对原文证据，再结合作者反馈判断差异。成功执行不代表质量已经验证；需更多独立任务验证适用性。',taskIds:selected==='memory-extract-foreign'?['unselected-task']:taskIds,...(relationMode&&selected!=='memory-extract-missing-relations'?{relations}:{})};
+  const content=selected==='memory-extract-invalid'?'invalid-json':JSON.stringify(output);
   res.writeHead(200,{'Content-Type':'text/event-stream'});res.end('data: '+JSON.stringify({id:'memory-extract',object:'chat.completion.chunk',model:request.model,choices:[{index:0,delta:{role:'assistant',content},finish_reason:'stop'}],usage:{prompt_tokens:100,completion_tokens:80}})+'\n\ndata: [DONE]\n\n');return
  }
  if(request.messages.find(m=>m.role==='system')?.content.startsWith('You organize')){
