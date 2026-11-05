@@ -34,6 +34,13 @@ function allowedRoute(path: string, method: string, project: string) {
     if (method==='GET') return /^(?:summary|related|jobs|history|corrections|entities\/[A-Za-z0-9_-]+)$/.test(suffix)
     return method==='POST' && ['enable','pause','resume','rebuild','correct','undo'].includes(suffix)
   }
+  const procedural = `/v1/studio/books/${encodeURIComponent(project)}/procedural-memory`
+  if (path === procedural) return ['GET', 'POST'].includes(method)
+  if (path.startsWith(procedural + '/')) {
+    const suffix = path.slice(procedural.length + 1)
+    if (method === 'GET') return /^evidence(?:\/[A-Za-z0-9_-]+(?:\/outcome)?)?$/.test(suffix)
+    return method === 'POST' && /^[A-Za-z0-9_-]+(?:\/(?:merge|supersede))?$/.test(suffix)
+  }
   const base = `/v1/projects/${encodeURIComponent(project)}`
   if (!path.startsWith(base + '/')) return false
   const suffix = path.slice(base.length)

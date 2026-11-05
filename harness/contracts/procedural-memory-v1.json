@@ -201,6 +201,82 @@
         }
       }
     },
+    "/v1/studio/books/{bookId}/procedural-memory/{memoryId}/supersede": {
+      "parameters": [
+        {
+          "name": "bookId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "memoryId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "supersedeProceduralMemory",
+        "summary": "supersedeProceduralMemory",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/proceduralSupersede"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/proceduralRecord"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Author authentication required"
+          },
+          "404": {
+            "description": "Book or source unavailable"
+          },
+          "409": {
+            "description": "Version or lifecycle conflict"
+          },
+          "410": {
+            "description": "Memory deleted"
+          },
+          "422": {
+            "description": "Invalid input or insufficient evidence"
+          }
+        }
+      }
+    },
     "/v1/studio/books/{bookId}/procedural-memory": {
       "parameters": [
         {
@@ -665,6 +741,17 @@
                     "additionalProperties": false
                   }
                 },
+                "supersedes": {
+                  "minItems": 1,
+                  "maxItems": 7,
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "supersededBy": {
+                  "type": "string"
+                },
                 "createdAt": {
                   "type": "string"
                 },
@@ -685,7 +772,8 @@
                   "enum": [
                     "expired",
                     "not_confirmed",
-                    "source_unavailable"
+                    "source_unavailable",
+                    "superseded"
                   ]
                 }
               },
@@ -945,6 +1033,17 @@
               "additionalProperties": false
             }
           },
+          "supersedes": {
+            "minItems": 1,
+            "maxItems": 7,
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "supersededBy": {
+            "type": "string"
+          },
           "createdAt": {
             "type": "string"
           },
@@ -1091,6 +1190,46 @@
         ],
         "additionalProperties": false
       },
+      "proceduralSupersede": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "baseVersion": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "replaces": {
+            "minItems": 1,
+            "maxItems": 7,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "baseVersion": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "id",
+                "baseVersion"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "baseVersion",
+          "replaces"
+        ],
+        "additionalProperties": false
+      },
       "proceduralView": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -1187,6 +1326,17 @@
               "additionalProperties": false
             }
           },
+          "supersedes": {
+            "minItems": 1,
+            "maxItems": 7,
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "supersededBy": {
+            "type": "string"
+          },
           "createdAt": {
             "type": "string"
           },
@@ -1207,7 +1357,8 @@
             "enum": [
               "expired",
               "not_confirmed",
-              "source_unavailable"
+              "source_unavailable",
+              "superseded"
             ]
           }
         },

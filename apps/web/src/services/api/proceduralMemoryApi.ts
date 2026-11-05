@@ -1,4 +1,4 @@
-import { proceduralListSchema, proceduralEvidenceListSchema, proceduralRecordSchema, proceduralCreateSchema, proceduralDecisionSchema, proceduralMergeSchema, proceduralSourceSchema, proceduralOutcomeSchema } from '@writer-agent/contracts'
+import { proceduralListSchema, proceduralEvidenceListSchema, proceduralRecordSchema, proceduralCreateSchema, proceduralDecisionSchema, proceduralMergeSchema, proceduralSupersedeSchema, proceduralSourceSchema, proceduralOutcomeSchema } from '@writer-agent/contracts'
 import type { z } from 'zod'
 import { getJson, postJson } from './client'
 
@@ -8,6 +8,7 @@ export type MemoryCreate = z.infer<typeof proceduralCreateSchema>
 export type MemoryOutcome = z.infer<typeof proceduralOutcomeSchema>
 export type MemorySource = z.infer<typeof proceduralSourceSchema>
 export type MemoryMerge = z.infer<typeof proceduralMergeSchema>
+export type MemorySupersede = z.infer<typeof proceduralSupersedeSchema>
 export type MemoryDecision = z.infer<typeof proceduralDecisionSchema>
 const root = (book: string) => `/v1/studio/books/${encodeURIComponent(book)}/procedural-memory`
 function parse<T>(schema: { parse(value: unknown): T }, value: unknown): T {
@@ -20,5 +21,6 @@ export const proceduralMemoryApi = {
   async source(book: string, task: string, signal?: AbortSignal) { return parse(proceduralSourceSchema, await getJson(`${root(book)}/evidence/${encodeURIComponent(task)}`, signal)) },
   async create(book: string, input: MemoryCreate, key: string) { return parse(proceduralRecordSchema, await postJson(root(book), proceduralCreateSchema.parse(input), key)) },
   async merge(book: string, id: string, input: MemoryMerge, key: string) { return parse(proceduralRecordSchema, await postJson(`${root(book)}/${encodeURIComponent(id)}/merge`, proceduralMergeSchema.parse(input), key)) },
+  async supersede(book: string, id: string, input: MemorySupersede, key: string) { return parse(proceduralRecordSchema, await postJson(`${root(book)}/${encodeURIComponent(id)}/supersede`, proceduralSupersedeSchema.parse(input), key)) },
   async decide(book: string, id: string, input: MemoryDecision, key: string) { return parse(proceduralRecordSchema, await postJson(`${root(book)}/${encodeURIComponent(id)}`, proceduralDecisionSchema.parse(input), key)) },
 }

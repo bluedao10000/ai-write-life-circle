@@ -16,16 +16,18 @@ import (
 )
 
 type Record struct {
-	Extractions []Extraction              `json:"extractions,omitempty"`
-	ID          string                    `json:"id"`
-	Content     string                    `json:"content,omitempty"`
-	Status      string                    `json:"status"`
-	Version     int                       `json:"version"`
-	Evidence    []agenttasks.TaskEvidence `json:"provenance,omitempty"`
-	CreatedAt   string                    `json:"createdAt"`
-	UpdatedAt   string                    `json:"updatedAt"`
-	ExpiresAt   string                    `json:"expiresAt,omitempty"`
-	ReviewedBy  string                    `json:"reviewedBy,omitempty"`
+	Extractions  []Extraction              `json:"extractions,omitempty"`
+	ID           string                    `json:"id"`
+	Content      string                    `json:"content,omitempty"`
+	Status       string                    `json:"status"`
+	Version      int                       `json:"version"`
+	Evidence     []agenttasks.TaskEvidence `json:"provenance,omitempty"`
+	Supersedes   []string                  `json:"supersedes,omitempty"`
+	SupersededBy string                    `json:"supersededBy,omitempty"`
+	CreatedAt    string                    `json:"createdAt"`
+	UpdatedAt    string                    `json:"updatedAt"`
+	ExpiresAt    string                    `json:"expiresAt,omitempty"`
+	ReviewedBy   string                    `json:"reviewedBy,omitempty"`
 }
 type Extraction struct {
 	SessionID            string `json:"sessionId"`
@@ -91,6 +93,9 @@ func (s *Service) load(actor application.Actor) (state, error) {
 	for id, r := range st.Records {
 		if r.ID != id || r.Version < 1 || !map[string]bool{"candidate": true, "confirmed": true, "rejected": true, "deleted": true}[r.Status] {
 			return st, problem(500, "MEMORY_STATE_INVALID", "Invalid procedural record.")
+		}
+		if len(r.Supersedes) > 7 || r.SupersededBy == id {
+			return st, problem(500, "MEMORY_STATE_INVALID", "Invalid procedural history.")
 		}
 	}
 	return st, nil
@@ -234,26 +239,9 @@ func (s *Service) Decide(ctx context.Context, actor application.Actor, key, id s
 		}
 		switch in.Action {
 		case "confirm":
-			if e := s.validateExtractions(ctx, actor, r); e != nil {
+			if e := s.confirm(ctx, actor, &r); e != nil {
 				return Record{}, e
 			}
-			if r.Status != "candidate" {
-				return Record{}, problem(409, "MEMORY_NOT_PENDING", "Only a candidate can be confirmed.")
-			}
-			expiry, e := time.Parse(time.RFC3339Nano, r.ExpiresAt)
-			if e != nil || !expiry.After(s.now()) {
-				return Record{}, problem(409, "MEMORY_EXPIRED", "Candidate expired.")
-			}
-			evidence, e := s.Tasks.Evidence(ctx, actor, s.App.Project, ids(r))
-			if e != nil {
-				return Record{}, e
-			}
-			if !independent(evidence) {
-				return Record{}, problem(422, "MEMORY_EVIDENCE_INSUFFICIENT", "Two independent successful inputs with the same execution strategy are required.")
-			}
-			r.Evidence = evidence
-			r.Status = "confirmed"
-			r.ReviewedBy = actor.ID
 		case "reject":
 			if r.Status != "candidate" && r.Status != "confirmed" {
 				return Record{}, problem(409, "MEMORY_NOT_PENDING", "Memory is already rejected.")
@@ -275,6 +263,31 @@ func (s *Service) Decide(ctx context.Context, actor application.Actor, key, id s
 		return r, nil
 	})
 }
+
+func (s *Service) confirm(ctx context.Context, actor application.Actor, r *Record) error {
+	if e := s.validateExtractions(ctx, actor, *r); e != nil {
+		return e
+	}
+	if r.Status != "candidate" {
+		return problem(409, "MEMORY_NOT_PENDING", "Only a candidate can be confirmed.")
+	}
+	expiry, e := time.Parse(time.RFC3339Nano, r.ExpiresAt)
+	if e != nil || !expiry.After(s.now()) {
+		return problem(409, "MEMORY_EXPIRED", "Candidate expired.")
+	}
+	evidence, e := s.Tasks.Evidence(ctx, actor, s.App.Project, ids(*r))
+	if e != nil {
+		return e
+	}
+	if !independent(evidence) {
+		return problem(422, "MEMORY_EVIDENCE_INSUFFICIENT", "Two independent successful inputs with the same execution strategy are required.")
+	}
+	r.Evidence = evidence
+	r.Status = "confirmed"
+	r.ReviewedBy = actor.ID
+	return nil
+}
+
 func (s *Service) List(ctx context.Context, actor application.Actor) ([]View, error) {
 	if e := s.authorized(actor); e != nil {
 		return nil, e
@@ -294,7 +307,9 @@ func (s *Service) List(ctx context.Context, actor application.Actor) ([]View, er
 		}
 		v := View{Record: r}
 		expiry, e := time.Parse(time.RFC3339Nano, r.ExpiresAt)
-		if e != nil || !expiry.After(s.now()) {
+		if r.SupersededBy != "" {
+			v.UnavailableReason = "superseded"
+		} else if e != nil || !expiry.After(s.now()) {
 			v.UnavailableReason = "expired"
 		} else if err := s.validateExtractions(ctx, actor, r); err != nil {
 			if application.AsError(err).Status >= 500 {

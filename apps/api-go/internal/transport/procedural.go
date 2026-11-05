@@ -63,7 +63,7 @@ func handleProcedural(o Options, w http.ResponseWriter, r *http.Request, path st
 		respond(map[string]any{"items": items}, e, 200)
 		return true
 	}
-	if r.Method != "POST" || (len(parts) != 6 && len(parts) != 7 && !(len(parts) == 8 && parts[7] == "merge")) {
+	if r.Method != "POST" || (len(parts) != 6 && len(parts) != 7 && !(len(parts) == 8 && (parts[7] == "merge" || parts[7] == "supersede"))) {
 		problem(w, application.Fail(404, "NOT_FOUND", "Unknown memory route."), "")
 		return true
 	}
@@ -83,10 +83,16 @@ func handleProcedural(o Options, w http.ResponseWriter, r *http.Request, path st
 			value, e := s.Create(r.Context(), *actor, key, in)
 			respond(value, e, 201)
 		}
-	} else if len(parts) == 8 {
+	} else if len(parts) == 8 && parts[7] == "merge" {
 		var in procedural.MergeInput
 		if decode(&in) {
 			value, e := s.Merge(r.Context(), *actor, key, parts[6], in)
+			respond(value, e, 200)
+		}
+	} else if len(parts) == 8 {
+		var in procedural.SupersedeInput
+		if decode(&in) {
+			value, e := s.Supersede(r.Context(), *actor, key, parts[6], in)
 			respond(value, e, 200)
 		}
 	} else {

@@ -4408,6 +4408,17 @@
               "additionalProperties": false
             }
           },
+          "supersedes": {
+            "minItems": 1,
+            "maxItems": 7,
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "supersededBy": {
+            "type": "string"
+          },
           "createdAt": {
             "type": "string"
           },

@@ -57,20 +57,20 @@ Go新增procedural领域记录，与创作设定分离，使用原StateLock/Comm
 
 ### 作者 API 与运行边界
 
-`GET /v1/studio/books/{bookId}/procedural-memory/evidence`返回最近100条本作者本作品的成功任务元数据。`POST .../procedural-memory`接受content、taskIds及可选expiresAt，创建candidate。`POST .../procedural-memory/{id}`接受baseVersion和confirm/reject/delete；写请求需要Idempotency-Key。`GET .../procedural-memory`返回当前记录及available/unavailableReason，过期和来源不可用是读取投影，不重写历史确认事实。公开契约见`harness/contracts/procedural-memory-v1.json`。
+`GET /v1/studio/books/{bookId}/procedural-memory/evidence`返回最近100条本作者本作品的成功任务元数据。`POST .../procedural-memory`接受content、taskIds及可选expiresAt，创建candidate。`POST .../procedural-memory/{id}`接受baseVersion和confirm/reject/delete；`.../{id}/merge`合并完全相同的候选；`.../{id}/supersede`原子确认新经验并退役明确的已确认旧经验。写请求需要Idempotency-Key。`GET .../procedural-memory`返回当前记录及available/unavailableReason，过期、来源不可用和已替代是读取投影，不重写历史确认事实。公开契约见`harness/contracts/procedural-memory-v1.json`。
 
-统一retrieve_memory仍要求creative与knowledge scope，只加入available规则，按query关键词过滤并受原24条/字节上限约束。每条记录包含规则版本、审核作者、有效期和任务来源。确认依赖不同输入的成功执行与作者审核；这些证据不代表统计验证或跨任务泛化。v1不允许模型自动创建或确认规则，管理入口包括API及书页「操作经验」；后台经验提取尚未实现。
+统一retrieve_memory仍要求creative与knowledge scope，只加入available规则，按query关键词过滤并受原24条/字节上限约束。每条记录包含规则版本、审核作者、有效期和任务来源。确认依赖不同输入的成功执行与作者审核；这些证据不代表统计验证或跨任务泛化。模型只能提交待审核候选，不能自动确认规则；管理入口包括API及书页「操作经验」，后台定时提取仍不属于本阶段。
 
 存储上限为每作品1000条记录（含删除墓碑）、10000条幂等回执、8 MiB编码JSON；写入前检查字节预算。删除清除正文与其历史回执内容，仍保留最小墓碑防止重放。旧版本回滚忽略新文件并继续使用原任务和业务状态；再次升级按schema=1读取原文件。不得恢复旧状态快照覆盖后来产生的任务、费用或回执。
 
 
 ### 作者工作台
 
-书页新增「操作经验」分区，列表和最近100条任务来源并行读取。作者可选择1–8个来源保存候选，查看任务类型、完成时间与方法版本，再执行确认、撤回或删除。确认按钮要求全部来源同类、同方法版本且输入不同；Go在提交时重新读取回执并作最终判断。过期、来源不可用和撤回状态直接使用服务端投影。
+书页新增「操作经验」分区，列表和最近100条任务来源并行读取。作者可选择1–8个来源保存候选，查看任务类型、完成时间与方法版本，再执行确认、撤回或删除。候选还可显式选择一条当前有效的已确认经验进行替代；操作同时确认新经验、退役旧经验并保留双方来源，不自动选择冲突项。确认与替代均要求新经验来源同类、同方法版本且输入不同；Go在提交时重新读取回执并作最终判断。过期、来源不可用、撤回和已替代状态直接使用服务端投影。
 
 经验内容遵守4000 UTF-8字节上限。每次决定绑定当前version；同一失败请求重试复用幂等键，编辑输入后使用新键。冲突后刷新权威状态并保留未保存草稿。按作品重建面板，卸载时中止读取，迟到响应不进入新作品；演示模式显示连接说明，不构造经验或来源。
 
-验证命令为 `pnpm --filter @writer-agent/web exec vitest run src/test/procedural-memory.test.tsx` 和 `pnpm --filter @writer-agent/web test:memory`。浏览器测试启动真实Go/Pi Worker生成两个不同输入的任务回执，在桌面与手机布局完成创建、确认、刷新、撤回和删除，并读取Go状态核验结果。模型为本地合成服务；身份断言使用隔离测试密钥，未执行生产登录流程。界面接入不改变持久格式，回滚Web构建即可保留已审核经验。
+验证命令为 `pnpm --filter @writer-agent/web exec vitest run src/test/procedural-memory.test.tsx` 和 `pnpm --filter @writer-agent/web test:memory`。浏览器测试启动真实Go/Pi Worker生成两个不同输入的任务回执，在桌面与手机布局完成创建、确认、显式替代、刷新、撤回和删除，并读取Go状态核验结果。模型为本地合成服务；身份断言使用隔离测试密钥，未执行生产登录流程。界面接入不改变持久状态含义，回滚Web构建即可保留已审核经验和替代历史。
 
 ### 操作经验的统一评测
 
@@ -84,11 +84,21 @@ Memory Eval通过真实Go/Pi Worker完成两个输入不同的Knowledge任务，
 
 作者工作台对正文完全相同的candidate提供显式合并。Go在原状态锁内核验每条候选的版本、状态、正文、有效期与任务来源；保留一条candidate、去重合并最多8条任务来源，并采用所有候选的最早有效期，其余候选在同一提交中标为rejected。合并不确认经验，也不改变Canon。
 
-合并请求绑定目标与各来源候选的版本，复用现有幂等回执、存储预算及作品删除栅栏。只使用现有candidate/rejected状态，回执记录merge操作及来源ID/版本，不增加记录字段或迁移旧状态。旧代码可读取合并结果；回滚不恢复已撤回项或覆盖新回执。不同正文的语义合并、已确认规则替代和后台提取不属于这个确定性操作。
+合并请求绑定目标与各来源候选的版本，复用现有幂等回执、存储预算及作品删除栅栏。只使用现有candidate/rejected状态，回执记录merge操作及来源ID/版本，不增加记录字段或迁移旧状态。旧代码可读取合并结果；回滚不恢复已撤回项或覆盖新回执。不同正文的语义合并、自动冲突判断和后台提取不属于这个确定性操作。
 
 作者界面只在存在可合并候选时提供按钮，展示合并数量、来源汇总和最早有效期语义。合并失败重试复用原幂等键，版本冲突刷新不清除未保存草稿。每次最多合并8条记录和8个任务来源；再次确认沿用原独立证据检查。
 
 验收覆盖Go事务与来源重读、浏览器操作及真实Thinking检索。`scripts/test-procedural-memory.mjs`在合并后重启Go并重放原请求，确认前检索为空，作者确认后只检索到目标及完整来源，删除后旧合并请求返回410。测试使用本地合成模型，语义整理与经验泛化另行评测。
+
+### 已确认经验显式替代
+
+作者可在新candidate卡片中选择一条当前有效且正文不同的confirmed经验，执行“替代并启用”。Go在同一次作品状态事务中重新确认新候选、把旧记录标为rejected、写入新记录的`supersedes`与旧记录的`supersededBy`，并为双方递增version。新候选仍需两个同类、同策略、不同输入的成功任务；旧规则必须版本匹配、未过期、来源仍可授权且独立证据仍完整。
+
+持久schema仍为1，状态仍使用原有candidate/confirmed/rejected/deleted。两个关系字段均为可选，因此旧状态无需迁移，旧二进制仍能读取rejected结果；回滚会忽略关系展示，但不会删除历史、任务回执或费用。替代不会自动选择旧规则、自动合并不同正文、自动确认其他候选或改写Canon。
+
+替代请求带Idempotency-Key并绑定双方baseVersion。并发替代只有一个版本成功；目标或旧规则过期、来源撤销、正文相同、跨作者、删除墓碑和存储预算超限均不落盘。列表中旧规则返回`unavailableReason=superseded`，统一retrieve_memory只返回新规则。重启后替代关系保持，删除任一记录不会让旧规则重新可用。
+
+验收覆盖Go race测试、提取授权撤销、契约、Worker白名单、11项界面测试和真实浏览器桌面/手机流程。`scripts/test-procedural-memory.mjs`通过真实Go/Pi验证替代关系、API重启、Thinking仅检索新规则、版本冲突、删除后重放410及跨作者拒绝；模型为本地合成Provider，无付费调用。
 
 ### 经验提取的来源预览
 

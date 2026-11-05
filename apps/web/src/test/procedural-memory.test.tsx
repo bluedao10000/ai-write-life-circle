@@ -27,6 +27,13 @@ function fixture(initial: ProceduralMemory[] = []) {
         const provenance = [...new Map(merged.flatMap(item => item.provenance ?? []).map(s => [s.taskId, s])).values()]
         items = [{ ...target, version: target.version + 1, provenance }, ...items.filter(item => item.id !== targetId).map(item => ids.includes(item.id) ? { ...item, status: 'rejected' as const, version: item.version + 1 } : item)]
       }
+      else if (url.endsWith('/supersede')) {
+        const ids = (body.replaces as { id: string }[]).map(s => s.id)
+        const targetId = decodeURIComponent(url.split('/').at(-2)!)
+        const target = items.find(item => item.id === targetId)!
+        const updated = { ...target, status: 'confirmed' as const, available: true, unavailableReason: undefined, version: target.version + 1, supersedes: ids }
+        items = [updated, ...items.filter(item => item.id !== targetId).map(item => ids.includes(item.id) ? { ...item, status: 'rejected' as const, available: false, unavailableReason: 'superseded' as const, supersededBy: targetId, version: item.version + 1 } : item)]
+      }
       else items = [candidate({ version: Number(body.baseVersion) + 1, status: body.action === 'confirm' ? 'confirmed' : body.action === 'delete' ? 'deleted' : 'rejected', available: body.action === 'confirm' })]
       const record = { ...items[0] } as Partial<ProceduralMemory>
       delete record.available; delete record.unavailableReason
@@ -155,4 +162,26 @@ it('merging duplicate evidence does not enable confirmation', async () => {
   await screen.findByText('重复候选已合并，仍需你确认后才供 AI 参考。')
   expect(screen.getByRole('button', { name: '确认经验' })).toBeDisabled()
   expect(screen.getAllByText('查看任务来源（1）', { selector: 'summary' })).toHaveLength(2)
+})
+it('explicitly replaces one active experience while preserving the draft and both history links', async () => {
+  const f = fixture([
+    candidate({ id: 'old', content: '人物背景先按出场顺序整理。', status: 'confirmed', version: 4, available: true, unavailableReason: undefined }),
+    candidate({ id: 'new', content: '人物背景先核对当前修订，再按关系整理。' }),
+  ])
+  const user = userEvent.setup()
+  render(panel())
+  await screen.findByRole('article', { name: '人物背景先按出场顺序整理。' })
+  await user.type(screen.getByRole('textbox', { name: '经验内容' }), '尚未保存的草稿')
+  const replace = screen.getByRole('combobox', { name: '替代现有经验' })
+  expect(screen.getByRole('button', { name: '替代并启用' })).toBeDisabled()
+  await user.selectOptions(replace, 'old')
+  await user.click(screen.getByRole('button', { name: '替代并启用' }))
+  await screen.findByText('新经验已确认，所选旧经验已退役。')
+  expect(screen.getByText('已由新经验替代')).toBeInTheDocument()
+  expect(screen.getByText('已确认 · 可供 AI 参考')).toBeInTheDocument()
+  expect(screen.getByRole('textbox', { name: '经验内容' })).toHaveValue('尚未保存的草稿')
+  expect(f.posts[0]).toMatchObject({
+    url: '/v1/studio/books/b1/procedural-memory/new/supersede',
+    body: { baseVersion: 1, replaces: [{ id: 'old', baseVersion: 4 }] },
+  })
 })

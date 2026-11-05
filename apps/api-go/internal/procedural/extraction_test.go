@@ -2,6 +2,7 @@ package procedural
 
 import (
 	"context"
+	"os"
 	"testing"
 
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/application"
@@ -62,5 +63,39 @@ func TestExtractedCandidatesKeepAuthorizationThroughMergeAndReview(t *testing.T)
 	}
 	if checks < 4 {
 		t.Fatal("missing current authorization checks")
+	}
+}
+
+func TestSupersedeReauthorizesExtractedReplacementBeforeRetiringOldRule(t *testing.T) {
+	s, actor := fixture(t)
+	ctx := context.Background()
+	old, e := s.Create(ctx, actor, "old", Input{Content: "旧经验", TaskIDs: []string{"task-a", "task-b"}})
+	if e != nil {
+		t.Fatal(e)
+	}
+	old, e = s.Decide(ctx, actor, "confirm-old", old.ID, Decision{old.Version, "confirm"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	target, e := s.CreateExtracted(ctx, actor, "new", Input{Content: "新经验", TaskIDs: []string{"task-a", "task-b"}}, Extraction{SessionID: "session", RunID: "run-a", PromptVersion: "memory-extraction-v1"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	s.ValidateExtraction = func(context.Context, application.Actor, string, Extraction) error {
+		return application.Fail(403, "CAPABILITY_REVOKED", "Revoked.")
+	}
+	before, e := os.ReadFile(s.path())
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = s.Supersede(ctx, actor, "replace", target.ID, SupersedeInput{target.Version, []ReplaceSource{{old.ID, old.Version}}}); e == nil {
+		t.Fatal("revoked extraction retired an existing rule")
+	}
+	after, e := os.ReadFile(s.path())
+	if e != nil {
+		t.Fatal(e)
+	}
+	if string(before) != string(after) {
+		t.Fatal("revoked extraction changed persisted state")
 	}
 }

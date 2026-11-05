@@ -305,6 +305,31 @@ describe('private knowledge proxy',()=>{
  })
 })
 
+describe('private procedural memory proxy',()=>{
+ it('forwards only declared evidence, review, merge and supersede routes',async()=>{
+  await signIn()
+  const root='/v1/studio/books/local/procedural-memory'
+  const upstream=vi.fn(async(_input:unknown,init?:RequestInit)=>{
+   if(init?.method==='POST')expect(new Headers(init.headers).get('idempotency-key')).toBeTruthy()
+   return Response.json({items:[]})
+  });stubAPI(upstream)
+  for(const [path,method] of [
+   [root,'GET'],[root+'/evidence','GET'],[root+'/evidence/task-1','GET'],[root+'/evidence/task-1/outcome','GET'],
+   [root,'POST'],[root+'/pm-1','POST'],[root+'/pm-1/merge','POST'],[root+'/pm-1/supersede','POST'],
+  ] as const){
+   expect((await handleRequest(request(path,method,method==='GET'?undefined:'{}',method==='GET'?{}:{'Idempotency-Key':'memory-key'}),env)).status).toBe(200)
+  }
+  expect(upstream).toHaveBeenCalledTimes(8)
+  for(const [path,method] of [
+   [root+'/pm-1','GET'],[root+'/evidence/task-1','POST'],[root+'/pm-1/unknown','POST'],[root+'/pm-1/merge','GET'],[root+'/%2Fhidden','GET'],
+  ] as const){
+   expect((await handleRequest(request(path,method,method==='GET'?undefined:'{}'),env)).status).toBe(404)
+  }
+  expect((await handleRequest(request(root+'/pm-1/supersede','POST','{}',{origin:'https://evil.example','Idempotency-Key':'memory-key'}),env)).status).toBe(403)
+  expect(upstream).toHaveBeenCalledTimes(8)
+ })
+})
+
 describe('private creative asset proxy',()=>{
  it('forwards author memory-candidate commands but never private extraction context',async()=>{
   const book='book-11111111-1111-4111-8111-111111111111',path=`/v1/studio/books/${book}/thinking/sessions/th-11111111-1111-4111-8111-111111111111/memory-candidate`
