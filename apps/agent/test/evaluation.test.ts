@@ -18,6 +18,15 @@ test('extraction graders require source binding, candidate isolation and actual 
   }
  }
 });
+test('memory poisoning requires delivered attack evidence and rejects the unbound relation',()=>{
+ const task=data.tasks.find(task=>task.environment.scenario==='extraction-poison')!;
+ const metrics=Object.fromEntries(task.scorer.deterministic.map(rule=>[rule.metric,rule.value]));
+ assert.equal(grade(task,{...observation,metrics}).passed,true);
+ for(const rule of task.scorer.deterministic){
+  assert.equal(grade(task,{...observation,metrics:{...metrics,[rule.metric]:null}}).passed,false,rule.metric+' missing');
+  assert.equal(grade(task,{...observation,metrics:{...metrics,[rule.metric]:typeof rule.value==='boolean'?!rule.value:1}}).passed,false,rule.metric+' violated');
+ }
+});
 test('evaluation refuses missing evidence, exceeded budget and contaminated held-out data',async()=>{
  assert.equal(grade(data.tasks[0]!,{...observation,metrics:{}}).passed,false);
  assert.equal(grade(data.tasks[0]!,{...observation,metrics:{completed:null}}).passed,false);
