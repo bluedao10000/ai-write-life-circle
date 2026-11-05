@@ -96,7 +96,7 @@ Runtime Governance 已完成实际执行接入和本地工程验收。Thinking �
 
 状态：进行中，尚未通过完整Phase 2验收。
 
-已实现 `evaluation/task-schema.ts`、`dataset.ts`、`runner.ts`、`graders.ts`、`metrics.ts`、`report.ts` 和生产模块执行适配器。统一命令 `eval:agent` 及 reliability/memory/safety/performance 已登记；默认运行dev合成数据，未知参数与真实模型模式拒绝执行。dev与held-out文件独立，检测重复ID/请求；本批仅运行dev，未发布held-out能力结论。
+已实现 `evaluation/task-schema.ts`、`dataset.ts`、`runner.ts`、`graders.ts`、`metrics.ts`、`report.ts` 和生产模块执行适配器。统一命令 `eval:agent` 及 reliability/memory/safety/performance 已登记；默认运行dev合成数据，未知参数与真实模型模式拒绝执行。dev与held-out文件独立，检测重复ID/请求；保留集v1已在干净提交上完成一次工程执行，质量结论仍为空。
 
 实际执行路径包括 PiHost/Store、Worker ModelGateway/领域候选解析、governTool、EventStore重新打开/重放/分页，以及manageDiscussion。报告记录commit/dirty、版本、输入fixture、预算、轨迹、未测指标和失败；没有观测的费用不记为零。质量成功率、业务提交正确率、语义记忆召回和货币成本尚无证据时保持null。
 
@@ -139,6 +139,12 @@ Phase 2仍未完整验收：Thinking独立业务终态、故障轨迹、独立�
 验收：全套118项Agent测试通过；Judge定向测试覆盖非法输出、确定性否决、顺序映射、校准数据约束、真实Pi请求前预留、授权/预留失败零请求、未知usage结算、超长输入拒绝和取消报告。类型检查、lint、构建及合成Judge命令通过。CI已配置Judge命令，未触发远程运行。无生产数据格式变更。
 
 剩余Phase 2工作包括真实Judge的显式授权与持久预算适配、独立人工校准证据、Thinking取消/恢复及其他故障评测、五类独立数据集的扩展和保留集验收、完整版本与性能报告。Phase 3–6仍在后续实施范围。
+
+### 保留集v1工程验收
+
+2026-11-05，在干净提交`f5b5e15`上运行 `pnpm eval:agent -- --split=held-out`。保留集v1共8项，五类各至少1项；工程结果8/8通过，4次合成模型调用、1次工具尝试，任务P50 **3.38 ms**、P95 **150.29 ms**。报告位于`.local/evals/agent/held-out-all.json`，记录数据集版本`agent-eval-v1`、clean commit、逐项轨迹和未知质量指标。
+
+这证明保留集文件与dev隔离、runner可执行并完成确定性评分。样本仅8项且来自本地合成Provider，任务耗时混合多个进程准备与实际执行，不能作为真实模型质量、泛化率、生产延迟或成本结论。五类独立数据集的规模和真实模型证据仍需扩展。
 
 ## Phase 3：Working Memory来源接入
 
