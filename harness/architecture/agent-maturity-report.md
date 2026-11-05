@@ -15,10 +15,10 @@ Phase 0 已完成源码审计和架构设计；Phase 1 已完成本地代码接�
 | Worker | 工程验证 | scheduler/dispatcher/TaskClient，四种Go任务；Review/Knowledge/Creative集成 | 统一合同已接入；待完善持久关联审计 |
 | 上下文 | 部分覆盖 | context-management、Working Memory来源绑定与无付费旧格式迁移；重启测试 | 摘要并非长期已确认事实 |
 | 长期记忆 | 部分覆盖 | Working来源、Semantic/Episodic检索、版本冲突提示、Procedural作者审核、模型关系建议、重复/替代/过期生命周期 | 主动提取和模型冲突建议已实现；待后台整理、真实关系准确率与召回质量评测 |
-| Evaluation | 部分覆盖 | 统一schema/split/runner、Go业务和故障适配、受治理Judge、人工标注导入 | 待完成独立数据集、保留集、人工校准与性能验收 |
+| Evaluation | 部分覆盖 | 统一schema/split/runner、Go业务和故障适配、受治理Judge、人工标注导入、单/多角色开发集与保留集对照 | 待完成真实模型质量、人工校准与代表性性能验收 |
 | 安全 | 部分覆盖 | capability、隔离进程、工具授权、取消、幂等及记忆污染边界测试 | 缺真实模型抗污染率、跨会话隔离、子角色扩权验证 |
 | 可观测性 | 部分覆盖 | 治理关联日志、进程计数；Thinking鉴权健康/诊断包含投影失败、恢复与未知费用会话数 | 缺跨进程聚合、持久诊断及历史指标 |
-| 多角色协作 | 部分覆盖 | 默认关闭的Creative只读试点：Planner后由Researcher/Analyst/Critic并行检查，Coordinator汇总 | 需真实模型同预算质量比较、held-out和更广义子角色/审批策略 |
+| 多角色协作 | 部分覆盖 | 默认关闭的Creative只读试点：Planner后由Researcher/Analyst/Critic并行检查，Coordinator汇总；开发集与held-out工程对照通过 | 需真实模型同预算质量比较、代表性能与更广义子角色/审批策略 |
 | 自主规划 | 未实现 | 有限模型/工具循环与显式恢复 | 有界Goal/Plan与审批版本绑定，须后置 |
 
 以上路径中 Agent 文件位于 `apps/agent/src`，测试位于 `apps/agent/test`；Go 文件位于 `apps/api-go/internal`。
@@ -431,3 +431,11 @@ Go按严格来源合同返回422，没有候选发布；正式经验和Canon不�
 验收：`pnpm eval:agent:safety`为9/9工程通过，共12次合成模型调用、9次工具尝试，P50 **442.82 ms**、P95 **6039.56 ms**。Agent完整回归135/135、Evaluation定向测试18/18、类型检查、lint与构建通过。报告保存在本地`.local/evals/agent/dev-safety.json`。
 
 这证明模型文本不能越过Go的候选隔离、固定经验集合和作者审核，不证明真实模型抗污染能力。真实模型攻击成功率、跨会话攻击、子角色扩权和held-out安全泛化仍待验证，Phase 4保持部分完成。
+
+## 单角色与只读多角色对照评测
+
+`agent-eval-v17`在开发集加入Creative计划核对对照，独立保留集升级为`agent-eval-v2`并加入不同材料。场景在同一章节Revision上先执行原单角色策略，再开启五角色只读策略；通过Task Registry保留的`creative.Claim.Job.jobId`把执行记录关联回Go Job，以Go Job完成和已提交Divergence作为业务终态，模型回答不作为结果权威。
+
+开发分类8/8、保留分类5/5工程通过。两种模式对计划与正文给出相同评估、引文、解释和问题；单角色1次、五角色5次模型调用，五个角色各一次。两次执行总预留为133440 tokens，比例为5；所有治理事件按授权、预留、模型开始、模型完成排列，20个事件共享治理父任务，无工具事件。计划、章节Revision和Go业务提交均未变化。
+
+Agent完整回归142/142、类型检查、lint及构建通过；Review API的155项检查和Creative真实Go/Pi流程保持通过。这项对照补齐了开发集与held-out上的确定性工程验收，不评价真实模型质量。`qualityEquivalent`保持`null`；角色独立判断、冲突处理、真实模型同预算质量、角色级P95和货币成本仍未测量。五角色试点继续默认关闭，Phase 5尚未完成真实收益验收。

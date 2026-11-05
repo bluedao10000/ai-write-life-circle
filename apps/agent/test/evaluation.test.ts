@@ -74,6 +74,18 @@ test('memory and creative business graders require provenance, author isolation 
  }
 });
 
+test('single and multi plan checks require equivalent results and complete role governance',()=>{
+ const task=data.tasks.find(task=>task.environment.scenario==='creative-plan-comparison')!;
+ const metrics=Object.fromEntries(task.scorer.deterministic.map(rule=>[rule.metric,rule.value]));
+ assert.equal(grade(task,{...observation,metrics}).passed,true);
+ for(const rule of task.scorer.deterministic){
+  assert.equal(grade(task,{...observation,metrics:{...metrics,[rule.metric]:null}}).passed,false,rule.metric+' missing');
+  assert.equal(grade(task,{...observation,metrics:{...metrics,[rule.metric]:typeof rule.value==='boolean'?!rule.value:Number(rule.value)+1}}).passed,false,rule.metric+' violated');
+ }
+ assert.equal(grade(task,{...observation,metrics:{...metrics,equivalentResult:false,sameInput:false,parentLinksValid:false}}).passed,false);
+ assert.equal(grade(task,{...observation,metrics:{...metrics,multiModelCalls:6,budgetRatio:1}}).passed,false);
+});
+
 test('unknown usage requires a bounded authoritative exposure and remains unmeasured',async()=>{
  const task=data.tasks[0]!;
  const unknown={...observation,inputTokens:null,outputTokens:null,chargedTokens:null};

@@ -47,6 +47,37 @@ export async function createReviewFixture({modelBudget}={}) {
   const content=JSON.stringify({summary:'合成人物候选',noChange:false,changes:[{ref:'hero',operation:'CREATE',stance:'author_hypothesis',kind:'character',name:'林舟',evidence:[{messageId:message.messageId,quote:message.text}]}]});
   res.writeHead(200,{'Content-Type':'text/event-stream'});res.end('data: '+JSON.stringify({id:'creative',object:'chat.completion.chunk',model:request.model,choices:[{index:0,delta:{role:'assistant',content},finish_reason:'stop'}],usage:{prompt_tokens:100,completion_tokens:80}})+'\n\ndata: [DONE]\n\n');return
  }
+ const system=request.messages.find(m=>m.role==='system')?.content??'';
+ const planContent=()=>{
+  const raw=JSON.parse(request.messages.find(m=>m.role==='user').content);
+  const source=raw.source??raw;
+  const checks=source.plans.map((plan)=>({assetId:plan.assetId,assessment:'diverged',quote:'最终选择留下',explanation:'计划要求离开，正文选择了留下。',question:'要修改计划还是调整正文？'}));
+  return JSON.stringify({checks});
+ };
+ if(system.startsWith('You are the planner in a read-only story-plan review')){
+  const source=JSON.parse(request.messages.find(m=>m.role==='user').content);
+  const content=JSON.stringify({items:source.plans.map((plan)=>({assetId:plan.assetId,focus:'核对计划与正文的差异'}))});
+  res.writeHead(200,{'Content-Type':'text/event-stream'});res.end('data: '+JSON.stringify({id:'creative-planner',object:'chat.completion.chunk',model:request.model,choices:[{index:0,delta:{role:'assistant',content},finish_reason:'stop'}],usage:{prompt_tokens:200,completion_tokens:100}})+'\n\ndata: [DONE]\n\n');return
+ }
+ if(system.startsWith('You are the evidence researcher in a read-only story-plan review')){
+  const {source}=JSON.parse(request.messages.find(m=>m.role==='user').content);
+  const content=JSON.stringify({findings:source.plans.map((plan)=>({assetId:plan.assetId,quote:'最终选择留下',observation:'正文明确写角色留下。',assessment:'diverged'}))});
+  res.writeHead(200,{'Content-Type':'text/event-stream'});res.end('data: '+JSON.stringify({id:'creative-researcher',object:'chat.completion.chunk',model:request.model,choices:[{index:0,delta:{role:'assistant',content},finish_reason:'stop'}],usage:{prompt_tokens:200,completion_tokens:100}})+'\n\ndata: [DONE]\n\n');return
+ }
+ if(system.startsWith('You are the continuity analyst in a read-only story-plan review')){
+  const {source}=JSON.parse(request.messages.find(m=>m.role==='user').content);
+  const content=JSON.stringify({analyses:source.plans.map((plan)=>({assetId:plan.assetId,reasoning:'计划的方向与正文相反。',assessment:'diverged'}))});
+  res.writeHead(200,{'Content-Type':'text/event-stream'});res.end('data: '+JSON.stringify({id:'creative-analyst',object:'chat.completion.chunk',model:request.model,choices:[{index:0,delta:{role:'assistant',content},finish_reason:'stop'}],usage:{prompt_tokens:200,completion_tokens:100}})+'\n\ndata: [DONE]\n\n');return
+ }
+ if(system.startsWith('You are the independent critic in a read-only story-plan review')){
+  const {source}=JSON.parse(request.messages.find(m=>m.role==='user').content);
+  const content=JSON.stringify({concerns:source.plans.map((plan)=>({assetId:plan.assetId,concern:'需要作者确认留下是否为有意选择。'}))});
+  res.writeHead(200,{'Content-Type':'text/event-stream'});res.end('data: '+JSON.stringify({id:'creative-critic',object:'chat.completion.chunk',model:request.model,choices:[{index:0,delta:{role:'assistant',content},finish_reason:'stop'}],usage:{prompt_tokens:200,completion_tokens:100}})+'\n\ndata: [DONE]\n\n');return
+ }
+ if(system.startsWith('You compare an author\'s accepted plans for one chapter')){
+  const content=planContent();
+  res.writeHead(200,{'Content-Type':'text/event-stream'});res.end('data: '+JSON.stringify({id:'creative-plan-check',object:'chat.completion.chunk',model:request.model,choices:[{index:0,delta:{role:'assistant',content},finish_reason:'stop'}],usage:{prompt_tokens:200,completion_tokens:100}})+'\n\ndata: [DONE]\n\n');return
+ }
     let input;try{input=JSON.parse(request.messages.find((m)=>m.role==='user').content)}catch{input=null}
  if(input?.targetMarkdown!==undefined){
  const selected=mode;if(selected==='knowledge-slow'||selected==='knowledge-timeout')await new Promise(r=>setTimeout(r,selected==='knowledge-timeout'?2500:1800));

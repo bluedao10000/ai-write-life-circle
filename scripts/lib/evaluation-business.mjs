@@ -20,6 +20,7 @@ export async function executeBusinessEvaluation(task,signal,result){
   await wait(()=>{if(worker.exitCode!==null)throw Error('EVAL_WORKER_EXIT');return worker.output.includes('worker_started')});
   if(task.environment.scenario.startsWith('procedural-'))return await procedural(fixture,task,result,wait,children);
   if(task.capability==='knowledge')return await knowledge(fixture,task,result,wait,worker,children);
+  if(task.environment.scenario==='creative-plan-comparison')return await creativePlanComparison(fixture,task,result,wait,worker);
   if(task.capability==='creative')return await creative(fixture,task,result,wait,children);
   if(task.environment.scenario==='review-receipt')fixture.dropCompletion();
   const run=await fixture.enqueue();result.trace.push({action:'go_accepted'});
@@ -108,6 +109,93 @@ async function creative(fixture,task,result,wait,children){
   result.trace.push({action:'source_session_deleted'});
   await memoryProbe(fixture,task,result,wait,children,base,false);
  }
+ return result;
+}
+
+async function creativePlanComparison(fixture,task,result,wait,worker){
+ const lines=task.request.split('\n').map(line=>line.trim()).filter(Boolean);
+ const planText=lines.find(line=>line.startsWith('计划：'))?.slice(3);
+ const chapterIndex=lines.findIndex(line=>line.startsWith('正文：'));
+ const chapterText=chapterIndex>=0?lines[chapterIndex].slice(3).trim():'';
+ if(!planText||!chapterText.includes('最终选择留下'))throw Error('EVAL_PLAN_SCENARIO_INPUT');
+ const {book,base}=await createBook(fixture,task),creative=base+'/creative';
+ const chapter=`/v1/projects/${book.bookId}/chapters/${book.chapters[0].chapterId}`;
+ const head=await fixture.call(chapter);
+ const saved=await fixture.call(chapter+'/revisions',{method:'POST',status:201,body:{baseRevisionId:head.headRevision.revisionId,markdown:chapterText}});
+ const plan=await fixture.call(creative+'/assets',{method:'POST',status:201,body:{kind:'event',status:'accepted',content:{name:planText,aliases:[],summary:planText,fields:[],plan:{chapterId:book.chapters[0].chapterId}}}});
+ const taskPath=join(fixture.state,'agent-runtime','tasks-v1.json');
+ const creativePath=join(fixture.state,'creative',Buffer.from(book.bookId).toString('base64url'),'state-v1.json');
+ const json=async path=>{try{return JSON.parse(await readFile(path,'utf8'))}catch{return null}};
+ const creativeJob=async strategy=>{
+  const state=await json(creativePath);
+  return state?.jobs?.find(job=>job.strategyVersion===strategy&&job.chapterId===book.chapters[0].chapterId&&job.revisionId===saved.revisionId)??null;
+ };
+ const taskRecord=async jobId=>{
+  const state=await json(taskPath);
+  return Object.values(state?.tasks??{}).find(record=>record.task?.kind==='creative.plan_check'&&record.task?.bookId===book.bookId&&record.creative?.Claim?.Job?.jobId===jobId)??null;
+ };
+ const divergence=async jobId=>{
+  const page=await fixture.call(creative+'/divergences?chapterId='+book.chapters[0].chapterId);
+  return page.items.find(item=>item.jobId===jobId)??null;
+ };
+ const start=fixture.requests.length;
+ await fixture.call(creative+'/plan-checks',{method:'POST',status:202,body:{chapterId:book.chapters[0].chapterId}});
+ const singleQueued=await wait(()=>creativeJob('creative-plan-check-v1'),'single plan-check job');
+ const singleTask=await wait(()=>taskRecord(singleQueued.jobId),'single plan-check task');
+ const singleResult=await wait(()=>divergence(singleQueued.jobId),'single plan-check result');
+ const singleRequests=fixture.requests.slice(start);
+ await fixture.call(creative+'/settings/orchestration',{method:'POST',body:{multiAgentPlanCheck:true}});
+ const multiStart=fixture.requests.length;
+ await fixture.call(creative+'/plan-checks',{method:'POST',status:202,body:{chapterId:book.chapters[0].chapterId}});
+ const multiQueued=await wait(()=>creativeJob('creative-plan-check-readonly-v1'),'multi-agent plan-check job');
+ const multiTask=await wait(()=>taskRecord(multiQueued.jobId),'multi-agent plan-check task');
+ const multiResult=await wait(()=>divergence(multiQueued.jobId),'multi-agent plan-check result');
+ const multiRequests=fixture.requests.slice(multiStart);
+ const state=await wait(async()=>{
+  const value=await json(creativePath);
+  return value?.jobs?.filter(job=>[singleQueued.jobId,multiQueued.jobId].includes(job.jobId)).every(job=>job.status==='completed')?value:null;
+ },'creative plan-check receipts');
+ const singleJob=state.jobs.find(job=>job.jobId===singleQueued.jobId),multiJob=state.jobs.find(job=>job.jobId===multiQueued.jobId);
+ usage(result,[singleJob,multiJob]);
+ const systems=multiRequests.map(request=>request.messages.find(message=>message.role==='system')?.content??'');
+ const roles={
+  planner:systems.filter(system=>system.startsWith('You are the planner in a read-only story-plan review')).length,
+  researcher:systems.filter(system=>system.startsWith('You are the evidence researcher in a read-only story-plan review')).length,
+  analyst:systems.filter(system=>system.startsWith('You are the continuity analyst in a read-only story-plan review')).length,
+  critic:systems.filter(system=>system.startsWith('You are the independent critic in a read-only story-plan review')).length,
+  coordinator:systems.filter(system=>system.startsWith('You compare an author\'s accepted plans for one chapter')).length,
+ };
+ const governance=(worker.output??'').split('\n').flatMap(line=>{try{const event=JSON.parse(line);return event.event==='agent_governance'&&event.taskId===multiTask.task.taskId?[event]:[]}catch{return []}});
+ const roleActions=Object.keys(roles).map(role=>governance.filter(event=>event.role==='creative.plan.'+role).map(event=>event.action));
+ const governancePrecedesModel=roleActions.every(actions=>JSON.stringify(actions)===JSON.stringify(['authorized','reserved','model_started','model_finished']));
+ const parentLinksValid=governance.length===20&&governance.every(event=>event.parentTaskId===multiTask.task.taskId);
+ const toolEvents=governance.filter(event=>event.toolName).length;
+ const currentDivergences=await fixture.call(creative+'/divergences?chapterId='+book.chapters[0].chapterId);
+ const afterPlan=await fixture.call(creative+'/assets/'+plan.assetId),afterChapter=await fixture.call(chapter);
+ result.metrics={
+  singleCompleted:singleJob.status==='completed'&&singleResult.assessment==='diverged',
+  multiCompleted:multiJob.status==='completed'&&multiResult.assessment==='diverged',
+  sameInput:singleTask.task.inputHash===multiTask.task.inputHash&&singleTask.task.revisionId===multiTask.task.revisionId&&singleTask.task.contentHash===multiTask.task.contentHash,
+  equivalentResult:singleResult.assessment===multiResult.assessment&&singleResult.evidence?.quote===multiResult.evidence?.quote&&singleResult.explanation===multiResult.explanation&&singleResult.question===multiResult.question,
+  oneSingleCall:singleRequests.length===1,
+  fiveMultiCalls:multiRequests.length===5,
+  roleCount:Object.values(roles).filter(count=>count===1).length,
+  governancePrecedesModel,
+  parentLinksValid,
+  toolEvents,
+  singleModelCalls:singleJob.modelCalls,
+  multiModelCalls:multiJob.modelCalls,
+  totalModelCalls:singleJob.modelCalls+multiJob.modelCalls,
+  singleReservedTokens:singleTask.task.reservedTokens,
+  multiReservedTokens:multiTask.task.reservedTokens,
+  budgetRatio:multiTask.task.reservedTokens/singleTask.task.reservedTokens,
+  planUnchanged:afterPlan.asset.version===plan.version&&afterPlan.asset.summary===planText,
+  sourceUnchanged:afterChapter.headRevision.revisionId===saved.revisionId,
+  authoritativeDivergences:currentDivergences.items.length,
+  toolCalls:0,
+  qualityEquivalent:null,
+ };
+ result.trace.push({action:'single_plan_check_completed'},{action:'multi_plan_check_completed'},{action:'go_plan_versions_verified'});
  return result;
 }
 
