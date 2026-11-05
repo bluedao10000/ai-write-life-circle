@@ -32,6 +32,7 @@ export async function createReviewFixture({modelBudget}={}) {
  requests.push(request)
  if(request.messages.find(m=>m.role==='system')?.content.includes('You consolidate author-reviewed operating experience')){
   consolidationCalls++
+  if(mode==='memory-consolidation-slow')await new Promise(resolve=>setTimeout(resolve,1800));
   const selected=mode,system=request.messages.find(m=>m.role==='system').content,user=request.messages.find(m=>m.role==='user')?.content??'';
   const taskIds=[...new Set([...user.matchAll(/"taskId":"([^"]+)"/g)].map(m=>m[1]))];
   const output=selected==='memory-consolidation-noop'

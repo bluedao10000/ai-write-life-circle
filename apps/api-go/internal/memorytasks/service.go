@@ -232,6 +232,10 @@ func (c *Coordinator) Start(ctx context.Context, app *application.Service, taskI
 }
 
 func (c *Coordinator) Complete(ctx context.Context, app *application.Service, taskID string, prepared agenttasks.PreparedMemory, response llm.Response, sent bool, runErr error) error {
+	// A claim that never passed started has no budget reservation to settle.
+	if prepared.BudgetDay == "" && !sent && runErr != nil {
+		return nil
+	}
 	op := creative.MemoryMeterOperation(taskID)
 	settle := 0
 	if sent {

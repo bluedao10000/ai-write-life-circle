@@ -13,6 +13,9 @@ type memoryCoordinatorFixture struct {
 	prepared *PreparedMemory
 	starts   int
 	finished int
+	denied   error
+	sent     bool
+	terminal error
 }
 
 func (f *memoryCoordinatorFixture) Contract() string { return "sha256:" + strings.Repeat("a", 64) }
@@ -24,12 +27,13 @@ func (f *memoryCoordinatorFixture) Start(context.Context, *application.Service, 
 	f.starts++
 	return nil
 }
-func (f *memoryCoordinatorFixture) Complete(context.Context, *application.Service, string, PreparedMemory, llm.Response, bool, error) error {
+func (f *memoryCoordinatorFixture) Complete(_ context.Context, _ *application.Service, _ string, _ PreparedMemory, _ llm.Response, sent bool, terminal error) error {
+	f.sent, f.terminal = sent, terminal
 	f.finished++
 	return nil
 }
 func (f *memoryCoordinatorFixture) Check(context.Context, *application.Service, PreparedMemory) error {
-	return nil
+	return f.denied
 }
 func (f *memoryCoordinatorFixture) Inspect(context.Context, *application.Service) (MemoryInspection, error) {
 	return MemoryInspection{Pending: 1}, nil
@@ -89,5 +93,56 @@ func TestMemoryConsolidationUsesTheAgentTaskAuthority(t *testing.T) {
 	record := state.Tasks[task.ID]
 	if record.Task.Request.Input != "" || record.Memory == nil || len(record.Memory.Sources) != 2 || record.Outcome != "completed" {
 		t.Fatalf("memory task was not scrubbed correctly: %+v", record)
+	}
+}
+
+func TestMemoryTerminalReportAfterRevocation(t *testing.T) {
+	for _, action := range []string{"complete", "fail"} {
+		for _, started := range []bool{false, true} {
+			if action == "complete" && !started {
+				continue
+			}
+			t.Run(action+map[bool]string{false: "-unstarted", true: "-started"}[started], func(t *testing.T) {
+				s, _ := fixture(t)
+				ctx := context.Background()
+				f := &memoryCoordinatorFixture{prepared: &PreparedMemory{Strategy: "memory-consolidation-v1", ReservedTokens: 4096, Request: llm.Request{System: "fixture", Input: "{}", SchemaName: "memory_consolidation", Schema: map[string]any{"type": "object"}}}}
+				s.Memory = f
+				task, err := s.Claim(ctx, "fixture", s.Config.Fingerprint(), "memory")
+				if err != nil || task == nil {
+					t.Fatal(task, err)
+				}
+				in := envelope(task)
+				if started {
+					if err = s.Action(ctx, task.ID, "started", in); err != nil {
+						t.Fatal(err)
+					}
+				}
+				f.denied = application.Fail(409, "MEMORY_CONSOLIDATION_DISABLED", "Disabled.")
+				if err = s.Action(ctx, task.ID, "heartbeat", in); err == nil {
+					t.Fatal("revoked heartbeat accepted")
+				}
+				in.Response = llm.Response{Text: "", Usage: nil}
+				if action == "fail" {
+					in.Failure = "MEMORY_INTERRUPTED"
+				}
+				if err = s.Action(ctx, task.ID, action, in); err != nil {
+					t.Fatal(err)
+				}
+				if f.finished != 1 || f.sent != started || f.terminal == nil {
+					t.Fatal("terminal settlement missing", f)
+				}
+				state, err := s.load()
+				if err != nil {
+					t.Fatal(err)
+				}
+				rec := state.Tasks[task.ID]
+				if !rec.Finished || rec.Outcome != "failed" || rec.Task.Request.Input != "" {
+					t.Fatal(rec)
+				}
+				if err = s.Action(ctx, task.ID, action, in); err != nil || f.finished != 1 {
+					t.Fatal("terminal replay", err, f.finished)
+				}
+			})
+		}
 	}
 }

@@ -83,7 +83,25 @@ try{
  assert.equal(f.calls,disabledCalls+2,'only the two Reviews may call the provider while consolidation is disabled');
  assert.equal(f.consolidationCalls,completedConsolidations);
  assert.equal(proceduralListSchema.parse(await f.call(memories)).items.length,1);
- console.log('PASS: real Go AgentTask queue + Pi Worker produced one background candidate from two independent completed Reviews, with exact source/result bindings, one tool-free model call, restart idempotency and disabled-setting behavior. Synthetic model only.');
+ // Revoking consent during a sent request must stop publication while
+ // retaining unknown costs and allowing a terminal failure receipt.
+ const budgetBeforeRevocation=(await f.call(base+'/creative')).settings.budgetTokens;
+ await f.select({...f.cases[0],fake:'memory-consolidation-slow'});
+ await f.call(base+'/creative/settings/memory',{method:'POST',body:{autoMemoryConsolidation:true}});
+ await until(()=>f.consolidationCalls===completedConsolidations+1,'slow consolidation entered provider');
+ await f.call(base+'/creative/settings/memory',{method:'POST',body:{autoMemoryConsolidation:false}});
+ const failed=await until(async()=>{
+  const records=JSON.parse(await readFile(join(f.state,'agent-runtime','tasks-v1.json'),'utf8')).tasks;
+  return Object.values(records).find(record=>record.task.kind==='memory.consolidate'&&record.finished&&record.outcome==='failed');
+ },'revoked consolidation terminal receipt');
+ assert.equal(failed.started,true);
+ assert.equal((await f.call(base+'/creative')).settings.budgetTokens,budgetBeforeRevocation+failed.memory.reservedTokens,'unknown usage must retain the full reservation');
+ assert.equal(failed.memory.request.input,'');
+ assert.equal(proceduralListSchema.parse(await f.call(memories)).items.length,1);
+ const finalCalls=f.calls;
+ await sleep(2000);
+ assert.equal(f.calls,finalCalls,'revocation must not retry the model');
+ console.log('PASS: real Go AgentTask queue + Pi Worker produced one background candidate from two independent completed Reviews, with exact source/result bindings, one tool-free model call, restart idempotency, in-flight revocation, retained unknown costs and disabled-setting behavior. Synthetic model only.');
 }catch(error){
  if(worker)console.error(worker.output);
  try{

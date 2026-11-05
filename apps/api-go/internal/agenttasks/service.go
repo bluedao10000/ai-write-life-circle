@@ -445,7 +445,19 @@ func (s *Service) Action(ctx context.Context, id, action string, in Envelope) er
 		if rec.Finished {
 			return executorpolicy.ErrFenced
 		}
-		if e := s.check(ctx, rec); e != nil {
+		var memoryDenied error
+		if rec.Memory != nil && (action == "complete" || action == "fail") {
+			// Revocation prevents publication, but a live lease may still report
+			// terminal usage. Unknown costs remain reserved after execution starts.
+			if !(executorpolicy.Controller{State: s.State}).Valid("memory", "pi", t.Epoch, t.Lease) {
+				return executorpolicy.ErrFenced
+			}
+			app, err := s.resolveTask(t)
+			if err != nil {
+				return err
+			}
+			memoryDenied = s.Memory.Check(ctx, app, *rec.Memory)
+		} else if e := s.check(ctx, rec); e != nil {
 			return e
 		}
 		switch action {
@@ -528,7 +540,10 @@ func (s *Service) Action(ctx context.Context, id, action string, in Envelope) er
 				return e
 			}
 			if rec.Memory != nil {
-				e = s.Memory.Complete(ctx, app, id, *rec.Memory, in.Response, rec.Started && in.Response.ModelCalls > 0, modelErr)
+				if memoryDenied != nil {
+					modelErr = memoryDenied
+				}
+				e = s.Memory.Complete(ctx, app, id, *rec.Memory, in.Response, rec.Started, modelErr)
 				if modelErr != nil {
 					rec.Outcome = "failed"
 				} else {
