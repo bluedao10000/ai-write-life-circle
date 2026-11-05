@@ -42,9 +42,11 @@ Thinking BudgetAdapter 复用 Saved.execution.modelRequests、usage 和 Store.wr
 
 `ModelRequestGate` 已接入 PiHost 的回复与讨论压缩 stream，以及 Worker 的 complete。SDK最终payload钩子等待授权和原持久预留适配器；实际fetch要求该请求已准备且尚未发送。并发准备、未预留发送和重复发送均被拒绝。Worker适配器在最终payload阶段调用Go started和heartbeat，没有适配器的ModelGateway默认拒绝执行。usage结算、未知费用与重试仍沿用原实现。
 
+每个模型请求只有一个终态。授权阶段失败记录`denied`；期限到达、预留写入失败、已预留但未发送或已发送后的Provider/取消/输出失败记录`failed`；成功响应记录`model_finished`。终态记录幂等，不会因上层重复收尾产生多条结果。PiHost把终态写入原`RunExecution.audit`并随检查点持久化，Worker与Evaluation Judge使用同一分类和关联字段。
+
 闸门将执行取消、执行deadline与调用方的Request/init信号合并到实际fetch。该约束覆盖响应体读取；调用方未传signal也不能绕过执行期限。取消不释放费用预留，未知usage仍由原预算权威处理。真实本地HTTP测试覆盖执行取消、Request信号、init信号及deadline四种路径。
 
-工具调用的实际取消信号取任务deadline与工具timeout中较早者，并保留执行与调用方取消。工具HTTP响应体读取随该信号中断；超时沿用 `TOOL_TIMEOUT` 合同，失败后不发布工具成功审计或继续模型请求。
+工具调用的实际取消信号取任务deadline与工具timeout中较早者，并保留执行与调用方取消。工具HTTP响应体读取随该信号中断；超时沿用 `TOOL_TIMEOUT` 合同，失败后不发布工具成功审计或继续模型请求。参数、scope或当前授权在真正调度工具前被拒绝时记录`denied`；已调度后的执行、取消、期限或输出失败记录`failed`，避免把授权拒绝与工具故障混为一类。
 
 `governTool` 包装所有注册工具，包括本地analysis skill与StoryWrites回执重放：校验schema/输入大小、scope、当前授权、取消和期限，然后执行原工具及检查输出大小。执行仍使用原顺序调度、原意图持久化和Go回执。Thinking重新核验作者、作品、session、授权版本、模型与scope；本地缓存不能绕过这项检查。
 
@@ -53,6 +55,8 @@ Thinking的版本和白名单审计记录加入原 `RunExecution`，随业务检
 新增可选私有字段不改公共Thinking或Go协议；旧运行没有governance元数据时保留legacy语义，启动仍中断旧付费执行。现有layout=2迁移与墓碑规则不变。代码回滚需支持该布局，禁止恢复旧状态覆盖新费用/回执。
 
 验收：106项Agent测试通过，包含治理预留闸门、失败零网络、撤销后的本地重放、严格参数、迟到结果拒绝及审计脱敏/持久记录；类型检查、lint和构建通过。真实Go/Pi集成通过Thinking、story-continuity、Review Worker、Creative workflow、Knowledge 10章及Knowledge faults，全部合成HTTP模型。
+
+2026-11-05终态审计验收：145项Agent测试、类型检查、lint、Agent与Go构建通过，`go test -race ./...`通过。真实Go/Pi进程重新通过Thinking、Review Worker、Creative五角色、Knowledge 10章、story-continuity与runtime-health；PiHost超时样本同时验证`model_started`和`failed`进入持久审计且没有伪造`model_finished`。全部模型请求由本地合成HTTP Provider响应。
 
 本阶段保留通用审批存储和长期记忆的既有边界。高风险业务仍依赖现有作者同意、消息证据和Go确认规则。只读多角色试点仅拆分一个既有Go任务的预算，不创建子任务权威。全局持久诊断、历史指标与统一健康聚合属于后续Observability阶段；不将本地日志标为完整持久审计。
 

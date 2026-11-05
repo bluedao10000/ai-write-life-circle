@@ -8,6 +8,7 @@ export function governTool(tool:ToolRegistration,policy:ToolPolicy,execution:Exe
  return {...tool,async execute(args,api,context){
   const started=performance.now();
   const details=()=>({toolName:tool.name,durationMs:performance.now()-started});
+  let dispatched=false;
   const timeout=AbortSignal.timeout(Math.min(policy.timeoutMs,Math.max(1,Math.ceil(execution.deadline-Date.now()))));
   const signal=AbortSignal.any([execution.signal,timeout,...(context.abortSignal?[context.abortSignal]:[])]);
   const current={...execution,signal};
@@ -16,12 +17,14 @@ export function governTool(tool:ToolRegistration,policy:ToolPolicy,execution:Exe
    if(policy.name!==tool.name||policy.replay!==tool.replay||policy.requiredScopes.some(scope=>!execution.scopes.includes(scope)))throw Error('AUTHORIZATION_REVOKED');
    if(Buffer.byteLength(JSON.stringify(args))>policy.maxInputBytes||!Check(tool.parameters as TSchema,args))throw Error('TOOL_EXECUTION_FAILED');
    await authority.authorize();assertCurrent(current);audit(current,'tool_started',{toolName:tool.name});
+   dispatched=true;
    const result=await tool.execute(args,api,withAbortSignal(signal,context));
    assertCurrent(current);
    if((result.output??[]).reduce((bytes,block)=>bytes+Buffer.byteLength(block.type==='text'?block.text:JSON.stringify(block)),0)>policy.maxOutputBytes)throw Error('TOOL_RESULT_TOO_LARGE');
    audit(current,'tool_finished',details());return result;
   }catch(error){
-   audit(current,'failed',details());
+   const interrupted=timeout.aborted||execution.signal.aborted||context.abortSignal?.aborted||(error instanceof Error&&error.message==='DURATION_EXCEEDED');
+   audit(current,dispatched||interrupted?'failed':'denied',details());
    if(timeout.aborted&&!execution.signal.aborted&&!context.abortSignal?.aborted)throw Error('TOOL_TIMEOUT');
    throw error;
   }

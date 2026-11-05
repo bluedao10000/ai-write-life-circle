@@ -37,7 +37,8 @@ test('bounded transport honors SDK cancellation and business cancellation',async
  }finally{server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()))}
 });
 test('Pi bounded Review sends the task prompt and preserves dialect, usage and zero tools/retries',async()=>{
- const requests:Record<string,unknown>[]=[];const requestIds:string[]=[];let missing=false,invalid=false,oversized=false; let cached:number|undefined;
+ const requests:Record<string,unknown>[]=[];const requestIds:string[]=[],governance:string[]=[];let missing=false,invalid=false,oversized=false; let cached:number|undefined;
+ const originalLog=console.log;console.log=(line:unknown)=>{if(String(line).includes('"event":"agent_governance"'))governance.push(String(line))};
  const server=createServer(async(req,res)=>{let raw='';for await(const chunk of req)raw+=chunk;const value=JSON.parse(raw);requests.push(value);requestIds.push(String(req.headers['x-client-request-id']));res.writeHead(200,{'content-type':'text/event-stream'});res.end('data: '+JSON.stringify({id:'fixture',object:'chat.completion.chunk',model:'fixture',choices:[{index:0,delta:{role:'assistant',content:oversized?'x'.repeat(4096):invalid?'invalid-json':'{"findings":[]}'},finish_reason:'stop'}],...(missing?{}:{usage:{prompt_tokens:33,completion_tokens:8,...(cached===undefined?{}:{prompt_cache_hit_tokens:cached,prompt_tokens_details:{cached_tokens:cached}})}})})+'\n\ndata: [DONE]\n\n')});
  await new Promise<void>(r=>server.listen(0,'127.0.0.1',r));const endpoint=`http://127.0.0.1:${(server.address() as {port:number}).port}/v1`;
  const config=executionConfigSchema.parse({Provider:'openai-compatible',BaseURL:endpoint,APIKey:'',Model:'fixture',ResponseFormat:'json_schema',TokenParameter:'max_tokens',Timeout:5e9,MaxContextBytes:12000,MaxOutputTokens:2048,MaxResponseBytes:256*1024});
@@ -64,7 +65,10 @@ test('Pi bounded Review sends the task prompt and preserves dialect, usage and z
  oversized=true;
  const limited=new ModelGateway({...config,MaxResponseBytes:1024},'fixture-key',async()=>{});
  await assert.rejects(executeReview(task,limited,new AbortController().signal),(e:unknown)=>e instanceof GatewayError&&e.code==='LLM_RESPONSE_TOO_LARGE'&&e.response.modelCalls===1);
- }finally{server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()))}
+ const events=governance.map(line=>JSON.parse(line) as {action:string;modelRequestId?:string});
+ assert(events.some(event=>event.action==='failed'&&event.modelRequestId===task.taskId+':review.execute:1'));
+ assert.equal(events.filter(event=>event.modelRequestId===task.taskId+':review.execute:1'&&event.action==='model_started').length,requests.length);
+ }finally{console.log=originalLog;server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()))}
 });
 test('Review candidate Unicode limits match Go rune counts',async()=>{
  const {reviewCandidates}=await import('../src/agents/review/schema.js');

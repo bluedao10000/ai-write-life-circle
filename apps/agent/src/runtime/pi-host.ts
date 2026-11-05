@@ -455,6 +455,7 @@ export class PiHost {
       let measuredInput: MeasuredInput | undefined;
       runtime.streamSimple = (model, context, options) => {
         const stream = createAssistantMessageEventStream();
+        let requestGate: ModelRequestGate | undefined;
         void (async () => {
           try {
             alive();
@@ -471,6 +472,7 @@ export class PiHost {
             const providerUsage: {reported:ReturnType<typeof completionUsage>;seen:boolean} = {reported:null,seen:false};
             let transportCode = "";
             const gate=new ModelRequestGate({...governed,modelRequestId:requestId},currentAuthorization);
+            requestGate=gate;
             const providerStream = original(model, context, {
               ...options,
               headers:{...options?.headers,"X-Client-Request-Id":requestId},
@@ -581,9 +583,10 @@ export class PiHost {
               stream.push(event);
             }
             const result = await providerStream.result();
-            gate.finished();
+            if(errorCode)gate.failed();else gate.finished();
             stream.end(closing ? withoutToolCalls(result) : result);
           } catch (e) {
+            requestGate?.failed();
             errorCode = safeCode(e);
             const m: AssistantMessage = {
               role: "assistant",

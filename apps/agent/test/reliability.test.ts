@@ -153,6 +153,10 @@ test("timeout is retained as unknown cost and never retried automatically",async
   const f=await fixture({duration:1000});try {
     f.mode("hang");await f.send();const s=f.host.get(f.id);
     assert.equal(f.calls,1);assert.equal(s.view.run?.failure?.code,"PROVIDER_TIMEOUT");assert.equal(s.view.run?.failure?.mayHaveIncurredCost,true);assert.equal(s.view.usage.incomplete,true);assert(s.view.usage.charged>120);
+    const audit=f.host.store.state(f.id)!.execution!.audit!;
+    assert(audit.some(record=>record.action==="model_started"));
+    assert(audit.some(record=>record.action==="failed"));
+    assert.equal(audit.some(record=>record.action==="model_finished"),false);
     rows.push({name:"timeout",completed:s.view.run?.status==="completed",recovered:null,accepted:1,lost:Number(!s.view.messages.some(m=>m.role==="user")),duplicateTools:f.toolCalls,unexpectedCalls:f.calls-1,recoveryMs:null,consistent:s.view.messages.at(-1)?.status==="failed"});
   }finally{await f.close()}
 });

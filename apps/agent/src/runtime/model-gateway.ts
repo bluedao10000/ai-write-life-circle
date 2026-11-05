@@ -119,7 +119,6 @@ export class ModelGateway {
           if(reported)usage=reported;
         },
       });
-      gate.finished();
       const text=result.content.filter(b=>b.type==="text").map(b=>b.text).join("");
       const response={text,usage,modelCalls:1};
       if(abort.aborted)throw new GatewayError(deadline.aborted?"LLM_TIMEOUT":"REVIEW_INTERRUPTED",response);
@@ -127,8 +126,10 @@ export class ModelGateway {
       if(result.content.some(b=>b.type==="toolCall"))throw new GatewayError("LLM_TOOL_OUTPUT_FORBIDDEN",response);
       if(result.stopReason!=="stop")throw new GatewayError(result.stopReason==="length"?"LLM_INCOMPLETE_OUTPUT":"LLM_INVALID_RESPONSE",response);
       if(Buffer.byteLength(text)>candidateBytes[task.kind])throw new GatewayError("LLM_RESPONSE_TOO_LARGE",{text:"",usage,modelCalls:1});
+      gate.finished();
       return response;
     }catch(e){
+      gate.failed();
       if(e instanceof GatewayError)throw new GatewayError(e.code,gate.wasSent()&&e.response.modelCalls===undefined?{...e.response,modelCalls:1}:e.response);
       throw new GatewayError(deadline.aborted?"LLM_TIMEOUT":signal.aborted?"REVIEW_INTERRUPTED":transportError||"LLM_INVALID_RESPONSE",{text:"",usage,...(gate.wasSent()?{modelCalls:1}:{})});
     }
@@ -166,6 +167,7 @@ export async function completeJudgment(config:ExecutionConfig,key:string,context
   if(result.stopReason!=='stop')throw new GatewayError('LLM_INCOMPLETE_OUTPUT',response);
   gate.finished();return response;
  }catch(error){
+  gate.failed();
   if(error instanceof GatewayError)throw error;
   throw new GatewayError(signal.aborted?'LLM_TIMEOUT':transportError||'LLM_INVALID_RESPONSE',{text:'',usage});
  }finally{if(reserved)await budget.settle(usage)}

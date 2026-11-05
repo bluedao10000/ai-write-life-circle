@@ -85,7 +85,7 @@ Runtime Governance 已完成实际执行接入和本地工程验收。Thinking �
 | 工具传输期限 | governance.test.ts：真实HTTP响应体分别在任务deadline、工具timeout到达后中断，审计仅记录开始和失败；reliability.test.ts验证超时后无后续模型请求 |
 | 工具重放重新授权 | governance.test.ts：已有故事回执与本地skill在撤销后拒绝 |
 | 参数/权限/迟到结果 | governance.test.ts：额外bookId拒绝、scope扩权拒绝、取消后不发布结果 |
-| 审计与版本 | reliability.test.ts：白名单日志无正文/凭证，版本和审计进入原持久执行对象 |
+| 审计与版本 | governance.test.ts：授权拒绝、预留失败、请求失败与成功分别形成单一终态；reliability.test.ts验证白名单日志无正文/凭证，版本和审计进入原持久执行对象 |
 | 原有语义 | 全部106项Agent测试通过，包含SIGKILL、SQLite/outbox失败、预算、取消及迁移 |
 | 跨进程合同 | Thinking、故事连续性、Review Worker、Creative、Knowledge quick/faults脚本通过 |
 | 静态与构建 | typecheck:agent、Agent lint、build:agent通过；Go API/control构建通过 |
@@ -95,6 +95,10 @@ Runtime Governance 已完成实际执行接入和本地工程验收。Thinking �
 2026-11-04追加验收：模型闸门自身实施传输取消与deadline，110项Agent测试、类型检查、lint及构建通过。使用当前Agent构建和现有Go二进制再次运行Thinking与Review Worker跨进程脚本，均通过；覆盖取消、SIGKILL、显式恢复、重复Worker、Go API重启及Thinking隔离。模型服务为本地HTTP合成fixture，无付费调用。该改动不改变持久格式，回滚只需恢复上一Agent构建，保留现有状态和费用回执。
 
 2026-11-04工具期限验收：Tool Gateway将任务deadline与工具timeout合并到实际工具取消信号，沿用 `TOOL_TIMEOUT` 业务错误合同。127项Agent测试、类型检查、lint与构建通过；Thinking、Review Worker和Creative跨进程回归通过；Knowledge 10/100/500章批处理、Knowledge故障回归与故事连续性测试通过，覆盖未知usage保留、丢失回执、SIGKILL、API重启和删除栅栏。全部使用本地合成模型。该变更不修改持久格式，回滚恢复上一Agent构建并保留现有状态与费用回执。
+
+2026-11-05终态审计验收：`ModelRequestGate`区分授权拒绝、预留失败、传输失败与成功，每个请求只写一个终态；PiHost把终态写入原`RunExecution.audit`并随检查点保存，Worker和Evaluation Judge使用相同合同。工具在调度前拒绝记为`denied`，调度后故障、取消或期限记为`failed`。
+
+本次145项Agent测试、类型检查、lint、Agent与Go构建通过，`go test -race ./...`通过。真实Go/Pi进程通过Thinking、Review Worker、Creative五角色、Knowledge 10章、story-continuity与runtime-health；Thinking超时样本确认持久审计包含`model_started`和`failed`，不包含伪造的`model_finished`。模型响应全部来自本地合成HTTP Provider，未产生付费调用。
 
 证据仅证明工程边界。未调用真实付费模型，未产生新的质量分数或性能改善结论，未部署本批代码。Phase 2下一步为统一评测schema/split/runner及Thinking事件全分页。后续仍需父子预算、长期记忆、全局持久诊断与编排审批；这些不因Registry已存在而视为完成。
 

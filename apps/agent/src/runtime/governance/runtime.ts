@@ -61,13 +61,17 @@ export class ModelRequestGate {
  private ready=false;
  private preparing=false;
  private sent=false;
+ private terminal:'finished'|'failed'|undefined;
  constructor(readonly context:ExecutionContext,readonly authorization:AuthorizationManager){}
  async prepare(budget:BudgetManager){
   if(this.preparing||this.ready||this.sent)throw Error('MODEL_REQUEST_REPLAY');
   this.preparing=true;
-  assertCurrent(this.context);
-  try{await this.authorization.authorize();assertCurrent(this.context);audit(this.context,'authorized');await budget.reserve();assertCurrent(this.context);this.ready=true;audit(this.context,'reserved')}
-  catch(error){audit(this.context,'denied');throw error}
+  try{assertCurrent(this.context)}catch(error){audit(this.context,'failed');throw error}
+  try{await this.authorization.authorize();assertCurrent(this.context)}
+  catch(error){audit(this.context,this.context.signal.aborted||Date.now()>=this.context.deadline?'failed':'denied');throw error}
+  audit(this.context,'authorized');
+  try{await budget.reserve();assertCurrent(this.context);audit(this.context,'reserved');this.ready=true}
+  catch(error){audit(this.context,'failed');throw error}
  }
  transport(fetcher:typeof fetch):typeof fetch {
   return async(request,options)=>{
@@ -82,5 +86,14 @@ export class ModelRequestGate {
   };
  }
  wasSent(){return this.sent}
- finished(){audit(this.context,'model_finished')}
+ finished(){
+  if(!this.sent||this.terminal)return;
+  this.terminal='finished';
+  audit(this.context,'model_finished');
+ }
+ failed(){
+  if((!this.ready&&!this.sent)||this.terminal)return;
+  this.terminal='failed';
+  audit(this.context,'failed');
+ }
 }

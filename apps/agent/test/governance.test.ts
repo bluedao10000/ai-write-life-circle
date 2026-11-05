@@ -61,12 +61,29 @@ test('model transport waits for durable reservation and refuses concurrent prepa
 
 test('authorization denial, persistence failure and cancellation never send a model request',async()=>{
  for(const failure of ['authorization','persistence','cancel']){
-  let sent=0,reserved=0;const abort=new AbortController();
-  const gate=new ModelRequestGate(context(abort.signal),{authorize:async()=>{if(failure==='authorization')throw Error('AUTHORIZATION_REVOKED')}});
+  let sent=0,reserved=0;const abort=new AbortController(),records:import('../src/runtime/governance/runtime.js').AuditRecord[]=[];
+  const gate=new ModelRequestGate({...context(abort.signal),recordAudit:record=>records.push(record)},{authorize:async()=>{if(failure==='authorization')throw Error('AUTHORIZATION_REVOKED')}});
   await assert.rejects(gate.prepare({reserve:async()=>{reserved++;if(failure==='persistence')throw Error('SQLITE_WRITE_FAILED');abort.abort(Error('cancelled'))}}));
   await assert.rejects(gate.transport(async()=>{sent++;return new Response('{}')})('http://example.invalid'));
   assert.equal(sent,0);assert.equal(reserved,failure==='authorization'?0:1);
+  assert.deepEqual(records.map(record=>record.action),failure==='authorization'?['denied']:['authorized','failed']);
  }
+});
+
+test('model request gate records exactly one terminal audit for success and failure',async()=>{
+ const records:import('../src/runtime/governance/runtime.js').AuditRecord[]=[];
+ const successful=new ModelRequestGate({...context(),modelRequestId:'request-1',recordAudit:record=>records.push(record)},{authorize:async()=>{}});
+ await successful.prepare({reserve:async()=>{}});
+ await successful.transport(async()=>new Response('{}'))('http://example.invalid');
+ successful.finished();successful.failed();successful.finished();
+ assert.deepEqual(records.map(record=>record.action),['authorized','reserved','model_started','model_finished']);
+
+ records.length=0;
+ const failed=new ModelRequestGate({...context(),modelRequestId:'request-2',recordAudit:record=>records.push(record)},{authorize:async()=>{}});
+ await failed.prepare({reserve:async()=>{}});
+ failed.failed();failed.finished();failed.failed();
+ assert.deepEqual(records.map(record=>record.action),['authorized','reserved','failed']);
+ assert.equal(records.at(-1)?.modelRequestId,'request-2');
 });
 
 test('tool gateway rejects scope and schema expansion and propagates cancellation before publishing results',async()=>{
@@ -125,6 +142,6 @@ test('tool terminal audit records elapsed time and registered name without paylo
  assert.equal(records[1]?.action,'tool_finished');assert.equal(records[1]?.toolName,'lookup');assert(Number.isFinite(records[1]?.durationMs));assert(records[1]!.durationMs!>=0);
  const denied=governTool(tool,policy,execution,{authorize:async()=>{throw Error('PRIVATE_FAILURE')}});
  await assert.rejects(denied.execute({query:'PRIVATE_INPUT'},{} as never,BACKGROUND_CONTEXT),/PRIVATE_FAILURE/);
- assert.equal(records.at(-1)?.action,'failed');assert.equal(records.at(-1)?.toolName,'lookup');assert(Number.isFinite(records.at(-1)?.durationMs));
+ assert.equal(records.at(-1)?.action,'denied');assert.equal(records.at(-1)?.toolName,'lookup');assert(Number.isFinite(records.at(-1)?.durationMs));
  assert(!JSON.stringify(records).includes('PRIVATE'));
 });
