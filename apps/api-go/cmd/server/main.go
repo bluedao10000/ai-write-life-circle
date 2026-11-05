@@ -16,6 +16,7 @@ import (
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/identity"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/knowledge"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/llm"
+	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/memorytasks"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/procedural"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/publication"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/review"
@@ -109,6 +110,16 @@ func run() error {
 	management.GuardDelete = publications.CheckDelete
 	tasks := &agenttasks.Service{Management: management, State: c.State, Config: modelConfig, Priority: (&billing.PriorityCache{Ledger: ledger}).Priority}
 	thought := &thinking.Service{Management: management, State: c.State, ResolveActor: resolver, Meter: ledger}
+	memoryRunner := memorytasks.New(tasks, modelConfig)
+	validateExtraction := func(ctx context.Context, actor application.Actor, book string, origin procedural.Extraction) error {
+		if origin.SessionID != "" {
+			return thought.ValidateMemoryExtraction(ctx, actor, book, origin)
+		}
+		return memorytasks.ValidateExtraction(ctx, tasks, actor, book, origin)
+	}
+	memoryRunner.Validate = validateExtraction
+	tasks.Memory = memoryRunner
+	thought.ExtractionValidator = validateExtraction
 	privateAddress, piErr := thought.Configure()
 	if piErr != nil {
 		slog.Warn("Thinking disabled: invalid private configuration")
@@ -192,7 +203,7 @@ func run() error {
 		return r
 	}
 	h := transport.Handler(transport.Options{ProceduralFor: func(app *application.Service) *procedural.Service {
-		return &procedural.Service{App: app, Tasks: tasks, ValidateExtraction: thought.ValidateMemoryExtraction}
+		return &procedural.Service{App: app, Tasks: tasks, ValidateExtraction: validateExtraction}
 	}, CreativeFor: creativeFor, SessionOwned: thought.Owned, WorkerStatus: func() any { return agentruntime.ReadUnifiedStatus(c.State, modelConfig) }, KnowledgeFor: func(app *application.Service) *knowledge.Service { return knowledgeFor(app) }, Imports: imports, Management: management, ReviewFor: reviewFor, Account: func(ctx context.Context, a application.Actor) (any, error) {
 		return accountView(ctx, ledger, management, a)
 	}, Redeem: func(ctx context.Context, a application.Actor, code string) (any, error) {

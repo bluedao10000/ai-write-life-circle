@@ -15,8 +15,8 @@ try{
  const outcomePath=memoryBase+'/'+taskEvidence.taskId+'/outcome';
  const outcome=await f.call(outcomePath);assert.equal(outcome.basis,'task_result');assert.equal(outcome.total,reviewed.findings.length);assert.deepEqual(outcome.items.map(item=>item.id).sort(),reviewed.findings.map(item=>item.findingId).sort());
  assert(outcome.items.length>0);
- await f.call('/v1/projects/review-fixture/reviews/'+r.runId+'/findings/'+reviewed.findings[0].findingId+'/feedback',{method:'POST',body:{choice:'false_positive',baseVersion:reviewed.version}});
- const feedback=await f.call(outcomePath);assert(feedback.version>outcome.version);assert.equal(feedback.items.find(item=>item.id===reviewed.findings[0].findingId).feedback,'false_positive');
+ const feedbackRun=await f.call('/v1/projects/review-fixture/reviews/'+r.runId+'/findings/'+reviewed.findings[0].findingId+'/feedback',{method:'POST',body:{choice:'false_positive',baseVersion:reviewed.version}});assert(feedbackRun.version>reviewed.version);
+ const feedback=await f.call(outcomePath);assert.notEqual(feedback.version,outcome.version);assert.equal(feedback.items.find(item=>item.id===reviewed.findings[0].findingId).feedback,'false_positive');
  assert.equal(f.calls,before+1);
 
  for(const scenario of f.cases){await f.select(scenario);r=await f.enqueue();const done=await until(async()=>{const x=await f.get(r.runId);return !['queued','running'].includes(x.status)&&x},scenario.id);assert.equal(done.status,scenario.fake==='invalid'?'failed':'completed');assert.equal(done.findings.length,scenario.fake==='valid'?1:0);if(scenario.fake.startsWith('fake-'))assert.equal(done.rejectedCount,1)}

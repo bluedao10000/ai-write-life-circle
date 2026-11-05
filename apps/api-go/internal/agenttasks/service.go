@@ -15,6 +15,7 @@ import (
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/storage"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -52,6 +53,7 @@ type Record struct {
 	Knowledge   *knowledge.PreparedJob `json:"knowledge,omitempty"`
 	Review      *review.ClaimedRun     `json:"review,omitempty"`
 	Creative    *creative.PreparedJob  `json:"creative,omitempty"`
+	Memory      *PreparedMemory        `json:"memory,omitempty"`
 }
 type Registry struct {
 	Schema int               `json:"schema"`
@@ -70,6 +72,9 @@ type Service struct {
 	// Priority reports whether an owner's plan gets the first claim on
 	// background work (Pro); nil means normal priority for everyone.
 	Priority func(ctx context.Context, owner string) bool
+	// Memory supplies background consolidation. It owns source validation and
+	// candidate publication; this registry remains the task/lease authority.
+	Memory MemoryCoordinator
 }
 
 // resolveTask opens a task's book as the author recorded at claim time, and
@@ -92,8 +97,12 @@ func (s *Service) load() (Registry, error) {
 		st = Registry{Schema: 1, Tasks: map[string]Record{}}
 	}
 	for id, r := range st.Tasks {
-		validKind := r.Task.Kind == "review.execute" || r.Task.Kind == "knowledge.extract" || r.Task.Kind == "creative.organize" || r.Task.Kind == "creative.plan_check"
-		if id != r.Task.ID || r.Task.Book == "" || !validKind || (r.Task.Kind == "review.execute" && r.Review == nil) || (r.Task.Kind == "knowledge.extract" && r.Knowledge == nil) || (r.Task.Kind != "review.execute" && r.Task.Kind != "knowledge.extract" && r.Creative == nil) {
+		validKind := r.Task.Kind == "review.execute" || r.Task.Kind == "knowledge.extract" || r.Task.Kind == "creative.organize" || r.Task.Kind == "creative.plan_check" || r.Task.Kind == "memory.consolidate"
+		validPayload := (r.Task.Kind == "review.execute" && r.Review != nil && r.Knowledge == nil && r.Creative == nil && r.Memory == nil) ||
+			(r.Task.Kind == "knowledge.extract" && r.Review == nil && r.Knowledge != nil && r.Creative == nil && r.Memory == nil) ||
+			((r.Task.Kind == "creative.organize" || r.Task.Kind == "creative.plan_check") && r.Review == nil && r.Knowledge == nil && r.Creative != nil && r.Memory == nil) ||
+			(r.Task.Kind == "memory.consolidate" && r.Review == nil && r.Knowledge == nil && r.Creative == nil && r.Memory != nil)
+		if id != r.Task.ID || r.Task.Book == "" || !validKind || !validPayload {
 			return st, errors.New("invalid persisted task identity")
 		}
 	}
@@ -148,9 +157,19 @@ func (s *Service) Claim(ctx context.Context, instance, config string, kinds ...s
 	var out *Task
 	e = s.transaction(ctx, func(st *Registry) error {
 		expire(st)
-		total := len(books) * 3
+		domains := []string{"review", "knowledge", "creative"}
+		if s.Memory != nil {
+			domains = append(domains, "memory")
+		}
+		total := len(books) * len(domains)
 		if total == 0 {
 			return nil
+		}
+		attempted := []PreparedMemory{}
+		for _, rec := range st.Tasks {
+			if rec.Memory != nil {
+				attempted = append(attempted, *rec.Memory)
+			}
 		}
 		active := 0
 		for _, rec := range st.Tasks {
@@ -176,8 +195,8 @@ func (s *Service) Claim(ctx context.Context, instance, config string, kinds ...s
 				}
 			}
 		}
-		for _, i := range compat.PriorityOrder(total, st.Cursor, func(i int) bool { return priority[books[i/3].Owner.ID] }) {
-			kind := []string{"review", "knowledge", "creative"}[i%3]
+		for _, i := range compat.PriorityOrder(total, st.Cursor, func(i int) bool { return priority[books[i/len(domains)].Owner.ID] }) {
+			kind := domains[i%len(domains)]
 			if len(kinds) > 0 {
 				supported := false
 				for _, k := range kinds {
@@ -193,8 +212,8 @@ func (s *Service) Claim(ctx context.Context, instance, config string, kinds ...s
 			if assignment.Owner != "pi" || assignment.Draining {
 				continue
 			}
-			owner := books[i/3].Owner
-			app, e := s.Management.Resolve(owner, books[i/3].Book.ID)
+			owner := books[i/len(domains)].Owner
+			app, e := s.Management.Resolve(owner, books[i/len(domains)].Book.ID)
 			if e != nil {
 				continue
 			}
@@ -257,7 +276,7 @@ func (s *Service) Claim(ctx context.Context, instance, config string, kinds ...s
 				task.Consent = claim.Snapshot.Settings
 				task.Request = prepared.Request
 				rec.Knowledge = prepared
-			} else {
+			} else if kind == "creative" {
 				c := s.creative(app)
 				claim, e := c.Claim(ctx)
 				if e != nil {
@@ -289,6 +308,38 @@ func (s *Service) Claim(ctx context.Context, instance, config string, kinds ...s
 				task.Consent = claim.Snapshot.Settings
 				task.Request = prepared.Request
 				rec.Creative = prepared
+			} else {
+				task.Lease = compat.UUID()
+				task.Attempt = 1
+				timeout := s.Config.Timeout
+				if timeout <= 0 {
+					timeout = 60 * time.Second
+				}
+				task.Deadline = time.Now().Add(timeout + 15*time.Second).UTC().Format(time.RFC3339Nano)
+				var prepared *PreparedMemory
+				e = (executorpolicy.Controller{State: s.State}).Claim(ctx, "memory", "pi", func(epoch uint64) (string, string, error) {
+					prepared, e = s.Memory.Prepare(ctx, app, attempted)
+					if e != nil || prepared == nil {
+						return "", "", e
+					}
+					task.Epoch = epoch
+					task.Kind = "memory.consolidate"
+					task.OutputSchema = "memory-candidate-v1"
+					task.Strategy = prepared.Strategy
+					task.ContentHash = strings.Join(memoryTaskIDs(*prepared), ",")
+					task.Reserved = prepared.ReservedTokens
+					task.BudgetDay = prepared.BudgetDay
+					task.Consent = map[string]any{"backgroundMemoryConsolidation": true}
+					task.Request = prepared.Request
+					rec.Memory = prepared
+					return task.Lease, task.Deadline, nil
+				})
+				if e != nil {
+					return e
+				}
+				if prepared == nil {
+					continue
+				}
 			}
 			raw, _ := json.Marshal(task.Request)
 			task.InputHash = compat.Hash(string(raw))
@@ -333,6 +384,9 @@ func (s *Service) check(ctx context.Context, rec Record) error {
 	if rec.Creative != nil {
 		return s.creative(app).Check(ctx, rec.Creative)
 	}
+	if rec.Memory != nil {
+		return s.Memory.Check(ctx, app, *rec.Memory)
+	}
 	r := s.review(app)
 	defer r.Close()
 	return r.Check(ctx, rec.Review)
@@ -368,7 +422,9 @@ func (s *Service) Action(ctx context.Context, id, action string, in Envelope) er
 				outcome = llm.Fail(in.Failure)
 			}
 			completed := false
-			if rec.Knowledge != nil {
+			if rec.Memory != nil {
+				completed = false
+			} else if rec.Knowledge != nil {
 				completed = s.knowledge(app).Completed(rec.Knowledge, in.Response, rec.Started, outcome)
 			} else if rec.Creative != nil {
 				completed = s.creative(app).Completed(rec.Creative, in.Response, rec.Started, outcome)
@@ -394,6 +450,15 @@ func (s *Service) Action(ctx context.Context, id, action string, in Envelope) er
 		}
 		switch action {
 		case "started":
+			if rec.Memory != nil && !rec.Started {
+				app, err := s.resolveTask(t)
+				if err != nil {
+					return err
+				}
+				if err = s.Memory.Start(ctx, app, id, rec.Memory); err != nil {
+					return err
+				}
+			}
 			if rec.Review != nil {
 				app, err := s.resolveTask(t)
 				if err != nil {
@@ -462,7 +527,15 @@ func (s *Service) Action(ctx context.Context, id, action string, in Envelope) er
 			if e != nil {
 				return e
 			}
-			if rec.Knowledge != nil {
+			if rec.Memory != nil {
+				e = s.Memory.Complete(ctx, app, id, *rec.Memory, in.Response, rec.Started && in.Response.ModelCalls > 0, modelErr)
+				if modelErr != nil {
+					rec.Outcome = "failed"
+				} else {
+					rec.Outcome = "completed"
+				}
+				rec.CompletedAt = time.Now().UTC().Format(time.RFC3339Nano)
+			} else if rec.Knowledge != nil {
 				e = s.knowledge(app).Complete(ctx, rec.Knowledge, in.Response, rec.Started, modelErr)
 			} else if rec.Creative != nil {
 				e = s.creative(app).Complete(ctx, rec.Creative, in.Response, rec.Started, modelErr)
@@ -491,7 +564,7 @@ func (s *Service) Action(ctx context.Context, id, action string, in Envelope) er
 }
 func failureAllowed(code string) bool {
 	switch code {
-	case "LLM_TIMEOUT", "LLM_NETWORK_ERROR", "LLM_HTTP_ERROR", "LLM_INVALID_RESPONSE", "LLM_INCOMPLETE_OUTPUT", "LLM_RESPONSE_TOO_LARGE", "LLM_INVALID_OUTPUT", "LLM_INVALID_USAGE", "LLM_BUDGET_EXCEEDED", "LLM_REFUSED", "LLM_TOOL_OUTPUT_FORBIDDEN", "KNOWLEDGE_INTERRUPTED", "REVIEW_INTERRUPTED", "CREATIVE_INTERRUPTED", "CREATIVE_CONTEXT_TOO_LARGE", "CREATIVE_NO_PLANS", "CREATIVE_SUPERSEDED", "CREATIVE_TURN_UNAVAILABLE", "CREATIVE_LEASE_LOST", "CREATIVE_UNKNOWN_JOB":
+	case "LLM_TIMEOUT", "LLM_NETWORK_ERROR", "LLM_HTTP_ERROR", "LLM_INVALID_RESPONSE", "LLM_INCOMPLETE_OUTPUT", "LLM_RESPONSE_TOO_LARGE", "LLM_INVALID_OUTPUT", "LLM_INVALID_USAGE", "LLM_BUDGET_EXCEEDED", "LLM_REFUSED", "LLM_TOOL_OUTPUT_FORBIDDEN", "KNOWLEDGE_INTERRUPTED", "REVIEW_INTERRUPTED", "CREATIVE_INTERRUPTED", "MEMORY_INTERRUPTED", "MEMORY_SOURCE_CHANGED", "CREATIVE_CONTEXT_TOO_LARGE", "CREATIVE_NO_PLANS", "CREATIVE_SUPERSEDED", "CREATIVE_TURN_UNAVAILABLE", "CREATIVE_LEASE_LOST", "CREATIVE_UNKNOWN_JOB":
 		return true
 	}
 	return false
@@ -512,6 +585,9 @@ func taskKind(kind string) string {
 	if kind == "creative" {
 		return "creative.organize"
 	}
+	if kind == "memory" {
+		return "memory.consolidate"
+	}
 	return "knowledge.extract"
 }
 func domain(kind string) string {
@@ -520,6 +596,9 @@ func domain(kind string) string {
 	}
 	if kind == "creative.organize" || kind == "creative.plan_check" {
 		return "creative"
+	}
+	if kind == "memory.consolidate" {
+		return "memory"
 	}
 	return "knowledge"
 }
@@ -542,6 +621,9 @@ func (r *Record) scrub() {
 		r.Creative.Organize = nil
 		r.Creative.Plan = nil
 		r.Creative.Claim.Snapshot = creative.State{}
+	}
+	if r.Memory != nil {
+		r.Memory.Request = llm.Request{}
 	}
 }
 func (s *Service) CleanupBook(ctx context.Context, book string) error {
@@ -576,6 +658,13 @@ func (s *Service) recordOutcome(r *Record, app *application.Service) {
 		r.Outcome, r.CompletedAt = s.knowledge(app).Outcome(r.Knowledge)
 	} else if r.Creative != nil {
 		r.Outcome, r.CompletedAt = s.creative(app).Outcome(r.Creative)
+	} else if r.Memory != nil {
+		if r.Outcome == "" {
+			r.Outcome = "completed"
+		}
+		if r.CompletedAt == "" {
+			r.CompletedAt = time.Now().UTC().Format(time.RFC3339Nano)
+		}
 	} else {
 		review := s.review(app)
 		r.Outcome, r.CompletedAt = review.Outcome(r.Review)

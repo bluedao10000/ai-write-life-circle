@@ -14,7 +14,7 @@ import (
 )
 
 func TestWorkerHealthUsesEnabledExecutorsAndFreshCounts(t *testing.T) {
-	statuses := map[string]ExecutionStatus{"review": {ExecutorOwner: "pi", Ready: true, Status: Status{Online: true, Counts: Counts{Pending: 3}}}, "knowledge": {ExecutorOwner: "disabled"}, "creative": {ExecutorOwner: "disabled"}}
+	statuses := map[string]ExecutionStatus{"review": {ExecutorOwner: "pi", Ready: true, Status: Status{Online: true, Counts: Counts{Pending: 3}}}, "knowledge": {ExecutorOwner: "disabled"}, "creative": {ExecutorOwner: "disabled"}, "memory": {ExecutorOwner: "disabled"}}
 	h := workerHealth(UnifiedStatus{Executors: statuses})
 	if !h.Readiness || h.Pending == nil || *h.Pending != 3 || h.Enabled != 1 {
 		t.Fatalf("%+v", h)

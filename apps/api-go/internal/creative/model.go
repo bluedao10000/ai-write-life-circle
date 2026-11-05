@@ -308,16 +308,17 @@ type Divergence struct {
 }
 
 type Settings struct {
-	DialogueRecording   bool          `json:"dialogueRecording"`
-	Enabled             bool          `json:"enabled"`
-	Paused              bool          `json:"paused"`
-	AutoOrganize        bool          `json:"autoOrganize"`
-	MultiAgentPlanCheck bool          `json:"multiAgentPlanCheck"`
-	ConsentAt           string        `json:"consentAt,omitempty"`
-	Model               llm.ModelInfo `json:"model"`
-	ConfigFingerprint   string        `json:"configFingerprint,omitempty"`
-	DailyTokenBudget    int           `json:"dailyTokenBudget"`
-	DailyJobBudget      int           `json:"dailyJobBudget"`
+	DialogueRecording       bool          `json:"dialogueRecording"`
+	Enabled                 bool          `json:"enabled"`
+	Paused                  bool          `json:"paused"`
+	AutoOrganize            bool          `json:"autoOrganize"`
+	MultiAgentPlanCheck     bool          `json:"multiAgentPlanCheck"`
+	AutoMemoryConsolidation bool          `json:"autoMemoryConsolidation"`
+	ConsentAt               string        `json:"consentAt,omitempty"`
+	Model                   llm.ModelInfo `json:"model"`
+	ConfigFingerprint       string        `json:"configFingerprint,omitempty"`
+	DailyTokenBudget        int           `json:"dailyTokenBudget"`
+	DailyJobBudget          int           `json:"dailyJobBudget"`
 }
 
 type receipt struct {

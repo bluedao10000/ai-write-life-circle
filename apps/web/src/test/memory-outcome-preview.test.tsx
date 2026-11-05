@@ -4,7 +4,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import MemoryOutcomePreview from '../features/memory/MemoryOutcomePreview'
 
 const evidence = { taskId: 't1', kind: 'review.execute', strategyVersion: 'v1', inputHash: 'input', completedAt: '2026-11-04T00:00:00Z' }
-const result = { evidence, basis: 'task_result', version: 2, items: [{ id: 'r1', kind: 'review_finding', status: 'proposed', text: '需要核对前后动机。', feedback: 'false_positive' }], total: 1, truncated: false }
+const result = { evidence, basis: 'task_result', version: `sha256:${'a'.repeat(64)}`, items: [{ id: 'r1', kind: 'review_finding', status: 'proposed', text: '需要核对前后动机。', feedback: 'false_positive' }], total: 1, truncated: false }
 afterEach(() => { cleanup(); vi.unstubAllGlobals() })
 it('loads current feedback only on demand and refreshes after closing', async () => {
   let reads = 0

@@ -29,7 +29,7 @@ func TestMemoryOutcomeReadsRevisionObservationsAndCurrentSourceStatus(t *testing
 	if e != nil {
 		t.Fatal(e)
 	}
-	if result.Basis != "revision_observations" || result.Version < 1 || result.Total != 1 || len(result.Items) != 1 || result.Truncated {
+	if result.Basis != "revision_observations" || !ValidResultVersion(result.Version) || result.Total != 1 || len(result.Items) != 1 || result.Truncated {
 		t.Fatal(result)
 	}
 	item := result.Items[0]
@@ -112,7 +112,7 @@ func TestMemoryOutcomePreservesAuthorDecisionAndStopsAfterDiscussionDeletion(t *
 	if e != nil {
 		t.Fatal(e)
 	}
-	if rejected.Version <= result.Version || rejected.Items[0].Status != "rejected" || rejected.Items[0].Feedback != "reject" {
+	if rejected.Version == result.Version || rejected.Items[0].Status != "rejected" || rejected.Items[0].Feedback != "reject" {
 		t.Fatal(rejected)
 	}
 	if e = c.CancelSession(ctx, "session"); e != nil {
@@ -156,7 +156,7 @@ func TestMemoryOutcomePlanAssessmentTracksDecisionAndPlanVersion(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if decided.Items[0].Feedback != "intentional" || decided.Items[0].Status != "decided" || decided.Version <= result.Version {
+	if decided.Items[0].Feedback != "intentional" || decided.Items[0].Status != "decided" || decided.Version == result.Version {
 		t.Fatal(decided)
 	}
 	next := plan.Content

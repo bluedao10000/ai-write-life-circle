@@ -121,3 +121,18 @@ func TestRollbackRejectsOpenBillingReservation(t *testing.T) {
 		t.Fatal(e)
 	}
 }
+
+func TestMemoryExtractionRollbackRemovesOnlyTokenBoundSessions(t *testing.T) {
+	data := []byte(`{"schema":1,"sessions":{"legacy":{"memoryExtraction":{"version":2}},"current":{"memoryExtraction":{"version":3}}},"requests":{"create-current":{"hash":"x","id":"current"},"create-legacy":{"hash":"y","id":"legacy"}},"cancelledReceipts":{"create-current":true}}`)
+	converted, err := RollbackMemoryExtractionSessions(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(converted), `"current"`) || strings.Contains(string(converted), `"create-current"`) || !strings.Contains(string(converted), `"legacy"`) || !strings.Contains(string(converted), `"create-legacy"`) {
+		t.Fatal(string(converted))
+	}
+	open := []byte(`{"schema":1,"sessions":{"current":{"memoryExtraction":{"version":3},"billOp":"open"}},"requests":{}}`)
+	if _, err = RollbackMemoryExtractionSessions(open); err == nil || !strings.Contains(err.Error(), "open billing reservation") {
+		t.Fatal("open reservation was removed", err)
+	}
+}

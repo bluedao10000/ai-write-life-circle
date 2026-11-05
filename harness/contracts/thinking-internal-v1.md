@@ -62,8 +62,8 @@ Thinking通过原服务Token读取`/internal/v1/readiness`，单次探测至多2
 
 ## 经验提取会话
 
-ThinkingCreate 可包含 `memoryExtraction:{taskIds:[...]}`，须 `consent:true` 且不含 scope。Go 验证 1–4 个成功任务并捕获业务结果版本；ThinkingGrant、PrivateCreate、Session、Summary 携带可选 `memoryExtraction:{version:1,tasks:[{taskId,resultVersion}]}`。旧会话省略该字段。
+ThinkingCreate 可包含 `memoryExtraction:{taskIds:[...]}`，须 `consent:true` 且不含 scope。Go验证1–4个成功任务并捕获公开结果投影版本；新会话版本为3，`resultVersion`是不含正文的`sha256:`令牌。ThinkingGrant、PrivateCreate、Session、Summary携带可选`memoryExtraction`；v1/v2旧会话继续使用原数字版本读取，但不能恢复新的付费提取。旧普通会话省略该字段。
 
-私有上下文响应为 `{binding:MemoryExtractionBinding,items:[{source:ProceduralSource,outcome:ProceduralOutcome}]}`，只含固定任务；逐次验证结果版本及原来源可读。该接口禁止普通会话访问，专用会话禁止全部故事工具。取消同步仍可获取最新 grant 以撤回 Pi 执行，已取消的 grant 不得用于新模型请求或候选导入。
+私有上下文响应为`{binding,items,comparisons,comparisonOmitted}`，只含固定任务和至多8条当前可用已确认经验；逐次验证令牌、原来源可读及比较版本。v3执行角色为`memory.extract.v3`，禁止全部故事工具。取消同步仍可获取最新grant以撤回Pi执行，已取消的grant不得用于新模型请求或候选导入。
 
 作者 `POST /thinking/sessions/{id}/memory-candidate` 提交 `{runId}`。Go从持久会话读取已完成输出，验证严格 JSON、来源子集、授权版本与取消状态，调用原 Procedural 候选事务。幂等身份为 Run；响应 201 ProceduralRecord，`extractions` 记录会话、Run、模型、提示版本和授权版本。确认、合并与检索继续验证各提取来源，撤销或来源变化后不可用。正式确认仍走原作者决定命令。

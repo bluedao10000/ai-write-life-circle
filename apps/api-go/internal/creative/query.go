@@ -33,7 +33,7 @@ type Overview struct {
 	Decisions map[string]int `json:"decisions"`
 }
 
-const Disclosure = "启用后，每轮灵感对话完成时，Writer Agent 会把本轮作者消息、AI 回复及最多 6 条近期消息（不超过 24 KiB），连同本作品已有创作设定的名称、别名与摘要，发送给下列模型，整理为待审核的候选。作者发起计划核对时，还会发送目标章节的已保存正文与该章的规划设定。结果只作为候选，不会自动写入正式设定，也不会修改正文。"
+const Disclosure = "启用后，每轮灵感对话完成时，Writer Agent 会把本轮作者消息、AI 回复及最多 6 条近期消息（不超过 24 KiB），连同本作品已有创作设定的名称、别名与摘要，发送给下列模型，整理为待审核的候选。作者发起计划核对时，还会发送目标章节的已保存正文与该章的规划设定。启用后台经验整理后，还会发送最多 4 个已完成任务的来源、结果和作者反馈，以及最多 8 条已确认经验用于比较。结果只作为候选，不会自动确认、写入正式设定或修改正文。"
 
 func (s *Service) settingsView(st State) SettingsView {
 	reserve := s.reserve()

@@ -72,13 +72,13 @@ try{
  const records=await retrieve();assert.equal(records.length,1);assert.equal(records[0].id,candidate.id);assert.equal(records[0].provenance.length,2);assert.equal(records[0].status,'confirmed');
  await fetch(f.origin+'/control',{method:'POST',body:JSON.stringify({mode:'memory-relation'})});
  const extractionSession=thinkingSessionSchema.parse(await f.call(base+'/thinking/sessions',{method:'POST',status:201,body:{consent:true,memoryExtraction:{taskIds:[ids[0]]}}}));
- assert.equal(extractionSession.memoryExtraction.version,2);assert.deepEqual(extractionSession.memoryExtraction.comparisons,[{memoryId:candidate.id,memoryVersion:confirmed.version}]);assert.equal(extractionSession.memoryExtraction.comparisonOmitted,0);
+ assert.equal(extractionSession.memoryExtraction.version,3);assert.deepEqual(extractionSession.memoryExtraction.comparisons,[{memoryId:candidate.id,memoryVersion:confirmed.version}]);assert.equal(extractionSession.memoryExtraction.comparisonOmitted,0);
  const extractionPath=base+'/thinking/sessions/'+extractionSession.sessionId;
  await f.call(extractionPath+'/messages',{method:'POST',status:202,body:{text:'提取经验并比较已有方法。'}});
  const extracted=await until(async()=>{const state=await f.call(extractionPath);return state.status==='idle'&&state.run?.status==='completed'&&state},'extraction with relation');
  assert(f.requests.at(-1).messages.find(message=>message.role==='system').content.includes(candidate.content));
  const relational=proceduralRecordSchema.parse(await f.call(extractionPath+'/memory-candidate',{method:'POST',status:201,body:{runId:extracted.run.runId}}));
- assert.equal(relational.extractions[0].promptVersion,'memory-extraction-v2');
+ assert.equal(relational.extractions[0].promptVersion,'memory-extraction-v3');
  assert.deepEqual(relational.extractions[0].relations,[{memoryId:candidate.id,memoryVersion:confirmed.version,kind:'conflict',reason:'合成比较：两条方法对当前修订的使用顺序不同。'}]);
  await f.call(root+'/'+relational.id,{method:'POST',key:'delete-relation-candidate',body:{action:'delete',baseVersion:relational.version}});
  await fetch(f.origin+'/control',{method:'POST',body:JSON.stringify({mode:'memory-relation-foreign'})});

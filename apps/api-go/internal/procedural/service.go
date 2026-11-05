@@ -32,11 +32,16 @@ type Record struct {
 type Extraction struct {
 	SessionID            string               `json:"sessionId"`
 	RunID                string               `json:"runId"`
+	Sources              []ExtractionSource   `json:"sources,omitempty"`
 	Provider             string               `json:"provider"`
 	Model                string               `json:"model"`
 	PromptVersion        string               `json:"promptVersion"`
 	AuthorizationVersion int                  `json:"authorizationVersion"`
 	Relations            []ExtractionRelation `json:"relations,omitempty"`
+}
+type ExtractionSource struct {
+	TaskID        string `json:"taskId"`
+	ResultVersion string `json:"resultVersion"`
 }
 type ExtractionRelation struct {
 	MemoryID      string `json:"memoryId"`
@@ -109,6 +114,16 @@ func (s *Service) load(actor application.Actor) (state, error) {
 		}
 		for _, origin := range r.Extractions {
 			seen := map[string]bool{}
+			sourceIDs := map[string]bool{}
+			if len(origin.Sources) > 4 || (origin.SessionID == "" && (origin.RunID == "" || len(origin.Sources) < 2)) {
+				return st, problem(500, "MEMORY_STATE_INVALID", "Invalid procedural extraction source.")
+			}
+			for _, source := range origin.Sources {
+				if source.TaskID == "" || !agenttasks.ValidResultVersion(source.ResultVersion) || sourceIDs[source.TaskID] {
+					return st, problem(500, "MEMORY_STATE_INVALID", "Invalid procedural extraction source.")
+				}
+				sourceIDs[source.TaskID] = true
+			}
 			if len(origin.Relations) > 8 {
 				return st, problem(500, "MEMORY_STATE_INVALID", "Invalid procedural relation history.")
 			}
@@ -129,6 +144,35 @@ func (s *Service) authorized(actor application.Actor) error {
 	}
 	_, e := s.Tasks.Management.Resolve(actor, s.App.Project)
 	return e
+}
+
+// Records returns the author's current stored records without deriving
+// availability. Internal background workers use this to bind versions before
+// publishing a candidate; public reads still use List and full validation.
+func (s *Service) Records(ctx context.Context, actor application.Actor) ([]Record, error) {
+	if err := s.authorized(actor); err != nil {
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	st, err := s.load(actor)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Record, 0, len(st.Records))
+	for _, record := range st.Records {
+		if record.Status != "deleted" {
+			out = append(out, record)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].UpdatedAt != out[j].UpdatedAt {
+			return out[i].UpdatedAt > out[j].UpdatedAt
+		}
+		return out[i].ID < out[j].ID
+	})
+	return out, nil
 }
 func (s *Service) mutate(ctx context.Context, actor application.Actor, key, op string, input any, change func(*state) (Record, error)) (Record, error) {
 	var out Record
@@ -288,17 +332,33 @@ func (s *Service) Decide(ctx context.Context, actor application.Actor, key, id s
 }
 
 func (s *Service) confirm(ctx context.Context, actor application.Actor, r *Record) error {
-	if e := s.validateExtractions(ctx, actor, *r); e != nil {
-		return e
-	}
 	if r.Status != "candidate" {
 		return problem(409, "MEMORY_NOT_PENDING", "Only a candidate can be confirmed.")
+	}
+	snapshot, e := s.Tasks.MemoryEvidence(ctx, actor, s.App.Project)
+	if e != nil {
+		return e
+	}
+	st, e := s.load(actor)
+	if e != nil {
+		return e
+	}
+	resolver := newAvailabilityResolver(ctx, s, actor, st, snapshot)
+	view, e := resolver.evaluate(r.ID)
+	if e != nil {
+		return e
+	}
+	if view.UnavailableReason == "source_unavailable" {
+		if cause := resolver.cache[r.ID].cause; cause != nil {
+			return cause
+		}
+		return problem(409, "MEMORY_SOURCE_CHANGED", "An extraction source or compared experience changed.")
 	}
 	expiry, e := time.Parse(time.RFC3339Nano, r.ExpiresAt)
 	if e != nil || !expiry.After(s.now()) {
 		return problem(409, "MEMORY_EXPIRED", "Candidate expired.")
 	}
-	evidence, e := s.Tasks.Evidence(ctx, actor, s.App.Project, ids(*r))
+	evidence, e := snapshot.Lookup(ids(*r))
 	if e != nil {
 		return e
 	}
@@ -324,36 +384,14 @@ func (s *Service) List(ctx context.Context, actor application.Actor) ([]View, er
 	if e != nil {
 		return nil, e
 	}
+	resolver := newAvailabilityResolver(ctx, s, actor, st, snapshot)
 	for _, r := range st.Records {
 		if r.Status == "deleted" {
 			continue
 		}
-		v := View{Record: r}
-		expiry, e := time.Parse(time.RFC3339Nano, r.ExpiresAt)
-		if r.SupersededBy != "" {
-			v.UnavailableReason = "superseded"
-		} else if e != nil || !expiry.After(s.now()) {
-			v.UnavailableReason = "expired"
-		} else if err := s.validateExtractions(ctx, actor, r); err != nil {
-			if application.AsError(err).Status >= 500 {
-				return nil, err
-			}
-			v.UnavailableReason = "source_unavailable"
-		} else if r.Status != "confirmed" {
-			v.UnavailableReason = "not_confirmed"
-		} else {
-			evidence, e := snapshot.Lookup(ids(r))
-			if e != nil {
-				a := application.AsError(e)
-				if a.Status >= 500 {
-					return nil, e
-				}
-				v.UnavailableReason = "source_unavailable"
-			} else if !independent(evidence) {
-				v.UnavailableReason = "source_unavailable"
-			} else {
-				v.Available = true
-			}
+		v, err := resolver.evaluate(r.ID)
+		if err != nil {
+			return nil, err
 		}
 		out = append(out, v)
 	}
@@ -364,16 +402,4 @@ func (s *Service) List(ctx context.Context, actor application.Actor) ([]View, er
 		return out[i].ID < out[j].ID
 	})
 	return out, nil
-}
-
-func (s *Service) validateExtractions(ctx context.Context, actor application.Actor, r Record) error {
-	for _, origin := range r.Extractions {
-		if s.ValidateExtraction == nil {
-			return problem(503, "MEMORY_UNAVAILABLE", "Extraction validation unavailable.")
-		}
-		if e := s.ValidateExtraction(ctx, actor, s.App.Project, origin); e != nil {
-			return e
-		}
-	}
-	return nil
 }

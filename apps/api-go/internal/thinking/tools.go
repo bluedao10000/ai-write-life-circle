@@ -164,7 +164,7 @@ func (s *Service) PrivateHandler() http.Handler {
 				_, e = s.authorize(Bearer(r))
 			}
 			payload := map[string]any{"binding": rec.MemoryExtraction, "items": data.Items}
-			if rec.MemoryExtraction.Version == 2 {
+			if rec.MemoryExtraction.Version >= 2 {
 				payload["comparisons"] = data.Comparisons
 				payload["comparisonOmitted"] = data.ComparisonOmitted
 			}

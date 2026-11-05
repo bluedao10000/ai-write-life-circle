@@ -11,9 +11,9 @@ import ProposalCard from '../creative/ProposalCard'
 import { designKind, designKindName } from '../creative/kit'
 import { creativeError, turnStatusLabels } from '../creative/labels'
 
-export type OrganizeSettings = { enabled: boolean; needsModelConsent: boolean; autoOrganize: boolean; multiAgentPlanCheck: boolean; available: boolean; paused: boolean }
+export type OrganizeSettings = { enabled: boolean; needsModelConsent: boolean; autoOrganize: boolean; multiAgentPlanCheck: boolean; autoMemoryConsolidation: boolean; available: boolean; paused: boolean }
 
-export function ReviewDrawer({ settings, proposals, onOpen, onDecide, onClose, onBook, onEnable, onAuto, onOrchestration }: {
+export function ReviewDrawer({ settings, proposals, onOpen, onDecide, onClose, onBook, onEnable, onAuto, onOrchestration, onMemory }: {
   settings?: OrganizeSettings
   proposals: CreativeProposal[]
   onOpen: (p: CreativeProposal) => void
@@ -23,6 +23,7 @@ export function ReviewDrawer({ settings, proposals, onOpen, onDecide, onClose, o
   onEnable: () => void
   onAuto: (on: boolean) => void
   onOrchestration: (on: boolean) => void
+  onMemory: (on: boolean) => void
 }) {
   useEffect(() => {
     const key = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
@@ -67,7 +68,10 @@ export function ReviewDrawer({ settings, proposals, onOpen, onDecide, onClose, o
               <Choice checked={settings.multiAgentPlanCheck} onChange={onOrchestration} className="text-ui-sm text-ink-2">
                 计划核对使用五个只读步骤
               </Choice>
-              <p className="text-micro text-ink-3">多角色核对费用更高；没有工具权限，也不会自动修改计划或正文。</p>
+              <Choice checked={settings.autoMemoryConsolidation} onChange={onMemory} className="text-ui-sm text-ink-2">
+                后台整理已完成任务的执行经验
+              </Choice>
+              <p className="text-micro text-ink-3">多角色核对费用更高；后台经验整理会从本作品已完成任务中选取同类来源并生成待审核候选。两者都没有工具权限，不会自动确认经验、修改计划或正文。</p>
             </>
           )}
           <Btn variant="link" className="text-ui-sm" onClick={onBook}>

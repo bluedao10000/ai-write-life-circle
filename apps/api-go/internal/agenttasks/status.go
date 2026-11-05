@@ -28,11 +28,11 @@ func (s *Service) ReportWorker(ctx context.Context, in WorkerHeartbeat) error {
 	if in.Config != s.Config.Fingerprint() {
 		return application.Fail(409, "AGENT_CONFIG_CHANGED", "Worker capability changed.")
 	}
-	if len(in.Instance) < 1 || len(in.Instance) > 128 || len(in.Version) < 1 || len(in.Version) > 128 || len(in.Active) > 8 || len(in.Kinds) < 1 || len(in.Kinds) > 3 {
+	if len(in.Instance) < 1 || len(in.Instance) > 128 || len(in.Version) < 1 || len(in.Version) > 128 || len(in.Active) > 8 || len(in.Kinds) < 1 || len(in.Kinds) > 4 {
 		return application.Fail(422, "VALIDATION_FAILED", "Invalid Worker heartbeat.")
 	}
 	for _, kind := range in.Kinds {
-		if kind != "review" && kind != "knowledge" && kind != "creative" {
+		if kind != "review" && kind != "knowledge" && kind != "creative" && kind != "memory" {
 			return application.Fail(422, "VALIDATION_FAILED", "Invalid executor kind.")
 		}
 	}
@@ -53,12 +53,20 @@ func (s *Service) ReportWorker(ctx context.Context, in WorkerHeartbeat) error {
 				got, e = (&review.Inspector{Config: s.Config, Resolve: resolve}).Inspect(ctx, book.Book.ID)
 			} else if kind == "knowledge" {
 				got, e = (&knowledge.Inspector{Config: s.Config, Resolve: resolve}).Inspect(ctx, book.Book.ID)
-			} else {
+			} else if kind == "creative" {
 				app, err := resolve(book.Book.ID)
 				if err != nil {
 					continue
 				}
 				got, e = creative.Inspect(ctx, app, s.Config)
+			} else if s.Memory != nil {
+				app, err := resolve(book.Book.ID)
+				if err != nil {
+					continue
+				}
+				inspect, inspectErr := s.Memory.Inspect(ctx, app)
+				e = inspectErr
+				got = agentruntime.Counts{Pending: inspect.Pending, Running: inspect.Running, Completed: inspect.Completed, Failed: inspect.Failed, Cancelled: inspect.Cancelled, Retried: inspect.Retried, Interrupted: inspect.Interrupted}
 			}
 			if e != nil {
 				continue

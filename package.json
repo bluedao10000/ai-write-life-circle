@@ -63,7 +63,7 @@
     "eval:agent:safety": "pnpm eval:agent -- --category=safety",
     "eval:agent:performance": "pnpm eval:agent -- --category=performance",
     "eval:agent:judge": "pnpm --filter @writer-agent/contracts build && pnpm --filter @writer-agent/agent exec tsx scripts/evaluate-judge.ts",
-    "test:memory": "pnpm build:api:go && pnpm build:agent && node scripts/test-procedural-memory.mjs && node scripts/test-memory-extraction.mjs",
+    "test:memory": "pnpm build:api:go && pnpm build:agent && node scripts/test-procedural-memory.mjs && node scripts/test-memory-extraction.mjs && node scripts/test-memory-consolidation.mjs",
     "test:runtime": "pnpm build:api:go && pnpm build:agent && node scripts/test-runtime-health.mjs",
     "bench:agent:worker": "pnpm build:api:go && pnpm build:agent && node scripts/benchmark-agent-worker.mjs"
   },

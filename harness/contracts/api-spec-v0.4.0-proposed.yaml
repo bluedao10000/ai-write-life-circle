@@ -5928,12 +5928,15 @@ components:
             - review
             - knowledge
             - creative
+            - memory
           properties:
             review:
               $ref: "#/components/schemas/AgentExecutorStatus"
             knowledge:
               $ref: "#/components/schemas/AgentExecutorStatus"
             creative:
+              $ref: "#/components/schemas/AgentExecutorStatus"
+            memory:
               $ref: "#/components/schemas/AgentExecutorStatus"
       additionalProperties: false
     AgentRuntimeCounts: *a1
@@ -5975,6 +5978,7 @@ components:
             - review
             - knowledge
             - creative
+            - memory
         executorOwner:
           type: string
           enum:

@@ -47,7 +47,7 @@ func (c Controller) Read() (State, error) {
 	if s.Schema != 1 || s.Kinds == nil {
 		return s, errors.New("invalid executor registry")
 	}
-	for _, kind := range []string{"review", "knowledge", "creative"} {
+	for _, kind := range []string{"review", "knowledge", "creative", "memory"} {
 		if _, ok := s.Kinds[kind]; !ok {
 			s.Kinds[kind] = Assignment{Owner: "pi", Epoch: 1, Leases: map[string]Lease{}}
 		}
@@ -66,7 +66,7 @@ func (c Controller) Read() (State, error) {
 	return s, nil
 }
 func (c Controller) update(ctx context.Context, kind string, fn func(*Assignment) error) error {
-	if kind != "review" && kind != "knowledge" && kind != "creative" {
+	if kind != "review" && kind != "knowledge" && kind != "creative" && kind != "memory" {
 		return errors.New("invalid executor kind")
 	}
 	return storage.Lock(ctx, c.path()+".lock", func() error {

@@ -277,7 +277,7 @@ export class PiHost {
       const conversation = await durable.harness.createConversation({ownership:{kind:"ownerless"}}, durableContext);
       s.durable = {conversationId: conversation.id};
       const memoryVersion=s.view.memoryExtraction?.version;
-      const roleName=memoryVersion===2?'memory.extract.v2':memoryVersion===1?'memory.extract':'thinking';
+      const roleName=memoryVersion===3?'memory.extract.v3':memoryVersion===2?'memory.extract.v2':memoryVersion===1?'memory.extract':'thinking';
       const promptVersion=memoryVersion?`memory-extraction-v${memoryVersion}`:'thinking-v1';
       const toolSchemaVersion=s.view.memoryExtraction?0:2;
       s.execution = {governance:{runtimeVersion,definitionVersion:definition(roleName).version,toolSchemaVersion,promptVersion,memorySchemaVersion:1},calls:0, turns:0, memoryCalls:0, spent:0, modelRequests:[]};
@@ -369,7 +369,7 @@ export class PiHost {
       run = s.view.run!,
       usageBefore = {...s.view.usage};
     const memoryVersion=s.view.memoryExtraction?.version;
-    const roleName=memoryVersion===2?'memory.extract.v2':memoryVersion===1?'memory.extract':'thinking';
+    const roleName=memoryVersion===3?'memory.extract.v3':memoryVersion===2?'memory.extract.v2':memoryVersion===1?'memory.extract':'thinking';
     const promptVersion=memoryVersion?`memory-extraction-v${memoryVersion}`:'thinking-v1';
     const toolSchemaVersion=s.view.memoryExtraction?'none':'story-tools-v2';
     let prompt = memoryVersion ? memoryExtractionPrompt(memoryVersion) : systemPrompt + "\n\n" + sourceAccessInstruction(s.view.scopes, s.view.model.toolCalling);

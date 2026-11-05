@@ -12,6 +12,6 @@ export function loadWorkerConfig(env:NodeJS.ProcessEnv=process.env){
  const slots=Number(env.WRITER_AGENT_PI_WORKER_MAX_CONCURRENT??2);
  if(!Number.isInteger(slots)||slots<1||slots>2)throw Error("INVALID_WORKER_CONCURRENCY");
  let version='development';try{version=(JSON.parse(readFileSync(new URL('../../release.json',import.meta.url),'utf8')) as {revision:string}).revision}catch{version=env.WRITER_AGENT_PI_WORKER_VERSION??version}
- return {origin:privateOrigin(env.WRITER_AGENT_TASK_ORIGIN??'http://127.0.0.1:8792'),token:credential(env.WRITER_AGENT_TASK_SERVICE_TOKEN_FILE??''),key,model,slots,version,kinds:['review','knowledge','creative'] as ('review'|'knowledge'|'creative')[]};
+ return {origin:privateOrigin(env.WRITER_AGENT_TASK_ORIGIN??'http://127.0.0.1:8792'),token:credential(env.WRITER_AGENT_TASK_SERVICE_TOKEN_FILE??''),key,model,slots,version,kinds:['review','knowledge','creative','memory'] as ('review'|'knowledge'|'creative'|'memory')[]};
 }
 export type WorkerConfig=ReturnType<typeof loadWorkerConfig>;

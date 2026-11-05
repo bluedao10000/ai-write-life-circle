@@ -2,8 +2,8 @@
 import {spawnSync} from 'node:child_process';
 const args=process.argv.slice(2),read=name=>args[args.indexOf(name)+1];
 const kind=read('--kind'),owner=read('--owner'),state=read('--state'),control=read('--control');
-if(!args.includes('--confirm-executor-switch')||!['review','knowledge','creative'].includes(kind)||!['pi','disabled'].includes(owner)||!state?.startsWith('/')||!control?.startsWith('/')){
- console.error('Required: --confirm-executor-switch --kind review|knowledge|creative --owner pi|disabled --state /absolute/state --control /absolute/writer-agent-control');process.exit(2);
+if(!args.includes('--confirm-executor-switch')||!['review','knowledge','creative','memory'].includes(kind)||!['pi','disabled'].includes(owner)||!state?.startsWith('/')||!control?.startsWith('/')){
+ console.error('Required: --confirm-executor-switch --kind review|knowledge|creative|memory --owner pi|disabled --state /absolute/state --control /absolute/writer-agent-control');process.exit(2);
 }
 function run(command,argv){const result=spawnSync(command,argv,{stdio:'inherit'});if(result.status!==0)process.exit(result.status??1)}
 // Starting a service grants no task ownership. Validate the target before draining.

@@ -24,6 +24,7 @@ export class Scheduler {
    let code=e instanceof GatewayError?e.code:(e instanceof Error&&e.message==='UNSUPPORTED_TASK_KIND'?'LLM_INVALID_OUTPUT':'REVIEW_INTERRUPTED');
    if(task.kind==='knowledge.extract'&&code==='REVIEW_INTERRUPTED')code='KNOWLEDGE_INTERRUPTED';
    if((task.kind==='creative.organize'||task.kind==='creative.plan_check')&&code==='REVIEW_INTERRUPTED')code='CREATIVE_INTERRUPTED';
+   if(task.kind==='memory.consolidate'&&code==='REVIEW_INTERRUPTED')code='MEMORY_INTERRUPTED';
    try{await this.client.action(task,'fail',e instanceof GatewayError?e.response:{text:'',usage:null},code)}catch{/* Fenced/expired outcomes remain Go-owned; never call the model again here. */}
    this.log('task_stopped',task,code);
   }finally{clearInterval(heartbeat)}

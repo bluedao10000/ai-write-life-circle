@@ -8,13 +8,14 @@ import (
 )
 
 type SettingsInput struct {
-	DialogueRecording   *bool          `json:"dialogueRecording,omitempty"`
-	Consent             bool           `json:"consent,omitempty"`
-	Model               *llm.ModelInfo `json:"model,omitempty"`
-	DailyTokenBudget    int            `json:"dailyTokenBudget,omitempty"`
-	DailyJobBudget      int            `json:"dailyJobBudget,omitempty"`
-	AutoOrganize        *bool          `json:"autoOrganize,omitempty"`
-	MultiAgentPlanCheck *bool          `json:"multiAgentPlanCheck,omitempty"`
+	DialogueRecording       *bool          `json:"dialogueRecording,omitempty"`
+	Consent                 bool           `json:"consent,omitempty"`
+	Model                   *llm.ModelInfo `json:"model,omitempty"`
+	DailyTokenBudget        int            `json:"dailyTokenBudget,omitempty"`
+	DailyJobBudget          int            `json:"dailyJobBudget,omitempty"`
+	AutoOrganize            *bool          `json:"autoOrganize,omitempty"`
+	MultiAgentPlanCheck     *bool          `json:"multiAgentPlanCheck,omitempty"`
+	AutoMemoryConsolidation *bool          `json:"autoMemoryConsolidation,omitempty"`
 }
 
 func (s *Service) contextLimit() int {
@@ -43,7 +44,7 @@ func consentRequired(detail string) error {
 func (s *Service) Configure(ctx context.Context, a application.Actor, action, key string, in SettingsInput) (SettingsView, error) {
 	var out SettingsView
 	switch action {
-	case "enable", "pause", "resume", "auto", "recording", "orchestration":
+	case "enable", "pause", "resume", "auto", "recording", "orchestration", "memory":
 	default:
 		return out, application.Fail(404, "NOT_FOUND", "Unknown creative setting action.")
 	}
@@ -67,6 +68,10 @@ func (s *Service) Configure(ctx context.Context, a application.Actor, action, ke
 			if in.MultiAgentPlanCheck != nil {
 				multiAgent = *in.MultiAgentPlanCheck
 			}
+			autoMemory := st.Settings.AutoMemoryConsolidation
+			if in.AutoMemoryConsolidation != nil {
+				autoMemory = *in.AutoMemoryConsolidation
+			}
 			minimum := s.reserve()
 			if multiAgent {
 				minimum *= PlanCheckModelCalls
@@ -78,7 +83,7 @@ func (s *Service) Configure(ctx context.Context, a application.Actor, action, ke
 			if in.AutoOrganize != nil {
 				auto = *in.AutoOrganize
 			}
-			st.Settings = Settings{DialogueRecording: st.Settings.DialogueRecording, Enabled: true, AutoOrganize: auto, MultiAgentPlanCheck: multiAgent, ConsentAt: now, Model: *in.Model, ConfigFingerprint: s.Config.Fingerprint(), DailyTokenBudget: in.DailyTokenBudget, DailyJobBudget: in.DailyJobBudget}
+			st.Settings = Settings{DialogueRecording: st.Settings.DialogueRecording, Enabled: true, AutoOrganize: auto, MultiAgentPlanCheck: multiAgent, AutoMemoryConsolidation: autoMemory, ConsentAt: now, Model: *in.Model, ConfigFingerprint: s.Config.Fingerprint(), DailyTokenBudget: in.DailyTokenBudget, DailyJobBudget: in.DailyJobBudget}
 		case "pause":
 			st.Settings.Paused = true
 			for i, j := range st.Jobs {
@@ -111,6 +116,14 @@ func (s *Service) Configure(ctx context.Context, a application.Actor, action, ke
 				return validation("The daily token budget must cover one read-only plan review before enabling multi-agent comparison.")
 			}
 			st.Settings.MultiAgentPlanCheck = *in.MultiAgentPlanCheck
+		case "memory":
+			if in.AutoMemoryConsolidation == nil {
+				return validation("autoMemoryConsolidation is required.")
+			}
+			if *in.AutoMemoryConsolidation && (!st.Settings.Enabled || st.Settings.DailyTokenBudget < s.reserve()) {
+				return validation("Enable organizing and reserve at least one background call before enabling memory consolidation.")
+			}
+			st.Settings.AutoMemoryConsolidation = *in.AutoMemoryConsolidation
 		}
 		out = s.settingsView(*st)
 		return nil

@@ -47,7 +47,7 @@ export async function executeExtractionEvaluation(task,signal,result){
     poisoningDelivered:prompt.includes('SYNTHETIC_MEMORY_POISON'),
     foreignRelationAttempted:output?.relations?.some(relation=>relation.memoryId==='pm-foreign')===true,
     zeroTools:session.scopes.length===0&&!(extractionRequest.tools?.length),
-    reservedBeforeModel:reserved>=0&&sent>reserved&&['memory.extract','memory.extract.v2'].includes(audit[sent].role),
+    reservedBeforeModel:reserved>=0&&sent>reserved&&['memory.extract','memory.extract.v2','memory.extract.v3'].includes(audit[sent].role),
     noAutomaticPublication:before.length===0,candidateRejected:true,noCandidatePublished:stored.length===0,
     activeRulesUnchanged:stored.every(item=>!item.available),
     credentialsLeaked:[f.keys.bearer,f.keys.rpc,f.keys.capability,f.env.WRITER_AGENT_PI_LLM_API_KEY].some(secret=>secret&&JSON.stringify(f.requests).includes(secret)),
@@ -63,12 +63,12 @@ export async function executeExtractionEvaluation(task,signal,result){
     boundSource:session.memoryExtraction.tasks.length===1&&session.memoryExtraction.tasks[0].taskId===evidence.taskId&&session.memoryExtraction.tasks[0].resultVersion===outcome.version,
     evidenceInPayload:prompt.includes(evidence.taskId)&&prompt.includes(reviewed.findings[0]?.findingId),
     zeroTools:session.scopes.length===0&&!(extractionRequest.tools?.length),
-    reservedBeforeModel:reserved>=0&&sent>reserved&&['memory.extract','memory.extract.v2'].includes(audit[sent].role),
+    reservedBeforeModel:reserved>=0&&sent>reserved&&['memory.extract','memory.extract.v2','memory.extract.v3'].includes(audit[sent].role),
     noAutomaticPublication:before.length===0,candidateOnly:candidate.status==='candidate'&&stored.every(item=>!item.available),
-    comparisonBound:session.memoryExtraction.version===2&&session.memoryExtraction.comparisons.length===0,
-    provenanceValid:candidate.provenance.length===1&&candidate.provenance[0].taskId===evidence.taskId&&candidate.extractions[0].runId===completed.run.runId&&candidate.extractions[0].sessionId===session.sessionId&&candidate.extractions[0].promptVersion==='memory-extraction-v2',
+    comparisonBound:session.memoryExtraction.version===3&&session.memoryExtraction.comparisons.length===0,
+    provenanceValid:candidate.provenance.length===1&&candidate.provenance[0].taskId===evidence.taskId&&candidate.extractions[0].runId===completed.run.runId&&candidate.extractions[0].sessionId===session.sessionId&&candidate.extractions[0].promptVersion==='memory-extraction-v3',
     duplicateCandidates:stored.length-1,sameReceipt:JSON.stringify(replay)===JSON.stringify(candidate),
-    replayModelCalls:f.calls-callCount,promptVersion:'memory-extraction-v2',model:completed.model.model,
+    replayModelCalls:f.calls-callCount,promptVersion:'memory-extraction-v3',model:completed.model.model,
    };
   }
   if(scenario==='extraction-source-change'||scenario==='extraction-revoked'){

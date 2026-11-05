@@ -1,2 +1,2 @@
 // Candidate JSON byte bounds mirror Go's domain decoders, independently of transport size.
-export const candidateBytes={'review.execute':64*1024,'knowledge.extract':512*1024,'creative.organize':256*1024,'creative.plan_check':64*1024} as const;
+export const candidateBytes={'review.execute':64*1024,'knowledge.extract':512*1024,'creative.organize':256*1024,'creative.plan_check':64*1024,'memory.consolidate':64*1024} as const;

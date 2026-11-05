@@ -36,11 +36,15 @@ export const thinkingModelSchema = z
     limits: thinkingLimitsSchema,
   })
   .strict();
-const memoryExtractionTaskSchema=z.object({taskId:z.string().min(1),resultVersion:z.number().int().nonnegative()}).strict();
+const resultVersionSchema=z.string().regex(/^sha256:[a-f0-9]{64}$/);
+const legacyResultVersionSchema=z.number().int().nonnegative();
+const legacyMemoryExtractionTaskSchema=z.object({taskId:z.string().min(1),resultVersion:legacyResultVersionSchema}).strict();
+const memoryExtractionTaskSchema=z.object({taskId:z.string().min(1),resultVersion:resultVersionSchema}).strict();
 const memoryExtractionComparisonSchema=z.object({memoryId:z.string().min(1),memoryVersion:z.number().int().positive()}).strict();
 export const memoryExtractionBindingSchema=z.union([
-  z.object({version:z.literal(1),tasks:z.array(memoryExtractionTaskSchema).min(1).max(4)}).strict(),
-  z.object({version:z.literal(2),tasks:z.array(memoryExtractionTaskSchema).min(1).max(4),comparisons:z.array(memoryExtractionComparisonSchema).max(8),comparisonOmitted:z.number().int().nonnegative()}).strict(),
+  z.object({version:z.literal(1),tasks:z.array(legacyMemoryExtractionTaskSchema).min(1).max(4)}).strict(),
+  z.object({version:z.literal(2),tasks:z.array(legacyMemoryExtractionTaskSchema).min(1).max(4),comparisons:z.array(memoryExtractionComparisonSchema).max(8),comparisonOmitted:z.number().int().nonnegative()}).strict(),
+  z.object({version:z.literal(3),tasks:z.array(memoryExtractionTaskSchema).min(1).max(4),comparisons:z.array(memoryExtractionComparisonSchema).max(8),comparisonOmitted:z.number().int().nonnegative()}).strict(),
 ]);
 export const thinkingMemoryCandidateInputSchema=z.object({runId:z.string().uuid()}).strict();
 export const thinkingCreateSchema = z

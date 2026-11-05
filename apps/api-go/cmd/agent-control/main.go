@@ -6,17 +6,22 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/agenttasks"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/billing"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/executorpolicy"
+	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/storage"
+	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/thinking"
 	"os"
+	"path/filepath"
 	"time"
 )
 
 func run() error {
 	state := flag.String("state", "", "existing Go StateDirectory")
-	kind := flag.String("kind", "", "review, knowledge or creative")
+	kind := flag.String("kind", "", "review, knowledge, creative or memory")
 	owner := flag.String("owner", "", "target pi or disabled; empty means status")
 	wait := flag.Duration("wait", 200*time.Second, "bounded drain timeout")
+	rollbackMemory := flag.Bool("rollback-memory", false, "offline: remove token-bound extraction sessions and terminal memory consolidation tasks")
 	billingStatus := flag.Bool("billing", false, "print the AI-point switch (pause, Free daily pool)")
 	pause := flag.String("ai-pause", "", "pause AI features: none, free or all (writing is never paused)")
 	freeDaily := flag.Int("free-daily-points", 0, "site-wide Free AI points per UTC day (0 keeps the current value)")
@@ -36,6 +41,12 @@ func run() error {
 			return fmt.Errorf("unknown command %q", flag.Arg(0))
 		}
 		return billingCommand(*state, flag.Args()[1:])
+	}
+	if *rollbackMemory {
+		if *owner != "" || *kind != "" {
+			return fmt.Errorf("--rollback-memory cannot be combined with executor switch flags")
+		}
+		return rollbackMemoryState(*state)
 	}
 	if *billingStatus || *pause != "" || *freeDaily != 0 {
 		c, e := billing.ReadControl(*state)
@@ -81,7 +92,7 @@ func run() error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), *wait)
 	defer cancel()
-	if (*kind != "review" && *kind != "knowledge" && *kind != "creative") || (*owner != "pi" && *owner != "disabled") {
+	if (*kind != "review" && *kind != "knowledge" && *kind != "creative" && *kind != "memory") || (*owner != "pi" && *owner != "disabled") {
 		return fmt.Errorf("invalid kind or owner")
 	}
 	if e := c.Drain(ctx, *kind); e != nil {
@@ -99,6 +110,54 @@ func run() error {
 		}
 	}
 }
+
+func rollbackMemoryState(state string) error {
+	policy := executorpolicy.Controller{State: state}
+	registry, err := policy.Read()
+	if err != nil {
+		return err
+	}
+	assignment := registry.Kinds["memory"]
+	if assignment.Owner != "disabled" || len(assignment.Leases) != 0 {
+		return fmt.Errorf("disable and drain the memory executor before rollback")
+	}
+	ctx := context.Background()
+	taskPath := filepath.Join(state, "agent-runtime", "tasks-v1.json")
+	tasks, err := os.ReadFile(taskPath)
+	var convertedTasks []byte
+	if err == nil {
+		convertedTasks, err = agenttasks.RollbackMemoryTasks(tasks)
+		if err != nil {
+			return err
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	thinkingPath := filepath.Join(state, "thinking", "sessions-v1.json")
+	sessions, err := os.ReadFile(thinkingPath)
+	var convertedSessions []byte
+	if err == nil {
+		convertedSessions, err = thinking.RollbackMemoryExtractionSessions(sessions)
+		if err != nil {
+			return err
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	if convertedTasks != nil {
+		if err = storage.Write(ctx, taskPath, json.RawMessage(convertedTasks)); err != nil {
+			return err
+		}
+	}
+	if convertedSessions != nil {
+		if err = storage.Write(ctx, thinkingPath, json.RawMessage(convertedSessions)); err != nil {
+			return err
+		}
+	}
+	fmt.Println("Memory rollback data prepared; prior Go and Pi binaries may start.")
+	return nil
+}
+
 func main() {
 	if e := run(); e != nil {
 		fmt.Fprintln(os.Stderr, e)

@@ -42,6 +42,11 @@ func (s *Service) Supersede(ctx context.Context, actor application.Actor, key, i
 		replaced := make([]Record, 0, len(in.Replaces))
 		replacedIDs := make([]string, 0, len(in.Replaces))
 		now := s.now()
+		snapshot, e := s.Tasks.MemoryEvidence(ctx, actor, s.App.Project)
+		if e != nil {
+			return Record{}, e
+		}
+		resolver := newAvailabilityResolver(ctx, s, actor, *st, snapshot)
 		for _, ref := range in.Replaces {
 			if seen[ref.ID] || ref.BaseVersion < 1 {
 				return Record{}, problem(422, "INVALID_MEMORY_SUPERSEDE", "Duplicate or invalid replacement target.")
@@ -64,10 +69,14 @@ func (s *Service) Supersede(ctx context.Context, actor application.Actor, key, i
 			if e != nil || !expiry.After(now) {
 				return Record{}, problem(409, "MEMORY_EXPIRED", "Replaced experience expired.")
 			}
-			if e := s.validateExtractions(ctx, actor, old); e != nil {
+			view, e := resolver.evaluate(old.ID)
+			if e != nil {
 				return Record{}, e
 			}
-			evidence, e := s.Tasks.Evidence(ctx, actor, s.App.Project, ids(old))
+			if !view.Available {
+				return Record{}, problem(409, "MEMORY_SOURCE_CHANGED", "A replaced experience is no longer current.")
+			}
+			evidence, e := snapshot.Lookup(ids(old))
 			if e != nil {
 				return Record{}, e
 			}

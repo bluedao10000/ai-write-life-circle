@@ -32,6 +32,11 @@ func (s *Service) Merge(ctx context.Context, actor application.Actor, key, id st
 		originIDs := map[string]bool{}
 		var expires time.Time
 		now := s.now()
+		snapshot, e := s.Tasks.MemoryEvidence(ctx, actor, s.App.Project)
+		if e != nil {
+			return Record{}, e
+		}
+		resolver := newAvailabilityResolver(ctx, s, actor, *st, snapshot)
 		for _, ref := range refs {
 			if seen[ref.ID] || ref.BaseVersion < 1 {
 				return Record{}, problem(422, "INVALID_MEMORY_MERGE", "Duplicate or invalid candidate.")
@@ -50,8 +55,12 @@ func (s *Service) Merge(ctx context.Context, actor application.Actor, key, id st
 			if len(records) > 0 && r.Content != records[0].Content {
 				return Record{}, problem(422, "MEMORY_CONTENT_MISMATCH", "Only identical content can be merged.")
 			}
-			if e := s.validateExtractions(ctx, actor, r); e != nil {
+			view, e := resolver.evaluate(r.ID)
+			if e != nil {
 				return Record{}, e
+			}
+			if view.UnavailableReason == "source_unavailable" {
+				return Record{}, problem(409, "MEMORY_SOURCE_CHANGED", "A merged extraction or compared experience changed.")
 			}
 			for _, origin := range r.Extractions {
 				if !originIDs[origin.RunID] {

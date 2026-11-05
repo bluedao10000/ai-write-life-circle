@@ -53,7 +53,7 @@ func (s *Service) Handler() http.Handler {
 			return
 		}
 		if r.Method == "GET" && r.URL.Path == "/internal/v1/agent/tasks/capabilities" {
-			reply(w, map[string]any{"protocol": Protocol, "configFingerprint": s.Config.Fingerprint(), "model": s.Config.Info(), "contracts": executionContracts()}, nil)
+			reply(w, map[string]any{"protocol": Protocol, "configFingerprint": s.Config.Fingerprint(), "model": s.Config.Info(), "contracts": s.executionContracts()}, nil)
 			return
 		}
 		if r.Method == "GET" && r.URL.Path == "/internal/v1/agent/tasks/status" {
@@ -90,9 +90,12 @@ func (s *Service) Handler() http.Handler {
 			kinds := in.Kinds
 			if len(kinds) == 0 {
 				kinds = []string{"review", "knowledge", "creative"}
+				if s.Memory != nil {
+					kinds = append(kinds, "memory")
+				}
 			}
 			for _, kind := range kinds {
-				if expected, ok := executionContracts()[kind]; !ok || in.Contracts[kind] != expected {
+				if expected, ok := s.executionContracts()[kind]; !ok || in.Contracts[kind] != expected {
 					reply(w, nil, application.Fail(409, "AGENT_CONFIG_CHANGED", "Executor strategy/schema mismatch before claim."))
 					return
 				}
@@ -170,6 +173,10 @@ func (s *Service) Listen() (*http.Server, error) {
 	return server, nil
 }
 
-func executionContracts() map[string]string {
-	return map[string]string{"review": review.ExecutionContract(), "knowledge": knowledge.ExecutionContract(), "creative": creative.ExecutionContract()}
+func (s *Service) executionContracts() map[string]string {
+	out := map[string]string{"review": review.ExecutionContract(), "knowledge": knowledge.ExecutionContract(), "creative": creative.ExecutionContract()}
+	if s.Memory != nil {
+		out["memory"] = s.Memory.Contract()
+	}
+	return out
 }

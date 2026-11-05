@@ -16,6 +16,7 @@ import (
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/application"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/billing"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/compat"
+	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/procedural"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/storage"
 )
 
@@ -97,6 +98,9 @@ type Service struct {
 	OnMessageAccepted func(ctx context.Context, rec Record, messageID string) error
 	// OnSessionDeleted invalidates derived creative work for a deleted session.
 	OnSessionDeleted func(ctx context.Context, rec Record)
+	// ExtractionValidator covers every model-created procedural candidate,
+	// including background Worker consolidations that have no Thinking session.
+	ExtractionValidator func(context.Context, application.Actor, string, procedural.Extraction) error
 	// Meter charges each message's model usage to the session owner.
 	Meter application.Meter
 }

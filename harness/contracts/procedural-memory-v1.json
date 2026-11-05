@@ -660,8 +660,29 @@
                       },
                       "runId": {
                         "type": "string",
-                        "format": "uuid",
-                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        "minLength": 1
+                      },
+                      "sources": {
+                        "maxItems": 4,
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "taskId": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "resultVersion": {
+                              "type": "string",
+                              "pattern": "^sha256:[a-f0-9]{64}$"
+                            }
+                          },
+                          "required": [
+                            "taskId",
+                            "resultVersion"
+                          ],
+                          "additionalProperties": false
+                        }
                       },
                       "provider": {
                         "type": "string"
@@ -673,7 +694,9 @@
                         "type": "string",
                         "enum": [
                           "memory-extraction-v1",
-                          "memory-extraction-v2"
+                          "memory-extraction-v2",
+                          "memory-extraction-v3",
+                          "memory-consolidation-v1"
                         ]
                       },
                       "authorizationVersion": {
@@ -915,9 +938,8 @@
             ]
           },
           "version": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 9007199254740991
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$"
           },
           "items": {
             "maxItems": 20,
@@ -993,8 +1015,29 @@
                 },
                 "runId": {
                   "type": "string",
-                  "format": "uuid",
-                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  "minLength": 1
+                },
+                "sources": {
+                  "maxItems": 4,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "taskId": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "resultVersion": {
+                        "type": "string",
+                        "pattern": "^sha256:[a-f0-9]{64}$"
+                      }
+                    },
+                    "required": [
+                      "taskId",
+                      "resultVersion"
+                    ],
+                    "additionalProperties": false
+                  }
                 },
                 "provider": {
                   "type": "string"
@@ -1006,7 +1049,9 @@
                   "type": "string",
                   "enum": [
                     "memory-extraction-v1",
-                    "memory-extraction-v2"
+                    "memory-extraction-v2",
+                    "memory-extraction-v3",
+                    "memory-consolidation-v1"
                   ]
                 },
                 "authorizationVersion": {
@@ -1182,6 +1227,11 @@
           "reason"
         ],
         "additionalProperties": false
+      },
+      "proceduralResultVersion": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "string",
+        "pattern": "^sha256:[a-f0-9]{64}$"
       },
       "proceduralSource": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1362,8 +1412,29 @@
                 },
                 "runId": {
                   "type": "string",
-                  "format": "uuid",
-                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  "minLength": 1
+                },
+                "sources": {
+                  "maxItems": 4,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "taskId": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "resultVersion": {
+                        "type": "string",
+                        "pattern": "^sha256:[a-f0-9]{64}$"
+                      }
+                    },
+                    "required": [
+                      "taskId",
+                      "resultVersion"
+                    ],
+                    "additionalProperties": false
+                  }
                 },
                 "provider": {
                   "type": "string"
@@ -1375,7 +1446,9 @@
                   "type": "string",
                   "enum": [
                     "memory-extraction-v1",
-                    "memory-extraction-v2"
+                    "memory-extraction-v2",
+                    "memory-extraction-v3",
+                    "memory-consolidation-v1"
                   ]
                 },
                 "authorizationVersion": {

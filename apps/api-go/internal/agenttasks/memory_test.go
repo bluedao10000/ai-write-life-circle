@@ -1,0 +1,93 @@
+package agenttasks
+
+import (
+	"context"
+	"strings"
+	"testing"
+
+	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/application"
+	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/llm"
+)
+
+type memoryCoordinatorFixture struct {
+	prepared *PreparedMemory
+	starts   int
+	finished int
+}
+
+func (f *memoryCoordinatorFixture) Contract() string { return "sha256:" + strings.Repeat("a", 64) }
+func (f *memoryCoordinatorFixture) Prepare(context.Context, *application.Service, []PreparedMemory) (*PreparedMemory, error) {
+	value := *f.prepared
+	return &value, nil
+}
+func (f *memoryCoordinatorFixture) Start(context.Context, *application.Service, string, *PreparedMemory) error {
+	f.starts++
+	return nil
+}
+func (f *memoryCoordinatorFixture) Complete(context.Context, *application.Service, string, PreparedMemory, llm.Response, bool, error) error {
+	f.finished++
+	return nil
+}
+func (f *memoryCoordinatorFixture) Check(context.Context, *application.Service, PreparedMemory) error {
+	return nil
+}
+func (f *memoryCoordinatorFixture) Inspect(context.Context, *application.Service) (MemoryInspection, error) {
+	return MemoryInspection{Pending: 1}, nil
+}
+
+func TestMemoryConsolidationUsesTheAgentTaskAuthority(t *testing.T) {
+	s, _ := fixture(t)
+	ctx := context.Background()
+	f := &memoryCoordinatorFixture{prepared: &PreparedMemory{
+		Strategy: "memory-consolidation-v1",
+		Sources: []MemorySourceBinding{
+			{TaskID: "task-a", ResultVersion: "sha256:" + strings.Repeat("a", 64)},
+			{TaskID: "task-b", ResultVersion: "sha256:" + strings.Repeat("b", 64)},
+		},
+		ReservedTokens: 4096,
+		Request: llm.Request{
+			System:     "synthetic",
+			Input:      `{"items":[]}`,
+			SchemaName: "memory_consolidation",
+			Schema:     map[string]any{"type": "object"},
+		},
+	}}
+	s.Memory = f
+	task, err := s.Claim(ctx, "fixture", s.Config.Fingerprint(), "memory")
+	if err != nil || task == nil {
+		t.Fatal(task, err)
+	}
+	if task.Kind != "memory.consolidate" || task.OutputSchema != "memory-candidate-v1" || task.Strategy != "memory-consolidation-v1" || task.Lease == "" || task.Epoch == 0 {
+		t.Fatalf("invalid memory task: %+v", task)
+	}
+	in := envelope(task)
+	in.Response = llm.Response{Text: `{"content":null,"taskIds":[],"relations":[]}`, Usage: &llm.Usage{InputTokens: 10, OutputTokens: 4}, ModelCalls: 1}
+	if err = s.Action(ctx, task.ID, "started", in); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.Action(ctx, task.ID, "started", in); err != nil || f.starts != 1 {
+		t.Fatal("started was not idempotent", err, f.starts)
+	}
+	if err = s.Action(ctx, task.ID, "complete", in); err != nil {
+		t.Fatal(err)
+	}
+	if f.finished != 1 {
+		t.Fatal("domain completion missing")
+	}
+	inspection, err := s.InspectMemoryTasks(task.Book)
+	if err != nil || inspection.Completed != 1 {
+		t.Fatal(inspection, err)
+	}
+	other, err := s.InspectMemoryTasks("other-book")
+	if err != nil || other != (MemoryInspection{}) {
+		t.Fatal("cross-book task counts", other, err)
+	}
+	state, err := s.load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := state.Tasks[task.ID]
+	if record.Task.Request.Input != "" || record.Memory == nil || len(record.Memory.Sources) != 2 || record.Outcome != "completed" {
+		t.Fatalf("memory task was not scrubbed correctly: %+v", record)
+	}
+}

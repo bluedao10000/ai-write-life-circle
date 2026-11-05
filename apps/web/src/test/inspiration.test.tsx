@@ -309,15 +309,20 @@ describe('灵感 workspace', () => {
 
   it('enables the read-only plan pilot only through the explicit creative setting', async () => {
     const onOrchestration = vi.fn()
-    const props = { proposals: [], onOpen: vi.fn(), onDecide: vi.fn(), onClose: vi.fn(), onBook: vi.fn(), onEnable: vi.fn(), onAuto: vi.fn(), onOrchestration }
-    const { rerender } = render(<ReviewDrawer {...props} settings={{ enabled: true, needsModelConsent: false, autoOrganize: true, multiAgentPlanCheck: false, available: true, paused: false }} />)
+    const onMemory = vi.fn()
+    const props = { proposals: [], onOpen: vi.fn(), onDecide: vi.fn(), onClose: vi.fn(), onBook: vi.fn(), onEnable: vi.fn(), onAuto: vi.fn(), onOrchestration, onMemory }
+    const { rerender } = render(<ReviewDrawer {...props} settings={{ enabled: true, needsModelConsent: false, autoOrganize: true, multiAgentPlanCheck: false, autoMemoryConsolidation: false, available: true, paused: false }} />)
     const toggle = screen.getByRole('checkbox', { name: '计划核对使用五个只读步骤' })
     expect(toggle).not.toBeChecked()
     await userEvent.click(toggle)
     expect(onOrchestration).toHaveBeenCalledWith(true)
-    rerender(<ReviewDrawer {...props} settings={{ enabled: true, needsModelConsent: false, autoOrganize: true, multiAgentPlanCheck: true, available: true, paused: false }} />)
+    rerender(<ReviewDrawer {...props} settings={{ enabled: true, needsModelConsent: false, autoOrganize: true, multiAgentPlanCheck: true, autoMemoryConsolidation: false, available: true, paused: false }} />)
     expect(screen.getByRole('checkbox', { name: '计划核对使用五个只读步骤' })).toBeChecked()
     expect(screen.getByText(/没有工具权限/)).toBeVisible()
+    const memory = screen.getByRole('checkbox', { name: '后台整理已完成任务的执行经验' })
+    expect(memory).not.toBeChecked()
+    await userEvent.click(memory)
+    expect(onMemory).toHaveBeenCalledWith(true)
   })
 
   it('does not enable recording if the read scope was not saved', async () => {

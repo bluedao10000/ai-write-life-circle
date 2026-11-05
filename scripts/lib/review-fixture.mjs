@@ -8,7 +8,7 @@ export async function createReviewFixture({modelBudget}={}) {
   const directory = await mkdtemp(join(tmpdir(), 'writer-review-fixture-'))
   const harness = join(directory, 'harness'), state = join(directory, 'state')
   await mkdir(join(harness, 'manuscript'), { recursive: true })
-  let mode = 'valid', calls = 0, reviewCalls = 0, knowledgeResponses = 0
+  let mode = 'valid', calls = 0, reviewCalls = 0, knowledgeResponses = 0, consolidationCalls = 0
  const requests=[]
   async function select(value = cases[0]) {
     mode = value.fake
@@ -30,6 +30,16 @@ export async function createReviewFixture({modelBudget}={}) {
       res.writeHead(429).end('{}');return
     }
  requests.push(request)
+ if(request.messages.find(m=>m.role==='system')?.content.includes('You consolidate author-reviewed operating experience')){
+  consolidationCalls++
+  const selected=mode,system=request.messages.find(m=>m.role==='system').content,user=request.messages.find(m=>m.role==='user')?.content??'';
+  const taskIds=[...new Set([...user.matchAll(/"taskId":"([^"]+)"/g)].map(m=>m[1]))];
+  const output=selected==='memory-consolidation-noop'
+   ?{content:null,taskIds:[],relations:[]}
+   :{content:'适用于内容审查的操作经验：先逐条核对原文证据，再结合作者反馈区分事实、推断与待决问题。完成执行不等于质量已获证明。',taskIds,relations:[]};
+  const content=selected==='memory-consolidation-invalid'?'invalid-json':JSON.stringify(output);
+  res.writeHead(200,{'Content-Type':'text/event-stream'});res.end('data: '+JSON.stringify({id:'memory-consolidation',object:'chat.completion.chunk',model:request.model,choices:[{index:0,delta:{role:'assistant',content},finish_reason:'stop'}],usage:{prompt_tokens:120,completion_tokens:70}})+'\n\ndata: [DONE]\n\n');return
+ }
  if(request.messages.find(m=>m.role==='system')?.content.includes('You extract a candidate operating method')){
   const selected=mode,system=request.messages.find(m=>m.role==='system').content;
   if(selected==='memory-extract-slow')await new Promise(r=>setTimeout(r,1800));
@@ -109,7 +119,7 @@ export async function createReviewFixture({modelBudget}={}) {
   })
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
   const origin = `http://127.0.0.1:${server.address().port}`
-  return { directory, harness, state, origin, requests, select, get calls() { return calls }, get reviewCalls() { return reviewCalls }, get knowledgeResponses(){return knowledgeResponses},
+  return { directory, harness, state, origin, requests, select, get calls() { return calls }, get reviewCalls() { return reviewCalls }, get knowledgeResponses(){return knowledgeResponses}, get consolidationCalls(){return consolidationCalls},
     async sourceBytes() { return Promise.all(['CH-003', 'CH-008'].map((id) => readFile(join(harness, `manuscript/${id}.md`), 'utf8'))) },
     async close() { server.closeAllConnections(); await new Promise((resolve) => server.close(resolve)); await rm(directory, { recursive: true, force: true }) },
   }

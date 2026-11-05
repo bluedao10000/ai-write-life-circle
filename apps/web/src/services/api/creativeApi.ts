@@ -118,7 +118,7 @@ export const creativeApi = {
   async decideDivergence(book: string, id: string, action: 'update_plan' | 'adjust_future' | 'intentional' | 'dismiss', note = '', key = crypto.randomUUID()) {
     return parse(creativeDivergenceSchema, await postJson(`${root(book)}/divergences/${encodeURIComponent(id)}/decide`, note ? { action, note } : { action }, key))
   },
-  async settings(book: string, action: 'enable' | 'pause' | 'resume' | 'auto' | 'recording' | 'orchestration', input: Record<string, unknown> = {}, key = crypto.randomUUID()) {
+  async settings(book: string, action: 'enable' | 'pause' | 'resume' | 'auto' | 'recording' | 'orchestration' | 'memory', input: Record<string, unknown> = {}, key = crypto.randomUUID()) {
     return parse(creativeSettingsSchema, await postJson(`${root(book)}/settings/${action}`, input, key))
   },
 }

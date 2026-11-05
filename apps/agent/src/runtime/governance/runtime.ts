@@ -5,6 +5,8 @@ export const definitions=Object.freeze({
  'evaluation.judge':{version:1,capability:'evaluation',mode:'evaluation',retry:'explicit',output:'judge-v1',tools:'none',modelCalls:1},
  'memory.extract':{version:1,capability:'memory',mode:'durable',retry:'explicit',output:'memory-candidate-v1',tools:'none',modelCalls:'run-budget'},
  'memory.extract.v2':{version:2,capability:'memory',mode:'durable',retry:'explicit',output:'memory-candidate-v2',tools:'none',modelCalls:'run-budget'},
+ 'memory.extract.v3':{version:3,capability:'memory',mode:'durable',retry:'explicit',output:'memory-candidate-v3',tools:'none',modelCalls:'run-budget'},
+ 'memory.consolidate':{version:1,capability:'memory',mode:'go-task',retry:'none',output:'memory-candidate-v1',tools:'none',modelCalls:1},
  thinking:{version:1,capability:'thinking',mode:'durable',retry:'explicit',output:'thinking-v1',tools:'scoped',modelCalls:'run-budget'},
  'creative.plan.planner':{version:1,capability:'creative',mode:'orchestration',retry:'explicit',output:'creative-plan-planner-v1',tools:'none',modelCalls:1},
  'creative.plan.researcher':{version:1,capability:'creative',mode:'orchestration',retry:'explicit',output:'creative-plan-research-v1',tools:'none',modelCalls:1},

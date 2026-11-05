@@ -813,6 +813,14 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
               studio.toast(creativeError(e))
             }
           }}
+          onMemory={async (on) => {
+            try {
+              await creativeApi.settings(book, 'memory', { autoMemoryConsolidation: on })
+              refreshOverview()
+            } catch (e) {
+              studio.toast(creativeError(e))
+            }
+          }}
         />
       )}
       {drawer && (

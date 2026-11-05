@@ -60,7 +60,8 @@ function Extraction({bookId,taskIds,onSaved}:Props){
  }
  const selected=models.find(m=>m.modelId===modelId)
  const disclosedTasks=attempt.current?.taskIds??taskIds
- const disclosedComparisons=session?.memoryExtraction?.version===2?session.memoryExtraction.comparisons.length:0
+ const comparisonBinding=session?.memoryExtraction&&session.memoryExtraction.version!==1?session.memoryExtraction:null
+ const disclosedComparisons=comparisonBinding?.comparisons.length??0
  const result=session?.messages.at(-1)
  const complete=session?.run?.status==='completed'
  const candidate=(()=>{try{const value=JSON.parse(result?.text??'');return typeof value.content==='string'?value.content:undefined}catch{return undefined}})()
@@ -74,7 +75,7 @@ function Extraction({bookId,taskIds,onSaved}:Props){
   </>}
   {previous.length>0&&!running&&<label className="block">已有提取<select aria-label="已有提取" className="ml-2 max-w-full rounded border border-line-soft bg-paper p-2" value={session?.sessionId??''} disabled={busy} onChange={e=>{const selected=e.target.value;if(selected)void perform(async()=>{const current=await api.get(bookId,selected);if(alive.current)setSession(current)})}}><option value="">选择执行记录</option>{previous.map(p=><option key={p.sessionId} value={p.sessionId}>{p.title}</option>)}</select></label>}
   {session&&<>
-   {session.memoryExtraction?.version===2&&<p className="text-ui-sm text-ink-2">本次比较了 {disclosedComparisons} 条已确认经验{session.memoryExtraction.comparisonOmitted?`，另有 ${session.memoryExtraction.comparisonOmitted} 条因数量上限未比较`:''}。关系建议需要你判断。</p>}
+   {comparisonBinding&&<p className="text-ui-sm text-ink-2">本次比较了 {disclosedComparisons} 条已确认经验{comparisonBinding.comparisonOmitted?`，另有 ${comparisonBinding.comparisonOmitted} 条因数量上限未比较`:''}。关系建议需要你判断。</p>}
    <p role="status">{running?'正在提取经验…':complete?'提取完成，保存后仍需单独确认。':session.run?.failure?.message??'本次提取已停止。'}</p>
    {result?.role==='assistant'&&candidate&&<p className="whitespace-pre-wrap break-words text-ui-sm">{candidate}</p>}
    {complete&&!candidate&&<p className="text-warn">模型未返回有效候选，请查看来源后重新提取。</p>}

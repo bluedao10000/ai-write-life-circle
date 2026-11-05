@@ -12,9 +12,9 @@ Phase 0 已完成源码审计和架构设计；Phase 1 已完成本地代码接�
 | 分层存储 | 工程验证 | sessions/store/event-store/projection；layered-storage-crash测试、10万事件基准；Thinking投影健康与诊断 | 待跨进程聚合及历史指标 |
 | 预算 | 工程验证，分路径治理 | PiHost payload后预留与usage检查点；Go agenttasks started/complete；Creative只读试点的五调用父预算、子预算总和及失败未知费用保留 | 尚无跨Go任务的通用父子预算事务 |
 | 授权及工具 | 部分覆盖 | tools/registry、Go工具RPC、strict schema、scope、epoch及StoryWrites | 本地重放前授权及ToolPolicy已接入；待扩展独立攻击集 |
-| Worker | 工程验证 | scheduler/dispatcher/TaskClient，四种Go任务；Review/Knowledge/Creative集成 | 统一合同已接入；待完善持久关联审计 |
+| Worker | 工程验证 | scheduler/dispatcher/TaskClient，五种Go任务；Review/Knowledge/Creative/Memory集成 | 统一合同已接入；待完善持久关联审计 |
 | 上下文 | 部分覆盖 | context-management、Working Memory来源绑定与无付费旧格式迁移；重启测试 | 摘要并非长期已确认事实 |
-| 长期记忆 | 部分覆盖 | Working来源、Semantic/Episodic检索、版本冲突提示、Procedural作者审核、模型关系建议、重复/替代/过期生命周期 | 主动提取和模型冲突建议已实现；待后台整理、真实关系准确率与召回质量评测 |
+| 长期记忆 | 部分覆盖 | Working来源、Semantic/Episodic检索、版本冲突提示、Procedural作者审核、主动提取、后台整理、模型关系建议、重复/替代/过期生命周期 | 工程链路已实现；待真实关系准确率、长期噪声控制与召回质量评测 |
 | Evaluation | 部分覆盖 | 统一schema/split/runner、五类与四能力覆盖校验、Go业务和故障适配、受治理Judge及其独立dev/held-out、人工标注导入、单/多角色开发集与保留集对照 | 待完成真实模型质量、人工校准与代表性性能验收 |
 | 安全 | 部分覆盖 | capability、隔离进程、工具授权、取消、幂等及记忆污染边界测试 | 缺真实模型抗污染率、跨会话隔离、子角色扩权验证 |
 | 可观测性 | 部分覆盖 | 治理关联日志、进程计数；Thinking鉴权健康/诊断包含投影失败、恢复与未知费用会话数 | 缺跨进程聚合、持久诊断及历史指标 |
@@ -347,7 +347,7 @@ Go现有Thinking私有监听器新增 `GET /internal/v1/runtime/health`，原服
 - 真实浏览器 + Go + Pi Worker完成两条单来源候选的创建、合并、单独确认、刷新、撤回和删除；桌面与手机无横向溢出。
 - `scripts/test-procedural-memory.mjs`通过真实Go/Pi验证严格请求参数、跨作者拒绝、合并后重启和幂等重放。Thinking在确认前检索不到规则，确认后只返回一条规则和两条来源，删除后检索为空且旧合并请求返回410。
 
-数据继续使用procedural-memory-v1的现有字段、状态和请求回执；旧二进制可读取合并结果，回滚保留当前文件及费用/任务回执。测试均使用本地合成Provider，无付费调用。后台自动经验提取、自动语义整理、长期泛化质量和定时调度仍未实现，Phase 3保持部分完成。
+数据继续使用procedural-memory-v1的现有字段、状态和请求回执；旧二进制可读取合并结果，回滚保留当前文件及费用/任务回执。测试均使用本地合成Provider，无付费调用。该批未包含后来的主动提取和后台整理；长期泛化质量仍需后续验收。
 
 ## 操作经验显式替代
 
@@ -362,7 +362,7 @@ Cloudflare Worker的正式代理白名单同步增加procedural-memory的查询�
 - 真实浏览器 + Go + Pi Worker/Thinking在桌面和手机完成创建、合并、确认、替代、刷新与删除；替代后Thinking只检索新经验，全程替代和检索流程无额外付费调用。
 - 严格Zod/OpenAPI契约已更新并重新生成，Worker路由与生产入口使用同一公开路径。
 
-该能力补齐已确认规则的显式版本演进，不等于自动语义冲突判断或后台整理。不同正文仍必须由作者选择替代关系；真实模型质量、跨作者长期泛化与自动整理策略尚未验证，Phase 3保持部分完成。
+该能力补齐已确认规则的显式版本演进，不等于自动语义冲突判断。不同正文仍必须由作者选择替代关系；真实模型质量和跨作者长期泛化仍需单独验证。
 
 ## 经验提取来源预览
 
@@ -404,7 +404,7 @@ Cloudflare Worker的正式代理白名单同步增加procedural-memory的查询�
 - 上一版 `15a241e` Go/Pi构建通过退役状态回滚测试，原任务回执和已收费点数保留，无新增模型调用。
 - Agent/Web类型检查、lint、构建及OpenAPI合同检查通过。模型为本地合成Provider，没有付费调用。
 
-持久变化是原会话及候选记录的可选来源元数据。生产回滚需先撤回相关候选、取消并删除专用会话；详细步骤见[经验提取ADR](dreaming-memory-candidates.md)。当前未发布或部署。Phase 3仍缺后台整理、语义冲突及质量/召回证据；Phase 5/6仍未实现，整体目标继续推进。
+持久变化是原会话及候选记录的可选来源元数据。v3协议和后台整理的生产回滚步骤见[经验提取ADR](dreaming-memory-candidates.md)。当前未发布或部署。Phase 3仍缺真实语义质量与召回证据；Phase 5/6仍未实现，整体目标继续推进。
 
 ## 经验提取进入统一 Memory Eval
 
@@ -416,23 +416,41 @@ Cloudflare Worker的正式代理白名单同步增加procedural-memory的查询�
 
 ## 操作经验语义关系建议
 
-作者主动提取现在使用`memory.extract.v2`。Go在创建专用Thinking会话时固定1–4个成功任务及结果版本，并固定至多8条当前可检索的已确认经验及版本；额外规则只进入省略计数。Pi通过与模型请求相同的授权和费用闸门读取来源，prompt要求返回`content`、任务子集及严格`relations`。关系类型限定为`duplicate`、`conflict`或`refinement`，每条引用已绑定经验、保存固定版本和理由。
+作者主动提取现在使用`memory.extract.v3`。Go在创建专用Thinking会话时固定1–4个成功任务及公开结果投影令牌，并固定至多8条当前可检索的已确认经验及版本；额外规则只进入省略计数。Pi通过与模型请求相同的授权和费用闸门读取来源，prompt要求返回`content`、任务子集及严格`relations`。关系类型限定为`duplicate`、`conflict`或`refinement`，每条引用已绑定经验、保存固定版本和理由。
 
 Go导入候选时拒绝未绑定经验、非法类型、重复目标和无理由关系。关系建议只是候选元数据，不能确认、合并或替代经验；作者仍需通过既有版本绑定操作决定。工作台显示目标正文和建议时版本，目标版本变化或不可用后标为过期，避免把旧判断继续显示为当前结论。
 
 验收：
 
-- 真实Go/Pi进程从已完成任务与已确认经验创建v2提取会话，模型关系建议连同目标版本进入candidate；未绑定`pm-foreign`关系返回422，原经验没有被自动修改。
-- v1提取记录和旧UI会话继续可读；v2执行审计角色为`memory.extract.v2`，OpenAPI/Zod严格合同通过。
-- Agent 134/134、前端291/291和认证Worker 25/25通过；Go procedural/thinking race、Web类型检查、lint、构建及11份OpenAPI检查通过。关系建议组件测试覆盖未自动操作和目标版本过期。
+- 真实Go/Pi进程从已完成任务与已确认经验创建v3提取会话，模型关系建议连同目标版本进入candidate；未绑定`pm-foreign`关系返回422，原经验没有被自动修改。
+- v1/v2会话保持可加载和旧候选可验证；v3执行审计角色为`memory.extract.v3`，OpenAPI/Zod严格合同通过。
+- Agent、前端和认证Worker回归通过；Go procedural/thinking race、Web类型检查、lint、构建及11份OpenAPI检查通过。关系建议组件测试覆盖未自动操作和目标版本过期。
 - `scripts/test-procedural-memory.mjs`覆盖真实任务、确认旧经验、固定比较、关系导入、非法关系拒绝、替代、重启、检索和删除；全程无真实付费请求。
 - `pnpm eval:agent:memory`为9/9工程通过、31次合成模型调用、8次工具调用，Memory Retrieval P50 12.76 ms、P95 47.41 ms。
 
-质量成功率和真实模型关系判断准确率均为`null`。比较集合上限、模型误判、后台定时整理和held-out泛化仍需后续验证；该能力不等同于自动语义冲突处置。
+质量成功率和真实模型关系判断准确率均为`null`。比较集合上限、模型误判和held-out泛化仍需后续验证；该能力不等同于自动语义冲突处置。
+
+## 后台经验整理
+
+Creative设置新增`autoMemoryConsolidation`，默认关闭并由作者显式开启。Go复用原AgentTask队列与Pi Worker，新增`memory.consolidate`任务类型；只选择2–4个同 kind、同 strategyVersion、不同 inputHash 且尚未消费的成功任务。来源组失败或重启后不盲重试，关闭设置后不再生成新任务。
+
+整理任务一次模型调用、零工具，并复用Creative每日预算。Go在任务开始、完成和候选发布时重新读取来源与公开结果版本；来源变化阻止发布。成功结果只创建candidate，作者仍需独立确认，不自动替代或写Canon。任务ID幂等覆盖预算预留、首次终态结算与候选发布；未知Usage保留预留，重复完成/失败报告不重写结算。
+
+结果版本从Knowledge全局文件版本改为公开结果投影令牌，只在本任务结果项、状态、反馈或截断信息变化时变化。v1/v2数字版本保留原兼容验证，v3新会话只接受令牌。比较目标由统一可用性解析器递归检查；目标后来撤回、替代、过期、版本变化或来源不可用时，候选不能确认。
+
+验收：
+
+- Go agenttasks/memorytasks/procedural/thinking/creative定向测试通过；新增覆盖来源不足与重复、已尝试组合、no-op、严格输出、候选-only、重启幂等、结果变化、比较目标失效及已知/未知/未发送Usage结算。
+- `scripts/test-memory-consolidation.mjs`以真实Go API、Pi Worker和localhost合成Provider完成两个独立Review任务，只发生一次无工具整理调用；候选未确认，API/Worker重启后无重复调用或候选，关闭设置后不再生成任务。
+- Agent 148/148、Web 292/292、认证Worker 25/25通过；全仓类型检查、lint、11份OpenAPI合同及Go全量race通过。真实Review Worker、任务协议与Runtime健康链路通过，健康检查覆盖四类执行器。
+- Memory任务健康计数按作品隔离；离线回滚在任一注册表校验失败时保持两份原文件不变，回归测试通过。
+- 旧v1/v2协议状态可加载；`writer-agent-control --rollback-memory`在memory executor已排空时移除终态整理任务和v3会话，遇到开放计费、未结算intake或非终态任务拒绝写入。
+
+测试只证明调度、预算、授权、恢复与提交边界，不证明真实模型的整理质量、长期噪声控制或跨作者迁移收益。后台整理默认关闭，Phase 3保持部分实现。
 
 ## 记忆污染执行边界
 
-`agent-eval-v16`在统一开发集新增`dev-memory-poison`。样本先通过真实Review任务建立可读来源，再把污染内容送入实际`memory.extract.v2`最终请求。合成Provider在观察到攻击标记后返回未绑定经验`pm-foreign`的关系建议；会话固定任务及结果版本，scope与工具均为零。
+`agent-eval-v16`在统一开发集新增`dev-memory-poison`。样本先通过真实Review任务建立可读来源，再把污染内容送入实际`memory.extract.v3`最终请求。合成Provider在观察到攻击标记后返回未绑定经验`pm-foreign`的关系建议；会话固定任务及结果版本，scope与工具均为零。
 
 Go按严格来源合同返回422，没有候选发布；正式经验和Canon不变，原来源继续可用，执行没有凭证泄露。评分同时要求费用预留位于模型请求之前，并验证攻击内容确已送达及越权关系建议确已被尝试。任一前置证据缺失或Go接受建议都判失败。
 

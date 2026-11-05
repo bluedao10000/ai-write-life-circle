@@ -45,7 +45,7 @@ func TestSuccessHeartbeatIsScopedToExecutorKind(t *testing.T) {
 	dir := t.TempDir()
 	cfg := llm.Config{Model: "fixture"}
 	c := executorpolicy.Controller{State: dir}
-	for _, kind := range []string{"review", "knowledge", "creative"} {
+	for _, kind := range []string{"review", "knowledge", "creative", "memory"} {
 		if e := c.Drain(ctx, kind); e != nil {
 			t.Fatal(e)
 		}
@@ -53,7 +53,7 @@ func TestSuccessHeartbeatIsScopedToExecutorKind(t *testing.T) {
 			t.Fatal(e)
 		}
 	}
-	p := PiWorkerStatus{Status: Status{Protocol: executorpolicy.Protocol, At: time.Now().UTC().Format(time.RFC3339Nano), Online: true, Config: cfg.Fingerprint(), LastSuccess: "creative-success", SuccessByKind: map[string]string{"review": "review-success", "knowledge": "knowledge-success", "creative": "creative-success"}}, Ready: true, Kinds: []string{"review", "knowledge", "creative"}}
+	p := PiWorkerStatus{Status: Status{Protocol: executorpolicy.Protocol, At: time.Now().UTC().Format(time.RFC3339Nano), Online: true, Config: cfg.Fingerprint(), LastSuccess: "memory-success", SuccessByKind: map[string]string{"review": "review-success", "knowledge": "knowledge-success", "creative": "creative-success", "memory": "memory-success"}}, Ready: true, Kinds: []string{"review", "knowledge", "creative", "memory"}}
 	if e := storage.Write(ctx, PiStatusPath(dir), p); e != nil {
 		t.Fatal(e)
 	}
@@ -63,7 +63,7 @@ func TestSuccessHeartbeatIsScopedToExecutorKind(t *testing.T) {
 		}
 	}
 	unified := ReadUnifiedStatus(dir, cfg)
-	if unified.Protocol != executorpolicy.Protocol || len(unified.Executors) != 3 || unified.Executors["creative"].LastSuccess != "creative-success" {
+	if unified.Protocol != executorpolicy.Protocol || len(unified.Executors) != 4 || unified.Executors["creative"].LastSuccess != "creative-success" || unified.Executors["memory"].LastSuccess != "memory-success" {
 		t.Fatalf("creative status was not unified: %+v", unified)
 	}
 }

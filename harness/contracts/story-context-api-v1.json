@@ -6801,6 +6801,9 @@
           "multiAgentPlanCheck": {
             "type": "boolean"
           },
+          "autoMemoryConsolidation": {
+            "type": "boolean"
+          },
           "dialogueRecording": {
             "default": false,
             "type": "boolean"
@@ -6902,6 +6905,7 @@
           "paused",
           "autoOrganize",
           "multiAgentPlanCheck",
+          "autoMemoryConsolidation",
           "model",
           "dailyTokenBudget",
           "dailyJobBudget",

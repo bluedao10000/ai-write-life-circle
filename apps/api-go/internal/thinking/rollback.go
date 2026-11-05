@@ -6,9 +6,92 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"strconv"
 
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/compat"
 )
+
+// RollbackMemoryExtractionSessions removes only extraction sessions whose
+// token-bound protocol is not readable by the prior Go service. Callers must
+// stop Pi and ensure every reservation is settled before running this offline.
+func RollbackMemoryExtractionSessions(data []byte) ([]byte, error) {
+	var root map[string]any
+	if err := compat.Decode(data, &root); err != nil {
+		return nil, fmt.Errorf("thinking registry is not valid JSON: %w", err)
+	}
+	if integerValue(root["schema"]) != 1 {
+		return nil, fmt.Errorf("thinking registry requires schema=1")
+	}
+	sessions, ok := root["sessions"].(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("thinking registry requires sessions")
+	}
+	removed := map[string]bool{}
+	for id, raw := range sessions {
+		record, ok := raw.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("thinking session %s is invalid", id)
+		}
+		extraction, present := record["memoryExtraction"]
+		if !present || extraction == nil {
+			continue
+		}
+		binding, ok := extraction.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("thinking session %s extraction is invalid", id)
+		}
+		version := integerValue(binding["version"])
+		if version < 1 || version > 3 {
+			return nil, fmt.Errorf("thinking session %s extraction version is unsupported", id)
+		}
+		if version < 3 {
+			continue
+		}
+		if text, _ := record["billOp"].(string); text != "" {
+			return nil, fmt.Errorf("thinking session %s has an open billing reservation", id)
+		}
+		if pending, _ := record["pendingIntake"].([]any); len(pending) != 0 {
+			return nil, fmt.Errorf("thinking session %s has an unsettled intake receipt", id)
+		}
+		delete(sessions, id)
+		removed[id] = true
+	}
+	if requests, ok := root["requests"].(map[string]any); ok {
+		for key, raw := range requests {
+			receipt, _ := raw.(map[string]any)
+			if removed[stringValue(receipt["id"])] {
+				delete(requests, key)
+				if cancelled, ok := root["cancelledReceipts"].(map[string]any); ok {
+					delete(cancelled, key)
+				}
+			}
+		}
+	}
+	out, err := compat.Marshal(root, true)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func integerValue(value any) int {
+	switch value := value.(type) {
+	case json.Number:
+		n, _ := strconv.Atoi(value.String())
+		return n
+	case float64:
+		return int(value)
+	case int:
+		return value
+	default:
+		return 0
+	}
+}
+
+func stringValue(value any) string {
+	text, _ := value.(string)
+	return text
+}
 
 // LegacyRegistry is the complete persisted contract understood before durable
 // Thinking Runs. Keep every old field: dropping a receipt or billing operation

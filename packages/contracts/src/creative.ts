@@ -232,6 +232,7 @@ export const creativeSettingsSchema = z
     paused: z.boolean(),
     autoOrganize: z.boolean(),
     multiAgentPlanCheck: z.boolean(),
+    autoMemoryConsolidation: z.boolean(),
     dialogueRecording: z.boolean().optional().default(false),
     consentAt: z.string().optional(),
     model,

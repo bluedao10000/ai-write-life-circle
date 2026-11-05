@@ -3,6 +3,7 @@ package agenttasks
 import (
 	"context"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/application"
+	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/compat"
 	"sort"
 	"strings"
 )
@@ -16,12 +17,13 @@ type MemoryResult struct {
 	Feedback  string `json:"feedback,omitempty"`
 }
 type MemoryOutcome struct {
-	Evidence  TaskEvidence   `json:"evidence"`
-	Basis     string         `json:"basis"`
-	Version   int64          `json:"version"`
-	Items     []MemoryResult `json:"items"`
-	Total     int            `json:"total"`
-	Truncated bool           `json:"truncated"`
+	Evidence      TaskEvidence   `json:"evidence"`
+	Basis         string         `json:"basis"`
+	Version       string         `json:"version"`
+	LegacyVersion int64          `json:"-"`
+	Items         []MemoryResult `json:"items"`
+	Total         int            `json:"total"`
+	Truncated     bool           `json:"truncated"`
 }
 
 // MemoryOutcome projects current business results without retaining model output.
@@ -44,7 +46,7 @@ func (s *Service) MemoryOutcome(ctx context.Context, actor application.Actor, bo
 			return out, err
 		}
 		out.Basis = "revision_observations"
-		out.Version = int64(result.Version)
+		out.LegacyVersion = int64(result.Version)
 		for _, a := range result.Assertions {
 			items = append(items, MemoryResult{ID: a.ID, Kind: "knowledge_observation", Status: a.Status, Text: a.Text, Epistemic: a.Epistemic})
 		}
@@ -58,7 +60,7 @@ func (s *Service) MemoryOutcome(ctx context.Context, actor application.Actor, bo
 		if result.Status != "completed" {
 			return out, application.Fail(404, "MEMORY_RESULT_UNAVAILABLE", "Completed review result unavailable.")
 		}
-		out.Version = result.Version
+		out.LegacyVersion = result.Version
 		for _, finding := range result.Findings {
 			item := MemoryResult{ID: finding.FindingID, Kind: "review_finding", Status: "proposed", Text: strings.Join([]string{finding.Title, finding.Inference, finding.Question, finding.Alternative}, "\n")}
 			if finding.Feedback != nil {
@@ -74,7 +76,7 @@ func (s *Service) MemoryOutcome(ctx context.Context, actor application.Actor, bo
 		if err != nil {
 			return out, err
 		}
-		out.Version = int64(result.Version)
+		out.LegacyVersion = int64(result.Version)
 		for _, proposal := range result.Proposals {
 			text := proposal.Reason
 			if proposal.Draft != nil {
@@ -135,5 +137,15 @@ func (s *Service) MemoryOutcome(ctx context.Context, actor application.Actor, bo
 			break
 		}
 	}
+	version, err := compat.Marshal(struct {
+		Basis     string         `json:"basis"`
+		Items     []MemoryResult `json:"items"`
+		Total     int            `json:"total"`
+		Truncated bool           `json:"truncated"`
+	}{out.Basis, out.Items, out.Total, out.Truncated}, false)
+	if err != nil {
+		return MemoryOutcome{}, err
+	}
+	out.Version = compat.Hash(string(version))
 	return out, ctx.Err()
 }

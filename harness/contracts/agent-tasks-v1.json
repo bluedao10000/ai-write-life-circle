@@ -461,7 +461,8 @@
                       "review.execute",
                       "knowledge.extract",
                       "creative.organize",
-                      "creative.plan_check"
+                      "creative.plan_check",
+                      "memory.consolidate"
                     ]
                   },
                   "bookId": {
@@ -547,7 +548,8 @@
                       "knowledge-candidates-v1",
                       "creative-organize-candidates-v1",
                       "creative-plan_check-candidates-v1",
-                      "creative-plan-check-candidates-v2"
+                      "creative-plan-check-candidates-v2",
+                      "memory-candidate-v1"
                     ]
                   },
                   "reservedTokens": {
@@ -651,14 +653,15 @@
           },
           "kinds": {
             "minItems": 1,
-            "maxItems": 3,
+            "maxItems": 4,
             "type": "array",
             "items": {
               "type": "string",
               "enum": [
                 "review",
                 "knowledge",
-                "creative"
+                "creative",
+                "memory"
               ]
             }
           },
@@ -705,7 +708,8 @@
               "review.execute",
               "knowledge.extract",
               "creative.organize",
-              "creative.plan_check"
+              "creative.plan_check",
+              "memory.consolidate"
             ]
           },
           "inputHash": {
@@ -829,7 +833,8 @@
               "review.execute",
               "knowledge.extract",
               "creative.organize",
-              "creative.plan_check"
+              "creative.plan_check",
+              "memory.consolidate"
             ]
           },
           "bookId": {
@@ -915,7 +920,8 @@
               "knowledge-candidates-v1",
               "creative-organize-candidates-v1",
               "creative-plan_check-candidates-v1",
-              "creative-plan-check-candidates-v2"
+              "creative-plan-check-candidates-v2",
+              "memory-candidate-v1"
             ]
           },
           "reservedTokens": {
@@ -1013,14 +1019,15 @@
           },
           "kinds": {
             "minItems": 1,
-            "maxItems": 3,
+            "maxItems": 4,
             "type": "array",
             "items": {
               "type": "string",
               "enum": [
                 "review",
                 "knowledge",
-                "creative"
+                "creative",
+                "memory"
               ]
             }
           },

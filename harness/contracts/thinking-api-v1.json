@@ -1041,6 +1041,73 @@
               "comparisonOmitted"
             ],
             "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "version": {
+                "type": "number",
+                "const": 3
+              },
+              "tasks": {
+                "minItems": 1,
+                "maxItems": 4,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "taskId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "resultVersion": {
+                      "type": "string",
+                      "pattern": "^sha256:[a-f0-9]{64}$"
+                    }
+                  },
+                  "required": [
+                    "taskId",
+                    "resultVersion"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "comparisons": {
+                "maxItems": 8,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "memoryId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "memoryVersion": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "memoryId",
+                    "memoryVersion"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "comparisonOmitted": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "version",
+              "tasks",
+              "comparisons",
+              "comparisonOmitted"
+            ],
+            "additionalProperties": false
           }
         ]
       },
@@ -1900,6 +1967,73 @@
                           "type": "integer",
                           "minimum": 0,
                           "maximum": 9007199254740991
+                        }
+                      },
+                      "required": [
+                        "taskId",
+                        "resultVersion"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "comparisons": {
+                    "maxItems": 8,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "memoryId": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "memoryVersion": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": [
+                        "memoryId",
+                        "memoryVersion"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "comparisonOmitted": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "version",
+                  "tasks",
+                  "comparisons",
+                  "comparisonOmitted"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "number",
+                    "const": 3
+                  },
+                  "tasks": {
+                    "minItems": 1,
+                    "maxItems": 4,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "taskId": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "resultVersion": {
+                          "type": "string",
+                          "pattern": "^sha256:[a-f0-9]{64}$"
                         }
                       },
                       "required": [
@@ -2932,6 +3066,73 @@
                   "comparisonOmitted"
                 ],
                 "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "number",
+                    "const": 3
+                  },
+                  "tasks": {
+                    "minItems": 1,
+                    "maxItems": 4,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "taskId": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "resultVersion": {
+                          "type": "string",
+                          "pattern": "^sha256:[a-f0-9]{64}$"
+                        }
+                      },
+                      "required": [
+                        "taskId",
+                        "resultVersion"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "comparisons": {
+                    "maxItems": 8,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "memoryId": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "memoryVersion": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": [
+                        "memoryId",
+                        "memoryVersion"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "comparisonOmitted": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "version",
+                  "tasks",
+                  "comparisons",
+                  "comparisonOmitted"
+                ],
+                "additionalProperties": false
               }
             ]
           },
@@ -3466,6 +3667,73 @@
                           "type": "integer",
                           "minimum": 0,
                           "maximum": 9007199254740991
+                        }
+                      },
+                      "required": [
+                        "taskId",
+                        "resultVersion"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "comparisons": {
+                    "maxItems": 8,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "memoryId": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "memoryVersion": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": [
+                        "memoryId",
+                        "memoryVersion"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "comparisonOmitted": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "version",
+                  "tasks",
+                  "comparisons",
+                  "comparisonOmitted"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "number",
+                    "const": 3
+                  },
+                  "tasks": {
+                    "minItems": 1,
+                    "maxItems": 4,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "taskId": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "resultVersion": {
+                          "type": "string",
+                          "pattern": "^sha256:[a-f0-9]{64}$"
                         }
                       },
                       "required": [
@@ -4309,6 +4577,73 @@
                   "comparisonOmitted"
                 ],
                 "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "number",
+                    "const": 3
+                  },
+                  "tasks": {
+                    "minItems": 1,
+                    "maxItems": 4,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "taskId": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "resultVersion": {
+                          "type": "string",
+                          "pattern": "^sha256:[a-f0-9]{64}$"
+                        }
+                      },
+                      "required": [
+                        "taskId",
+                        "resultVersion"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "comparisons": {
+                    "maxItems": 8,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "memoryId": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "memoryVersion": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": [
+                        "memoryId",
+                        "memoryVersion"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "comparisonOmitted": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "version",
+                  "tasks",
+                  "comparisons",
+                  "comparisonOmitted"
+                ],
+                "additionalProperties": false
               }
             ]
           },
@@ -4687,8 +5022,29 @@
                 },
                 "runId": {
                   "type": "string",
-                  "format": "uuid",
-                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  "minLength": 1
+                },
+                "sources": {
+                  "maxItems": 4,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "taskId": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "resultVersion": {
+                        "type": "string",
+                        "pattern": "^sha256:[a-f0-9]{64}$"
+                      }
+                    },
+                    "required": [
+                      "taskId",
+                      "resultVersion"
+                    ],
+                    "additionalProperties": false
+                  }
                 },
                 "provider": {
                   "type": "string"
@@ -4700,7 +5056,9 @@
                   "type": "string",
                   "enum": [
                     "memory-extraction-v1",
-                    "memory-extraction-v2"
+                    "memory-extraction-v2",
+                    "memory-extraction-v3",
+                    "memory-consolidation-v1"
                   ]
                 },
                 "authorizationVersion": {

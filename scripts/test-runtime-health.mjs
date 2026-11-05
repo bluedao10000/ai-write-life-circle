@@ -10,7 +10,7 @@ try{
  const pi=f.start('pi'),worker=f.start('pi-worker');
  await until(()=>pi.output.includes('agent_started')&&worker.output.includes('worker_started'),'processes ready');
  const ready=await until(async()=>{const {body}=await probe();return body.readiness&&body},'aggregate readiness');
- assert.equal(ready.degraded,false);assert.equal(ready.api,'ready');assert.equal(ready.provider,'not_probed');assert.equal(ready.worker.onlineExecutors,3);assert.equal(ready.worker.pendingTasks,0);assert.equal(ready.thinking.counts.failedSessions,0);
+ assert.equal(ready.degraded,false);assert.equal(ready.api,'ready');assert.equal(ready.provider,'not_probed');assert.equal(ready.worker.enabledExecutors,4);assert.equal(ready.worker.onlineExecutors,4);assert.equal(ready.worker.pendingTasks,0);assert.equal(ready.thinking.counts.failedSessions,0);
  await f.stop(pi);
  const withoutThinking=(await probe()).body;
  assert.equal(withoutThinking.liveness,true);assert.equal(withoutThinking.readiness,false);assert.equal(withoutThinking.degraded,true);assert.equal(withoutThinking.worker.readiness,true);assert.equal(withoutThinking.thinking.status,'unavailable');

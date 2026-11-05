@@ -16,7 +16,7 @@ try{
  await f.call(root+'/sessions',{method:'POST',status:422,body:{...body,consent:false}});
  await f.call(root+'/sessions',{method:'POST',status:422,body:{...body,scopes:['creative']}});
  await f.call(root+'/sessions',{method:'POST',status:404,body,user:{id:'other-author',email:'other@example.com'}});
- async function create(){const s=thinkingSessionSchema.parse(await f.call(root+'/sessions',{method:'POST',status:201,body}));assert.deepEqual(s.scopes,[]);assert.equal(s.memoryExtraction.version,2);assert.equal(s.memoryExtraction.comparisons.length,0);return root+'/sessions/'+s.sessionId}
+ async function create(){const s=thinkingSessionSchema.parse(await f.call(root+'/sessions',{method:'POST',status:201,body}));assert.deepEqual(s.scopes,[]);assert.equal(s.memoryExtraction.version,3);assert.equal(s.memoryExtraction.comparisons.length,0);return root+'/sessions/'+s.sessionId}
  async function send(path,key=crypto.randomUUID()){return f.call(path+'/messages',{method:'POST',status:202,key,body:{text:'请从选中任务提取可复用的操作经验。'}})}
  async function done(path){return until(async()=>{const s=thinkingSessionSchema.parse(await f.call(path));return s.status==='idle'&&s.run&&s},'extraction completion')}
  const path=await create();
@@ -30,7 +30,7 @@ try{
  assert(prompt.includes(evidence.taskId));assert(prompt.includes(reviewed.findings[0].findingId));assert(prompt.includes('"type":"chapter"'));
  assert.equal((await f.call(memories)).items.length,0,'model completion alone must not publish memory');
  const candidate=proceduralRecordSchema.parse(await f.call(path+'/memory-candidate',{method:'POST',status:201,body:{runId:state.run.runId}}));
- assert.equal(candidate.status,'candidate');assert.equal(candidate.extractions[0].runId,state.run.runId);assert.equal(candidate.extractions[0].promptVersion,'memory-extraction-v2');assert.equal(candidate.provenance[0].taskId,evidence.taskId);
+ assert.equal(candidate.status,'candidate');assert.equal(candidate.extractions[0].runId,state.run.runId);assert.equal(candidate.extractions[0].promptVersion,'memory-extraction-v3');assert.equal(candidate.provenance[0].taskId,evidence.taskId);
  assert.equal((await f.call(memories)).items[0].available,false);
  await send(path,'extract-once');assert.equal(f.calls,start+1);
  await f.stop(pi);pi=f.start('pi');await until(()=>pi.output.includes('agent_started'),'thinking restart');

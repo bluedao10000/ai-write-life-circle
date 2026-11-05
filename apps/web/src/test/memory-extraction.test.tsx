@@ -6,7 +6,8 @@ import {thinkingApi as api} from '../services/api/thinkingApi'
 import type {ThinkingSession} from '@writer-agent/contracts'
 vi.mock('../services/api/thinkingApi',()=>({thinkingApi:{models:vi.fn(),list:vi.fn(),create:vi.fn(),send:vi.fn(),get:vi.fn(),cancel:vi.fn(),memoryCandidate:vi.fn()}}))
 const model={modelId:'fixture',displayName:'测试模型',provider:'fixture',hostedBy:'本地测试',description:'',enabled:true,toolCalling:true,pointMultiplier:1 as const}
-const session={sessionId:'th-fixture',title:'提取经验',status:'idle',memoryExtraction:{version:1,tasks:[{taskId:'t1',resultVersion:1}]},messages:[{role:'assistant',text:JSON.stringify({content:'先核对原文，再判断差异。',taskIds:['t1']})}],run:{runId:'run',status:'completed'}} as ThinkingSession
+const version='sha256:'+'a'.repeat(64)
+const session={sessionId:'th-fixture',title:'提取经验',status:'idle',memoryExtraction:{version:3,tasks:[{taskId:'t1',resultVersion:version}],comparisons:[],comparisonOmitted:0},messages:[{role:'assistant',text:JSON.stringify({content:'先核对原文，再判断差异。',taskIds:['t1']})}],run:{runId:'run',status:'completed'}} as unknown as ThinkingSession
 function setup(){vi.mocked(api.models).mockResolvedValue([model]);vi.mocked(api.list).mockResolvedValue([]);vi.mocked(api.create).mockResolvedValue(session);vi.mocked(api.get).mockResolvedValue(session)}
 afterEach(()=>{cleanup();vi.resetAllMocks()})
 it('discloses the model and selected data before a paid call, then saves only on author action',async()=>{
@@ -48,7 +49,7 @@ it('opens an existing interrupted extraction without starting another model call
 })
 it('discloses bounded comparison with confirmed experiences and leaves relations for review',async()=>{
  setup()
- const compared={...session,memoryExtraction:{version:2,tasks:[{taskId:'t1',resultVersion:1}],comparisons:[{memoryId:'m1',memoryVersion:3},{memoryId:'m2',memoryVersion:1}],comparisonOmitted:1},messages:[{role:'assistant',text:JSON.stringify({content:'新的操作经验。',taskIds:['t1'],relations:[{memoryId:'m1',kind:'conflict',reason:'适用顺序不同。'}]})}],run:{runId:'run',status:'completed'}} as ThinkingSession
+ const compared={...session,memoryExtraction:{version:3,tasks:[{taskId:'t1',resultVersion:version}],comparisons:[{memoryId:'m1',memoryVersion:3},{memoryId:'m2',memoryVersion:1}],comparisonOmitted:1},messages:[{role:'assistant',text:JSON.stringify({content:'新的操作经验。',taskIds:['t1'],relations:[{memoryId:'m1',kind:'conflict',reason:'适用顺序不同。'}]})}],run:{runId:'run',status:'completed'}} as ThinkingSession
  vi.mocked(api.create).mockResolvedValue(compared);vi.mocked(api.get).mockResolvedValue(compared)
  render(<MemoryExtraction bookId="book" taskIds={['t1']} onSaved={async()=>{}}/>)
  await userEvent.click(screen.getByRole('button',{name:'AI 提取经验'}));await screen.findByRole('option',{name:'测试模型 · 本地测试'})
