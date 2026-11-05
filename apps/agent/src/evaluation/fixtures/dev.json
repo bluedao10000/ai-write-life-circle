@@ -1,5 +1,5 @@
 {
-  "version": "agent-eval-v18",
+  "version": "agent-eval-v17",
   "split": "dev",
   "synthetic": true,
   "tasks": [
@@ -2576,6 +2576,232 @@
             "metric": "toolCalls",
             "operator": "eq",
             "value": 0
+          }
+        ],
+        "forbidden": []
+      }
+    },
+    {
+      "taskId": "dev-consolidation-candidate",
+      "category": "memory",
+      "capability": "creative",
+      "difficulty": "boundary",
+      "request": "验收后台经验整理候选来源与独立审核边界。",
+      "environment": {
+        "scenario": "consolidation-candidate",
+        "fixture": "synthetic-v1",
+        "initialState": {
+          "events": 0,
+          "messages": 0,
+          "scope": []
+        }
+      },
+      "stoppingCriteria": {
+        "timeoutMs": 45000,
+        "maxTokens": 200000,
+        "maxModelCalls": 3,
+        "maxToolCalls": 0
+      },
+      "scorer": {
+        "deterministic": [
+          {
+            "metric": "sourceTasksCompleted",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "boundSources",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "zeroTools",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "oneConsolidationCall",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "noAutomaticRetry",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "contextScrubbed",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "sourceUnchanged",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "candidateOnly",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "provenanceValid",
+            "operator": "eq",
+            "value": true
+          }
+        ],
+        "forbidden": []
+      }
+    },
+    {
+      "taskId": "dev-consolidation-revoked",
+      "category": "reliability",
+      "capability": "creative",
+      "difficulty": "boundary",
+      "request": "验收后台经验整理发送后撤销与未知费用保留。",
+      "environment": {
+        "scenario": "consolidation-revoked",
+        "fixture": "synthetic-v1",
+        "initialState": {
+          "events": 0,
+          "messages": 0,
+          "scope": []
+        }
+      },
+      "stoppingCriteria": {
+        "timeoutMs": 45000,
+        "maxTokens": 200000,
+        "maxModelCalls": 3,
+        "maxToolCalls": 0
+      },
+      "scorer": {
+        "deterministic": [
+          {
+            "metric": "sourceTasksCompleted",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "boundSources",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "zeroTools",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "oneConsolidationCall",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "noAutomaticRetry",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "contextScrubbed",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "sourceUnchanged",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "terminalFailed",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "noCandidatePublished",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "unknownUsageRetained",
+            "operator": "eq",
+            "value": true
+          }
+        ],
+        "forbidden": []
+      }
+    },
+    {
+      "taskId": "dev-consolidation-crash",
+      "category": "reliability",
+      "capability": "creative",
+      "difficulty": "boundary",
+      "request": "验收后台经验整理Worker强杀后的中断回执与禁止自动付费重试。",
+      "environment": {
+        "scenario": "consolidation-crash",
+        "fixture": "synthetic-v1",
+        "initialState": {
+          "events": 0,
+          "messages": 0,
+          "scope": []
+        }
+      },
+      "stoppingCriteria": {
+        "timeoutMs": 60000,
+        "maxTokens": 200000,
+        "maxModelCalls": 3,
+        "maxToolCalls": 0
+      },
+      "scorer": {
+        "deterministic": [
+          {
+            "metric": "sourceTasksCompleted",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "boundSources",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "zeroTools",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "oneConsolidationCall",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "noAutomaticRetry",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "contextScrubbed",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "sourceUnchanged",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "terminalInterrupted",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "noCandidatePublished",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "unknownUsageRetained",
+            "operator": "eq",
+            "value": true
           }
         ],
         "forbidden": []

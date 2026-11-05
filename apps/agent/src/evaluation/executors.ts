@@ -28,6 +28,11 @@ export async function executeEvaluation(task:EvaluationTask,signal:AbortSignal):
 async function execute(task:EvaluationTask,signal:AbortSignal,result:Observation):Promise<Observation>{
  signal.throwIfAborted();
  if(task.environment.scenario.startsWith('storage-'))return executeStorageEvaluation(task,signal,result);
+ if(task.environment.scenario.startsWith('consolidation-')){
+  const modulePath=new URL('../../../../scripts/lib/evaluation-consolidation.mjs',import.meta.url).href;
+  const {executeConsolidationEvaluation}=await import(modulePath) as {executeConsolidationEvaluation:(task:EvaluationTask,signal:AbortSignal,result:Observation)=>Promise<Observation>};
+  return executeConsolidationEvaluation(task,signal,result);
+ }
  if(task.environment.scenario.startsWith('extraction-')){
   const modulePath=new URL('../../../../scripts/lib/evaluation-extraction.mjs',import.meta.url).href;
   const {executeExtractionEvaluation}=await import(modulePath) as {executeExtractionEvaluation:(task:EvaluationTask,signal:AbortSignal,result:Observation)=>Promise<Observation>};

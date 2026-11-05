@@ -101,3 +101,9 @@ Safety分类以本地合成Provider运行9/9工程通过，共12次模型调用�
 `agent-eval-v18`与保留集`agent-eval-v3`新增`creative-plan-failure`可靠性样本。五个角色中任一已发送请求没有返回usage时，编排器不再把其他角色已知的部分usage冒充完整结算；父响应改为未知usage，由Go在`UsageIncomplete`状态保留整笔父预留。场景还检查失败后不调用Coordinator、不生成Divergence、不改计划或正文，并在2.2秒观察窗口内确认没有自动启动新attempt。
 
 开发可靠性分类9/9、保留可靠性分类2/2工程通过。开发运行发出3次、保留运行发出2次合成模型调用，均低于5次上限；Go保留111200 tokens的父预留，token测量值保持`null`，未发生工具调用或业务提交。Agent完整回归144/144、类型检查、lint与构建通过。该结果验证失败和计费边界，不证明真实Provider的失败率、重试收益或错误内容质量。
+
+## 后台经验整理评测
+
+`agent-eval-v17`新增三个独立开发样本：`consolidation-candidate`、`consolidation-revoked`和`consolidation-crash`。每项运行真实Go任务队列和Pi Worker，由两个独立Review任务建立来源，之后执行一次受治理整理；禁止工具调用。成功样本检查候选-only、来源/结果版本绑定和提取来源；撤销样本检查失败回执、零候选及未知费用；SIGKILL样本等待原租约自然到期，检查中断回执及重启后零新增模型调用。
+
+每项最多3次合成模型调用、200000 tokens、0次工具调用；普通场景45秒、SIGKILL场景60秒。用量未知时不填造token或货币成本，使用Go已结算预算或保留预留作为预算暴露证据。报告记录`memory-consolidation-v1`提示版本。确定性评分器对每个约束均有缺失值与违反值测试；这些样本不证明真实模型整理质量。
