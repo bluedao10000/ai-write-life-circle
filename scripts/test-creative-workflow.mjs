@@ -289,6 +289,11 @@ try {
   assert(governed, "readonly task was not recorded");
   assert(single, "single-agent baseline task was not recorded");
   assert.equal(governed.finished, true);
+  assert.equal(governed.modelSteps.length, 5);
+  assert.deepEqual([...governed.modelSteps].sort((a,b)=>a.callIndex-b.callIndex).map(step=>step.role), ['creative.plan.planner','creative.plan.researcher','creative.plan.analyst','creative.plan.critic','creative.plan.coordinator']);
+  assert(governed.modelSteps.every(step=>step.parentTaskId===governed.task.taskId&&Number.isFinite(Date.parse(step.at))));
+  assert.equal(governed.modelSteps.reduce((sum,step)=>sum+step.maxTokens,0),governed.task.reservedTokens);
+
   assert.equal(governed.task.outputSchemaVersion, "creative-plan-check-candidates-v2");
   assert.equal(single.task.outputSchemaVersion, "creative-plan_check-candidates-v1");
   assert(governed.task.reservedTokens > single.task.reservedTokens);

@@ -1,8 +1,9 @@
+import type {z} from 'zod';
 import {executionFingerprint} from '../runtime/model-gateway.js';
 import {createHash} from 'node:crypto';
 import {strategy,outputSchemaVersion} from '../agents/review/prompt.js';
 import {strategy as knowledgeStrategy,outputSchemaVersion as knowledgeSchema} from '../agents/knowledge/prompt.js';
-import {agentTaskClaimResultSchema,agentTaskAcknowledgementSchema,agentTaskEnvelopeSchema,agentWorkerHeartbeatSchema,type AgentTask,type AgentModelResponse} from '@writer-agent/contracts';
+import {agentTaskClaimResultSchema,agentTaskAcknowledgementSchema,agentTaskEnvelopeSchema,agentWorkerHeartbeatSchema,type AgentTask,type AgentModelResponse,agentModelStepSchema} from '@writer-agent/contracts';
 import {boundedText} from '../tools/registry.js';
 import type {WorkerConfig} from './config.js';
 export const executionContracts={knowledge:'sha256:'+createHash('sha256').update(knowledgeStrategy+knowledgeSchema).digest('hex'),review:'sha256:'+createHash('sha256').update(strategy+outputSchemaVersion).digest('hex')};
@@ -16,8 +17,8 @@ export class TaskClient {
  }
  async check(){const value=await this.request('capabilities');if(value.protocol!=='agent-tasks-v1'||value.configFingerprint!==executionFingerprint(this.config.model))throw Error('AGENT_CONFIG_CHANGED');const contracts=value.contracts as Record<string,string>|undefined;for(const kind of this.config.kinds){const local=executionContracts[kind as keyof typeof executionContracts];if(local){if(contracts?.[kind]!==local)throw Error('AGENT_CONFIG_CHANGED');this.contracts[kind]=local}else{const carried=contracts?.[kind];if(!carried||!/^sha256:[a-f0-9]{64}$/.test(carried))throw Error('AGENT_CONFIG_CHANGED');this.contracts[kind]=carried}}}
  async claim(){return agentTaskClaimResultSchema.parse(await this.request('claim',{instance:this.instance,configFingerprint:executionFingerprint(this.config.model),kinds:this.config.kinds,contracts:this.contracts})).task}
- async action(task:AgentTask,action:'started'|'heartbeat'|'complete'|'fail',response:AgentModelResponse={text:'',usage:null},failureCode?:string){
-  const body=agentTaskEnvelopeSchema.parse({leaseToken:task.leaseToken,executorEpoch:task.executorEpoch,attempt:task.attempt,kind:task.kind,inputHash:task.inputHash,instance:this.instance,response,...(failureCode?{failureCode}:{})});
+ async action(task:AgentTask,action:'started'|'heartbeat'|'complete'|'fail',response:AgentModelResponse={text:'',usage:null},failureCode?:string,modelStep?:z.infer<typeof agentModelStepSchema>){
+  const body=agentTaskEnvelopeSchema.parse({...(modelStep?{modelStep}:{}),leaseToken:task.leaseToken,executorEpoch:task.executorEpoch,attempt:task.attempt,kind:task.kind,inputHash:task.inputHash,instance:this.instance,response,...(failureCode?{failureCode}:{})});
   const retry=action==='complete'||action==='fail'?3:1;
   for(let attempt=0;attempt<retry;attempt++){try{return agentTaskAcknowledgementSchema.parse(await this.request(task.taskId+'/'+action,body))}catch(e){if(attempt+1===retry||e instanceof Error&&e.message==='EXECUTOR_FENCED')throw e;await new Promise(r=>setTimeout(r,100))}}
  }

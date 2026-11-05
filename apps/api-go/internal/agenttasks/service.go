@@ -43,6 +43,7 @@ type Task struct {
 	Request      llm.Request   `json:"request"`
 }
 type Record struct {
+	ModelSteps  []ModelStepReceipt     `json:"modelSteps,omitempty"`
 	Audit       []ExecutionAudit       `json:"audit,omitempty"`
 	Outcome     string                 `json:"outcome,omitempty"`
 	CompletedAt string                 `json:"completedAt,omitempty"`
@@ -361,6 +362,7 @@ func (s *Service) Claim(ctx context.Context, instance, config string, kinds ...s
 
 // Envelope is an exact echo of immutable execution identity, not a writable task definition.
 type Envelope struct {
+	ModelStep *ModelStep   `json:"modelStep,omitempty"`
 	Lease     string       `json:"leaseToken"`
 	Epoch     uint64       `json:"executorEpoch"`
 	Attempt   int          `json:"attempt"`
@@ -394,6 +396,9 @@ func (s *Service) check(ctx context.Context, rec Record) error {
 	return r.Check(ctx, rec.Review)
 }
 func (s *Service) Action(ctx context.Context, id, action string, in Envelope) error {
+	if in.ModelStep != nil && action != "started" {
+		return application.Fail(422, "VALIDATION_FAILED", "Model step is only accepted with started.")
+	}
 	var denied error
 	err := s.transaction(ctx, func(st *Registry) error {
 		rec, ok := st.Tasks[id]
@@ -497,7 +502,13 @@ func (s *Service) Action(ctx context.Context, id, action string, in Envelope) er
 					return nil
 				}
 			}
+			if in.ModelStep != nil {
+				if err := rec.admitModelStep(*in.ModelStep); err != nil {
+					return err
+				}
+			}
 			if rec.Started {
+				st.Tasks[id] = rec
 				return nil
 			}
 			if e := (executorpolicy.Controller{State: s.State}).Guard(ctx, domain(t.Kind), "pi", t.Epoch, t.Lease, false, func() error { return nil }); e != nil {

@@ -75,7 +75,7 @@ export function completionUsage(value:unknown,maxOutput:number):AgentModelRespon
   return {inputTokens:raw.prompt_tokens!,outputTokens:raw.completion_tokens!,cachedInputTokens:valid?cached:0};
 }
 export class ModelGateway {
-  constructor(readonly config:ExecutionConfig,readonly key:string,readonly admission:(task:AgentTask)=>Promise<void>=async()=>{throw Error('MODEL_RESERVATION_REQUIRED')}){}
+  constructor(readonly config:ExecutionConfig,readonly key:string,readonly admission:(task:AgentTask,step?:ModelStep)=>Promise<void>=async()=>{throw Error('MODEL_RESERVATION_REQUIRED')}){}
   validate(task:AgentTask){
     const output=task.kind==='creative.plan_check'&&task.strategyVersion==='creative-plan-check-readonly-v1'?'creative-plan-check-candidates-v2':definition(task.kind).output;
     if(output!==task.outputSchemaVersion)throw new GatewayError('AGENT_CONFIG_CHANGED');
@@ -95,7 +95,7 @@ export class ModelGateway {
     if(role.tools!=='none'||(orchestration&&(task.kind!=='creative.plan_check'||role.capability!=='creative'||role.mode!=='orchestration'))||output<128||output>this.config.MaxOutputTokens||!Number.isSafeInteger(step.maxTokens)||step.maxTokens<1||step.maxTokens>task.reservedTokens||!Number.isSafeInteger(step.maxModelCalls)||step.maxModelCalls<1||step.maxModelCalls>5||!Number.isSafeInteger(step.callIndex)||step.callIndex<1||step.callIndex>step.maxModelCalls)throw new GatewayError('AGENT_CONFIG_CHANGED');
     const cfg=this.config,deadline=AbortSignal.timeout(Math.max(1,Math.min(cfg.Timeout/1e6,Date.parse(task.deadline)-Date.now()))),abort=AbortSignal.any([signal,deadline]);
     const {runtime,model}=await configuredModel(cfg.BaseURL,cfg.Model,this.key,cfg.MaxContextBytes+20000,output);
-    const thisAdmission=()=>this.admission(task);
+    const thisAdmission=()=>this.admission(task,step);
     const gate=new ModelRequestGate({...workerContext(task,abort,{role:step.role,parentTaskId:step.parentTaskId,maxModelCalls:step.maxModelCalls,maxTokens:step.maxTokens}),modelRequestId:`${task.taskId}:${step.role}:${step.callIndex}`},{authorize:async()=>{this.validate(task)}});
     let usage:AgentModelResponse['usage']=null,transportError="";
     try {
