@@ -1,8 +1,8 @@
 # Agent Maturity：能力与验收证据
 
-日期：2026-11-04。基线：`25e6066f519fdb4386bbbbe334edb48badbc5c03`。
+日期：2026-11-05。基线：`25e6066f519fdb4386bbbbe334edb48badbc5c03`。
 
-Phase 0 已完成源码审计和架构设计；Phase 1 已完成本地代码接入和工程验收；Phase 2 与 Phase 3 部分实现；Phase 4–6 尚未完成。成熟度采用“工程验证 / 部分覆盖 / 未实现”，不以文件数量打分。此前同基线的本地 `pnpm verify` 已通过，包含 102 项 Agent 测试和 Go/Pi 真实进程集成；不代表真实模型任务成功率或全部威胁已验证。远程最新状态未刷新：GitHub API 最近返回账号停用403，本次使用本地 main 与已有跟踪引用。
+Phase 0 已完成源码审计和架构设计；Phase 1 已完成本地代码接入和工程验收；Phase 2–4 部分实现；Phase 5 已完成默认关闭的只读试点工程接入，真实质量收益尚未验收；Phase 6 尚未实现。成熟度采用“工程验证 / 部分覆盖 / 未实现”，不以文件数量打分。此前同基线的本地 `pnpm verify` 已通过，包含 102 项 Agent 测试和 Go/Pi 真实进程集成；不代表真实模型任务成功率或全部威胁已验证。远程最新状态未刷新：GitHub API 最近返回账号停用403，本次使用本地 main 与已有跟踪引用。
 
 ## 能力矩阵
 
@@ -10,7 +10,7 @@ Phase 0 已完成源码审计和架构设计；Phase 1 已完成本地代码接�
 | --- | --- | --- | --- |
 | Durable执行 | 工程验证 | runtime/durable.ts、durable-crash/lifecycle测试；启动中断旧任务 | 治理生命周期映射，禁止自动付费恢复 |
 | 分层存储 | 工程验证 | sessions/store/event-store/projection；layered-storage-crash测试、10万事件基准；Thinking投影健康与诊断 | 待跨进程聚合及历史指标 |
-| 预算 | 工程验证，分路径治理 | PiHost payload后预留与usage检查点；Go agenttasks started/complete；budget/turn-budget测试 | 已接入原权威预算适配；尚无父子预算分配 |
+| 预算 | 工程验证，分路径治理 | PiHost payload后预留与usage检查点；Go agenttasks started/complete；Creative只读试点的五调用父预算与子预算总和校验 | 尚无跨Go任务的通用父子预算事务 |
 | 授权及工具 | 部分覆盖 | tools/registry、Go工具RPC、strict schema、scope、epoch及StoryWrites | 本地重放前授权及ToolPolicy已接入；待扩展独立攻击集 |
 | Worker | 工程验证 | scheduler/dispatcher/TaskClient，四种Go任务；Review/Knowledge/Creative集成 | 统一合同已接入；待完善持久关联审计 |
 | 上下文 | 部分覆盖 | context-management、Working Memory来源绑定与无付费旧格式迁移；重启测试 | 摘要并非长期已确认事实 |
@@ -18,10 +18,16 @@ Phase 0 已完成源码审计和架构设计；Phase 1 已完成本地代码接�
 | Evaluation | 部分覆盖 | 统一schema/split/runner、Go业务和故障适配、受治理Judge、人工标注导入 | 待完成独立数据集、保留集、人工校准与性能验收 |
 | 安全 | 部分覆盖 | capability、隔离进程、工具授权、取消、幂等及记忆污染边界测试 | 缺真实模型抗污染率、跨会话隔离、子角色扩权验证 |
 | 可观测性 | 部分覆盖 | 治理关联日志、进程计数；Thinking鉴权健康/诊断包含投影失败、恢复与未知费用会话数 | 缺跨进程聚合、持久诊断及历史指标 |
-| 多角色协作 | 未实现 | 三领域Worker是任务执行器，不是协调层 | Creative只读试点，单/多角色同条件比较 |
+| 多角色协作 | 部分覆盖 | 默认关闭的Creative只读试点：Planner后由Researcher/Analyst/Critic并行检查，Coordinator汇总 | 需真实模型同预算质量比较、held-out和更广义子角色/审批策略 |
 | 自主规划 | 未实现 | 有限模型/工具循环与显式恢复 | 有界Goal/Plan与审批版本绑定，须后置 |
 
 以上路径中 Agent 文件位于 `apps/agent/src`，测试位于 `apps/agent/test`；Go 文件位于 `apps/api-go/internal`。
+
+### 2026-11-05 只读编排验收
+
+Creative `plan_check` 使用原 Go 任务、租约、预算和业务提交链路，新增默认关闭的五调用只读策略。真实 Go API、Pi Worker 与本地合成 Provider 先执行单角色基线，再对同一保存版本执行五角色模式；五个角色各调用一次，审计共享同一父任务 ID，授权和预留先于模型开始，无工具事件。Go 成功回执要求5次调用，正文和计划版本保持不变。
+
+Agent 141项测试、Web 292项与认证Worker 25项测试、Go全包race测试、类型检查、lint、构建、11份OpenAPI及任务合同集成通过。该证据验证预算、权限、取消、失败和协议边界，不包含真实模型质量、成本或 held-out 收益结论；试点保持默认关闭。
 
 ## 架构差距与复用清单
 

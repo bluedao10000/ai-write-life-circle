@@ -1,5 +1,5 @@
 import {ModelRequestGate,workerContext,definition} from './governance/runtime.js';
-import type {ExecutionContext,AuthorizationManager,BudgetManager} from './governance/runtime.js';
+import type {ExecutionContext,AuthorizationManager,BudgetManager,AgentRole} from './governance/runtime.js';
 import {modelIdentity} from "./fingerprint.js";
 import {candidateBytes} from "./execution-policy.js";
 import { createModels, createProvider, InMemoryCredentialStore, type Model } from "@earendil-works/pi-ai";
@@ -21,6 +21,18 @@ export async function configuredModel(endpoint: string, id: string, key: string,
 export class GatewayError extends Error {
   constructor(readonly code:string,readonly response:AgentModelResponse={text:"",usage:null}){super(code)}
 }
+export type ModelStep={
+  role:AgentRole;
+  system:string;
+  input:string;
+  schemaName:string;
+  schema:Record<string,unknown>;
+  maxTokens:number;
+  maxOutputTokens:number;
+  maxModelCalls:number;
+  callIndex:number;
+  parentTaskId?:string;
+};
 export function boundedModelFetch(endpoint:string,maxBytes:number,signal:AbortSignal,onError?:(code:string,status?:number)=>void):typeof fetch {
   return async(request,init)=>{
     const url=new URL(typeof request==="string"?request:request instanceof URL?request.href:request.url);
@@ -65,21 +77,29 @@ export function completionUsage(value:unknown,maxOutput:number):AgentModelRespon
 export class ModelGateway {
   constructor(readonly config:ExecutionConfig,readonly key:string,readonly admission:(task:AgentTask)=>Promise<void>=async()=>{throw Error('MODEL_RESERVATION_REQUIRED')}){}
   validate(task:AgentTask){
-    if(definition(task.kind).output!==task.outputSchemaVersion)throw new GatewayError('AGENT_CONFIG_CHANGED');
+    const output=task.kind==='creative.plan_check'&&task.strategyVersion==='creative-plan-check-readonly-v1'?'creative-plan-check-candidates-v2':definition(task.kind).output;
+    if(output!==task.outputSchemaVersion)throw new GatewayError('AGENT_CONFIG_CHANGED');
     const limit=task.request.outputLimit;
     if(limit!==undefined && (task.kind!=='review.execute'||!Number.isInteger(limit)||limit<128||limit>32768))throw new GatewayError('AGENT_CONFIG_CHANGED');
     if(task.configFingerprint!==executionFingerprint(this.config)||modelIdentity(task.model)!==executionFingerprint(this.config))throw new GatewayError("AGENT_CONFIG_CHANGED");
   }
   async execute(task:AgentTask,signal:AbortSignal):Promise<AgentModelResponse>{
+    const response=await this.executeStep(task,signal,{role:task.kind,system:task.request.system,input:task.request.input,schemaName:task.request.schemaName||"writing_review",schema:task.request.schema,maxTokens:task.reservedTokens,maxOutputTokens:Math.min(task.request.outputLimit??this.config.MaxOutputTokens,this.config.MaxOutputTokens),maxModelCalls:1,callIndex:1});
+    return {text:response.text,usage:response.usage};
+  }
+  async executeStep(task:AgentTask,signal:AbortSignal,step:ModelStep):Promise<AgentModelResponse>{
     this.validate(task);
-    const output=Math.min(task.request.outputLimit??this.config.MaxOutputTokens,this.config.MaxOutputTokens);
+    const role=definition(step.role);
+    const output=step.maxOutputTokens;
+    const orchestration=!!step.parentTaskId;
+    if(role.tools!=='none'||(orchestration&&(task.kind!=='creative.plan_check'||role.capability!=='creative'||role.mode!=='orchestration'))||output<128||output>this.config.MaxOutputTokens||!Number.isSafeInteger(step.maxTokens)||step.maxTokens<1||step.maxTokens>task.reservedTokens||!Number.isSafeInteger(step.maxModelCalls)||step.maxModelCalls<1||step.maxModelCalls>5||!Number.isSafeInteger(step.callIndex)||step.callIndex<1||step.callIndex>step.maxModelCalls)throw new GatewayError('AGENT_CONFIG_CHANGED');
     const cfg=this.config,deadline=AbortSignal.timeout(Math.max(1,Math.min(cfg.Timeout/1e6,Date.parse(task.deadline)-Date.now()))),abort=AbortSignal.any([signal,deadline]);
     const {runtime,model}=await configuredModel(cfg.BaseURL,cfg.Model,this.key,cfg.MaxContextBytes+20000,output);
     const thisAdmission=()=>this.admission(task);
-    const gate=new ModelRequestGate(workerContext(task,abort),{authorize:async()=>{this.validate(task)}});
+    const gate=new ModelRequestGate({...workerContext(task,abort,{role:step.role,parentTaskId:step.parentTaskId,maxModelCalls:step.maxModelCalls,maxTokens:step.maxTokens}),modelRequestId:`${task.taskId}:${step.role}:${step.callIndex}`},{authorize:async()=>{this.validate(task)}});
     let usage:AgentModelResponse['usage']=null,transportError="";
     try {
-      const result=await runtime.completeSimple(model,{systemPrompt:task.request.system,messages:[{role:"user",content:task.request.input,timestamp:Date.now()}]},{
+      const result=await runtime.completeSimple(model,{systemPrompt:step.system,messages:[{role:"user",content:step.input,timestamp:Date.now()}]},{
         headers:{'X-Client-Request-Id':task.taskId},maxTokens:output,signal:abort,maxRetries:0,timeoutMs:cfg.Timeout/1e6,
         fetch:gate.transport(boundedModelFetch(cfg.BaseURL,cfg.MaxResponseBytes,abort,code=>{transportError=code==="LLM_CONTEXT_OVERFLOW"?"LLM_HTTP_ERROR":code})),
         async onPayload(value){
@@ -88,8 +108,9 @@ export class ModelGateway {
           delete payload.max_tokens;delete payload.max_completion_tokens;payload[cfg.TokenParameter]=output;
           delete payload.response_format;
           if(cfg.ResponseFormat==="json_object")payload.response_format={type:"json_object"};
-          if(cfg.ResponseFormat==="json_schema")payload.response_format={type:"json_schema",json_schema:{name:task.request.schemaName||"writing_review",strict:true,schema:task.request.schema}};
+          if(cfg.ResponseFormat==="json_schema")payload.response_format={type:"json_schema",json_schema:{name:step.schemaName,strict:true,schema:step.schema}};
           if(Array.isArray(payload.tools)&&payload.tools.length)throw new GatewayError("LLM_TOOL_OUTPUT_FORBIDDEN");
+          if(Buffer.byteLength(JSON.stringify(payload))>cfg.MaxContextBytes)throw new GatewayError("LLM_CONTEXT_OVERFLOW");
           await gate.prepare({reserve:()=>thisAdmission()});
           return payload;
         },
@@ -100,16 +121,16 @@ export class ModelGateway {
       });
       gate.finished();
       const text=result.content.filter(b=>b.type==="text").map(b=>b.text).join("");
-      const response={text,usage};
+      const response={text,usage,modelCalls:1};
       if(abort.aborted)throw new GatewayError(deadline.aborted?"LLM_TIMEOUT":"REVIEW_INTERRUPTED",response);
       if(transportError)throw new GatewayError(transportError,response);
       if(result.content.some(b=>b.type==="toolCall"))throw new GatewayError("LLM_TOOL_OUTPUT_FORBIDDEN",response);
       if(result.stopReason!=="stop")throw new GatewayError(result.stopReason==="length"?"LLM_INCOMPLETE_OUTPUT":"LLM_INVALID_RESPONSE",response);
-      if(Buffer.byteLength(text)>candidateBytes[task.kind])throw new GatewayError("LLM_RESPONSE_TOO_LARGE",{text:"",usage});
+      if(Buffer.byteLength(text)>candidateBytes[task.kind])throw new GatewayError("LLM_RESPONSE_TOO_LARGE",{text:"",usage,modelCalls:1});
       return response;
     }catch(e){
-      if(e instanceof GatewayError)throw e;
-      throw new GatewayError(deadline.aborted?"LLM_TIMEOUT":signal.aborted?"REVIEW_INTERRUPTED":transportError||"LLM_INVALID_RESPONSE",{text:"",usage});
+      if(e instanceof GatewayError)throw new GatewayError(e.code,gate.wasSent()&&e.response.modelCalls===undefined?{...e.response,modelCalls:1}:e.response);
+      throw new GatewayError(deadline.aborted?"LLM_TIMEOUT":signal.aborted?"REVIEW_INTERRUPTED":transportError||"LLM_INVALID_RESPONSE",{text:"",usage,...(gate.wasSent()?{modelCalls:1}:{})});
     }
   }
 }

@@ -6798,6 +6798,9 @@
           "autoOrganize": {
             "type": "boolean"
           },
+          "multiAgentPlanCheck": {
+            "type": "boolean"
+          },
           "dialogueRecording": {
             "default": false,
             "type": "boolean"
@@ -6898,6 +6901,7 @@
           "enabled",
           "paused",
           "autoOrganize",
+          "multiAgentPlanCheck",
           "model",
           "dailyTokenBudget",
           "dailyJobBudget",

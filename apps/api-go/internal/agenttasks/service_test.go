@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/application"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/billing"
+	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/creative"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/executorpolicy"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/knowledge"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/llm"
@@ -135,6 +136,26 @@ func TestClaimStartedCompletionReceiptsAndRollback(t *testing.T) {
 	switchOwner(t, s, "disabled")
 	if e = s.Action(ctx, task.ID, "complete", in); e != nil {
 		t.Fatal("committed receipt was lost after rollback", e)
+	}
+}
+
+func TestModelCallCountsMatchTheSelectedCreativeContract(t *testing.T) {
+	tests := []struct {
+		kind, strategy, action string
+		calls                  int
+		ok                     bool
+	}{
+		{"review.execute", "continuity-review-v4", "complete", 1, true},
+		{"creative.plan_check", creative.PlanStrategy, "complete", 2, false},
+		{"creative.plan_check", creative.PlanStrategyReadonly, "complete", 4, false},
+		{"creative.plan_check", creative.PlanStrategyReadonly, "complete", 5, true},
+		{"creative.plan_check", creative.PlanStrategyReadonly, "fail", 2, true},
+	}
+	for _, test := range tests {
+		got := validModelCalls(test.kind, test.strategy, test.action, test.calls)
+		if got != test.ok {
+			t.Fatalf("%+v: got %v", test, got)
+		}
 	}
 }
 func TestPrivateTaskCredentialAndNoAnonymousSnapshot(t *testing.T) {

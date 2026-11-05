@@ -1,12 +1,12 @@
 # ADR：统一 Runtime Governance
 
-日期：2026-11-04。状态：Phase 1 本地实现并验收，尚未部署。
+日期：2026-11-05。状态：Phase 1 本地实现并验收；受控只读试点已接入，尚未部署。
 
 ## 合同与权威
 
 新增 runtime/governance，按实际职责组合模块，不要求每个参考名称单独成文件。ExecutionContext 是从 Thinking Run 或 Go AgentTask 派生的不可变视图，包含 execution/run/task/parent 标识、角色、授权版本、资源、scope、预算上限、deadline、取消信号和 traceId。上下文不包含能力令牌或模型 Key；凭证由进程内适配器封装。
 
-Registry 登记 Thinking、Review、Knowledge、Creative 的版本、工具集合、输出合同和策略。登记仅限制能力，不授予作者权限。Planner/Researcher/Analyst/Critic 在试点验收前不可选择。Worker 的 strategyVersion、outputSchemaVersion、inputHash、模型指纹直接复用 Go 合同。
+Registry 登记 Thinking、Review、Knowledge、Creative 的版本、工具集合、输出合同和策略。登记仅限制能力，不授予作者权限。只读Creative试点登记独立Planner、Researcher、Analyst、Critic和Coordinator角色，默认仍由Go选择单角色策略。Worker的strategyVersion、outputSchemaVersion、inputHash和模型指纹直接复用Go合同。
 
 ## 模型入口
 
@@ -14,7 +14,7 @@ Registry 登记 Thinking、Review、Knowledge、Creative 的版本、工具集�
 
 统一执行顺序：核验版本与取消 → 当前授权与执行栅栏 → 构造最终 payload → 校验输入/输出与策略 → 持久预留 → 允许网络发送 → 结算已知 usage 或保留未知费用 → 持久终态 → 发布。不得用 Promise 超时替代对真实网络调用的取消。
 
-Thinking BudgetAdapter 复用 Saved.execution.modelRequests、usage 和 Store.write；Worker Adapter 复用 Go claim/started/heartbeat/complete/fail。Worker 仍每个领取任务只执行现有固定模型请求。Go 决定重试和正式点数，治理层不得补一个自动重试循环。并行子预算须在父权威事务内预分配，分配总额包含协调与最终回答，不得超过父额；崩溃后的未知消耗不得归还。
+Thinking BudgetAdapter 复用 Saved.execution.modelRequests、usage 和 Store.write；Worker Adapter 复用 Go claim/started/heartbeat/complete/fail。Go决定重试和正式点数，治理层不得补一个自动重试循环。只读Creative试点由一个Go父任务预留五个调用的总额，Pi按Planner、三个并行检查角色和Coordinator划分互不重叠的子预算，子预算总和等于父额；父任务中断后不自动重试。
 
 ## 工具入口
 
@@ -27,6 +27,8 @@ Thinking BudgetAdapter 复用 Saved.execution.modelRequests、usage 和 Store.wr
 审计事件只接收白名单元数据：关联ID、已登记角色、动作、允许/拒绝、固定原因码、授权版本、时间与版本。禁止任意对象、正文、凭证和工具参数。重要审计随原业务检查点提交；stdout 日志不能替代持久事实。
 
 版本分别记录 runtime、definition、prompt、tool schema、dataset、memory schema；不以 npm 版本代替。恢复必须检查原策略兼容、重新授权，不能静默换模型。
+
+只读Creative试点使用策略版本`creative-plan-check-readonly-v1`和输出合同`creative-plan-check-candidates-v2`。每次子调用记录登记角色、父taskId、独立executionId、模型请求序号、授权版本和固定版本；五个角色共享原Deadline、取消信号和Go started/heartbeat核验。任一并行角色失败会取消其余本地请求，缺失usage立即停止，不会在没有剩余预算证据时继续付费。单角色成功响应保持旧线协议；五角色成功响应报告5次调用，旧Worker因不识别v2输出合同而在模型调用前拒绝领取。
 
 健康按现有进程聚合：活性表示进程响应；就绪表示存储、投影、授权/预算适配和注册合同可用；degraded 表示局部投影/Provider/Worker 故障。Provider 故障不等同数据损坏。指标标签只能使用受控角色、状态和原因码，关联ID仅进入受控 trace。
 
@@ -52,7 +54,7 @@ Thinking的版本和白名单审计记录加入原 `RunExecution`，随业务检
 
 验收：106项Agent测试通过，包含治理预留闸门、失败零网络、撤销后的本地重放、严格参数、迟到结果拒绝及审计脱敏/持久记录；类型检查、lint和构建通过。真实Go/Pi集成通过Thinking、story-continuity、Review Worker、Creative workflow、Knowledge 10章及Knowledge faults，全部合成HTTP模型。
 
-本阶段不启用子任务、父子预算划分、通用审批存储或长期记忆。高风险业务仍依赖现有作者同意、消息证据和Go确认规则。全局持久诊断、历史指标与统一健康聚合属于后续Observability阶段；不将本地日志标为完整持久审计。
+本阶段保留通用审批存储和长期记忆的既有边界。高风险业务仍依赖现有作者同意、消息证据和Go确认规则。只读多角色试点仅拆分一个既有Go任务的预算，不创建子任务权威。全局持久诊断、历史指标与统一健康聚合属于后续Observability阶段；不将本地日志标为完整持久审计。
 
 ## Thinking健康与诊断合同
 

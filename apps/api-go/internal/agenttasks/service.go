@@ -274,6 +274,9 @@ func (s *Service) Claim(ctx context.Context, instance, config string, kinds ...s
 				j := claim.Job
 				task.Kind = "creative." + j.Kind
 				task.OutputSchema = "creative-" + j.Kind + "-candidates-v1"
+				if j.Strategy == creative.PlanStrategyReadonly {
+					task.OutputSchema = creative.PlanOutputReadonly
+				}
 				task.Lease = j.Lease
 				task.Epoch = j.ExecutorEpoch
 				task.Attempt = j.Attempts
@@ -438,6 +441,13 @@ func (s *Service) Action(ctx context.Context, id, action string, in Envelope) er
 			if len(in.Response.Text) > limit {
 				return llm.Fail("LLM_RESPONSE_TOO_LARGE")
 			}
+			calls := in.Response.ModelCalls
+			if calls == 0 {
+				calls = 1
+			}
+			if !validModelCalls(t.Kind, t.Strategy, action, calls) {
+				return llm.Fail("LLM_INVALID_USAGE")
+			}
 			if in.Response.Usage != nil && (in.Response.Usage.CachedInputTokens < 0 || in.Response.Usage.CachedInputTokens > in.Response.Usage.InputTokens || in.Response.Usage.InputTokens < 0 || in.Response.Usage.InputTokens > 1000000 || in.Response.Usage.OutputTokens < 0 || in.Response.Usage.OutputTokens > s.Config.MaxOutputTokens) {
 				return llm.Fail("LLM_INVALID_USAGE")
 			}
@@ -481,10 +491,18 @@ func (s *Service) Action(ctx context.Context, id, action string, in Envelope) er
 }
 func failureAllowed(code string) bool {
 	switch code {
-	case "LLM_TIMEOUT", "LLM_NETWORK_ERROR", "LLM_HTTP_ERROR", "LLM_INVALID_RESPONSE", "LLM_INCOMPLETE_OUTPUT", "LLM_RESPONSE_TOO_LARGE", "LLM_INVALID_OUTPUT", "LLM_REFUSED", "LLM_TOOL_OUTPUT_FORBIDDEN", "KNOWLEDGE_INTERRUPTED", "REVIEW_INTERRUPTED", "CREATIVE_INTERRUPTED", "CREATIVE_CONTEXT_TOO_LARGE", "CREATIVE_NO_PLANS", "CREATIVE_SUPERSEDED", "CREATIVE_TURN_UNAVAILABLE", "CREATIVE_LEASE_LOST", "CREATIVE_UNKNOWN_JOB":
+	case "LLM_TIMEOUT", "LLM_NETWORK_ERROR", "LLM_HTTP_ERROR", "LLM_INVALID_RESPONSE", "LLM_INCOMPLETE_OUTPUT", "LLM_RESPONSE_TOO_LARGE", "LLM_INVALID_OUTPUT", "LLM_INVALID_USAGE", "LLM_BUDGET_EXCEEDED", "LLM_REFUSED", "LLM_TOOL_OUTPUT_FORBIDDEN", "KNOWLEDGE_INTERRUPTED", "REVIEW_INTERRUPTED", "CREATIVE_INTERRUPTED", "CREATIVE_CONTEXT_TOO_LARGE", "CREATIVE_NO_PLANS", "CREATIVE_SUPERSEDED", "CREATIVE_TURN_UNAVAILABLE", "CREATIVE_LEASE_LOST", "CREATIVE_UNKNOWN_JOB":
 		return true
 	}
 	return false
+}
+
+func validModelCalls(kind, strategy, action string, calls int) bool {
+	expected := 1
+	if kind == "creative.plan_check" && strategy == creative.PlanStrategyReadonly {
+		expected = creative.PlanCheckModelCalls
+	}
+	return calls >= 1 && calls <= expected && (action != "complete" || calls == expected)
 }
 
 func taskKind(kind string) string {

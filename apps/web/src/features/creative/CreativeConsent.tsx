@@ -18,6 +18,7 @@ export default function CreativeConsent({
   onEnabled: () => void
 }) {
   const [auto, setAuto] = useState(true)
+  const [orchestrated, setOrchestrated] = useState(settings.multiAgentPlanCheck)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [key] = useState(() => crypto.randomUUID())
@@ -25,7 +26,7 @@ export default function CreativeConsent({
     setBusy(true)
     setError('')
     try {
-      await creativeApi.settings(bookId, 'enable', { consent: true, model: settings.currentModel, dailyTokenBudget: settings.dailyTokenBudget || 100000000, dailyJobBudget: settings.dailyJobBudget || 200, autoOrganize: auto }, key)
+      await creativeApi.settings(bookId, 'enable', { consent: true, model: settings.currentModel, dailyTokenBudget: settings.dailyTokenBudget || 100000000, dailyJobBudget: settings.dailyJobBudget || 200, autoOrganize: auto, multiAgentPlanCheck: orchestrated }, key)
       onEnabled()
     } catch (e) {
       setError(creativeError(e))
@@ -54,6 +55,9 @@ export default function CreativeConsent({
         <p className="text-ink-2">{settings.disclosure}</p>
         <Choice checked={auto} onChange={setAuto}>
           每轮对话完成后自动整理（关闭后只在你点击“整理本轮”时整理）
+        </Choice>
+        <Choice checked={orchestrated} onChange={setOrchestrated}>
+          计划核对使用五个只读步骤（更高费用；不开放工具，也不会写入正文或正式设定）
         </Choice>
         {!settings.available && <p role="status" className="text-warn">服务端尚未配置模型，暂时无法启用。</p>}
         {error && (

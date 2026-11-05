@@ -414,6 +414,11 @@
                 "type": "null"
               }
             ]
+          },
+          "modelCalls": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 5
           }
         },
         "required": [
@@ -541,7 +546,8 @@
                       "review-candidates-v1",
                       "knowledge-candidates-v1",
                       "creative-organize-candidates-v1",
-                      "creative-plan_check-candidates-v1"
+                      "creative-plan_check-candidates-v1",
+                      "creative-plan-check-candidates-v2"
                     ]
                   },
                   "reservedTokens": {
@@ -749,6 +755,11 @@
                     "type": "null"
                   }
                 ]
+              },
+              "modelCalls": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 5
               }
             },
             "required": [
@@ -903,7 +914,8 @@
               "review-candidates-v1",
               "knowledge-candidates-v1",
               "creative-organize-candidates-v1",
-              "creative-plan_check-candidates-v1"
+              "creative-plan_check-candidates-v1",
+              "creative-plan-check-candidates-v2"
             ]
           },
           "reservedTokens": {

@@ -113,7 +113,7 @@ func (c *OpenAICompatible) Generate(ctx context.Context, r Request) (Response, e
 		}
 		usage = &Usage{InputTokens: *decoded.Usage.Prompt, OutputTokens: *decoded.Usage.Completion, CachedInputTokens: CachedInput(*decoded.Usage.Prompt, decoded.Usage.CacheHit, details)}
 	}
-	return Response{*choice.Message.Content, usage}, nil
+	return Response{Text: *choice.Message.Content, Usage: usage}, nil
 }
 
 func schemaName(r Request) string {

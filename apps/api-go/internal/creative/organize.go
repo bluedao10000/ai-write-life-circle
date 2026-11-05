@@ -96,7 +96,7 @@ func organizePrompt() string {
 
 // ExecutionContract identifies the supported strategy and output schema versions.
 func ExecutionContract() string {
-	return compat.Hash(Strategy + "creative-organize-candidates-v1" + PlanStrategy + "creative-plan-check-candidates-v1")
+	return compat.Hash(Strategy + "creative-organize-candidates-v1" + PlanStrategy + "creative-plan-check-candidates-v1" + PlanStrategyReadonly + PlanOutputReadonly)
 }
 
 type promptAsset struct {

@@ -37,8 +37,8 @@ test('bounded transport honors SDK cancellation and business cancellation',async
  }finally{server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()))}
 });
 test('Pi bounded Review sends the task prompt and preserves dialect, usage and zero tools/retries',async()=>{
- const requests:Record<string,unknown>[]=[];const requestIds:string[]=[];let missing=false,invalid=false; let cached:number|undefined;
- const server=createServer(async(req,res)=>{let raw='';for await(const chunk of req)raw+=chunk;const value=JSON.parse(raw);requests.push(value);requestIds.push(String(req.headers['x-client-request-id']));res.writeHead(200,{'content-type':'text/event-stream'});res.end('data: '+JSON.stringify({id:'fixture',object:'chat.completion.chunk',model:'fixture',choices:[{index:0,delta:{role:'assistant',content:invalid?'invalid-json':'{"findings":[]}'},finish_reason:'stop'}],...(missing?{}:{usage:{prompt_tokens:33,completion_tokens:8,...(cached===undefined?{}:{prompt_cache_hit_tokens:cached,prompt_tokens_details:{cached_tokens:cached}})}})})+'\n\ndata: [DONE]\n\n')});
+ const requests:Record<string,unknown>[]=[];const requestIds:string[]=[];let missing=false,invalid=false,oversized=false; let cached:number|undefined;
+ const server=createServer(async(req,res)=>{let raw='';for await(const chunk of req)raw+=chunk;const value=JSON.parse(raw);requests.push(value);requestIds.push(String(req.headers['x-client-request-id']));res.writeHead(200,{'content-type':'text/event-stream'});res.end('data: '+JSON.stringify({id:'fixture',object:'chat.completion.chunk',model:'fixture',choices:[{index:0,delta:{role:'assistant',content:oversized?'x'.repeat(4096):invalid?'invalid-json':'{"findings":[]}'},finish_reason:'stop'}],...(missing?{}:{usage:{prompt_tokens:33,completion_tokens:8,...(cached===undefined?{}:{prompt_cache_hit_tokens:cached,prompt_tokens_details:{cached_tokens:cached}})}})})+'\n\ndata: [DONE]\n\n')});
  await new Promise<void>(r=>server.listen(0,'127.0.0.1',r));const endpoint=`http://127.0.0.1:${(server.address() as {port:number}).port}/v1`;
  const config=executionConfigSchema.parse({Provider:'openai-compatible',BaseURL:endpoint,APIKey:'',Model:'fixture',ResponseFormat:'json_schema',TokenParameter:'max_tokens',Timeout:5e9,MaxContextBytes:12000,MaxOutputTokens:2048,MaxResponseBytes:256*1024});
  const task:AgentTask={taskId:crypto.randomUUID(),kind:'review.execute',bookId:'synthetic',authorId:'author',leaseToken:crypto.randomUUID(),executorEpoch:1,attempt:1,deadline:new Date(Date.now()+15000).toISOString(),strategyVersion:strategy,revisionId:'fixture-rev',contentHash:'fixture-hash',inputHash:'sha256:'+'a'.repeat(64),model:{provider:config.Provider,model:config.Model,endpoint,execution:'local'},configFingerprint:executionFingerprint(config),outputSchemaVersion:'review-candidates-v1',reservedTokens:34048,budgetDay:'',consent:{},request:{system:systemPrompt,input:'{"sources":[]}',schemaName:'',schema:{type:'object'}}};
@@ -61,6 +61,9 @@ test('Pi bounded Review sends the task prompt and preserves dialect, usage and z
  const lower = new ModelGateway({...config,MaxOutputTokens:256},'fixture-key',async()=>{});
  await executeReview({...task,request:{...task.request,outputLimit:512}},lower,new AbortController().signal);assert.equal(requests.at(-1)?.max_tokens,256);
  const wrong={...task,model:{...task.model,model:'another-model'}};assert.throws(()=>validateReview(wrong,gateway));assert.equal(requests.length,8);
+ oversized=true;
+ const limited=new ModelGateway({...config,MaxResponseBytes:1024},'fixture-key',async()=>{});
+ await assert.rejects(executeReview(task,limited,new AbortController().signal),(e:unknown)=>e instanceof GatewayError&&e.code==='LLM_RESPONSE_TOO_LARGE'&&e.response.modelCalls===1);
  }finally{server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()))}
 });
 test('Review candidate Unicode limits match Go rune counts',async()=>{

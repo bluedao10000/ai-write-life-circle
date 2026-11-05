@@ -17,6 +17,12 @@ const (
 	SchemaVersion = 1
 	Strategy      = "creative-organize-v1"
 	PlanStrategy  = "creative-plan-check-v1"
+	// PlanStrategyReadonly is the bounded five-call pilot: planner, researcher,
+	// analyst and critic, followed by one coordinator. All calls share one Go
+	// task reservation and have no tools.
+	PlanStrategyReadonly = "creative-plan-check-readonly-v1"
+	PlanCheckModelCalls  = 5
+	PlanOutputReadonly   = "creative-plan-check-candidates-v2"
 
 	MaxAssets        = 2000
 	MaxProposals     = 5000
@@ -302,15 +308,16 @@ type Divergence struct {
 }
 
 type Settings struct {
-	DialogueRecording bool          `json:"dialogueRecording"`
-	Enabled           bool          `json:"enabled"`
-	Paused            bool          `json:"paused"`
-	AutoOrganize      bool          `json:"autoOrganize"`
-	ConsentAt         string        `json:"consentAt,omitempty"`
-	Model             llm.ModelInfo `json:"model"`
-	ConfigFingerprint string        `json:"configFingerprint,omitempty"`
-	DailyTokenBudget  int           `json:"dailyTokenBudget"`
-	DailyJobBudget    int           `json:"dailyJobBudget"`
+	DialogueRecording   bool          `json:"dialogueRecording"`
+	Enabled             bool          `json:"enabled"`
+	Paused              bool          `json:"paused"`
+	AutoOrganize        bool          `json:"autoOrganize"`
+	MultiAgentPlanCheck bool          `json:"multiAgentPlanCheck"`
+	ConsentAt           string        `json:"consentAt,omitempty"`
+	Model               llm.ModelInfo `json:"model"`
+	ConfigFingerprint   string        `json:"configFingerprint,omitempty"`
+	DailyTokenBudget    int           `json:"dailyTokenBudget"`
+	DailyJobBudget      int           `json:"dailyJobBudget"`
 }
 
 type receipt struct {

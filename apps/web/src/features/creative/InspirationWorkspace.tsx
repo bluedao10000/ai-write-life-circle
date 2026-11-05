@@ -805,6 +805,14 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
               studio.toast(creativeError(e))
             }
           }}
+          onOrchestration={async (on) => {
+            try {
+              await creativeApi.settings(book, 'orchestration', { multiAgentPlanCheck: on })
+              refreshOverview()
+            } catch (e) {
+              studio.toast(creativeError(e))
+            }
+          }}
         />
       )}
       {drawer && (

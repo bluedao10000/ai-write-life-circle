@@ -11,9 +11,9 @@ import ProposalCard from '../creative/ProposalCard'
 import { designKind, designKindName } from '../creative/kit'
 import { creativeError, turnStatusLabels } from '../creative/labels'
 
-export type OrganizeSettings = { enabled: boolean; needsModelConsent: boolean; autoOrganize: boolean; available: boolean; paused: boolean }
+export type OrganizeSettings = { enabled: boolean; needsModelConsent: boolean; autoOrganize: boolean; multiAgentPlanCheck: boolean; available: boolean; paused: boolean }
 
-export function ReviewDrawer({ settings, proposals, onOpen, onDecide, onClose, onBook, onEnable, onAuto }: {
+export function ReviewDrawer({ settings, proposals, onOpen, onDecide, onClose, onBook, onEnable, onAuto, onOrchestration }: {
   settings?: OrganizeSettings
   proposals: CreativeProposal[]
   onOpen: (p: CreativeProposal) => void
@@ -22,6 +22,7 @@ export function ReviewDrawer({ settings, proposals, onOpen, onDecide, onClose, o
   onBook: () => void
   onEnable: () => void
   onAuto: (on: boolean) => void
+  onOrchestration: (on: boolean) => void
 }) {
   useEffect(() => {
     const key = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
@@ -59,9 +60,15 @@ export function ReviewDrawer({ settings, proposals, onOpen, onDecide, onClose, o
         </div>
         <div className="shrink-0 space-y-2 border-t border-line-soft px-5 py-3">
           {settings?.enabled && !settings.needsModelConsent && (
-            <Choice checked={settings.autoOrganize} onChange={onAuto} className="text-ui-sm text-ink-2">
-              每轮回复后自动整理
-            </Choice>
+            <>
+              <Choice checked={settings.autoOrganize} onChange={onAuto} className="text-ui-sm text-ink-2">
+                每轮回复后自动整理
+              </Choice>
+              <Choice checked={settings.multiAgentPlanCheck} onChange={onOrchestration} className="text-ui-sm text-ink-2">
+                计划核对使用五个只读步骤
+              </Choice>
+              <p className="text-micro text-ink-3">多角色核对费用更高；没有工具权限，也不会自动修改计划或正文。</p>
+            </>
           )}
           <Btn variant="link" className="text-ui-sm" onClick={onBook}>
             在「书」中查看全部待确认

@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { identityFixture } from "./lib/identity-fixture.mjs";
 const identity = identityFixture();
 import { createServer } from "node:http";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
@@ -30,7 +30,7 @@ for (const name of ["bearer", "token", "secret", "tasktoken"]) {
   await writeFile(join(root, name), secrets[name], { mode: 0o600 });
 }
 await mkdir(join(root, "harness"));
-const calls = { chat: 0, organize: 0, plan: 0 };
+const calls = { chat: 0, organize: 0, plan: 0, orchestration: { planner: 0, researcher: 0, analyst: 0, critic: 0, coordinator: 0 } };
 
 // Deterministic stand-in for the model: echo chat, and organize by keywords.
 function organize(input) {
@@ -67,9 +67,31 @@ const provider = createServer(async (req, res) => {
   if (system.startsWith("You organize")) {
     calls.organize++;
     out = organize(JSON.parse(userText));
+  } else if (system.startsWith("You are the planner")) {
+    calls.orchestration.planner++;
+    const source = JSON.parse(userText);
+    out = { items: source.plans.map((plan) => ({ assetId: plan.assetId, focus: "检查计划与正文是否一致" })) };
+  } else if (system.startsWith("You are the evidence researcher")) {
+    calls.orchestration.researcher++;
+    const { source } = JSON.parse(userText);
+    out = { findings: source.plans.map((plan) => ({ assetId: plan.assetId, quote: "他最终选择留下", observation: "正文明确写他留下了。", assessment: "diverged" })) };
+  } else if (system.startsWith("You are the continuity analyst")) {
+    calls.orchestration.analyst++;
+    const { source } = JSON.parse(userText);
+    out = { analyses: source.plans.map((plan) => ({ assetId: plan.assetId, reasoning: "计划要求背叛，正文选择留下。", assessment: "diverged" })) };
+  } else if (system.startsWith("You are the independent critic")) {
+    calls.orchestration.critic++;
+    const { source } = JSON.parse(userText);
+    out = { concerns: source.plans.map((plan) => ({ assetId: plan.assetId, concern: "需要作者确认留下是否有意。" })) };
   } else if (system.startsWith("You compare")) {
-    calls.plan++;
-    out = planCheck(JSON.parse(userText));
+    const input = JSON.parse(userText);
+    if (input.source && input.critique) {
+      calls.orchestration.coordinator++;
+      out = planCheck(input.source);
+    } else {
+      calls.plan++;
+      out = planCheck(input);
+    }
   } else if (system.startsWith("Extract private novel memory")) {
     out = { entities: [], assertions: [] };
   } else if (body.stream) {
@@ -249,6 +271,35 @@ try {
   const after = await call(`${creative}/assets/${plan.assetId}`);
   assert.equal(after.asset.version, 1, "plan must not change automatically");
   assert.equal((await call(chapterPath)).headRevision.revisionId, saved.revisionId, "manuscript must not change");
+  // The explicit pilot uses five governed, no-tool roles under one Go task reservation.
+  const settings = await call(creative + "/settings/orchestration", { method: "POST", key: "readonly-orchestration", body: { multiAgentPlanCheck: true } });
+  assert.equal(settings.multiAgentPlanCheck, true);
+  await call(creative + "/plan-checks", { method: "POST", key: "check-readonly", status: 202, body: { chapterId: chapter } });
+  const readonly = await until(async () => (await call(`${creative}/divergences?chapterId=${chapter}`)).items.find((item) => item.divergenceId !== divergence.divergenceId), "readonly plan check");
+  assert.equal(readonly.assessment, "diverged");
+  assert.equal(readonly.evidence.quote, "他最终选择留下");
+  assert.deepEqual(calls.orchestration, { planner: 1, researcher: 1, analyst: 1, critic: 1, coordinator: 1 });
+  const registry = await until(async () => {
+    const value = JSON.parse(await readFile(join(root, "go-state", "agent-runtime", "tasks-v1.json"), "utf8"));
+    const records = Object.values(value.tasks);
+    return records.some((record) => record.task?.strategyVersion === "creative-plan-check-readonly-v1" && record.finished) ? value : null;
+  }, "readonly task receipt");
+  const governed = Object.values(registry.tasks).find((record) => record.task?.strategyVersion === "creative-plan-check-readonly-v1");
+  const single = Object.values(registry.tasks).find((record) => record.task?.strategyVersion === "creative-plan-check-v1");
+  assert(governed, "readonly task was not recorded");
+  assert(single, "single-agent baseline task was not recorded");
+  assert.equal(governed.finished, true);
+  assert.equal(governed.task.outputSchemaVersion, "creative-plan-check-candidates-v2");
+  assert.equal(single.task.outputSchemaVersion, "creative-plan_check-candidates-v1");
+  assert(governed.task.reservedTokens > single.task.reservedTokens);
+  const governance = output.split("\n").filter((line) => line.startsWith("{\"event\":\"agent_governance\"")).map((line) => JSON.parse(line)).filter((event) => event.taskId === governed.task.taskId);
+  for (const role of ["creative.plan.planner", "creative.plan.researcher", "creative.plan.analyst", "creative.plan.critic", "creative.plan.coordinator"]) {
+    const events = governance.filter((event) => event.role === role);
+    assert.deepEqual(events.map((event) => event.action), ["authorized", "reserved", "model_started", "model_finished"]);
+    assert(events.every((event) => event.parentTaskId === governed.task.taskId));
+    assert(events.every((event) => !event.toolName));
+  }
+  assert(Object.values(secrets).every((secret) => !output.includes(secret)), "worker credential leaked into process output");
   // Returning to the inspiration session still works after writing.
   const m3 = await say("写完第一章了，我们聊聊他为什么留下。", "m3");
   const thirdTurn = await organized(m3);

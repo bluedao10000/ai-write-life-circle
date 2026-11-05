@@ -6,6 +6,11 @@ export const definitions=Object.freeze({
  'memory.extract':{version:1,capability:'memory',mode:'durable',retry:'explicit',output:'memory-candidate-v1',tools:'none',modelCalls:'run-budget'},
  'memory.extract.v2':{version:2,capability:'memory',mode:'durable',retry:'explicit',output:'memory-candidate-v2',tools:'none',modelCalls:'run-budget'},
  thinking:{version:1,capability:'thinking',mode:'durable',retry:'explicit',output:'thinking-v1',tools:'scoped',modelCalls:'run-budget'},
+ 'creative.plan.planner':{version:1,capability:'creative',mode:'orchestration',retry:'explicit',output:'creative-plan-planner-v1',tools:'none',modelCalls:1},
+ 'creative.plan.researcher':{version:1,capability:'creative',mode:'orchestration',retry:'explicit',output:'creative-plan-research-v1',tools:'none',modelCalls:1},
+ 'creative.plan.analyst':{version:1,capability:'creative',mode:'orchestration',retry:'explicit',output:'creative-plan-analysis-v1',tools:'none',modelCalls:1},
+ 'creative.plan.critic':{version:1,capability:'creative',mode:'orchestration',retry:'explicit',output:'creative-plan-critique-v1',tools:'none',modelCalls:1},
+ 'creative.plan.coordinator':{version:1,capability:'creative',mode:'orchestration',retry:'explicit',output:'creative-plan-check-candidates-v2',tools:'none',modelCalls:1},
  'review.execute':{version:1,capability:'review',mode:'go-task',retry:'go',output:'review-candidates-v1',tools:'none',modelCalls:1},
  'knowledge.extract':{version:1,capability:'knowledge',mode:'go-task',retry:'go',output:'knowledge-candidates-v1',tools:'none',modelCalls:1},
  'creative.organize':{version:1,capability:'creative',mode:'go-task',retry:'go',output:'creative-organize-candidates-v1',tools:'none',modelCalls:1},
@@ -17,7 +22,7 @@ export type ExecutionContext=Readonly<{
  versions?:Readonly<{prompt:string;toolSchema:string}>;
  budget?:Readonly<{maxTokens:number;maxModelCalls:number;maxToolCalls:number}>;
  recordAudit?:(record:AuditRecord)=>void;
- sessionId?:string;taskId?:string;modelRequestId?:string;executorEpoch?:number;scopes:readonly string[];deadline:number;signal:AbortSignal;
+ sessionId?:string;taskId?:string;parentTaskId?:string;modelRequestId?:string;executorEpoch?:number;scopes:readonly string[];deadline:number;signal:AbortSignal;
 }>;
 export function definition(role:string){
  if(!Object.hasOwn(definitions,role))throw Error('UNSUPPORTED_TASK_KIND');
@@ -28,8 +33,10 @@ export function executionContext(value:ExecutionContext):ExecutionContext {
  if(!Number.isFinite(value.deadline)||!Number.isSafeInteger(value.authorizationVersion)||value.authorizationVersion<0)throw Error('AGENT_CONFIG_CHANGED');
  return Object.freeze({...value,...(value.budget?{budget:Object.freeze({...value.budget})}:{}),...(value.versions?{versions:Object.freeze({...value.versions})}:{}),scopes:Object.freeze([...value.scopes])});
 }
-export function workerContext(task:AgentTask,signal:AbortSignal){
- return executionContext({executionId:task.taskId,traceId:task.taskId,taskId:task.taskId,role:task.kind,authorizationVersion:typeof task.consent.authorizationVersion==='number'?task.consent.authorizationVersion:0,executorEpoch:task.executorEpoch,scopes:[],versions:{prompt:task.strategyVersion,toolSchema:task.outputSchemaVersion},budget:{maxTokens:task.reservedTokens,maxModelCalls:1,maxToolCalls:0},deadline:Date.parse(task.deadline),signal});
+export function workerContext(task:AgentTask,signal:AbortSignal,options?:{role?:AgentRole;parentTaskId?:string;maxModelCalls?:number;maxTokens?:number}){
+ const role=options?.role??task.kind as AgentRole;
+ const parent=options?.parentTaskId;
+ return executionContext({executionId:parent?`${task.taskId}:${role}`:task.taskId,traceId:task.taskId,taskId:task.taskId,...(parent?{parentTaskId:parent}:{}),role,authorizationVersion:typeof task.consent.authorizationVersion==='number'?task.consent.authorizationVersion:0,executorEpoch:task.executorEpoch,scopes:[],versions:{prompt:task.strategyVersion,toolSchema:task.outputSchemaVersion},budget:{maxTokens:options?.maxTokens??task.reservedTokens,maxModelCalls:options?.maxModelCalls??1,maxToolCalls:0},deadline:Date.parse(task.deadline),signal});
 }
 export function assertCurrent(context:ExecutionContext){
  context.signal.throwIfAborted();
@@ -44,7 +51,7 @@ export function audit(context:ExecutionContext,action:AuditAction,details:ToolAu
  const timing={...(details.toolName?{toolName:details.toolName}:{}),...(typeof details.durationMs==='number'&&Number.isFinite(details.durationMs)&&details.durationMs>=0?{durationMs:details.durationMs}:{})};
  context.recordAudit?.({...timing,action,timestamp:new Date().toISOString(),...(context.modelRequestId?{modelRequestId:context.modelRequestId}:{})});
  const key=`${context.role}:${action}` as const;counts[key]=(counts[key]??0)+1;
- console.log(JSON.stringify({event:'agent_governance',...timing,runtimeVersion,definitionVersion:definition(context.role).version,versions:context.versions,executionId:context.executionId,traceId:context.traceId,taskId:context.taskId,modelRequestId:context.modelRequestId,executorEpoch:context.executorEpoch,sessionId:context.sessionId,role:context.role,authorizationVersion:context.authorizationVersion,action,timestamp:new Date().toISOString()}));
+ console.log(JSON.stringify({event:'agent_governance',...timing,runtimeVersion,definitionVersion:definition(context.role).version,versions:context.versions,executionId:context.executionId,traceId:context.traceId,taskId:context.taskId,parentTaskId:context.parentTaskId,modelRequestId:context.modelRequestId,executorEpoch:context.executorEpoch,sessionId:context.sessionId,role:context.role,authorizationVersion:context.authorizationVersion,action,timestamp:new Date().toISOString()}));
 }
 export const governanceMetrics=()=>({...counts});
 export interface AuthorizationManager {authorize():Promise<void>}
@@ -74,5 +81,6 @@ export class ModelRequestGate {
    return fetcher(request,{...options,signal});
   };
  }
+ wasSent(){return this.sent}
  finished(){audit(this.context,'model_finished')}
 }

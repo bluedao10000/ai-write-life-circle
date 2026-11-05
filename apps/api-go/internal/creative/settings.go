@@ -8,12 +8,13 @@ import (
 )
 
 type SettingsInput struct {
-	DialogueRecording *bool          `json:"dialogueRecording,omitempty"`
-	Consent           bool           `json:"consent,omitempty"`
-	Model             *llm.ModelInfo `json:"model,omitempty"`
-	DailyTokenBudget  int            `json:"dailyTokenBudget,omitempty"`
-	DailyJobBudget    int            `json:"dailyJobBudget,omitempty"`
-	AutoOrganize      *bool          `json:"autoOrganize,omitempty"`
+	DialogueRecording   *bool          `json:"dialogueRecording,omitempty"`
+	Consent             bool           `json:"consent,omitempty"`
+	Model               *llm.ModelInfo `json:"model,omitempty"`
+	DailyTokenBudget    int            `json:"dailyTokenBudget,omitempty"`
+	DailyJobBudget      int            `json:"dailyJobBudget,omitempty"`
+	AutoOrganize        *bool          `json:"autoOrganize,omitempty"`
+	MultiAgentPlanCheck *bool          `json:"multiAgentPlanCheck,omitempty"`
 }
 
 func (s *Service) contextLimit() int {
@@ -42,7 +43,7 @@ func consentRequired(detail string) error {
 func (s *Service) Configure(ctx context.Context, a application.Actor, action, key string, in SettingsInput) (SettingsView, error) {
 	var out SettingsView
 	switch action {
-	case "enable", "pause", "resume", "auto", "recording":
+	case "enable", "pause", "resume", "auto", "recording", "orchestration":
 	default:
 		return out, application.Fail(404, "NOT_FOUND", "Unknown creative setting action.")
 	}
@@ -62,14 +63,22 @@ func (s *Service) Configure(ctx context.Context, a application.Actor, action, ke
 			if in.DailyJobBudget == 0 {
 				in.DailyJobBudget = 200
 			}
-			if in.DailyTokenBudget < s.reserve() || in.DailyTokenBudget > 100000000 || in.DailyJobBudget < 1 || in.DailyJobBudget > 1000 {
+			multiAgent := st.Settings.MultiAgentPlanCheck
+			if in.MultiAgentPlanCheck != nil {
+				multiAgent = *in.MultiAgentPlanCheck
+			}
+			minimum := s.reserve()
+			if multiAgent {
+				minimum *= PlanCheckModelCalls
+			}
+			if in.DailyTokenBudget < minimum || in.DailyTokenBudget > 100000000 || in.DailyJobBudget < 1 || in.DailyJobBudget > 1000 {
 				return validation("Set a daily token budget that covers at least one reserved call, and a bounded daily job budget.")
 			}
 			auto := true
 			if in.AutoOrganize != nil {
 				auto = *in.AutoOrganize
 			}
-			st.Settings = Settings{DialogueRecording: st.Settings.DialogueRecording, Enabled: true, AutoOrganize: auto, ConsentAt: now, Model: *in.Model, ConfigFingerprint: s.Config.Fingerprint(), DailyTokenBudget: in.DailyTokenBudget, DailyJobBudget: in.DailyJobBudget}
+			st.Settings = Settings{DialogueRecording: st.Settings.DialogueRecording, Enabled: true, AutoOrganize: auto, MultiAgentPlanCheck: multiAgent, ConsentAt: now, Model: *in.Model, ConfigFingerprint: s.Config.Fingerprint(), DailyTokenBudget: in.DailyTokenBudget, DailyJobBudget: in.DailyJobBudget}
 		case "pause":
 			st.Settings.Paused = true
 			for i, j := range st.Jobs {
@@ -94,6 +103,14 @@ func (s *Service) Configure(ctx context.Context, a application.Actor, action, ke
 				return validation("autoOrganize is required.")
 			}
 			st.Settings.AutoOrganize = *in.AutoOrganize
+		case "orchestration":
+			if in.MultiAgentPlanCheck == nil {
+				return validation("multiAgentPlanCheck is required.")
+			}
+			if *in.MultiAgentPlanCheck && st.Settings.DailyTokenBudget < s.reserve()*PlanCheckModelCalls {
+				return validation("The daily token budget must cover one read-only plan review before enabling multi-agent comparison.")
+			}
+			st.Settings.MultiAgentPlanCheck = *in.MultiAgentPlanCheck
 		}
 		out = s.settingsView(*st)
 		return nil

@@ -92,7 +92,11 @@ func (s *Service) RequestPlanCheck(ctx context.Context, a application.Actor, key
 			return application.Fail(429, "CREATIVE_JOB_LIMIT", "Job history is full.")
 		}
 		now := s.stamp()
-		out = Job{ID: "cj-" + newID(), Kind: "plan_check", ChapterID: chapter, RevisionID: head.ID, ContentHash: head.Hash, Strategy: PlanStrategy, Model: st.Settings.Model, Status: "pending", Due: now, CreatedAt: now}
+		strategy := PlanStrategy
+		if st.Settings.MultiAgentPlanCheck {
+			strategy = PlanStrategyReadonly
+		}
+		out = Job{ID: "cj-" + newID(), Kind: "plan_check", ChapterID: chapter, RevisionID: head.ID, ContentHash: head.Hash, Strategy: strategy, Model: st.Settings.Model, Status: "pending", Due: now, CreatedAt: now}
 		st.Jobs = append(st.Jobs, out)
 		return nil
 	})

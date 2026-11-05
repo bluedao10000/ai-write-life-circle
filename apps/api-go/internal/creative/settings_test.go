@@ -16,7 +16,7 @@ func TestDefaultOrganizingAndPausedPreferences(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !f.s.runnable(st) || !st.Settings.AutoOrganize || st.Settings.DailyTokenBudget != 100000000 || st.Settings.DailyJobBudget != 200 {
+	if !f.s.runnable(st) || !st.Settings.AutoOrganize || st.Settings.MultiAgentPlanCheck || st.Settings.DailyTokenBudget != 100000000 || st.Settings.DailyJobBudget != 200 {
 		t.Fatalf("unexpected defaults: %+v", st.Settings)
 	}
 	if _, err = f.s.Configure(ctx, author, "pause", compat.UUID(), SettingsInput{}); err != nil {
@@ -37,6 +37,37 @@ func TestDefaultOrganizingAndPausedPreferences(t *testing.T) {
 	st, err = unconfigured.s.load()
 	if err != nil || st.Settings.Enabled {
 		t.Fatal("unconfigured model enabled organizing", err)
+	}
+}
+
+func TestReadonlyPlanPilotRequiresMeaningfulBudgetAndPersists(t *testing.T) {
+	f := setup(t)
+	f.enable()
+	ctx := context.Background()
+	if err := f.s.transaction(ctx, func(st *State) (bool, error) {
+		st.Settings.DailyTokenBudget = f.s.reserve() * 2
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	on := true
+	if _, err := f.s.Configure(ctx, author, "orchestration", compat.UUID(), SettingsInput{MultiAgentPlanCheck: &on}); err == nil {
+		t.Fatal("multi-agent mode accepted a budget below one five-call reservation")
+	}
+	if err := f.s.transaction(ctx, func(st *State) (bool, error) {
+		st.Settings.DailyTokenBudget = f.s.reserve() * PlanCheckModelCalls
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	view, err := f.s.Configure(ctx, author, "orchestration", compat.UUID(), SettingsInput{MultiAgentPlanCheck: &on})
+	if err != nil || !view.MultiAgentPlanCheck || view.ReserveTokens != f.s.reserve()*PlanCheckModelCalls {
+		t.Fatalf("enable readonly plan pilot: %+v %v", view, err)
+	}
+	restarted := New(f.s.App, f.s.Config, nil)
+	st, err := restarted.load()
+	if err != nil || !st.Settings.MultiAgentPlanCheck {
+		t.Fatal("readonly plan pilot setting was not retained", err)
 	}
 }
 

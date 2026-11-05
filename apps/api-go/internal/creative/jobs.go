@@ -77,7 +77,7 @@ func recoverLeases(st *State, now time.Time) bool {
 		st.Jobs[i].Lease = ""
 		st.Jobs[i].Failure = "CREATIVE_INTERRUPTED"
 		st.Jobs[i].Status = "retry"
-		if j.Attempts >= 3 {
+		if j.Strategy == PlanStrategyReadonly || j.Attempts >= 3 {
 			st.Jobs[i].Status = "failed"
 			failTurn(st, st.Jobs[i])
 		}
@@ -117,13 +117,13 @@ func (s *Service) claim(ctx context.Context) (*ClaimedJob, error) {
 				changed = true
 				continue
 			}
-			reserve := s.reserve()
+			reserve := s.reserveFor(j)
 			if st.BudgetTokens+reserve > st.Settings.DailyTokenBudget || st.BudgetAttempts >= st.Settings.DailyJobBudget {
 				return changed, nil
 			}
 			// AI points: the owner's allowance gates the book's queue as a whole.
 			op := meterOp(j.ID, j.Attempts+1)
-			if s.App.MeterReserve(ctx, op, "creative", s.reservePoints()) != nil {
+			if s.App.MeterReserve(ctx, op, "creative", s.reservePoints(j)) != nil {
 				return changed, nil
 			}
 			metered = op
@@ -254,9 +254,16 @@ func settlePoints(response llm.Response, sent bool) int {
 
 func meterOp(job string, attempt int) string { return "creative:" + job + ":" + strconv.Itoa(attempt) }
 
+func (s *Service) reserveFor(j Job) int {
+	if j.Strategy == PlanStrategyReadonly {
+		return s.reserve() * PlanCheckModelCalls
+	}
+	return s.reserve()
+}
+
 // reservePoints bounds one organize or plan-check attempt for admission.
-func (s *Service) reservePoints() int {
-	return billing.PointsFor(s.reserve(), min(max(s.Config.MaxOutputTokens, 1024), 16384))
+func (s *Service) reservePoints(j Job) int {
+	return billing.PointsFor(s.reserveFor(j), min(max(s.Config.MaxOutputTokens, 1024), 16384))
 }
 
 func failureCode(e error) string {
@@ -327,7 +334,7 @@ func (s *Service) complete(ctx context.Context, c *ClaimedJob, org *organizeCont
 			}
 		}
 		if sent {
-			current.ModelCalls++
+			current.ModelCalls += max(1, resp.ModelCalls)
 			if resp.Usage == nil {
 				current.UsageIncomplete = true
 			} else {
@@ -391,7 +398,7 @@ func (s *Service) complete(ctx context.Context, c *ClaimedJob, org *organizeCont
 			current.Failure = failureCode(err)
 			current.Status = "retry"
 			current.Due = s.now().Add(time.Duration(1<<current.Attempts) * time.Second).Format(time.RFC3339Nano)
-			if current.Attempts >= 3 || !retryable(current.Failure) {
+			if current.Strategy == PlanStrategyReadonly || current.Attempts >= 3 || !retryable(current.Failure) {
 				current.Status = "failed"
 			}
 			if current.Failure == "CREATIVE_SUPERSEDED" || current.Failure == "CREATIVE_TURN_UNAVAILABLE" || current.Failure == "CREATIVE_LEASE_LOST" {
