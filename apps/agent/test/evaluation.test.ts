@@ -34,6 +34,8 @@ test('evaluation refuses missing evidence, exceeded budget and contaminated held
  assert.equal(result.results[0]!.passed,false);assert.equal(result.results[0]!.withinBudget,false);
  const held=loadDataset(fileURLToPath(new URL('../src/evaluation/fixtures/held-out.json',import.meta.url)));assertIndependentDatasets(data,held);
  assert.throws(()=>assertIndependentDatasets(data,{...held,tasks:[data.tasks[0]!]}),/CONTAMINATION/);
+ assert.throws(()=>assertIndependentDatasets(data,{...held,tasks:held.tasks.filter(task=>task.category!=='memory')}),/COVERAGE/);
+ assert.throws(()=>assertIndependentDatasets(data,{...held,tasks:held.tasks.filter(task=>task.capability!=='review')}),/COVERAGE/);
  assert.equal(aggregate([]).engineeringPassRate,null);assert.equal(aggregate([]).qualitySuccessRate,null);
 });
 test('evaluation deadlines abort real work and retain failure status',async()=>{

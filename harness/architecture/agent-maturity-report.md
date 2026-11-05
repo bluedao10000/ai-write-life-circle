@@ -15,7 +15,7 @@ Phase 0 已完成源码审计和架构设计；Phase 1 已完成本地代码接�
 | Worker | 工程验证 | scheduler/dispatcher/TaskClient，四种Go任务；Review/Knowledge/Creative集成 | 统一合同已接入；待完善持久关联审计 |
 | 上下文 | 部分覆盖 | context-management、Working Memory来源绑定与无付费旧格式迁移；重启测试 | 摘要并非长期已确认事实 |
 | 长期记忆 | 部分覆盖 | Working来源、Semantic/Episodic检索、版本冲突提示、Procedural作者审核、模型关系建议、重复/替代/过期生命周期 | 主动提取和模型冲突建议已实现；待后台整理、真实关系准确率与召回质量评测 |
-| Evaluation | 部分覆盖 | 统一schema/split/runner、Go业务和故障适配、受治理Judge、人工标注导入、单/多角色开发集与保留集对照 | 待完成真实模型质量、人工校准与代表性性能验收 |
+| Evaluation | 部分覆盖 | 统一schema/split/runner、五类与四能力覆盖校验、Go业务和故障适配、受治理Judge及其独立dev/held-out、人工标注导入、单/多角色开发集与保留集对照 | 待完成真实模型质量、人工校准与代表性性能验收 |
 | 安全 | 部分覆盖 | capability、隔离进程、工具授权、取消、幂等及记忆污染边界测试 | 缺真实模型抗污染率、跨会话隔离、子角色扩权验证 |
 | 可观测性 | 部分覆盖 | 治理关联日志、进程计数；Thinking鉴权健康/诊断包含投影失败、恢复与未知费用会话数 | 缺跨进程聚合、持久诊断及历史指标 |
 | 多角色协作 | 部分覆盖 | 默认关闭的Creative只读试点：Planner后由Researcher/Analyst/Critic并行检查，Coordinator汇总；开发集与held-out工程对照通过 | 需真实模型同预算质量比较、代表性能与更广义子角色/审批策略 |
@@ -108,11 +108,15 @@ Runtime Governance 已完成实际执行接入和本地工程验收。Thinking �
 
 已实现 `evaluation/task-schema.ts`、`dataset.ts`、`runner.ts`、`graders.ts`、`metrics.ts`、`report.ts` 和生产模块执行适配器。统一命令 `eval:agent` 及 reliability/memory/safety/performance 已登记；默认运行dev合成数据，未知参数与真实模型模式拒绝执行。dev与held-out文件独立，检测重复ID/请求；保留集v1已在干净提交上完成一次工程执行，质量结论仍为空。
 
+数据集独立性现在同时校验版本、split、重复ID/请求，以及每个split是否覆盖task-success、reliability、memory、safety、performance五类和Thinking、Review、Knowledge、Creative四能力。缺少任一类或能力会拒绝运行，避免局部数据集被报告为平台级评测。
+
+当前`agent-eval-v3`保留集10项在该校验下10/10通过，共14次合成模型调用和1次工具调用；任务P50为3.72 ms、P95为8040.89 ms。P95包含SIGKILL、重启和重试观察窗口，不是模型响应或生产SLO。
+
 实际执行路径包括 PiHost/Store、Worker ModelGateway/领域候选解析、governTool、EventStore重新打开/重放/分页，以及manageDiscussion。报告记录commit/dirty、版本、输入fixture、预算、轨迹、未测指标和失败；没有观测的费用不记为零。质量成功率、业务提交正确率、语义记忆召回和货币成本尚无证据时保持null。
 
 验证：109项Agent测试、类型检查、lint通过；首批dev案例8/8工程通过。Thinking Eval通过451条事件分页回归，末尾工具调用不再漏算。输出位于 `.local/evals/agent/dev-all.json`，这是一组小样本工程检查，不用于质量/SLA结论。
 
-剩余Phase 2工作：接入Go跨进程最终状态与故障轨迹、扩展独立红队/记忆样本、实现受治理的可选pointwise/pairwise Judge及人工一致性报告、CI入口、执行超时/资源回收强化、完整版本与性能指标。当前Worker适配器使用显式synthetic admission，不证明Go授权和业务提交；讨论压缩回调为确定性fixture，不证明摘要语义准确。不得将8/8标为整个平台验收完成。
+Phase 2剩余工作是真实模型下的质量与成本证据、独立人工校准及代表性性能验收。现有Judge已具备独立dev/held-out和受治理执行链路，但合成Provider和固定评分不代表Judge与人工判断一致；确定性工程通过率也不能替代真实任务成功率。
 
 ### Go业务评测接入
 

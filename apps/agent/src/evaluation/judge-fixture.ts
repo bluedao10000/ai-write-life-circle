@@ -1,13 +1,13 @@
 import {createServer} from 'node:http';
 import {completeJudgment,executionConfigSchema} from '../runtime/model-gateway.js';
 import {executionContext} from '../runtime/governance/index.js';
-import {judgeCase,calibrate,type JudgeCase,type HumanAnnotation} from './judge.js';
+import {judgeCase,calibrate,type HumanAnnotation} from './judge.js';
+import type {JudgeDataset} from './judge-dataset.js';
 
-export const judgeDatasetVersion='judge-engineering-dev-v1';
 /** Local synthetic transport for validating governance and scoring, not model quality. */
-export async function runJudgeFixture(cases:JudgeCase[],annotations:HumanAnnotation[],signal:AbortSignal){
+export async function runJudgeFixture(dataset:JudgeDataset,annotations:HumanAnnotation[],signal:AbortSignal){
  const limits={maxCalls:10,maxTokens:100000,reservePerCall:10000};
- if(cases.length>limits.maxCalls)throw Error('EVAL_MODEL_BUDGET');
+ if(dataset.cases.length>limits.maxCalls)throw Error('EVAL_MODEL_BUDGET');
  let calls=0,reservedCalls=0,exposure=0;
  const traces:{caseId:string;action:string}[]=[],usage:{caseId:string;inputTokens:number|null;outputTokens:number|null}[]=[];
  const server=createServer(async(request,response)=>{
@@ -24,7 +24,7 @@ export async function runJudgeFixture(cases:JudgeCase[],annotations:HumanAnnotat
  const config=executionConfigSchema.parse({Provider:'openai-compatible',BaseURL:`http://127.0.0.1:${address.port}`,APIKey:'',Model:'judge-fixture',ResponseFormat:'json_schema',TokenParameter:'max_tokens',Timeout:10e9,MaxContextBytes:8192,MaxOutputTokens:512,MaxResponseBytes:65536});
  const judgments=[],failures:{caseId:string;code:string}[]=[];
  try{
-  for(const value of cases){
+  for(const value of dataset.cases){
    if(signal.aborted){failures.push({caseId:value.caseId,code:'EVAL_CANCELLED'});break}currentMode=value.mode;
    const context=executionContext({executionId:value.caseId,traceId:value.caseId,role:'evaluation.judge',authorizationVersion:1,scopes:[],deadline:Date.now()+10000,signal,budget:{maxTokens:limits.reservePerCall,maxModelCalls:1,maxToolCalls:0},versions:{prompt:'judge-prompt-v1',toolSchema:'none'},recordAudit:record=>traces.push({caseId:value.caseId,action:record.action})});
    try{judgments.push(await judgeCase(value,async request=>{
@@ -35,6 +35,6 @@ export async function runJudgeFixture(cases:JudgeCase[],annotations:HumanAnnotat
     return response.text;
    }));}catch{failures.push({caseId:value.caseId,code:signal.aborted?'EVAL_CANCELLED':'JUDGE_EXECUTION_FAILED'});if(signal.aborted)break}
   }
-  return {datasetVersion:judgeDatasetVersion,mode:'synthetic-judge-engineering',realLLMCalled:false,qualityValidated:false,limits,calls,tokenExposure:exposure,usage,traces,judgments,failures,calibration:failures.length?null:calibrate(judgments,annotations,judgeDatasetVersion)};
+  return {dataset,mode:'synthetic-judge-engineering',realLLMCalled:false,qualityValidated:false,limits,calls,tokenExposure:exposure,usage,traces,judgments,failures,calibration:failures.length?null:calibrate(judgments,annotations,dataset.version)};
  }finally{server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()))}
 }

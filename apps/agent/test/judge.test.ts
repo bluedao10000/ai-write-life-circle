@@ -1,13 +1,24 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
-import {readFileSync} from 'node:fs';
-import {judgeCase,judgeCaseSchema,calibrate,type JudgeCase,type HumanAnnotation} from '../src/evaluation/judge.js';
-import {runJudgeFixture,judgeDatasetVersion} from '../src/evaluation/judge-fixture.js';
+import {fileURLToPath} from 'node:url';
+import {judgeCase,calibrate,type JudgeCase,type HumanAnnotation} from '../src/evaluation/judge.js';
+import {assertIndependentJudgeDatasets,loadJudgeDataset,parseJudgeDataset,type JudgeDataset} from '../src/evaluation/judge-dataset.js';
+import {runJudgeFixture} from '../src/evaluation/judge-fixture.js';
 import {completeJudgment,executionConfigSchema} from '../src/runtime/model-gateway.js';
 import {executionContext} from '../src/runtime/governance/index.js';
-const cases=(JSON.parse(readFileSync(new URL('../src/evaluation/fixtures/judge-dev.json',import.meta.url),'utf8')) as unknown[]).map(c=>judgeCaseSchema.parse(c));
+const fixture=(name:string)=>fileURLToPath(new URL(`../src/evaluation/fixtures/${name}.json`,import.meta.url));
+const dev=loadJudgeDataset(fixture('judge-dev')),held=loadJudgeDataset(fixture('judge-held-out')),cases=dev.cases;
 const point={mode:'pointwise',rubricVersion:'writing-judge-v1',scores:{adherence:4,evidence:4,clarity:4},rationale:'Synthetic test rationale'};
+
+test('Judge datasets use separate versions, splits and case content',()=>{
+ assertIndependentJudgeDatasets(dev,held);
+ assert.deepEqual([...new Set(held.cases.map(value=>value.mode))].sort(),['pairwise','pointwise']);
+ const copied=structuredClone(dev.cases[0]!);copied.caseId='held-copy';
+ assert.throws(()=>assertIndependentJudgeDatasets(dev,{...held,version:'judge-copy-v1',cases:[copied]} as JudgeDataset),/CONTAMINATION/);
+ assert.throws(()=>assertIndependentJudgeDatasets(dev,{...held,version:dev.version} as JudgeDataset),/INVALID/);
+ assert.throws(()=>parseJudgeDataset({...dev,cases:[dev.cases[0]!,{...dev.cases[0]!,request:'different request'}]}),/DUPLICATE/);
+});
 
 test('Judge validates rubric and scores; high scores cannot override deterministic denial',async()=>{
  const denied=await judgeCase(cases[1]!,async()=>JSON.stringify(point));
@@ -33,26 +44,26 @@ test('pairwise ordering is recorded and labels map back to original candidate id
 
 test('calibration reports null without humans and rejects duplicate or mismatched annotations',async()=>{
  const judgment=await judgeCase(cases[0]!,async()=>JSON.stringify(point));
- assert.deepEqual(calibrate([judgment],[],judgeDatasetVersion),{samples:0,pointwiseSamples:0,pairwiseSamples:0,pointwiseMeanAbsoluteError:null,pairwiseAgreement:null});
+ assert.deepEqual(calibrate([judgment],[],dev.version),{samples:0,pointwiseSamples:0,pairwiseSamples:0,pointwiseMeanAbsoluteError:null,pairwiseAgreement:null});
  // Synthetic annotations test arithmetic, never become human evidence in reports.
- const annotation:HumanAnnotation={caseId:judgment.caseId,datasetVersion:judgeDatasetVersion,rubricVersion:'writing-judge-v1',reviewerId:'test-only',annotatedAt:'2026-11-04T00:00:00Z',label:2};
- assert.equal(calibrate([judgment],[annotation],judgeDatasetVersion).pointwiseMeanAbsoluteError,2);
- assert.throws(()=>calibrate([judgment],[annotation,annotation],judgeDatasetVersion),/INVALID/);
- assert.throws(()=>calibrate([judgment],[{...annotation,datasetVersion:'other'}],judgeDatasetVersion),/INVALID/);
- assert.throws(()=>calibrate([judgment],[{...annotation,label:'winner'}],judgeDatasetVersion),/INVALID/);
+ const annotation:HumanAnnotation={caseId:judgment.caseId,datasetVersion:dev.version,rubricVersion:'writing-judge-v1',reviewerId:'test-only',annotatedAt:'2026-11-04T00:00:00Z',label:2};
+ assert.equal(calibrate([judgment],[annotation],dev.version).pointwiseMeanAbsoluteError,2);
+ assert.throws(()=>calibrate([judgment],[annotation,annotation],dev.version),/INVALID/);
+ assert.throws(()=>calibrate([judgment],[{...annotation,datasetVersion:'other'}],dev.version),/INVALID/);
+ assert.throws(()=>calibrate([judgment],[{...annotation,label:'winner'}],dev.version),/INVALID/);
 });
 
 test('synthetic Judge runs actual Pi transport with reservation, settlement and no tools',async()=>{
- const result=await runJudgeFixture(cases,[],new AbortController().signal);
+ const result=await runJudgeFixture(dev,[],new AbortController().signal);
  assert.equal(result.calls,3);assert.equal(result.tokenExposure,480);
  assert.equal(result.judgments[1]!.eligible,false);assert.equal(result.calibration?.samples,0);assert.deepEqual(result.failures,[]);
  for(const c of cases){const trace=result.traces.filter(t=>t.caseId===c.caseId).map(t=>t.action);assert(trace.indexOf('reserved')<trace.indexOf('model_started'));assert(trace.includes('model_finished'))}
- await assert.rejects(runJudgeFixture(Array.from({length:11},()=>cases[0]!),[],new AbortController().signal),/BUDGET/);
+ await assert.rejects(runJudgeFixture({...dev,cases:Array.from({length:11},()=>cases[0]!)},[],new AbortController().signal),/BUDGET/);
  const oversized={...cases[0]!,evidence:'x'.repeat(12000)};
- const refused=await runJudgeFixture([oversized],[],new AbortController().signal);
+ const refused=await runJudgeFixture({...dev,cases:[oversized]},[],new AbortController().signal);
  assert.equal(refused.calls,0);assert.equal(refused.tokenExposure,0);assert.equal(refused.failures.length,1);assert.equal(refused.calibration,null);
  const cancelled=new AbortController();cancelled.abort();
- const stopped=await runJudgeFixture(cases,[],cancelled.signal);
+ const stopped=await runJudgeFixture(dev,[],cancelled.signal);
  assert.equal(stopped.calls,0);assert.equal(stopped.failures[0]!.code,'EVAL_CANCELLED');
 });
 
