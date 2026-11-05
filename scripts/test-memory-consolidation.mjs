@@ -101,7 +101,35 @@ try{
  const finalCalls=f.calls;
  await sleep(2000);
  assert.equal(f.calls,finalCalls,'revocation must not retry the model');
- console.log('PASS: real Go AgentTask queue + Pi Worker produced one background candidate from two independent completed Reviews, with exact source/result bindings, one tool-free model call, restart idempotency, in-flight revocation, retained unknown costs and disabled-setting behavior. Synthetic model only.');
+ // Kill the Worker after the provider receives a new source group.
+ await f.select(f.cases[0]);
+ await review('character_consistency');
+ await review('timeline_consistency');
+ const crashBudget=(await f.call(base+'/creative')).settings.budgetTokens;
+ const beforeCrash=f.consolidationCalls;
+ await f.select({...f.cases[0],fake:'memory-consolidation-slow'});
+ await f.call(base+'/creative/settings/memory',{method:'POST',body:{autoMemoryConsolidation:true}});
+ await until(()=>f.consolidationCalls===beforeCrash+1,'crash target entered provider');
+ await f.stop(worker,'SIGKILL');
+ const crashCalls=f.calls;
+ worker=f.start('pi-worker');
+ await until(()=>worker.output.includes('worker_started'),'Worker restarted after SIGKILL');
+ const interrupted=await until(async()=>{
+  const records=JSON.parse(await readFile(join(f.state,'agent-runtime','tasks-v1.json'),'utf8')).tasks;
+  return Object.values(records).find(record=>record.task.kind==='memory.consolidate'&&record.outcome==='interrupted'&&record.finished);
+ },'crashed consolidation expired',25000);
+ assert.equal(interrupted.started,true);
+ assert.equal(interrupted.task.request.input,'');
+ assert.equal(interrupted.memory.request.input,'');
+ assert.equal((await f.call(base+'/creative')).settings.budgetTokens,crashBudget+interrupted.memory.reservedTokens);
+ assert.equal(proceduralListSchema.parse(await f.call(memories)).items.length,1);
+ assert.equal(f.calls,crashCalls,'SIGKILL must not replay a paid model call');
+ const runtime=await until(async()=>{
+  const value=await f.call('/v1/agent-runtime');
+  return value.executors.memory.tasks.interrupted===1&&value;
+ },'memory interruption health');
+ assert.equal(runtime.executors.memory.tasks.running,0);
+ console.log('PASS: real Go AgentTask queue + Pi Worker produced one background candidate from two independent completed Reviews, with exact source/result bindings, one tool-free model call, restart idempotency, in-flight revocation, SIGKILL interruption, retained unknown costs and disabled-setting behavior. Synthetic model only.');
 }catch(error){
  if(worker)console.error(worker.output);
  try{

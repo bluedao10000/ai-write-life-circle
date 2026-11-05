@@ -658,6 +658,10 @@ func expire(st *Registry) {
 		if !rec.Finished && (e != nil || !time.Now().Before(deadline)) {
 			rec.Finished = true
 			rec.ResultHash = "expired"
+			if rec.Memory != nil {
+				rec.Outcome = "interrupted"
+				rec.CompletedAt = time.Now().UTC().Format(time.RFC3339Nano)
+			}
 			rec.scrub()
 			st.Tasks[id] = rec
 		}

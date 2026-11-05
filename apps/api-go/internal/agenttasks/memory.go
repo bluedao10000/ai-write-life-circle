@@ -86,6 +86,8 @@ func (s *Service) InspectMemoryTasks(book string) (MemoryInspection, error) {
 		switch {
 		case record.Outcome == "completed":
 			out.Completed++
+		case record.Outcome == "interrupted":
+			out.Interrupted++
 		case record.Outcome == "failed" || record.ResultHash == "expired":
 			out.Failed++
 		case record.Started:

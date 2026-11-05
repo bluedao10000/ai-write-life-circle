@@ -146,3 +146,21 @@ func TestMemoryTerminalReportAfterRevocation(t *testing.T) {
 		}
 	}
 }
+
+func TestExpiredMemoryTaskRecordsInterruptionAndScrubsContext(t *testing.T) {
+	rec := Record{Task: Task{ID: "memory", Book: "book", Kind: "memory.consolidate", Deadline: "2000-01-01T00:00:00Z", Request: llm.Request{Input: "private source"}}, Started: true, Memory: &PreparedMemory{Sources: []MemorySourceBinding{{TaskID: "source"}}, BudgetDay: "2000-01-01", ReservedTokens: 1000, Request: llm.Request{Input: "private source"}}}
+	st := Registry{Tasks: map[string]Record{"memory": rec}}
+	expire(&st)
+	got := st.Tasks["memory"]
+	if !got.Finished || got.Outcome != "interrupted" || got.CompletedAt == "" || got.Task.Request.Input != "" || got.Memory.Request.Input != "" {
+		t.Fatal(got)
+	}
+	if got.Memory.ReservedTokens != 1000 || got.Memory.BudgetDay != "2000-01-01" || len(got.Memory.Sources) != 1 {
+		t.Fatal("lost reservation or source binding", got.Memory)
+	}
+	stamp := got.CompletedAt
+	expire(&st)
+	if st.Tasks["memory"].CompletedAt != stamp {
+		t.Fatal("sweep rewrote terminal receipt")
+	}
+}
