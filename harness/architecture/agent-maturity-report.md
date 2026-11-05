@@ -370,3 +370,11 @@ Go现有Thinking私有监听器新增 `GET /internal/v1/runtime/health`，原服
 - Agent/Web类型检查、lint、构建及OpenAPI合同检查通过。模型为本地合成Provider，没有付费调用。
 
 持久变化是原会话及候选记录的可选来源元数据。生产回滚需先撤回相关候选、取消并删除专用会话；详细步骤见[经验提取ADR](dreaming-memory-candidates.md)。当前未发布或部署。Phase 3仍缺后台整理、语义冲突及质量/召回证据；Phase 5/6仍未实现，整体目标继续推进。
+
+## 经验提取进入统一 Memory Eval
+
+2026-11-05，`agent-eval-v15`新增提取候选、来源结果版本变化、授权撤销三个场景。每项使用真实Go/Pi进程建立Review来源并提取经验，评分读取候选状态、来源、幂等回执与治理审计，覆盖零工具、预留先于请求、无自动发布、重复导入零新增调用、失效后导入/确认拒绝及正文不变。
+
+`pnpm eval:agent:memory`：9/9工程通过，共31次合成模型调用、8次工具调用、3520 tokens；新增三项各2次调用、0次工具、360 tokens，均在各自预算与45秒期限内。报告保存在`.local/evals/agent/dev-memory.json`，记录提示版本`memory-extraction-v1`。134项Agent回归及17项Evaluation定向测试通过，类型检查、lint和构建通过。评分负向测试逐项拒绝缺失或违反约束的观察。
+
+这批完成提取执行的可重复工程验收。真实模型经验质量、保留集验收、后台整理、语义冲突和后续多Agent阶段仍待完成；合成结果不用于声明泛化能力。

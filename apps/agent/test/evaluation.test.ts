@@ -7,6 +7,17 @@ import {runEvaluation} from '../src/evaluation/runner.js';
 import {aggregate} from '../src/evaluation/metrics.js';
 const data=loadDataset(fileURLToPath(new URL('../src/evaluation/fixtures/dev.json',import.meta.url)));
 const observation={metrics:{completed:true},trace:[],inputTokens:100,outputTokens:20,chargedTokens:120,modelCalls:1,toolCalls:0};
+test('extraction graders require source binding, candidate isolation and actual invalidation evidence',()=>{
+ for(const scenario of ['extraction-candidate','extraction-source-change','extraction-revoked']){
+  const task=data.tasks.find(task=>task.environment.scenario===scenario)!;
+  const metrics={completed:true,sourceTaskCompleted:true,boundSource:true,evidenceInPayload:true,zeroTools:true,reservedBeforeModel:true,noAutomaticPublication:true,candidateOnly:true,provenanceValid:true,duplicateCandidates:0,sameReceipt:true,replayModelCalls:0,sourceUnchanged:true,invalidated:true,reimportRejected:true,confirmRejected:true,invalidationModelCalls:0};
+  assert.equal(grade(task,{...observation,metrics}).passed,true);
+  for(const rule of task.scorer.deterministic){
+   assert.equal(grade(task,{...observation,metrics:{...metrics,[rule.metric]:null}}).passed,false,rule.metric+' missing');
+   assert.equal(grade(task,{...observation,metrics:{...metrics,[rule.metric]:typeof rule.value==='boolean'?!rule.value:1}}).passed,false,rule.metric+' violated');
+  }
+ }
+});
 test('evaluation refuses missing evidence, exceeded budget and contaminated held-out data',async()=>{
  assert.equal(grade(data.tasks[0]!,{...observation,metrics:{}}).passed,false);
  assert.equal(grade(data.tasks[0]!,{...observation,metrics:{completed:null}}).passed,false);

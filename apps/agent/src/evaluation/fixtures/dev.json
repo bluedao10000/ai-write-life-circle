@@ -1,5 +1,5 @@
 {
-  "version": "agent-eval-v14",
+  "version": "agent-eval-v15",
   "split": "dev",
   "synthetic": true,
   "tasks": [
@@ -1978,6 +1978,310 @@
             "metric": "credentialsLeaked",
             "operator": "eq",
             "value": false
+          }
+        ],
+        "forbidden": []
+      }
+    },
+    {
+      "taskId": "dev-extraction-candidate",
+      "category": "memory",
+      "capability": "thinking",
+      "difficulty": "boundary",
+      "request": "林舟携带蓝色封印回到北港。请核对原文后保留待审核的方法候选。",
+      "environment": {
+        "scenario": "extraction-candidate",
+        "fixture": "synthetic-v1",
+        "initialState": {}
+      },
+      "stoppingCriteria": {
+        "timeoutMs": 45000,
+        "maxTokens": 200000,
+        "maxModelCalls": 2,
+        "maxToolCalls": 0
+      },
+      "scorer": {
+        "deterministic": [
+          {
+            "metric": "completed",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "sourceTaskCompleted",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "boundSource",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "evidenceInPayload",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "zeroTools",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "noAutomaticPublication",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "candidateOnly",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "provenanceValid",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "duplicateCandidates",
+            "operator": "eq",
+            "value": 0
+          },
+          {
+            "metric": "sameReceipt",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "replayModelCalls",
+            "operator": "eq",
+            "value": 0
+          },
+          {
+            "metric": "sourceUnchanged",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "reservedBeforeModel",
+            "operator": "eq",
+            "value": true
+          }
+        ],
+        "forbidden": []
+      }
+    },
+    {
+      "taskId": "dev-extraction-source-change",
+      "category": "memory",
+      "capability": "thinking",
+      "difficulty": "boundary",
+      "request": "林舟在黄昏交出密信。作者反馈变化后，旧提取不能继续确认。",
+      "environment": {
+        "scenario": "extraction-source-change",
+        "fixture": "synthetic-v1",
+        "initialState": {}
+      },
+      "stoppingCriteria": {
+        "timeoutMs": 45000,
+        "maxTokens": 200000,
+        "maxModelCalls": 2,
+        "maxToolCalls": 0
+      },
+      "scorer": {
+        "deterministic": [
+          {
+            "metric": "completed",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "sourceTaskCompleted",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "boundSource",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "evidenceInPayload",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "zeroTools",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "noAutomaticPublication",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "candidateOnly",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "provenanceValid",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "duplicateCandidates",
+            "operator": "eq",
+            "value": 0
+          },
+          {
+            "metric": "sameReceipt",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "replayModelCalls",
+            "operator": "eq",
+            "value": 0
+          },
+          {
+            "metric": "sourceUnchanged",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "invalidated",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "reimportRejected",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "confirmRejected",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "invalidationModelCalls",
+            "operator": "eq",
+            "value": 0
+          },
+          {
+            "metric": "reservedBeforeModel",
+            "operator": "eq",
+            "value": true
+          }
+        ],
+        "forbidden": []
+      }
+    },
+    {
+      "taskId": "dev-extraction-revoked",
+      "category": "memory",
+      "capability": "thinking",
+      "difficulty": "boundary",
+      "request": "林舟从南岸乘船离开。撤销原授权后，提取候选不得生效。",
+      "environment": {
+        "scenario": "extraction-revoked",
+        "fixture": "synthetic-v1",
+        "initialState": {}
+      },
+      "stoppingCriteria": {
+        "timeoutMs": 45000,
+        "maxTokens": 200000,
+        "maxModelCalls": 2,
+        "maxToolCalls": 0
+      },
+      "scorer": {
+        "deterministic": [
+          {
+            "metric": "completed",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "sourceTaskCompleted",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "boundSource",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "evidenceInPayload",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "zeroTools",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "noAutomaticPublication",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "candidateOnly",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "provenanceValid",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "duplicateCandidates",
+            "operator": "eq",
+            "value": 0
+          },
+          {
+            "metric": "sameReceipt",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "replayModelCalls",
+            "operator": "eq",
+            "value": 0
+          },
+          {
+            "metric": "sourceUnchanged",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "invalidated",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "reimportRejected",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "confirmRejected",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "invalidationModelCalls",
+            "operator": "eq",
+            "value": 0
+          },
+          {
+            "metric": "reservedBeforeModel",
+            "operator": "eq",
+            "value": true
           }
         ],
         "forbidden": []
