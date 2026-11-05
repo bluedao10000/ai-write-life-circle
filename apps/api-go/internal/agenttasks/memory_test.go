@@ -136,7 +136,7 @@ func TestMemoryTerminalReportAfterRevocation(t *testing.T) {
 					t.Fatal(err)
 				}
 				rec := state.Tasks[task.ID]
-				if !rec.Finished || rec.Outcome != "failed" || rec.Task.Request.Input != "" {
+				if !rec.Finished || rec.Outcome != "failed" || rec.Task.Request.Input != "" || rec.Audit[len(rec.Audit)-1].Reason != "TASK_REJECTED" {
 					t.Fatal(rec)
 				}
 				if err = s.Action(ctx, task.ID, action, in); err != nil || f.finished != 1 {

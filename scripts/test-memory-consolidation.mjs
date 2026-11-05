@@ -123,6 +123,8 @@ try{
  assert.equal(diagnosticResponse.status,200);
  const diagnostic=agentTaskDiagnosticsSchema.parse(await diagnosticResponse.json());
  assert.equal(diagnostic.outcome,'interrupted');
+ assert.deepEqual(diagnostic.audit.map(event=>event.action),['claimed','started','terminal']);
+ assert.equal(diagnostic.audit.at(-1).reason,'TASK_DEADLINE_EXPIRED');
  assert.deepEqual(diagnostic.sourceTaskIds,interrupted.memory.sources.map(source=>source.taskId));
  assert.equal(diagnostic.completedAt,interrupted.completedAt);
  assert(!JSON.stringify(diagnostic).includes(interrupted.task.leaseToken));

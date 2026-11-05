@@ -43,6 +43,7 @@ type Task struct {
 	Request      llm.Request   `json:"request"`
 }
 type Record struct {
+	Audit       []ExecutionAudit       `json:"audit,omitempty"`
 	Outcome     string                 `json:"outcome,omitempty"`
 	CompletedAt string                 `json:"completedAt,omitempty"`
 	Task        Task                   `json:"task"`
@@ -344,6 +345,7 @@ func (s *Service) Claim(ctx context.Context, instance, config string, kinds ...s
 			raw, _ := json.Marshal(task.Request)
 			task.InputHash = compat.Hash(string(raw))
 			rec.Task = task
+			rec.audit("claimed", "")
 			st.Tasks[task.ID] = rec
 			if !priority[owner.ID] {
 				st.Cursor = (i + 1) % total
@@ -502,6 +504,7 @@ func (s *Service) Action(ctx context.Context, id, action string, in Envelope) er
 				return e
 			}
 			rec.Started = true
+			rec.audit("started", "")
 		case "heartbeat":
 			return nil
 		case "complete", "fail":
@@ -562,6 +565,11 @@ func (s *Service) Action(ctx context.Context, id, action string, in Envelope) er
 			if e != nil {
 				return e
 			}
+			reason := in.Failure
+			if memoryDenied != nil {
+				reason = "TASK_REJECTED"
+			}
+			rec.audit("terminal", reason)
 			s.recordOutcome(&rec, app)
 			rec.scrub()
 			rec.Finished = true
@@ -658,6 +666,7 @@ func expire(st *Registry) {
 		if !rec.Finished && (e != nil || !time.Now().Before(deadline)) {
 			rec.Finished = true
 			rec.ResultHash = "expired"
+			rec.audit("terminal", "TASK_DEADLINE_EXPIRED")
 			if rec.Memory != nil {
 				rec.Outcome = "interrupted"
 				rec.CompletedAt = time.Now().UTC().Format(time.RFC3339Nano)
@@ -673,6 +682,7 @@ func (s *Service) Sweep(ctx context.Context) error {
 }
 
 func (s *Service) recordOutcome(r *Record, app *application.Service) {
+	r.audit("terminal", "")
 	if r.Knowledge != nil {
 		r.Outcome, r.CompletedAt = s.knowledge(app).Outcome(r.Knowledge)
 	} else if r.Creative != nil {

@@ -25,7 +25,7 @@ try{
  assert.equal(task.kind,'knowledge.extract');assert.equal(task.bookId,book.bookId);
  const input=agentTaskEnvelopeSchema.parse({leaseToken:task.leaseToken,executorEpoch:task.executorEpoch,attempt:task.attempt,kind:task.kind,inputHash:task.inputHash,instance,response:{text:'{"entities":[],"assertions":[]}',usage:{inputTokens:10,outputTokens:10}}});
  const accepted=agentTaskDiagnosticsSchema.parse(await taskCall(task.taskId+'/diagnostics'));
- assert.equal(accepted.outcome,'accepted');assert.equal(accepted.started,false);
+ assert.equal(accepted.outcome,'accepted');assert.equal(accepted.started,false);assert.deepEqual(accepted.audit.map(event=>event.action),['claimed']);
  await taskCall(task.taskId+'/diagnostics',undefined,instance,401,f.token);
  await taskCall('00000000-0000-4000-8000-000000000000/diagnostics',undefined,instance,404);
  await taskCall(task.taskId+'/complete',input,instance,409);
@@ -35,7 +35,7 @@ try{
  agentTaskAcknowledgementSchema.parse(await taskCall(task.taskId+'/complete',input,instance));
  agentTaskAcknowledgementSchema.parse(await taskCall(task.taskId+'/complete',input,instance));
  const diagnostics=agentTaskDiagnosticsSchema.parse(await taskCall(task.taskId+'/diagnostics'));
- assert.equal(diagnostics.taskId,task.taskId);assert.equal(diagnostics.outcome,'completed');assert.equal(diagnostics.finished,true);
+ assert.equal(diagnostics.taskId,task.taskId);assert.equal(diagnostics.outcome,'completed');assert.equal(diagnostics.finished,true);assert.deepEqual(diagnostics.audit.map(event=>event.action),['claimed','started','terminal']);assert(diagnostics.audit.every((event,index)=>!index||event.at>=diagnostics.audit[index-1].at));
  for(const secret of [task.leaseToken,f.taskToken,f.token,task.configFingerprint,input.response.text])assert(!JSON.stringify(diagnostics).includes(secret));
  const publicDiagnostics=await fetch(f.api+'/internal/v1/agent/tasks/'+task.taskId+'/diagnostics',{headers:{authorization:'Bearer '+f.bearer}});assert.equal(publicDiagnostics.status,404);
  assert.equal(f.calls.length,0,'Protocol preparation must never call an external model');
