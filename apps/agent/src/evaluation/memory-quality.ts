@@ -1,4 +1,5 @@
 import {Buffer} from 'node:buffer';
+import {memoryExtractionBindingSchema,proceduralOutcomeSchema,proceduralSourceSchema,proceduralViewSchema} from '@writer-agent/contracts';
 import {z} from 'zod';
 
 export const memoryQualityRubric=Object.freeze({
@@ -41,6 +42,21 @@ export const memoryQualityDatasetSchema=z.object({
 export type MemoryQualityDataset=z.infer<typeof memoryQualityDatasetSchema>;
 export type MemoryQualityCase=z.infer<typeof caseSchema>;
 
+const captureSchema=z.object({
+ caseId:nonblank(160),
+ candidate:proceduralViewSchema,
+ session:z.object({
+  sessionId:nonblank(200),status:z.enum(['idle','running','deleted']),scopes:z.array(z.string()),
+  model:z.object({provider:nonblank(100),model:nonblank(200)}).strict(),
+  memoryExtraction:memoryExtractionBindingSchema,
+  run:z.object({runId:nonblank(200),status:z.enum(['accepted','running','checkpointed','completed','failed','interrupted','cancelled']),authorizationVersion:z.number().int().nonnegative()}).strict().optional(),
+ }).strict(),
+ sources:z.array(proceduralSourceSchema).max(4),
+ outcomes:z.array(proceduralOutcomeSchema).max(4),
+ comparisons:z.array(proceduralViewSchema).max(8),
+}).strict();
+const captureDatasetSchema=z.object({version:nonblank(120),split:z.enum(['dev','held-out']),origin:z.enum(['production','synthetic']),captures:z.array(captureSchema).min(1).max(100)}).strict();
+
 const values={
  evidenceGrounding:['supported','mixed','unsupported','unclear'],
  actionability:['actionable','vague','not_reusable'],
@@ -62,8 +78,56 @@ export const memoryQualityAnnotationSchema=z.object({
 }).strict();
 export type MemoryQualityAnnotation=z.infer<typeof memoryQualityAnnotationSchema>;
 
+function sameEvidence(left:{taskId:string;kind:string;strategyVersion:string;inputHash:string;completedAt:string},right:{taskId:string;kind:string;strategyVersion:string;inputHash:string;completedAt:string}){
+ return left.taskId===right.taskId&&left.kind===right.kind&&left.strategyVersion===right.strategyVersion&&left.inputHash===right.inputHash&&left.completedAt===right.completedAt;
+}
+function memorySourceText(source:z.infer<typeof proceduralSourceSchema>):string{
+ if(source.source.type==='chapter')return `[章节 ${source.source.chapterId} / 修订 ${source.source.revisionId}${source.truncated?' / 内容截断':''}]\n${source.source.text??''}`;
+ return `[讨论 ${source.source.sessionId}${source.truncated?' / 内容截断':''}]\n${source.source.messages.map(message=>`[${message.role==='user'?'作者':'助手'}] ${message.text}`).join('\n')}`;
+}
+function memoryOutcomeText(outcome:z.infer<typeof proceduralOutcomeSchema>):string{
+ const items=outcome.items.map(item=>[
+  `${item.id} | ${item.kind} | ${item.status}${item.epistemic?` | ${item.epistemic}`:''}${item.feedback?` | feedback: ${item.feedback}`:''}`,
+  item.text,
+ ].join('\n')).join('\n\n');
+ return [`结果依据：${outcome.basis}`,`结果条目：${outcome.total}`,outcome.truncated?'结果内容截断':'',items].filter(Boolean).join('\n');
+}
+
 export function parseMemoryQualityDataset(input:unknown):MemoryQualityDataset{
- const dataset=memoryQualityDatasetSchema.parse(input),ids=new Set<string>();
+ const captured=captureDatasetSchema.parse(input),captureIDs=new Set<string>();
+ const dataset=memoryQualityDatasetSchema.parse({version:captured.version,split:captured.split,origin:captured.origin,cases:captured.captures.map(value=>{
+  if(captureIDs.has(value.caseId))throw Error('DUPLICATE_MEMORY_QUALITY_CASE');
+  captureIDs.add(value.caseId);
+  const candidate=value.candidate,session=value.session,binding=session.memoryExtraction,run=session.run;
+  if(candidate.status!=='candidate'||!candidate.content||!candidate.extractions||candidate.extractions.length!==1||!candidate.provenance?.length||session.status!=='idle'||session.scopes.length!==0||binding.version!==3||!run||run.status!=='completed')throw Error('INVALID_MEMORY_QUALITY_CAPTURE');
+  const extraction=candidate.extractions[0]!;
+  if(extraction.promptVersion!=='memory-extraction-v3'||extraction.sessionId!==session.sessionId||extraction.runId!==run.runId||extraction.provider!==session.model.provider||extraction.model!==session.model.model||extraction.authorizationVersion!==run.authorizationVersion)throw Error('MEMORY_QUALITY_RUN_MISMATCH');
+  const boundTasks=new Map(binding.tasks.map(task=>[task.taskId,task.resultVersion]));
+  if(boundTasks.size!==binding.tasks.length||value.sources.length!==boundTasks.size||value.outcomes.length!==boundTasks.size)throw Error('MEMORY_QUALITY_SOURCE_SET_MISMATCH');
+  const sources=new Map(value.sources.map(source=>[source.evidence.taskId,source]));
+  const outcomes=new Map(value.outcomes.map(outcome=>[outcome.evidence.taskId,outcome]));
+  if(sources.size!==value.sources.length||outcomes.size!==value.outcomes.length)throw Error('MEMORY_QUALITY_SOURCE_SET_MISMATCH');
+  const sourceTasks=[];
+  for(const [taskId,resultVersion] of boundTasks){
+   const source=sources.get(taskId),outcome=outcomes.get(taskId);
+   if(!source||!outcome||!sameEvidence(source.evidence,outcome.evidence)||outcome.version!==resultVersion)throw Error('MEMORY_QUALITY_SOURCE_VERSION_MISMATCH');
+   sourceTasks.push({taskId,kind:source.evidence.kind,sourceText:memorySourceText(source),outcomeText:memoryOutcomeText(outcome),sourceTruncated:source.truncated,outcomeTruncated:outcome.truncated});
+  }
+  const sourceTaskIDs=new Set(sourceTasks.map(task=>task.taskId)),selectedTaskIDs=new Set(candidate.provenance.map(source=>source.taskId));
+  if(selectedTaskIDs.size!==candidate.provenance.length||[...selectedTaskIDs].some(taskId=>!sourceTaskIDs.has(taskId)))throw Error('INVALID_MEMORY_QUALITY_TASK_BINDING');
+  for(const evidence of candidate.provenance){const source=sources.get(evidence.taskId);if(!source||!sameEvidence(evidence,source.evidence))throw Error('MEMORY_QUALITY_SOURCE_VERSION_MISMATCH')}
+  const boundComparisons=new Map(binding.comparisons.map(comparison=>[comparison.memoryId,comparison.memoryVersion]));
+  const comparisons=new Map(value.comparisons.map(comparison=>[comparison.id,comparison]));
+  if(boundComparisons.size!==binding.comparisons.length||comparisons.size!==value.comparisons.length||comparisons.size!==boundComparisons.size)throw Error('MEMORY_QUALITY_COMPARISON_SET_MISMATCH');
+  for(const [memoryId,memoryVersion] of boundComparisons){
+   const comparison=comparisons.get(memoryId);
+   if(!comparison||comparison.status!=='confirmed'||!comparison.available||comparison.version!==memoryVersion||!comparison.content)throw Error('MEMORY_QUALITY_COMPARISON_VERSION_MISMATCH');
+  }
+  const relations=extraction.relations??[];
+  for(const relation of relations)if(boundComparisons.get(relation.memoryId)!==relation.memoryVersion)throw Error('INVALID_MEMORY_QUALITY_RELATION');
+  return {caseId:value.caseId,extraction:{provider:extraction.provider,model:extraction.model,promptVersion:extraction.promptVersion},sourceTasks,comparisons:Array.from(comparisons.values(),comparison=>({memoryId:comparison.id,content:comparison.content!})),candidate:{content:candidate.content,taskIds:Array.from(selectedTaskIDs),relations:relations.map(({memoryId,kind,reason})=>({memoryId,kind,reason}))}};
+ } )});
+ const ids=new Set<string>();
  for(const value of dataset.cases){
   if(ids.has(value.caseId))throw Error('DUPLICATE_MEMORY_QUALITY_CASE');
   ids.add(value.caseId);

@@ -62,7 +62,7 @@ live报告写入`.local/evals/agent/judge-live-{split}.json`，与合成报告�
 
 `pnpm eval:agent:memory:quality -- --cases=/absolute/path/cases.json --template=/absolute/path/review.json`会根据已完成的经验提取建立独立评审模板。输入每个案例包含版本与split、caller声明的来源类型、模型/provider/prompt版本、绑定任务的原始来源与当前业务结果、提取候选正文、候选引用的任务ID及与现有经验的比较。候选任务和关系必须分别绑定到输入来源和比较集；UTF-8文本大小按Go现有合同限制。
 
-`cases.json`结构为`{version, split, origin, cases}`。每个case包含`caseId`、`extraction:{provider,model,promptVersion}`、`sourceTasks:[{taskId,kind,sourceText,outcomeText,sourceTruncated,outcomeTruncated}]`、`comparisons:[{memoryId,content}]`和`candidate:{content,taskIds,relations:[{memoryId,kind,reason}]}`。`origin`为`production`或`synthetic`；它是提交者声明。`taskIds`只能引用本case的sourceTasks，relations只能引用本case的comparisons。
+`cases.json`结构为`{version, split, origin, captures}`。每个capture有`caseId`、Go返回的`candidate` procedural-memory view、配对的`source`和`outcome`投影数组、有关联经验的`comparisons` views，以及从Thinking Session读取的`session:{sessionId,status,scopes,model:{provider,model},memoryExtraction,run:{runId,status,authorizationVersion}}`。来源/结果投影按`memoryExtraction.tasks`提供，比较经验按其`comparisons`提供。评审器校验Go候选、Thinking会话、已完成Run、原来源/结果版本和比较经验版本相互匹配，再生成评审案例；不能把不同运行或不同版本的结果拼在一起。`origin`为`production`或`synthetic`，由提交者声明。
 
 评审者阅读cases文件中的来源、结果和候选，并独立填写模板：证据支撑、可操作性、范围、证据限制、覆盖度、来源选择和逐条关系准确性。输入`--annotations=/absolute/path/annotations.json`后运行同一命令会生成`.local/evals/agent/memory-quality-{split}.json`。输出只含聚合指标、样本数、评审一致性及模型/prompt版本，不包含来源正文、候选正文、评语或Reviewer ID；输入和模板文件以本地私有权限写入。
 
