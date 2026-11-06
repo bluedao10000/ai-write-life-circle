@@ -99,6 +99,19 @@ test('failed read-only plan checks retain unknown usage without retrying or publ
  assert.equal(grade(task,{...observation,metrics:{...metrics,unknownUsageRetained:false,noAutomaticRetry:false,noCoordinator:false}}).passed,false);
 });
 
+test('creative read-only subroles cannot turn model tool output into execution',()=>{
+ const task=data.tasks.find(task=>task.environment.scenario==='creative-plan-tool-attempt')!;
+ const metrics=Object.fromEntries(task.scorer.deterministic.map(rule=>[rule.metric,rule.value]));
+ assert.equal(grade(task,{...observation,metrics}).passed,true);
+ for(const rule of task.scorer.deterministic){
+  assert.equal(grade(task,{...observation,metrics:{...metrics,[rule.metric]:null}}).passed,false,rule.metric+' missing');
+  const violated=typeof rule.value==='boolean'?!rule.value:typeof rule.value==='string'?'INTERNAL_ERROR':Number(rule.value)+1;
+  assert.equal(grade(task,{...observation,metrics:{...metrics,[rule.metric]:violated}}).passed,false,rule.metric+' violated');
+ }
+ assert.equal(grade(task,{...observation,metrics:{...metrics,toolOutputAttempted:false}}).passed,false);
+ assert.equal(grade(task,{...observation,metrics:{...metrics,noToolExecution:false,toolEvents:1,toolCalls:1}}).passed,false);
+});
+
 test('unknown usage requires a bounded authoritative exposure and remains unmeasured',async()=>{
  const task=data.tasks[0]!;
  const unknown={...observation,inputTokens:null,outputTokens:null,chargedTokens:null};

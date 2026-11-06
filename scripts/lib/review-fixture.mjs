@@ -8,7 +8,7 @@ export async function createReviewFixture({modelBudget}={}) {
   const directory = await mkdtemp(join(tmpdir(), 'writer-review-fixture-'))
   const harness = join(directory, 'harness'), state = join(directory, 'state')
   await mkdir(join(harness, 'manuscript'), { recursive: true })
-  let mode = 'valid', calls = 0, reviewCalls = 0, knowledgeResponses = 0, consolidationCalls = 0
+  let mode = 'valid', calls = 0, reviewCalls = 0, knowledgeResponses = 0, consolidationCalls = 0, planToolAttempts = 0, planToolAttemptName = ''
  const requests=[]
   async function select(value = cases[0]) {
     mode = value.fake
@@ -72,6 +72,11 @@ export async function createReviewFixture({modelBudget}={}) {
  }
  if(system.startsWith('You are the evidence researcher in a read-only story-plan review')){
   if(mode==='creative-plan-failure'){res.writeHead(503).end('private-provider-message');return}
+  if(mode==='creative-plan-tool-attempt'){
+   planToolAttempts++;
+   planToolAttemptName='record_story_changes';
+   res.writeHead(200,{'Content-Type':'text/event-stream'});res.end('data: '+JSON.stringify({id:'creative-researcher-tool',object:'chat.completion.chunk',model:request.model,choices:[{index:0,delta:{role:'assistant',tool_calls:[{index:0,id:'creative-write-attempt',type:'function',function:{name:'record_story_changes',arguments:'{"changes":[{"intent":"explore","patch":{"name":"未授权写入"},"evidence":[{"messageId":"synthetic","quote":"该字段仅是合成越权测试"}]}]}'}}]},finish_reason:'tool_calls'}],usage:{prompt_tokens:200,completion_tokens:20}})+'\n\ndata: [DONE]\n\n');return
+  }
   const {source}=JSON.parse(request.messages.find(m=>m.role==='user').content);
   const content=JSON.stringify({findings:source.plans.map((plan)=>({assetId:plan.assetId,quote:'最终选择留下',observation:'正文明确写角色留下。',assessment:'diverged'}))});
   res.writeHead(200,{'Content-Type':'text/event-stream'});res.end('data: '+JSON.stringify({id:'creative-researcher',object:'chat.completion.chunk',model:request.model,choices:[{index:0,delta:{role:'assistant',content},finish_reason:'stop'}],usage:{prompt_tokens:200,completion_tokens:100}})+'\n\ndata: [DONE]\n\n');return
@@ -120,7 +125,7 @@ export async function createReviewFixture({modelBudget}={}) {
   })
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
   const origin = `http://127.0.0.1:${server.address().port}`
-  return { directory, harness, state, origin, requests, select, get calls() { return calls }, get reviewCalls() { return reviewCalls }, get knowledgeResponses(){return knowledgeResponses}, get consolidationCalls(){return consolidationCalls},
+  return { directory, harness, state, origin, requests, select, get calls() { return calls }, get reviewCalls() { return reviewCalls }, get knowledgeResponses(){return knowledgeResponses}, get consolidationCalls(){return consolidationCalls}, get planToolAttempts(){return planToolAttempts}, get planToolAttemptName(){return planToolAttemptName},
     async sourceBytes() { return Promise.all(['CH-003', 'CH-008'].map((id) => readFile(join(harness, `manuscript/${id}.md`), 'utf8'))) },
     async close() { server.closeAllConnections(); await new Promise((resolve) => server.close(resolve)); await rm(directory, { recursive: true, force: true }) },
   }

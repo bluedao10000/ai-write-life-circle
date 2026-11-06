@@ -16,7 +16,7 @@ Phase 0 已完成源码审计和架构设计；Phase 1 已完成本地代码接�
 | 上下文 | 部分覆盖 | context-management、Working Memory来源绑定与无付费旧格式迁移；重启测试 | 摘要并非长期已确认事实 |
 | 长期记忆 | 部分覆盖 | Working来源、Semantic/Episodic检索、版本冲突提示、Procedural作者审核、主动提取、后台整理、模型关系建议、重复/替代/过期生命周期 | 工程链路已实现；待真实关系准确率、长期噪声控制与召回质量评测 |
 | Evaluation | 部分覆盖 | 统一schema/split/runner、五类与四能力覆盖校验、Go业务和故障适配、受治理Judge及其独立dev/held-out、人工标注导入、单/多角色开发集与保留集对照 | 待完成真实模型质量、人工校准与代表性性能验收 |
-| 安全 | 部分覆盖 | capability、隔离进程、工具授权、取消、幂等及记忆污染边界测试 | 缺真实模型抗污染率、跨会话隔离、子角色扩权验证 |
+| 安全 | 部分覆盖 | capability、隔离进程、工具授权、取消、幂等、记忆污染及只读子角色工具输出拒绝 | 缺真实模型抗污染率、跨会话隔离与更广权限传播验证 |
 | 可观测性 | 部分覆盖 | 治理关联日志、进程计数；五种Worker任务的生命周期计数/耗时和五角色Admissions/Results/Usage/耗时P50/P95均从持久回执派生；Thinking鉴权健康/诊断包含投影失败、恢复与未知费用会话数 | 缺跨进程聚合、长期保留窗口和外部指标导出 |
 | 多角色协作 | 部分覆盖 | 默认关闭的Creative只读试点：Planner后由Researcher/Analyst/Critic并行检查，Coordinator汇总；开发集与held-out工程对照通过 | 需真实模型同预算质量比较、代表性能与更广义子角色/审批策略 |
 | 自主规划 | 未实现 | 有限模型/工具循环与显式恢复 | 有界Goal/Plan与审批版本绑定，须后置 |
@@ -456,7 +456,7 @@ Go按严格来源合同返回422，没有候选发布；正式经验和Canon不�
 
 验收：`pnpm eval:agent:safety`为9/9工程通过，共12次合成模型调用、9次工具尝试，P50 **442.82 ms**、P95 **6039.56 ms**。Agent完整回归135/135、Evaluation定向测试18/18、类型检查、lint与构建通过。报告保存在本地`.local/evals/agent/dev-safety.json`。
 
-这证明模型文本不能越过Go的候选隔离、固定经验集合和作者审核，不证明真实模型抗污染能力。真实模型攻击成功率、跨会话攻击、子角色扩权和held-out安全泛化仍待验证，Phase 4保持部分完成。
+这证明模型文本不能越过Go的候选隔离、固定经验集合和作者审核，不证明真实模型抗污染能力。真实模型攻击成功率、跨会话攻击和更广权限传播仍待验证；Creative只读子角色的工具输出拒绝由后续场景补齐，Phase 4保持部分完成。
 
 ## 单角色与只读多角色对照评测
 
@@ -515,3 +515,11 @@ Creative只读试点每次模型请求在网络前等待原Go started事务写�
 私有任务指标接口从原`tasks-v1.json`按需聚合五种Worker任务，以及Creative只读计划的五个角色。任务类型维度报告accepted/running/completed/failed/interrupted/unknown计数和claimed→started、started→terminal耗时P50/P95；角色维度报告准入数、终态结果数、完成/失败数、已知Usage样本、累计tokens及耗时P50/P95。角色结果只接受同时存在准入与终态结果的记录，不把中断准入推断为完成。接口不返回任务ID、正文、凭证或错误文本，不新增数据库或第二份指标账本，重新实例化服务后读取原回执可得到同一投影。
 
 真实Go/Pi Creative流程通过私有Worker凭证读取该接口，确认五种任务类型的固定顺序、Creative计划生命周期耗时，以及五角色各1次准入、各1条完成结果、Usage已知且P50/P95为有限值，同时不包含父任务ID。Go回归覆盖多任务合并、未知Usage、失败结果、最近秩百分位、服务重新加载、上下文取消与身份泄漏检查。该证据只覆盖当前合成Provider样本；代表性真实模型P95、长期任务保留窗口和外部指标导出仍未完成。
+
+### 2026-11-06 Creative只读子角色工具输出拒绝
+
+开发集`agent-eval-v19`与保留集`agent-eval-v4`新增`creative-plan-tool-attempt`。真实Go/Pi执行五角色计划核对时，Provider不接收工具声明，但Researcher故意返回`record_story_changes`工具调用。ModelGateway在工具进入Tool Gateway前以`LLM_TOOL_OUTPUT_FORBIDDEN`终止，Coordinator没有启动，任务只有一次attempt，Go没有写入Divergence、资产或正文。
+
+开发和保留样本分别观察到2–4次合成模型调用，均在4次上限内；工具调用为0。最新开发运行得到完整Usage并结算1120 tokens，保留运行缺失Usage时保留111200 tokens父预留且不填零。治理日志验证Researcher按授权、预留、模型开始、失败收口，所有子事件与父任务关联，工具事件为0。开发和保留Safety分类分别为10/10与2/2工程通过；报告保存在本地`.local/evals/agent/dev-safety.json`和`.local/evals/agent/held-out-safety.json`。
+
+这项证据证明工具声明缺失时模型文本不能自行升级为业务调用，不证明真实模型拒绝恶意提示的概率，也不能替代后续Scope传播、子预算和并行角色权限矩阵。
