@@ -1,0 +1,37 @@
+{
+  "version": "agent-eval-v23-performance",
+  "split": "dev",
+  "synthetic": true,
+  "tasks": [
+    {
+      "taskId": "dev-history-page",
+      "category": "performance",
+      "capability": "thinking",
+      "difficulty": "boundary",
+      "request": "按游标遍历历史事件。",
+      "environment": {
+        "scenario": "event-recovery",
+        "fixture": "synthetic-v1",
+        "initialState": {
+          "events": 1000
+        }
+      },
+      "stoppingCriteria": {
+        "timeoutMs": 15000,
+        "maxTokens": 100000,
+        "maxModelCalls": 0,
+        "maxToolCalls": 0
+      },
+      "scorer": {
+        "deterministic": [
+          {
+            "metric": "eventCount",
+            "operator": "eq",
+            "value": 1000
+          }
+        ],
+        "forbidden": []
+      }
+    }
+  ]
+}

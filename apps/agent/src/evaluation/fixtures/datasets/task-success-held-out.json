@@ -1,0 +1,247 @@
+{
+  "version": "agent-eval-v8-task-success",
+  "split": "held-out",
+  "synthetic": true,
+  "tasks": [
+    {
+      "taskId": "held-out-thinking-answer",
+      "category": "task-success",
+      "capability": "thinking",
+      "difficulty": "basic",
+      "request": "分析候选世界规则的例外。thinking",
+      "environment": {
+        "scenario": "answer",
+        "fixture": "synthetic-v1",
+        "initialState": {}
+      },
+      "stoppingCriteria": {
+        "timeoutMs": 15000,
+        "maxTokens": 100000,
+        "maxModelCalls": 2,
+        "maxToolCalls": 0
+      },
+      "scorer": {
+        "deterministic": [
+          {
+            "metric": "completed",
+            "operator": "eq",
+            "value": true
+          }
+        ],
+        "forbidden": []
+      }
+    },
+    {
+      "taskId": "held-out-review-answer",
+      "category": "task-success",
+      "capability": "review",
+      "difficulty": "basic",
+      "request": "分析候选世界规则的例外。review",
+      "environment": {
+        "scenario": "answer",
+        "fixture": "synthetic-v1",
+        "initialState": {}
+      },
+      "stoppingCriteria": {
+        "timeoutMs": 15000,
+        "maxTokens": 100000,
+        "maxModelCalls": 2,
+        "maxToolCalls": 0
+      },
+      "scorer": {
+        "deterministic": [
+          {
+            "metric": "completed",
+            "operator": "eq",
+            "value": true
+          }
+        ],
+        "forbidden": []
+      }
+    },
+    {
+      "taskId": "held-out-knowledge-answer",
+      "category": "task-success",
+      "capability": "knowledge",
+      "difficulty": "basic",
+      "request": "分析候选世界规则的例外。knowledge",
+      "environment": {
+        "scenario": "answer",
+        "fixture": "synthetic-v1",
+        "initialState": {}
+      },
+      "stoppingCriteria": {
+        "timeoutMs": 15000,
+        "maxTokens": 100000,
+        "maxModelCalls": 2,
+        "maxToolCalls": 0
+      },
+      "scorer": {
+        "deterministic": [
+          {
+            "metric": "completed",
+            "operator": "eq",
+            "value": true
+          }
+        ],
+        "forbidden": []
+      }
+    },
+    {
+      "taskId": "held-out-creative-answer",
+      "category": "task-success",
+      "capability": "creative",
+      "difficulty": "basic",
+      "request": "分析候选世界规则的例外。creative",
+      "environment": {
+        "scenario": "answer",
+        "fixture": "synthetic-v1",
+        "initialState": {}
+      },
+      "stoppingCriteria": {
+        "timeoutMs": 15000,
+        "maxTokens": 100000,
+        "maxModelCalls": 2,
+        "maxToolCalls": 0
+      },
+      "scorer": {
+        "deterministic": [
+          {
+            "metric": "completed",
+            "operator": "eq",
+            "value": true
+          }
+        ],
+        "forbidden": []
+      }
+    },
+    {
+      "taskId": "held-out-creative-plan-comparison",
+      "category": "task-success",
+      "capability": "creative",
+      "difficulty": "boundary",
+      "request": "计划：沈砚会交出一封旧信。\n正文：沈砚把旧信从抽屉取出，犹豫后最终选择留下，没有交给任何来访者。",
+      "environment": {
+        "scenario": "creative-plan-comparison",
+        "fixture": "synthetic-v1",
+        "initialState": {}
+      },
+      "stoppingCriteria": {
+        "timeoutMs": 45000,
+        "maxTokens": 200000,
+        "maxModelCalls": 6,
+        "maxToolCalls": 0
+      },
+      "scorer": {
+        "deterministic": [
+          {
+            "metric": "singleCompleted",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "multiCompleted",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "sameInput",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "equivalentResult",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "oneSingleCall",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "fiveMultiCalls",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "roleCount",
+            "operator": "eq",
+            "value": 5
+          },
+          {
+            "metric": "governancePrecedesModel",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "parentLinksValid",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "parallelChildAdmissionsMax",
+            "operator": "gte",
+            "value": 2
+          },
+          {
+            "metric": "modelStepAdmissionCount",
+            "operator": "eq",
+            "value": 5
+          },
+          {
+            "metric": "childBudgetSumMatchesParent",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "toolEvents",
+            "operator": "eq",
+            "value": 0
+          },
+          {
+            "metric": "singleModelCalls",
+            "operator": "eq",
+            "value": 1
+          },
+          {
+            "metric": "multiModelCalls",
+            "operator": "eq",
+            "value": 5
+          },
+          {
+            "metric": "totalModelCalls",
+            "operator": "eq",
+            "value": 6
+          },
+          {
+            "metric": "budgetRatio",
+            "operator": "eq",
+            "value": 5
+          },
+          {
+            "metric": "planUnchanged",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "sourceUnchanged",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "authoritativeDivergences",
+            "operator": "eq",
+            "value": 1
+          },
+          {
+            "metric": "toolCalls",
+            "operator": "eq",
+            "value": 0
+          }
+        ],
+        "forbidden": []
+      }
+    }
+  ]
+}

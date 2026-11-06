@@ -1,11 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {copyFileSync,mkdtempSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {loadDataset,assertIndependentDatasets} from '../src/evaluation/dataset.js';
+import {loadEvaluationSplit,selectEvaluationDataset,assertIndependentDatasets} from '../src/evaluation/dataset.js';
 import {grade} from '../src/evaluation/graders.js';
 import {runEvaluation} from '../src/evaluation/runner.js';
 import {aggregate} from '../src/evaluation/metrics.js';
-const data=loadDataset(fileURLToPath(new URL('../src/evaluation/fixtures/dev.json',import.meta.url)));
+const fixtures=fileURLToPath(new URL('../src/evaluation/fixtures/datasets/',import.meta.url));
+const development=loadEvaluationSplit(fixtures,'dev'),heldOut=loadEvaluationSplit(fixtures,'held-out');
+const data=development;
 const observation={metrics:{completed:true},trace:[],inputTokens:100,outputTokens:20,chargedTokens:120,modelCalls:1,toolCalls:0};
 test('extraction graders require source binding, candidate isolation and actual invalidation evidence',()=>{
  for(const scenario of ['extraction-candidate','extraction-source-change','extraction-revoked']){
@@ -32,11 +37,53 @@ test('evaluation refuses missing evidence, exceeded budget and contaminated held
  assert.equal(grade(data.tasks[0]!,{...observation,metrics:{completed:null}}).passed,false);
  const result=await runEvaluation([{...data.tasks[0]!,stoppingCriteria:{...data.tasks[0]!.stoppingCriteria,maxTokens:100}}],async()=>observation);
  assert.equal(result.results[0]!.passed,false);assert.equal(result.results[0]!.withinBudget,false);
- const held=loadDataset(fileURLToPath(new URL('../src/evaluation/fixtures/held-out.json',import.meta.url)));assertIndependentDatasets(data,held);
- assert.throws(()=>assertIndependentDatasets(data,{...held,tasks:[data.tasks[0]!]}),/CONTAMINATION/);
- assert.throws(()=>assertIndependentDatasets(data,{...held,tasks:held.tasks.filter(task=>task.category!=='memory')}),/COVERAGE/);
- assert.throws(()=>assertIndependentDatasets(data,{...held,tasks:held.tasks.filter(task=>task.capability!=='review')}),/COVERAGE/);
+ assertIndependentDatasets(data,heldOut);
+ assert.throws(()=>assertIndependentDatasets(data,{...heldOut,tasks:[data.tasks[0]!]}),/CONTAMINATION/);
+ assert.throws(()=>assertIndependentDatasets(data,{...heldOut,tasks:heldOut.tasks.filter(task=>task.category!=='memory')}),/COVERAGE/);
+ assert.throws(()=>assertIndependentDatasets(data,{...heldOut,tasks:heldOut.tasks.filter(task=>task.capability!=='review')}),/COVERAGE/);
  assert.equal(aggregate([]).engineeringPassRate,null);assert.equal(aggregate([]).qualitySuccessRate,null);
+});
+
+test('each evaluation category has its own versioned development and held-out data',()=>{
+ assert.equal(development.tasks.length,42);assert.equal(heldOut.tasks.length,13);
+ for(const category of ['task-success','reliability','memory','safety','performance'] as const){
+  const dev=selectEvaluationDataset(development,category),held=selectEvaluationDataset(heldOut,category);
+  assert(dev.tasks.length>0);assert(held.tasks.length>0);
+  assert(dev.tasks.every(task=>task.category===category));assert(held.tasks.every(task=>task.category===category));
+  assert.notEqual(dev.version,held.version);
+ }
+ assert.throws(()=>assertIndependentDatasets(development,{...heldOut,datasetVersions:{...heldOut.datasetVersions,memory:development.datasetVersions.memory}}),/VERSION/);
+});
+
+test('category dataset loading rejects a wrong category, wrong split, duplicate version and shared task ID',()=>{
+ const directory=mkdtempSync(join(tmpdir(),'agent-evaluation-datasets-'));
+ const file=(category:string)=>join(directory,`${category}-dev.json`);
+ const reset=()=>{
+  for(const category of ['task-success','reliability','memory','safety','performance']){
+   const source=join(fixtures,`${category}-dev.json`);
+   copyFileSync(source,file(category));
+  }
+ };
+ const update=(category:string,change:(data:Record<string,unknown>)=>void)=>{
+  const path=file(category),data=JSON.parse(readFileSync(path,'utf8')) as Record<string,unknown>;
+  change(data);writeFileSync(path,JSON.stringify(data));
+ };
+ try{
+  reset();
+  update('memory',data=>{data.tasks=(data.tasks as Array<Record<string,unknown>>).map((task,index)=>index?task:{...task,category:'safety'})});
+  assert.throws(()=>loadEvaluationSplit(directory,'dev'),/INVALID_CATEGORY_DATASET/);
+
+  reset();update('memory',data=>{data.split='held-out'});
+  assert.throws(()=>loadEvaluationSplit(directory,'dev'),/INVALID_CATEGORY_DATASET/);
+
+  reset();update('memory',data=>{data.version='agent-eval-v23-task-success'});
+  assert.throws(()=>loadEvaluationSplit(directory,'dev'),/DUPLICATE_CATEGORY_DATASET_VERSION/);
+
+  reset();
+  const first=JSON.parse(readFileSync(file('task-success'),'utf8')) as {tasks:Array<{taskId:string}>};
+  update('memory',data=>{(data.tasks as Array<Record<string,unknown>>)[0]!.taskId=first.tasks[0]!.taskId});
+  assert.throws(()=>loadEvaluationSplit(directory,'dev'),/DUPLICATE_TASK_ID/);
+ }finally{rmSync(directory,{recursive:true,force:true})}
 });
 test('evaluation deadlines abort real work and retain failure status',async()=>{
  const result=await runEvaluation([{...data.tasks[0]!,stoppingCriteria:{...data.tasks[0]!.stoppingCriteria,timeoutMs:5}}],async(_task,signal)=>{

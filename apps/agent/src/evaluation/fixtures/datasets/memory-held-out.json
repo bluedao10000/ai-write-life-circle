@@ -1,0 +1,37 @@
+{
+  "version": "agent-eval-v8-memory",
+  "split": "held-out",
+  "synthetic": true,
+  "tasks": [
+    {
+      "taskId": "held-out-memory",
+      "category": "memory",
+      "capability": "thinking",
+      "difficulty": "boundary",
+      "request": "故事规则只是候选，标出作者拒绝和暂缓的选择。",
+      "environment": {
+        "scenario": "discussion-memory",
+        "fixture": "synthetic-v1",
+        "initialState": {
+          "messages": 52
+        }
+      },
+      "stoppingCriteria": {
+        "timeoutMs": 15000,
+        "maxTokens": 100000,
+        "maxModelCalls": 0,
+        "maxToolCalls": 0
+      },
+      "scorer": {
+        "deterministic": [
+          {
+            "metric": "compacted",
+            "operator": "eq",
+            "value": true
+          }
+        ],
+        "forbidden": []
+      }
+    }
+  ]
+}

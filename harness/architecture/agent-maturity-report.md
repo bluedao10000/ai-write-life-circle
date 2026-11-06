@@ -15,7 +15,7 @@ Phase 0 已完成源码审计和架构设计；Phase 1 已完成本地代码接�
 | Worker | 工程验证 | scheduler/dispatcher/TaskClient，五种Go任务；Review/Knowledge/Creative/Memory集成 | 统一合同已接入；待完善持久关联审计 |
 | 上下文 | 部分覆盖 | context-management、Working Memory来源绑定与无付费旧格式迁移；重启测试 | 摘要并非长期已确认事实 |
 | 长期记忆 | 部分覆盖 | Working来源、Semantic/Episodic检索、版本冲突提示、Procedural作者审核、主动提取、后台整理、模型关系建议、重复/替代/过期生命周期 | 工程链路已实现；待真实关系准确率、长期噪声控制与召回质量评测 |
-| Evaluation | 部分覆盖 | 统一schema/split/runner、五类与四能力覆盖校验、Go业务和故障适配、受治理Judge及其独立dev/held-out、显式预算的真实模型入口、Judge对人工校准及人工双评一致性统计、单/多角色开发集与保留集对照 | 待完成实际模型质量、真实人工标注校准和代表性性能验收 |
+| Evaluation | 部分覆盖 | 统一schema/split/runner、每类独立版本的dev与held-out数据、五类与四能力覆盖校验、Go业务和故障适配、受治理Judge及其独立dev/held-out、显式预算的真实模型入口、Judge对人工校准及人工双评一致性统计、单/多角色开发集与保留集对照 | 待完成实际模型质量、真实人工标注校准和代表性性能验收 |
 | 安全 | 部分覆盖 | capability、隔离进程、工具授权、取消、幂等、记忆污染、同作者跨作品Session隔离及只读子角色工具输出拒绝 | 缺真实模型抗污染率、更广动态权限传播与并发预算竞争验证 |
 | 可观测性 | 部分覆盖 | 治理关联日志、跨进程健康；私有Prometheus文本按需导出五种Worker任务的生命周期/耗时、五角色Admissions/Results/Usage/耗时及Thinking恢复计数；均从原权威状态投影 | 缺跨重启长期窗口、代表性并发基线和真实模型诊断样本 |
 | 多角色协作 | 部分覆盖 | 默认关闭的Creative只读试点：Planner后由Researcher/Analyst/Critic并行检查，Coordinator汇总；dev/held-out对照、并发3准入、子预算精确合计和子上下文收窄通过 | 需真实模型同预算质量比较、代表性能与更广义动态子角色/审批策略 |
@@ -106,7 +106,7 @@ Runtime Governance 已完成实际执行接入和本地工程验收。Thinking �
 
 状态：进行中，尚未通过完整Phase 2验收。
 
-已实现 `evaluation/task-schema.ts`、`dataset.ts`、`runner.ts`、`graders.ts`、`metrics.ts`、`report.ts` 和生产模块执行适配器。统一命令 `eval:agent` 及 reliability/memory/safety/performance 已登记；默认运行dev合成数据，未知参数与真实模型模式拒绝执行。dev与held-out文件独立，检测重复ID/请求；保留集v1已在干净提交上完成一次工程执行，质量结论仍为空。
+已实现 `evaluation/task-schema.ts`、`dataset.ts`、`runner.ts`、`graders.ts`、`metrics.ts`、`report.ts` 和生产模块执行适配器。统一命令 `eval:agent` 及 reliability/memory/safety/performance 已登记；默认运行dev合成数据，未知参数与真实模型模式拒绝执行。五类dev与held-out数据分别保存并独立版本化，加载时检测类别、split、重复版本、重复ID/请求；完整报告记录各类别版本。
 
 数据集独立性现在同时校验版本、split、重复ID/请求，以及每个split是否覆盖task-success、reliability、memory、safety、performance五类和Thinking、Review、Knowledge、Creative四能力。缺少任一类或能力会拒绝运行，避免局部数据集被报告为平台级评测。
 
@@ -117,6 +117,12 @@ Runtime Governance 已完成实际执行接入和本地工程验收。Thinking �
 验证：109项Agent测试、类型检查、lint通过；首批dev案例8/8工程通过。Thinking Eval通过451条事件分页回归，末尾工具调用不再漏算。输出位于 `.local/evals/agent/dev-all.json`，这是一组小样本工程检查，不用于质量/SLA结论。
 
 Phase 2剩余工作是真实模型下的质量与成本证据、独立人工校准及代表性性能验收。现有Judge已具备独立dev/held-out和受治理执行链路，但合成Provider和固定评分不代表Judge与人工判断一致；确定性工程通过率也不能替代真实任务成功率。
+
+### 分类版本数据集验收
+
+2026-11-06在`c0538fd`基线的修改工作区分别运行完整dev和held-out。开发集`agent-eval-v23-*`共42项，42/42工程通过，83次本地合成模型调用和19次工具调用；任务P50/P95为5920.07/11263.36 ms。保留集`agent-eval-v8-*`共13项，13/13工程通过，23次合成模型调用和3次工具调用；任务P50/P95为33.17/8257.37 ms。两个报告都逐项记录五类版本，`realLLMCalled=false`、`qualityValidated=false`，质量成功率为null。
+
+这些任务耗时含进程准备和故障观察窗口，不能作为生产延迟。结果确认数据隔离、完整执行和确定性工程评分，不构成真实模型质量、成本或泛化结论。报告位于`.local/evals/agent/dev-all.json`及`.local/evals/agent/held-out-all.json`，未提交。
 
 ### Go业务评测接入
 

@@ -22,7 +22,11 @@ Dataset 有独立版本与 split，五类 task-success/reliability/memory/safety
 
 CI执行合成dev数据，不调用真实Provider。Review fixture按评测调用数与token上限拒绝超额输出，失败或取消后的未知usage不记为零。进程在每个案例结束或取消后关闭，临时目录随fixture回收。报告仅写入本地`.local/evals/agent/`，不自动提交。Judge使用独立的split与报告；真实模型入口要求显式预算确认并保持质量声称关闭，人工校准和实际质量结论仍属后续范围。具体证据和剩余验收见 [成熟度报告](agent-maturity-report.md)。
 
-数据集独立性校验要求dev与held-out版本分离、任务ID与请求不重复，并要求每个split覆盖五类评测和Thinking、Review、Knowledge、Creative四能力。缺少任一类或能力会拒绝运行，避免局部样本被报告为平台级评测。
+五类数据分别保存在 `fixtures/datasets/{category}-{split}.json`，每份文件有独立版本。加载器验证文件声明的split、任务类别、类别版本唯一、跨类别任务ID唯一；dev与held-out再按类别检查版本不同、任务ID和请求不重复，并要求每个split覆盖五类评测和Thinking、Review、Knowledge、Creative四能力。分类运行使用对应数据版本；完整报告记录组成它的全部版本。任一条件不满足即拒绝运行。
+
+2026-11-06在提交`c0538fd`基础的工作区完成分类数据拆分验收。dev使用`agent-eval-v23-{task-success,reliability,memory,safety,performance}`五份数据，共42项，42/42工程通过、83次合成模型调用、19次工具调用，任务P50/P95为5920.07/11263.36 ms。held-out使用`agent-eval-v8-{task-success,reliability,memory,safety,performance}`五份数据，共13项，13/13工程通过、23次合成模型调用、3次工具调用，任务P50/P95为33.17/8257.37 ms。两份报告均记录各类别版本、`realLLMCalled=false`、`qualityValidated=false`及`qualitySuccessRate=null`。
+
+这些延迟包含Go/Pi进程准备与故障观察窗口，不能解释为模型响应延迟或生产SLO。评测使用本地合成Provider；通过结果验证数据集加载、执行与确定性评分，不代表语义质量、真实任务成功率或泛化能力。报告保存在`.local/evals/agent/`，未提交。
 
 2026-11-05在干净提交`f5b5e15`上执行了保留集v1全部8项，工程结果8/8通过，包含4次合成模型调用、1次工具尝试；任务P50为3.38 ms、P95为150.29 ms。该集覆盖五类各至少一项，但样本规模小、Provider为本地合成，只证明数据集独立性、执行和确定性评分链路，不产生真实任务成功率、语义质量或生产SLO结论。
 
