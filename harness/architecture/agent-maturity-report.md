@@ -15,7 +15,7 @@ Phase 0 已完成源码审计和架构设计；Phase 1 已完成本地代码接�
 | Worker | 工程验证 | scheduler/dispatcher/TaskClient，五种Go任务；Review/Knowledge/Creative/Memory集成 | 统一合同已接入；待完善持久关联审计 |
 | 上下文 | 部分覆盖 | context-management、Working Memory来源绑定与无付费旧格式迁移；重启测试 | 摘要并非长期已确认事实 |
 | 长期记忆 | 部分覆盖 | Working来源、Semantic/Episodic检索、版本冲突提示、Procedural作者审核、主动提取、后台整理、模型关系建议、重复/替代/过期生命周期 | 工程链路已实现；待真实关系准确率、长期噪声控制与召回质量评测 |
-| Evaluation | 部分覆盖 | 统一schema/split/runner、五类与四能力覆盖校验、Go业务和故障适配、受治理Judge及其独立dev/held-out、人工标注导入、单/多角色开发集与保留集对照 | 待完成真实模型质量、人工校准与代表性性能验收 |
+| Evaluation | 部分覆盖 | 统一schema/split/runner、五类与四能力覆盖校验、Go业务和故障适配、受治理Judge及其独立dev/held-out、显式预算的真实模型入口、人工标注导入、单/多角色开发集与保留集对照 | 待完成实际付费运行的质量、人工校准与代表性性能验收 |
 | 安全 | 部分覆盖 | capability、隔离进程、工具授权、取消、幂等、记忆污染及只读子角色工具输出拒绝 | 缺真实模型抗污染率、跨会话隔离与更广权限传播验证 |
 | 可观测性 | 部分覆盖 | 治理关联日志、进程计数；五种Worker任务的生命周期计数/耗时和五角色Admissions/Results/Usage/耗时P50/P95均从持久回执派生；Thinking鉴权健康/诊断包含投影失败、恢复与未知费用会话数 | 缺跨进程聚合、长期保留窗口和外部指标导出 |
 | 多角色协作 | 部分覆盖 | 默认关闭的Creative只读试点：Planner后由Researcher/Analyst/Critic并行检查，Coordinator汇总；开发集与held-out工程对照通过 | 需真实模型同预算质量比较、代表性能与更广义子角色/审批策略 |
@@ -146,13 +146,19 @@ Phase 2仍未完整验收：Thinking独立业务终态、故障轨迹、独立�
 
 ### Judge工程实现
 
-新增独立rubric、pointwise/pairwise严格输出、随机展示顺序记录和人工标注校准。Judge通过Registry角色`evaluation.judge`及统一ModelRequestGate执行；复用Pi Models API和受限网络传输，禁止工具，最终payload预留先于网络，usage结算先于返回，未知usage保留预留。真实付费模型尚未启用。
+新增独立rubric、pointwise/pairwise严格输出、随机展示顺序记录和人工标注校准。Judge通过Registry角色`evaluation.judge`及统一ModelRequestGate执行；复用Pi Models API和受限网络传输，禁止工具，最终payload预留先于网络，usage结算先于返回，未知usage保留预留。
 
 `pnpm eval:agent:judge`执行3项本地HTTP合成案例，3次请求合计480 tokens；报告包含版本、顺序、轨迹、usage和失败。人工标注导入支持版本校验、去重、pointwise误差和pairwise一致率。当前人工样本为0、质量未验证，不将固定合成评分计作模型能力。
 
 验收：全套118项Agent测试通过；Judge定向测试覆盖非法输出、确定性否决、顺序映射、校准数据约束、真实Pi请求前预留、授权/预留失败零请求、未知usage结算、超长输入拒绝和取消报告。类型检查、lint、构建及合成Judge命令通过。CI已配置Judge命令，未触发远程运行。无生产数据格式变更。
 
-剩余Phase 2工作包括真实Judge的显式授权与持久预算适配、独立人工校准证据、Thinking取消/恢复及其他故障评测、五类独立数据集的扩展和保留集验收、完整版本与性能报告。Phase 3–6仍在后续实施范围。
+剩余Phase 2工作包括实际付费Judge运行与人工校准证据、更完整的五类数据集及保留集验收、代表性性能报告。Thinking取消/恢复等故障评测已单独接入。Phase 3–6仍在后续实施范围。
+
+### 真实模型Judge入口
+
+新增`pnpm eval:agent:judge:live -- --split=<dev|held-out> --confirm-fixtures --confirm-budget=<tokens>`。该入口复用合成Judge的严格schema、rubric、随机pairwise顺序、人工标注和ModelRequestGate，但要求操作者显式确认只发送合成案例及本轮reserved-token总上限；外部地址仅接受不含凭证、查询串或片段的HTTPS endpoint。Provider格式默认使用兼容面更广的`json_object`并保留本地严格schema校验，也可显式切换为`json_schema`。每次provider发送前从上限预留，已知usage在返回前结算，未知usage保留完整预留；首次案例失败即停止，不自动重试。live报告与合成报告分开写入`.local/evals/agent/`。
+
+localhost兼容服务验证了3案例实际Pi传输：3次授权/预留/发送、480已知tokens结算、0工具、0失败；另一个无效输出案例验证首个失败后只有1次provider请求，未知usage保留10000 tokens。配置测试拒绝缺失密钥、非HTTPS外部地址、含凭证或查询串的endpoint及非法预算。`qualityValidated`保持`false`，本批没有调用付费模型，也没有人工校准或真实模型质量结论。真实付费执行仍需要操作者在本机提供模型凭证并显式确认预算，不能由CI自动触发。
 
 ### 保留集v1工程验收
 

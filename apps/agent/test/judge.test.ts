@@ -5,6 +5,7 @@ import {fileURLToPath} from 'node:url';
 import {judgeCase,calibrate,type JudgeCase,type HumanAnnotation} from '../src/evaluation/judge.js';
 import {assertIndependentJudgeDatasets,loadJudgeDataset,parseJudgeDataset,type JudgeDataset} from '../src/evaluation/judge-dataset.js';
 import {runJudgeFixture} from '../src/evaluation/judge-fixture.js';
+import {liveJudgeBudget,liveJudgeSettings,parseJudgeArguments,runJudgeLive} from '../src/evaluation/judge-live.js';
 import {completeJudgment,executionConfigSchema} from '../src/runtime/model-gateway.js';
 import {executionContext} from '../src/runtime/governance/index.js';
 const fixture=(name:string)=>fileURLToPath(new URL(`../src/evaluation/fixtures/${name}.json`,import.meta.url));
@@ -82,5 +83,81 @@ test('Judge admission failure sends nothing and unknown usage is settled before 
   }
   const response=await completeJudgment(config,'synthetic',context,{authorize:async()=>{}},{reserve:async()=>{},settle:async usage=>{assert.equal(usage,null);settled=true}},request);
   assert.equal(response.usage,null);assert.equal(settled,true);assert.equal(requests,1);
+ }finally{server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()))}
+});
+
+test('live Judge settings require an explicit safe endpoint and reserved-token confirmation',async()=>{
+ assert.deepEqual(parseJudgeArguments(['--split=held-out']),{split:'held-out',live:false});
+ assert.deepEqual(parseJudgeArguments(['--','--live','--confirm-fixtures','--confirm-budget=30000']),{split:'dev',live:true,confirmedBudget:30000});
+ assert.throws(()=>parseJudgeArguments(['--live','--confirm-budget=30000']),/confirm-fixtures/);
+ assert.throws(()=>parseJudgeArguments(['--live','--confirm-fixtures']),/confirm-budget/);
+ assert.throws(()=>parseJudgeArguments(['--confirm-fixtures']),/only valid/);
+ assert.throws(()=>liveJudgeSettings({}),/MODEL_KEY_REQUIRED/);
+ assert.throws(()=>liveJudgeSettings({WRITER_AGENT_LLM_API_KEY:'fixture',WRITER_AGENT_LLM_BASE_URL:'http://example.test'}),/HTTPS_REQUIRED/);
+ assert.throws(()=>liveJudgeSettings({WRITER_AGENT_LLM_API_KEY:'fixture',WRITER_AGENT_LLM_BASE_URL:'https://user:pass@example.test'}),/ENDPOINT/);
+ assert.throws(()=>liveJudgeSettings({WRITER_AGENT_LLM_API_KEY:'fixture',WRITER_AGENT_LLM_BASE_URL:'https://example.test/?key=secret'}),/ENDPOINT/);
+ assert.throws(()=>liveJudgeBudget(0,10000),/CALL_BUDGET/);
+ assert.throws(()=>liveJudgeBudget(3,383),/TOKEN_BUDGET/);
+ const local=liveJudgeSettings({WRITER_AGENT_LLM_API_KEY:'fixture',WRITER_AGENT_LLM_BASE_URL:'http://127.0.0.1:1234',WRITER_AGENT_PI_FIXTURE:'1'});
+ assert.equal(local.localSynthetic,true);
+ assert.equal(local.config.ResponseFormat,'json_object');
+ await assert.rejects(runJudgeLive(dev,[],new AbortController().signal,local,liveJudgeBudget(3,384)),/RESERVATION_TOO_SMALL/);
+});
+
+test('live Judge uses the governed transport and settles inside the confirmed budget',async()=>{
+ const requests:Record<string,unknown>[]=[];
+ const server=createServer(async(req,res)=>{
+  let raw='';for await(const chunk of req)raw+=chunk;
+  const body=JSON.parse(raw) as {messages:{role:string;content:string}[]};requests.push(body);
+  const input=JSON.parse([...body.messages].reverse().find(message=>message.role==='user')!.content);
+  const content=JSON.stringify(input.mode==='pointwise'?point:{mode:'pairwise',rubricVersion:'writing-judge-v1',winner:'A',rationale:'Synthetic live-transport result'});
+  res.writeHead(200,{'content-type':'text/event-stream'});
+  res.end('data: '+JSON.stringify({id:'live-judge',object:'chat.completion.chunk',model:'fixture',choices:[{index:0,delta:{role:'assistant',content},finish_reason:'stop'}],usage:{prompt_tokens:100,completion_tokens:60}})+'\n\ndata: [DONE]\n\n');
+ });
+ await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));
+ const address=server.address();assert(address&&typeof address!=='string');
+ const settings=liveJudgeSettings({WRITER_AGENT_LLM_API_KEY:'synthetic-live',WRITER_AGENT_LLM_BASE_URL:`http://127.0.0.1:${address.port}`,WRITER_AGENT_PI_FIXTURE:'1',WRITER_AGENT_LLM_MODEL:'fixture'});
+ try{
+  const result=await runJudgeLive(dev,[],new AbortController().signal,settings,liveJudgeBudget(3,30000),{deadlineMs:10000});
+  assert.equal(requests.length,3);
+  assert.equal(result.reservedCalls,3);
+  assert.equal(result.calls,3);
+  assert.equal(result.tokenExposure,480);
+  assert.equal(result.realLLMCalled,false);
+  assert.equal(result.qualityValidated,false);
+  assert.deepEqual(result.failures,[]);
+  assert(result.judgments.every(judgment=>judgment.rubricVersion==='writing-judge-v1'));
+  for(const payload of requests){
+   assert.equal(payload.tools,undefined);assert.equal(payload.tool_choice,undefined);
+   assert.deepEqual(payload.response_format,{type:'json_object'});
+  }
+  for(const value of dev.cases){
+   const trace=result.traces.filter(record=>record.caseId===value.caseId).map(record=>record.action);
+   assert(trace.indexOf('reserved')<trace.indexOf('model_started'));
+   assert(trace.includes('model_finished'));
+  }
+ }finally{server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()))}
+});
+
+test('live Judge retains unknown usage and stops after the first failed case',async()=>{
+ let requests=0;
+ const server=createServer(async(req,res)=>{
+  for await(const chunk of req){void chunk}
+  requests++;
+  res.writeHead(200,{'content-type':'text/event-stream'});
+  res.end('data: '+JSON.stringify({id:'live-judge',object:'chat.completion.chunk',model:'fixture',choices:[{index:0,delta:{role:'assistant',content:'invalid'},finish_reason:'stop'}]})+'\n\ndata: [DONE]\n\n');
+ });
+ await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));
+ const address=server.address();assert(address&&typeof address!=='string');
+ const settings=liveJudgeSettings({WRITER_AGENT_LLM_API_KEY:'synthetic-live',WRITER_AGENT_LLM_BASE_URL:`http://127.0.0.1:${address.port}`,WRITER_AGENT_PI_FIXTURE:'1',WRITER_AGENT_LLM_MODEL:'fixture'});
+ try{
+  const result=await runJudgeLive(dev,[],new AbortController().signal,settings,liveJudgeBudget(3,30000),{deadlineMs:10000});
+  assert.equal(requests,1);
+  assert.equal(result.reservedCalls,1);
+  assert.equal(result.calls,1);
+  assert.equal(result.tokenExposure,10000);
+  assert.equal(result.failures.length,1);
+  assert.equal(result.calibration,null);
+  assert.deepEqual(result.usage,[{caseId:dev.cases[0]!.caseId,inputTokens:null,outputTokens:null}]);
  }finally{server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()))}
 });

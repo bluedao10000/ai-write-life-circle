@@ -160,7 +160,9 @@ export async function completeJudgment(config:ExecutionConfig,key:string,context
    async onPayload(value){
     const payload=value as Record<string,unknown>;
     delete payload.max_tokens;delete payload.max_completion_tokens;payload[cfg.TokenParameter]=cfg.MaxOutputTokens;
-    payload.response_format={type:'json_schema',json_schema:{name:'agent_judgment',strict:true,schema:request.schema}};
+    delete payload.response_format;
+    if(cfg.ResponseFormat==='json_schema')payload.response_format={type:'json_schema',json_schema:{name:'agent_judgment',strict:true,schema:request.schema}};
+    if(cfg.ResponseFormat==='json_object')payload.response_format={type:'json_object'};
     if(Array.isArray(payload.tools)&&payload.tools.length)throw new GatewayError('LLM_TOOL_OUTPUT_FORBIDDEN');
     const bytes=Buffer.byteLength(JSON.stringify(payload));
     if(bytes>cfg.MaxContextBytes||bytes+cfg.MaxOutputTokens>context.budget!.maxTokens)throw new GatewayError('LLM_CONTEXT_OVERFLOW');

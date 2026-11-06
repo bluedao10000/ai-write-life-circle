@@ -20,7 +20,7 @@ Dataset 有独立版本与 split，五类 task-success/reliability/memory/safety
 
 基础Schema、split校验、Runner、程序评分、聚合报告与五类命令已落地。默认 `pnpm eval:agent` 构建Go API与Agent后使用dev；分类命令通过 `--category` 选择，`--split=held-out` 显式选择保留集。适配器覆盖生产PiHost、Worker候选解析、Tool Gateway、EventStore和讨论压缩算法。Review业务适配器启动真实Go API和Pi Worker，读取Go终态、usage、候选数与拒绝数，核对原稿未变；覆盖正常完成、完成回执丢失和伪造来源。每份报告将工程通过率与真实质量分开，未测结果为null。
 
-CI执行合成dev数据，不调用真实Provider。Review fixture按评测调用数与token上限拒绝超额输出，失败或取消后的未知usage不记为零。进程在每个案例结束或取消后关闭，临时目录随fixture回收。报告仅写入本地`.local/evals/agent/`，不自动提交。Judge使用独立的split与报告；真实模型质量和人工校准仍属后续范围。具体证据和剩余验收见 [成熟度报告](agent-maturity-report.md)。
+CI执行合成dev数据，不调用真实Provider。Review fixture按评测调用数与token上限拒绝超额输出，失败或取消后的未知usage不记为零。进程在每个案例结束或取消后关闭，临时目录随fixture回收。报告仅写入本地`.local/evals/agent/`，不自动提交。Judge使用独立的split与报告；真实模型入口要求显式预算确认并保持质量声称关闭，人工校准和实际质量结论仍属后续范围。具体证据和剩余验收见 [成熟度报告](agent-maturity-report.md)。
 
 数据集独立性校验要求dev与held-out版本分离、任务ID与请求不重复，并要求每个split覆盖五类评测和Thinking、Review、Knowledge、Creative四能力。缺少任一类或能力会拒绝运行，避免局部样本被报告为平台级评测。
 
@@ -36,11 +36,17 @@ Knowledge业务案例从实际保存的Revision执行提取，检查Go中的实�
 
 Judge使用独立版本化的`judge-engineering-dev-v2`与`judge-engineering-held-out-v1`数据集，均覆盖pointwise、确定性否决和pairwise。加载器检查split、重复caseId、版本隔离以及案例正文/证据/候选内容复用；`--split=held-out`执行留出集，报告分别写入`.local/evals/agent/judge-{split}.json`。`evaluation/judge.ts`定义`writing-judge-v1` rubric（遵循请求、证据、清晰度，0–4分）与`judge-prompt-v1`；pointwise返回逐维分数，pairwise返回A/B/tie。候选顺序随机化并记录，输出映射回原候选ID。严格JSON校验拒绝非法分数、缺失字段、错误版本及额外字段。确定性失败的候选即使得高分也不具备通过资格。
 
-`evaluation.judge`是Registry独立角色，无scope、无工具、单次模型请求。`completeJudgment`复用Pi Models API、受限fetch与ModelRequestGate，最终payload先做大小和token上限检查，再授权及预留，网络返回后结算usage。没有已知usage则保留预留；不自动重试。合成运行最多10次调用、100000 tokens，每次预留10000；本地预算只约束fixture，不授予Go业务额度。报告保留失败、调用轨迹与费用；任何执行失败使命令退出非零。当前没有真实付费Judge入口。
+`evaluation.judge`是Registry独立角色，无scope、无工具、单次模型请求。`completeJudgment`复用Pi Models API、受限fetch与ModelRequestGate，最终payload先做大小和token上限检查，再授权及预留，网络返回后结算usage。没有已知usage则保留预留；不自动重试。合成运行最多10次调用、100000 tokens，每次预留10000；本地预算只约束fixture，不授予Go业务额度。报告保留失败、调用轨迹与费用；任何执行失败使命令退出非零。
 
 人工标注可通过`pnpm eval:agent:judge -- [--split=held-out] --annotations=/absolute/path/annotations.json`导入JSON数组。每条包含`caseId`、所选数据集的`datasetVersion`（dev为`judge-engineering-dev-v2`，held-out为`judge-engineering-held-out-v1`）、`rubricVersion`、`reviewerId`、`annotatedAt`和`label`。pointwise的label为0–4整数总体分数；pairwise为原候选ID或`tie`。校准拒绝重复标注、未知案例、错版和非法标签，输出样本数、pointwise平均绝对误差及pairwise一致率。无人工样本时指标为null；测试中的合成标注不写入报告。该合成Judge固定返回分数，仅证明治理与计算链路，不证明评审质量或抗注入能力。
 
 开发与留出集各有3项，本地合成运行均为3次调用、480个已观测usage tokens、0失败，未发生工具调用或真实模型请求。两套报告的`qualityValidated`均保持`false`；无人工标注时校准字段为null。这组结果证明数据集隔离和执行链路，不证明Judge与人工判断一致，也不证明真实模型下两个split的质量差异。
+
+### 真实模型Judge入口
+
+`pnpm eval:agent:judge:live -- --split=<dev|held-out> --confirm-fixtures --confirm-budget=<tokens>`启用同一严格Judge合同的实际模型通道。命令必须同时确认只发送合成案例并显式提供单次运行的总reserved-token上限，且调用数不能超过所选案例数；每次provider请求前从该上限预留，已知usage在返回前结算，未知usage保留完整预留，首个失败案例后停止，不自动重试。外部endpoint必须为无凭证、查询串或片段的HTTPS地址；只有隔离测试进程同时设置fixture标记时才允许loopback HTTP。Provider格式默认使用兼容面更广的`json_object`，仍由本地严格schema解析；可通过现有环境配置显式切换到`json_schema`，两者都不能绕过确定性校验。
+
+live报告写入`.local/evals/agent/judge-live-{split}.json`，与合成报告分离，记录数据集、rubric/prompt、模型、逐案例使用量、审计轨迹、失败和人工校准结果。`realLLMCalled`反映是否为非loopback模型，`qualityValidated`始终为`false`；人工标注样本数和误差可以报告，但不会自动转化为Judge质量结论。当前验收只使用localhost兼容服务验证治理、预算与失败路径，没有发起付费模型请求。
 
 ## Thinking故障评测合同
 
