@@ -16,7 +16,7 @@ Phase 0 已完成源码审计和架构设计；Phase 1 已完成本地代码接�
 | 上下文 | 部分覆盖 | context-management、Working Memory来源绑定与无付费旧格式迁移；重启测试 | 摘要并非长期已确认事实 |
 | 长期记忆 | 部分覆盖 | Working来源、Semantic/Episodic检索、版本冲突提示、Procedural作者审核、主动提取、后台整理、模型关系建议、重复/替代/过期生命周期 | 工程链路已实现；待真实关系准确率、长期噪声控制与召回质量评测 |
 | Evaluation | 部分覆盖 | 统一schema/split/runner、每类独立版本的dev与held-out数据、五类与四能力覆盖校验、Go业务和故障适配、受治理Judge及其独立dev/held-out、显式预算的真实模型入口、Judge对人工校准及人工双评一致性统计、单/多角色开发集与保留集对照 | 待完成实际模型质量、真实人工标注校准和代表性性能验收 |
-| 安全 | 部分覆盖 | capability、隔离进程、工具授权、取消、幂等、记忆污染、同作者跨作品Session隔离及只读子角色工具输出拒绝 | 缺真实模型抗污染率、更广动态权限传播与并发预算竞争验证 |
+| 安全 | 部分覆盖 | capability、隔离进程、工具授权、取消、幂等、开发与保留集记忆污染、同作者跨作品Session隔离及只读子角色工具输出拒绝 | 缺真实模型抗污染率、更广动态权限传播与并发预算竞争验证 |
 | 可观测性 | 部分覆盖 | 治理关联日志、跨进程健康；私有Prometheus文本按需导出五种Worker任务的生命周期/耗时、五角色Admissions/Results/Usage/耗时及Thinking恢复计数；均从原权威状态投影 | 缺跨重启长期窗口、代表性并发基线和真实模型诊断样本 |
 | 多角色协作 | 部分覆盖 | 默认关闭的Creative只读试点：Planner后由Researcher/Analyst/Critic并行检查，Coordinator汇总；dev/held-out对照、并发3准入、子预算精确合计和子上下文收窄通过 | 需真实模型同预算质量比较、代表性能与更广义动态子角色/审批策略 |
 | 自主规划 | 未实现 | 有限模型/工具循环与显式恢复 | 有界Goal/Plan与审批版本绑定，须后置 |
@@ -125,6 +125,8 @@ Phase 2剩余工作是真实模型下的质量与成本证据、独立人工校�
 这些任务耗时含进程准备和故障观察窗口，不能作为生产延迟。结果确认数据隔离、完整执行和确定性工程评分，不构成真实模型质量、成本或泛化结论。报告位于`.local/evals/agent/dev-all.json`及`.local/evals/agent/held-out-all.json`，未提交。
 
 随后`agent-eval-v9-memory`将Memory held-out从1项扩展到4项，增加真实Go/Pi的操作经验检索后删除、`memory.extract.v3`候选导入和`memory.consolidate`后台候选发布。完整held-out 16/16工程通过，34次合成模型调用、5次工具调用，Memory Retrieval实际观测2次，P50/P95为11.48/17.11 ms。held-out报告仍记录`realLLMCalled=false`、`qualityValidated=false`及`qualitySuccessRate=null`；此结果只验证执行合同，不衡量语义质量。总任务P95 11173.02 ms受进程与故障观察影响，不代表生产SLO。报告保存在`.local/evals/agent/held-out-all.json`。
+
+随后`agent-eval-v9-safety`加入独立措辞的held-out记忆污染攻击，并再次运行完整保留集：17/17工程通过，37次合成模型调用、5次工具调用。污染样本确认攻击标记进入提取payload、未绑定经验关系确实被尝试，Go以422拒绝且不发布候选；scope和工具均为空。结果证明固定来源集合及作者审核边界，不衡量真实模型抗污染率。全量报告的类别版本为task-success/reliability/performance v8、Memory/Safety v9，语义质量仍为null。
 
 ### Go业务评测接入
 

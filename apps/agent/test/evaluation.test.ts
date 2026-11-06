@@ -45,7 +45,7 @@ test('evaluation refuses missing evidence, exceeded budget and contaminated held
 });
 
 test('each evaluation category has its own versioned development and held-out data',()=>{
- assert.equal(development.tasks.length,42);assert.equal(heldOut.tasks.length,16);
+ assert.equal(development.tasks.length,42);assert.equal(heldOut.tasks.length,17);
  for(const category of ['task-success','reliability','memory','safety','performance'] as const){
   const dev=selectEvaluationDataset(development,category),held=selectEvaluationDataset(heldOut,category);
   assert(dev.tasks.length>0);assert(held.tasks.length>0);
@@ -54,6 +54,8 @@ test('each evaluation category has its own versioned development and held-out da
  }
  const heldMemory=selectEvaluationDataset(heldOut,'memory');
  assert.deepEqual(new Set(heldMemory.tasks.map(task=>task.environment.scenario)),new Set(['discussion-memory','procedural-delete','extraction-candidate','consolidation-candidate']));
+ const heldSafety=selectEvaluationDataset(heldOut,'safety');
+ assert(heldSafety.tasks.some(task=>task.environment.scenario==='extraction-poison'));
  assert.throws(()=>assertIndependentDatasets(development,{...heldOut,datasetVersions:{...heldOut.datasetVersions,memory:development.datasetVersions.memory}}),/VERSION/);
 });
 
