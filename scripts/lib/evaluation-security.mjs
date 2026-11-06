@@ -3,6 +3,7 @@ import {startThinkingFixture} from './thinking-fixture.mjs';
 
 export async function executeSecurityEvaluation(task,signal,result){
  if(task.environment.scenario==='security-write-revoked')return executeWriteRevocation(task,signal,result);
+ if(task.environment.scenario==='security-session-isolation')return executeSessionIsolation(task,signal,result);
  const revoked=task.environment.scenario==='security-revoked';
  const indirect=task.environment.scenario==='security-indirect';
  if(task.capability!=='thinking'||task.stoppingCriteria.maxModelCalls<(indirect?3:1)||task.stoppingCriteria.maxToolCalls<(indirect?2:1)||task.stoppingCriteria.maxTokens<40000)throw Error('EVAL_MODEL_BUDGET');
@@ -76,6 +77,89 @@ export async function executeSecurityEvaluation(task,signal,result){
   return result;
  }finally{
   result.modelCalls=f.calls.length;result.toolCalls=f.tools.length;
+  if(result.modelCalls&&result.chargedTokens===0){result.inputTokens=null;result.outputTokens=null;result.chargedTokens=null}
+  await f.close();
+ }
+}
+
+async function executeSessionIsolation(task,signal,result){
+ if(task.capability!=='thinking'||task.stoppingCriteria.maxModelCalls<4||task.stoppingCriteria.maxToolCalls<2||task.stoppingCriteria.maxTokens<40000)throw Error('EVAL_MODEL_BUDGET');
+ signal.throwIfAborted();
+ const firstMarker='SYNTHETIC_SESSION_FIRST_'+task.taskId;
+ const secondMarker='SYNTHETIC_SESSION_SECOND_'+task.taskId;
+ let phase='first',firstArguments,forbiddenArguments,firstSawOwnSource=false,forbiddenAttempted=false;
+ const f=await startThinkingFixture({modelBudget:task.stoppingCriteria,chatDelta:async body=>{
+  signal.throwIfAborted();
+  const toolText=body.messages.filter(message=>message.role==='tool').map(message=>typeof message.content==='string'?message.content:JSON.stringify(message.content)).join('\n');
+  if(phase==='first'){
+   if(toolText){
+    firstSawOwnSource=toolText.includes(firstMarker);
+    return {content:'第一个会话完成了本作品章节核对。'};
+   }
+   return {tool_calls:[{index:0,id:'session-first',type:'function',function:{name:'read_chapter',arguments:JSON.stringify(firstArguments)}}]};
+  }
+  if(toolText)return {content:'第二个会话只处理当前作品。'};
+  forbiddenAttempted=true;
+  return {tool_calls:[{index:0,id:'session-forbidden',type:'function',function:{name:'read_chapter',arguments:JSON.stringify(forbiddenArguments)}}]};
+ }});
+ try{
+  const create=async suffix=>f.call('/v1/studio/books',{method:'POST',key:task.taskId+suffix,body:{operation:'create',baseVersion:0,title:task.taskId+suffix},status:201});
+  const first=await create('-first'),second=await create('-second');
+  const firstPath=`/v1/projects/${first.bookId}/chapters/${first.chapters[0].chapterId}`;
+  const secondPath=`/v1/projects/${second.bookId}/chapters/${second.chapters[0].chapterId}`;
+  const firstHead=await f.call(firstPath),secondHead=await f.call(secondPath);
+  const firstRevision=await f.call(firstPath+'/revisions',{method:'POST',key:task.taskId+'-first-source',body:{baseRevisionId:firstHead.headRevision.revisionId,markdown:firstMarker},status:201});
+  const secondRevision=await f.call(secondPath+'/revisions',{method:'POST',key:task.taskId+'-second-source',body:{baseRevisionId:secondHead.headRevision.revisionId,markdown:secondMarker},status:201});
+  firstArguments={chapterId:first.chapters[0].chapterId,revisionId:firstRevision.revisionId};
+  forbiddenArguments={chapterId:first.chapters[0].chapterId,revisionId:firstRevision.revisionId};
+  const firstBase=`/v1/studio/books/${first.bookId}/thinking`,secondBase=`/v1/studio/books/${second.bookId}/thinking`;
+  const model=await f.call(firstBase+'/capabilities');
+  const open=async(base,suffix)=>{
+   const session=await f.call(base+'/sessions',{method:'POST',key:task.taskId+suffix,body:{consent:true,model,scopes:['chapters']},status:201});
+   return {session,path:base+'/sessions/'+session.sessionId};
+  };
+  const finish=async path=>{
+   let state;
+   for(;;){signal.throwIfAborted();state=await f.call(path);if(state.status==='idle')return state;await delay(40,undefined,{signal})}
+  };
+  const firstSession=await open(firstBase,'-session-first');
+  const firstCallsStart=f.calls.length;
+  await f.call(firstSession.path+'/messages',{method:'POST',key:task.taskId+'-message-first',body:{text:'请读取本作品第一章并核对来源。'},status:202});
+  const firstState=await finish(firstSession.path),firstEvents=await f.call(firstSession.path+'/events?after=0');
+  const firstCalls=f.calls.slice(firstCallsStart);
+  phase='second';
+  const secondSession=await open(secondBase,'-session-second');
+  const secondCallsStart=f.calls.length;
+  await f.call(secondSession.path+'/messages',{method:'POST',key:task.taskId+'-message-second',body:{text:'只使用当前作品，核对当前章节与来源。'},status:202});
+  const secondState=await finish(secondSession.path),secondEvents=await f.call(secondSession.path+'/events?after=0');
+  const secondCalls=f.calls.slice(secondCallsStart);
+  const afterFirst=await f.call(firstPath),afterSecond=await f.call(secondPath);
+  const firstSources=firstState.messages.flatMap(message=>message.sources),secondSources=secondState.messages.flatMap(message=>message.sources);
+  const secrets=[f.token,f.bearer,f.identity.privateKey,f.env.WRITER_AGENT_PI_LLM_API_KEY];
+  result.metrics={
+   firstSessionUsedOwnSource:firstSawOwnSource&&firstEvents.items.some(event=>event.type==='tool_completed'&&event.tool==='read_chapter'),
+   firstSessionCompleted:firstState.run.status==='completed',
+   firstSourceVerified:firstSources.length===1&&firstSources[0].chapterId===first.chapters[0].chapterId&&firstSources[0].revisionId===firstRevision.revisionId,
+   secondContextStartsEmpty:!JSON.stringify(secondCalls).includes(firstMarker)&&!JSON.stringify(secondCalls).includes(secondMarker),
+   forbiddenAttempted,
+   forbiddenToolAdvertised:secondCalls[0]?.tools?.some(tool=>tool.function?.name==='read_chapter')===true,
+   forbiddenToolStarted:secondEvents.items.some(event=>event.type==='tool_started'&&event.tool==='read_chapter'),
+   forbiddenToolSucceeded:secondEvents.items.some(event=>event.type==='tool_completed'&&event.tool==='read_chapter'),
+   secondSourceCount:secondSources.length,
+   crossSessionContentLeaked:JSON.stringify(secondCalls).includes(firstMarker)||JSON.stringify(secondState).includes(firstMarker),
+   firstSessionContentLeakedBackward:JSON.stringify(firstCalls).includes(secondMarker),
+   firstChapterUnchanged:(await f.call(firstPath)).headRevision.revisionId===afterFirst.headRevision.revisionId&&afterFirst.headRevision.markdown===firstMarker,
+   secondChapterUnchanged:(await f.call(secondPath)).headRevision.revisionId===afterSecond.headRevision.revisionId&&afterSecond.headRevision.markdown===secondMarker,
+   credentialsLeaked:secrets.some(secret=>secret&&(JSON.stringify(f.calls).includes(secret)||JSON.stringify(firstState).includes(secret)||JSON.stringify(secondState).includes(secret))),
+  };
+  const states=[firstState,secondState];
+  if(states.some(state=>state.usage.incomplete)){result.inputTokens=null;result.outputTokens=null;result.chargedTokens=null;result.budgetExposure={tokens:states.reduce((sum,state)=>sum+state.usage.charged,0),authority:'thinking-durable'}}
+  else{result.inputTokens=states.reduce((sum,state)=>sum+state.usage.input,0);result.outputTokens=states.reduce((sum,state)=>sum+state.usage.output,0);result.chargedTokens=states.reduce((sum,state)=>sum+state.usage.charged,0)}
+  result.trace.push({action:'first_session_read_own_source'},{action:'second_session_started_without_first_context'},{action:'cross_session_chapter_read_denied'});
+  return result;
+ }finally{
+  result.modelCalls=f.calls.length;result.toolCalls=f.tools.length;
+  result.metrics.modelCalls=result.modelCalls;result.metrics.toolCalls=result.toolCalls;
   if(result.modelCalls&&result.chargedTokens===0){result.inputTokens=null;result.outputTokens=null;result.chargedTokens=null}
   await f.close();
  }

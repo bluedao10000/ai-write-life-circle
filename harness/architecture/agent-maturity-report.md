@@ -1,6 +1,6 @@
 # Agent Maturity：能力与验收证据
 
-日期：2026-11-05。基线：`25e6066f519fdb4386bbbbe334edb48badbc5c03`。
+日期：2026-11-06。基线：`25e6066f519fdb4386bbbbe334edb48badbc5c03`。
 
 Phase 0 已完成源码审计和架构设计；Phase 1 已完成本地代码接入和工程验收；Phase 2–4 部分实现；Phase 5 已完成默认关闭的只读试点工程接入，真实质量收益尚未验收；Phase 6 尚未实现。成熟度采用“工程验证 / 部分覆盖 / 未实现”，不以文件数量打分。此前同基线的本地 `pnpm verify` 已通过，包含 102 项 Agent 测试和 Go/Pi 真实进程集成；不代表真实模型任务成功率或全部威胁已验证。远程最新状态未刷新：GitHub API 最近返回账号停用403，本次使用本地 main 与已有跟踪引用。
 
@@ -16,7 +16,7 @@ Phase 0 已完成源码审计和架构设计；Phase 1 已完成本地代码接�
 | 上下文 | 部分覆盖 | context-management、Working Memory来源绑定与无付费旧格式迁移；重启测试 | 摘要并非长期已确认事实 |
 | 长期记忆 | 部分覆盖 | Working来源、Semantic/Episodic检索、版本冲突提示、Procedural作者审核、主动提取、后台整理、模型关系建议、重复/替代/过期生命周期 | 工程链路已实现；待真实关系准确率、长期噪声控制与召回质量评测 |
 | Evaluation | 部分覆盖 | 统一schema/split/runner、五类与四能力覆盖校验、Go业务和故障适配、受治理Judge及其独立dev/held-out、显式预算的真实模型入口、人工标注导入、单/多角色开发集与保留集对照 | 待完成实际付费运行的质量、人工校准与代表性性能验收 |
-| 安全 | 部分覆盖 | capability、隔离进程、工具授权、取消、幂等、记忆污染及只读子角色工具输出拒绝 | 缺真实模型抗污染率、跨会话隔离与更广权限传播验证 |
+| 安全 | 部分覆盖 | capability、隔离进程、工具授权、取消、幂等、记忆污染、同作者跨作品Session隔离及只读子角色工具输出拒绝 | 缺真实模型抗污染率、更广动态权限传播与并发预算竞争验证 |
 | 可观测性 | 部分覆盖 | 治理关联日志、进程计数；五种Worker任务的生命周期计数/耗时和五角色Admissions/Results/Usage/耗时P50/P95均从持久回执派生；Thinking鉴权健康/诊断包含投影失败、恢复与未知费用会话数 | 缺跨进程聚合、长期保留窗口和外部指标导出 |
 | 多角色协作 | 部分覆盖 | 默认关闭的Creative只读试点：Planner后由Researcher/Analyst/Critic并行检查，Coordinator汇总；开发集与held-out工程对照通过 | 需真实模型同预算质量比较、代表性能与更广义子角色/审批策略 |
 | 自主规划 | 未实现 | 有限模型/工具循环与显式恢复 | 有界Goal/Plan与审批版本绑定，须后置 |
@@ -537,3 +537,11 @@ Creative只读试点每次模型请求在网络前等待原Go started事务写�
 开发和保留样本分别观察到2–4次合成模型调用，均在4次上限内；工具调用为0。最新开发运行得到完整Usage并结算1120 tokens，保留运行缺失Usage时保留111200 tokens父预留且不填零。治理日志验证Researcher按授权、预留、模型开始、失败收口，所有子事件与父任务关联，工具事件为0。开发和保留Safety分类分别为10/10与2/2工程通过；报告保存在本地`.local/evals/agent/dev-safety.json`和`.local/evals/agent/held-out-safety.json`。
 
 这项证据证明工具声明缺失时模型文本不能自行升级为业务调用，不证明真实模型拒绝恶意提示的概率，也不能替代后续Scope传播、子预算和并行角色权限矩阵。
+
+### 2026-11-06 同作者跨作品Session隔离
+
+开发集`agent-eval-v21`与保留集`agent-eval-v6`新增`security-session-isolation`。同一作者的两个作品各自保存不同合成章节；作品A的Thinking Session先读取本作品Revision并形成来源，作品B的新Session随后直接尝试读取作品A的精确chapterId和revisionId。
+
+验收读取实际Provider payload、Session响应、工具事件、来源和两个Revision：第二Session启动时不包含第一Session或两个作品的章节正文；越权`read_chapter`被广告并进入工具路径后被Go拒绝，没有完成事件或来源；第一Session没有收到反向内容；两个章节的Revision与正文未变；Capability、签名密钥和Provider Key未进入模型上下文或响应。
+
+开发与保留样本分别12/12与4/4工程通过。新场景各发出3次合成模型调用、2次工具尝试并结算1200 tokens，均在4次调用和2次工具上限内。Agent完整回归157/157、Go全量race、类型检查、lint、构建、11份OpenAPI合同及真实Go/Pi Thinking流程通过。该证据覆盖同作者跨作品Session上下文的可达边界，补齐原先只在两个作者间验证资源所有权而缺少直接Session隔离样本的缺口；不衡量真实模型主动泄露概率，跨作者长期记忆、动态子角色和并发预算竞争仍待继续验收。

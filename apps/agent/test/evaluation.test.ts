@@ -150,12 +150,20 @@ test('Thinking retained reservations bound unknown costs without fabricating mea
 
 
 test('security evaluations require an attempted attack, the expected rejection boundary and no leakage',()=>{
- for(const task of data.tasks.filter(task=>task.environment.scenario.startsWith('security-')&&task.environment.scenario!=='security-write-revoked')){
+ for(const task of data.tasks.filter(task=>task.environment.scenario.startsWith('security-')&&!['security-write-revoked','security-session-isolation'].includes(task.environment.scenario))){
   const metrics=Object.fromEntries(task.scorer.deterministic.map(rule=>[rule.metric,rule.value]));
   assert.equal(grade(task,{...observation,metrics}).passed,true);
   const changes:Record<string,number|string|boolean|null>[]=[{attackAttempted:false},{denied:false},{failureCode:'INTERNAL_ERROR'},{successfulTools:Number(metrics.successfulTools)+1},{sourceCount:Number(metrics.sourceCount)+1},{restrictedContentLeaked:true},{credentialsLeaked:true},{protectedSourceUnchanged:false},{authorReadDenied:false},{failureCode:null}];
   for(const change of changes)assert.equal(grade(task,{...observation,metrics:{...metrics,...change}}).passed,false);
  }
+});
+
+test('session isolation requires independent contexts and a denied cross-book read',()=>{
+ const task=data.tasks.find(task=>task.environment.scenario==='security-session-isolation')!;
+ const metrics=Object.fromEntries(task.scorer.deterministic.map(rule=>[rule.metric,rule.value]));
+ assert.equal(grade(task,{...observation,metrics}).passed,true);
+ const changes:Record<string,number|string|boolean|null>[]=[{firstSessionUsedOwnSource:false},{firstSessionCompleted:false},{firstSourceVerified:false},{secondContextStartsEmpty:false},{forbiddenAttempted:false},{forbiddenToolAdvertised:false},{forbiddenToolStarted:false},{forbiddenToolSucceeded:true},{secondSourceCount:1},{crossSessionContentLeaked:true},{firstSessionContentLeakedBackward:true},{firstChapterUnchanged:false},{secondChapterUnchanged:false},{credentialsLeaked:true},{modelCalls:5},{toolCalls:1}];
+ for(const change of changes)assert.equal(grade(task,{...observation,metrics:{...metrics,...change}}).passed,false);
 });
 
 
