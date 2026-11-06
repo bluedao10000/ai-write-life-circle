@@ -76,6 +76,22 @@ func workerHealth(status UnifiedStatus) WorkerHealth {
 	return out
 }
 
+func authorizePrivateGET(w http.ResponseWriter, r *http.Request, token string) bool {
+	supplied := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if token == "" || subtle.ConstantTimeCompare([]byte(supplied), []byte(token)) != 1 || !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		_ = json.NewEncoder(w).Encode(map[string]string{"code": "UNAUTHORIZED"})
+		return false
+	}
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", "GET")
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return false
+	}
+	return true
+}
+
 func probeThinking(ctx context.Context, origin, token string) ThinkingHealth {
 	if origin == "" {
 		return ThinkingHealth{Status: "disabled"}
@@ -144,31 +160,27 @@ func probeThinking(ctx context.Context, origin, token string) ThinkingHealth {
 	return ThinkingHealth{Status: body.Status, Readiness: *body.Readiness, Degraded: *body.Degraded, Counts: c}
 }
 
+func readRuntimeHealth(ctx context.Context, state string, config llm.Config, origin, token string) RuntimeHealth {
+	worker := workerHealth(ReadUnifiedStatus(state, config))
+	thinking := probeThinking(ctx, origin, token)
+	ready := (worker.Enabled == 0 || worker.Readiness) && (thinking.Status == "disabled" || thinking.Readiness)
+	degraded := !ready || thinking.Degraded
+	status := "ready"
+	if degraded {
+		status = "degraded"
+	}
+	return RuntimeHealth{Schema: 1, Liveness: true, Readiness: ready, Degraded: degraded, Status: status, API: "ready", Provider: "not_probed", Worker: worker, Thinking: thinking}
+}
+
 // RuntimeHealthHandler is served only on the existing private loopback listener.
 // It projects current authorities without storing another heartbeat or probing a model.
 func RuntimeHealthHandler(state string, config llm.Config, origin, token string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Content-Type", "application/json")
-		supplied := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-		if token == "" || subtle.ConstantTimeCompare([]byte(supplied), []byte(token)) != 1 || !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") {
-			w.WriteHeader(http.StatusUnauthorized)
-			_ = json.NewEncoder(w).Encode(map[string]string{"code": "UNAUTHORIZED"})
+		if !authorizePrivateGET(w, r, token) {
 			return
 		}
-		if r.Method != http.MethodGet {
-			w.Header().Set("Allow", "GET")
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-		worker := workerHealth(ReadUnifiedStatus(state, config))
-		thinking := probeThinking(r.Context(), origin, token)
-		ready := (worker.Enabled == 0 || worker.Readiness) && (thinking.Status == "disabled" || thinking.Readiness)
-		degraded := !ready || thinking.Degraded
-		status := "ready"
-		if degraded {
-			status = "degraded"
-		}
-		_ = json.NewEncoder(w).Encode(RuntimeHealth{Schema: 1, Liveness: true, Readiness: ready, Degraded: degraded, Status: status, API: "ready", Provider: "not_probed", Worker: worker, Thinking: thinking})
+		_ = json.NewEncoder(w).Encode(readRuntimeHealth(r.Context(), state, config, origin, token))
 	})
 }

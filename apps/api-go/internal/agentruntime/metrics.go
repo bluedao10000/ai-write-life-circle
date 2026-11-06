@@ -1,0 +1,212 @@
+package agentruntime
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"strconv"
+	"strings"
+
+	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/llm"
+)
+
+type RuntimeRoleMetric struct {
+	Role              string
+	CallIndex         int
+	Admissions        int
+	Results           int
+	Completed         int
+	Failed            int
+	KnownUsage        int
+	InputTokens       int
+	OutputTokens      int
+	CachedInputTokens int
+	DurationP50Ms     *float64
+	DurationP95Ms     *float64
+}
+
+type RuntimeTaskKindMetric struct {
+	Kind                   string
+	Tasks                  int
+	Accepted               int
+	Running                int
+	Completed              int
+	Failed                 int
+	Interrupted            int
+	Unknown                int
+	ClaimToStartedP50Ms    *float64
+	ClaimToStartedP95Ms    *float64
+	StartedToTerminalP50Ms *float64
+	StartedToTerminalP95Ms *float64
+}
+
+type RuntimeTaskMetrics struct {
+	SchemaVersion int
+	Tasks         int
+	Samples       int
+	Roles         []RuntimeRoleMetric
+	TaskKinds     []RuntimeTaskKindMetric
+}
+
+type RuntimeMetricsSource func(context.Context) (RuntimeTaskMetrics, error)
+
+var exposedTaskKinds = map[string]bool{
+	"review.execute":      true,
+	"knowledge.extract":   true,
+	"creative.organize":   true,
+	"creative.plan_check": true,
+	"memory.consolidate":  true,
+}
+
+var exposedRoles = map[string]bool{
+	"creative.plan.planner":     true,
+	"creative.plan.researcher":  true,
+	"creative.plan.analyst":     true,
+	"creative.plan.critic":      true,
+	"creative.plan.coordinator": true,
+}
+
+type prometheusText struct {
+	body strings.Builder
+}
+
+func (p *prometheusText) family(name, help string) {
+	fmt.Fprintf(&p.body, "# HELP %s %s\n# TYPE %s gauge\n", name, help, name)
+}
+
+func (p *prometheusText) sample(name, labels string, value string) {
+	if labels != "" {
+		fmt.Fprintf(&p.body, "%s{%s} %s\n", name, labels, value)
+		return
+	}
+	fmt.Fprintf(&p.body, "%s %s\n", name, value)
+}
+
+func (p *prometheusText) integer(name, labels string, value int) {
+	p.sample(name, labels, strconv.Itoa(value))
+}
+
+func (p *prometheusText) optionalFloat(name, labels string, value *float64) {
+	if value == nil {
+		return
+	}
+	p.sample(name, labels, strconv.FormatFloat(*value, 'f', -1, 64))
+}
+
+func label(value string) string {
+	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\n", `\n`).Replace(value) + `"`
+}
+
+func boolValue(value bool) string {
+	if value {
+		return "1"
+	}
+	return "0"
+}
+
+func formatRuntimeMetrics(health RuntimeHealth, metrics RuntimeTaskMetrics) string {
+	var p prometheusText
+
+	p.family("writer_agent_runtime_liveness", "Process liveness; always 1 when the private handler responds.")
+	p.integer("writer_agent_runtime_liveness", "", 1)
+	p.family("writer_agent_runtime_ready", "Aggregate Agent Runtime readiness derived from existing health authorities.")
+	p.sample("writer_agent_runtime_ready", "", boolValue(health.Readiness))
+	p.family("writer_agent_runtime_degraded", "Whether the Agent Runtime is degraded by a known component condition.")
+	p.sample("writer_agent_runtime_degraded", "", boolValue(health.Degraded))
+
+	p.family("writer_agent_worker_ready", "Whether every enabled Worker executor is ready.")
+	p.sample("writer_agent_worker_ready", "", boolValue(health.Worker.Readiness))
+	p.family("writer_agent_worker_executors", "Enabled and currently online Worker executors.")
+	p.integer("writer_agent_worker_executors", `state="enabled"`, health.Worker.Enabled)
+	p.integer("writer_agent_worker_executors", `state="online"`, health.Worker.Online)
+	p.family("writer_agent_worker_pending_tasks", "Pending Worker tasks; absent when any enabled executor heartbeat is stale.")
+	if health.Worker.Pending != nil {
+		p.integer("writer_agent_worker_pending_tasks", "", *health.Worker.Pending)
+	}
+
+	p.family("writer_agent_thinking_ready", "Whether the Thinking readiness authority reports ready.")
+	p.sample("writer_agent_thinking_ready", "", boolValue(health.Thinking.Readiness))
+	p.family("writer_agent_thinking_tasks", "Thinking task and recovery counts from the existing readiness projection.")
+	if counts := health.Thinking.Counts; counts != nil {
+		p.integer("writer_agent_thinking_tasks", `state="active"`, counts.Active)
+		p.integer("writer_agent_thinking_tasks", `state="pending_admission"`, counts.Pending)
+		p.integer("writer_agent_thinking_tasks", `state="failed_session"`, counts.Failed)
+		p.integer("writer_agent_thinking_tasks", `state="unpublished_session"`, counts.Unpublished)
+		p.integer("writer_agent_thinking_tasks", `state="recovery_pending"`, counts.Recovery)
+	}
+
+	p.family("writer_agent_worker_projection_tasks", "Creative read-only tasks represented by persisted step receipts.")
+	p.integer("writer_agent_worker_projection_tasks", "", metrics.Tasks)
+	p.family("writer_agent_worker_projection_samples", "Completed or failed role results represented by the projection.")
+	p.integer("writer_agent_worker_projection_samples", "", metrics.Samples)
+
+	p.family("writer_agent_worker_task_receipts", "Persisted task receipts by fixed task kind and lifecycle state.")
+	for _, task := range metrics.TaskKinds {
+		if !exposedTaskKinds[task.Kind] {
+			continue
+		}
+		kind := `kind=` + label(task.Kind)
+		p.integer("writer_agent_worker_task_receipts", kind+`,state="accepted"`, task.Accepted)
+		p.integer("writer_agent_worker_task_receipts", kind+`,state="running"`, task.Running)
+		p.integer("writer_agent_worker_task_receipts", kind+`,state="completed"`, task.Completed)
+		p.integer("writer_agent_worker_task_receipts", kind+`,state="failed"`, task.Failed)
+		p.integer("writer_agent_worker_task_receipts", kind+`,state="interrupted"`, task.Interrupted)
+		p.integer("writer_agent_worker_task_receipts", kind+`,state="unknown"`, task.Unknown)
+	}
+
+	p.family("writer_agent_worker_task_transition_ms", "Persisted task transition latency by fixed kind, transition and quantile.")
+	for _, task := range metrics.TaskKinds {
+		if !exposedTaskKinds[task.Kind] {
+			continue
+		}
+		kind := `kind=` + label(task.Kind)
+		p.optionalFloat("writer_agent_worker_task_transition_ms", kind+`,transition="claim_to_started",quantile="0.5"`, task.ClaimToStartedP50Ms)
+		p.optionalFloat("writer_agent_worker_task_transition_ms", kind+`,transition="claim_to_started",quantile="0.95"`, task.ClaimToStartedP95Ms)
+		p.optionalFloat("writer_agent_worker_task_transition_ms", kind+`,transition="started_to_terminal",quantile="0.5"`, task.StartedToTerminalP50Ms)
+		p.optionalFloat("writer_agent_worker_task_transition_ms", kind+`,transition="started_to_terminal",quantile="0.95"`, task.StartedToTerminalP95Ms)
+	}
+
+	p.family("writer_agent_worker_role_steps", "Persisted read-only role admissions and terminal results.")
+	p.family("writer_agent_worker_role_tokens", "Known token totals from persisted read-only role results.")
+	p.family("writer_agent_worker_role_duration_ms", "Persisted read-only role result duration by quantile.")
+	for _, role := range metrics.Roles {
+		if !exposedRoles[role.Role] {
+			continue
+		}
+		current := `role=` + label(role.Role)
+		p.integer("writer_agent_worker_role_steps", current+`,state="admission"`, role.Admissions)
+		p.integer("writer_agent_worker_role_steps", current+`,state="result"`, role.Results)
+		p.integer("writer_agent_worker_role_steps", current+`,state="completed"`, role.Completed)
+		p.integer("writer_agent_worker_role_steps", current+`,state="failed"`, role.Failed)
+		p.integer("writer_agent_worker_role_steps", current+`,state="known_usage"`, role.KnownUsage)
+		p.integer("writer_agent_worker_role_tokens", current+`,type="input"`, role.InputTokens)
+		p.integer("writer_agent_worker_role_tokens", current+`,type="output"`, role.OutputTokens)
+		p.integer("writer_agent_worker_role_tokens", current+`,type="cached_input"`, role.CachedInputTokens)
+		p.optionalFloat("writer_agent_worker_role_duration_ms", current+`,quantile="0.5"`, role.DurationP50Ms)
+		p.optionalFloat("writer_agent_worker_role_duration_ms", current+`,quantile="0.95"`, role.DurationP95Ms)
+	}
+	return p.body.String()
+}
+
+// RuntimeMetricsHandler is served only by the loopback private listener. It
+// renders current authorities on demand; no metric history or scrape ledger is
+// persisted in the application.
+func RuntimeMetricsHandler(state string, config llm.Config, origin, token string, source RuntimeMetricsSource) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		if !authorizePrivateGET(w, r, token) {
+			return
+		}
+		if source == nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		metrics, err := source(r.Context())
+		if err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+		_, _ = w.Write([]byte(formatRuntimeMetrics(readRuntimeHealth(r.Context(), state, config, origin, token), metrics)))
+	})
+}

@@ -239,6 +239,7 @@ func run() error {
 		} else {
 			privateMux := http.NewServeMux()
 			privateMux.Handle("/internal/v1/runtime/health", agentruntime.RuntimeHealthHandler(c.State, modelConfig, thought.Origin, thought.ServiceToken))
+			privateMux.Handle("/internal/v1/runtime/metrics", agentruntime.RuntimeMetricsHandler(c.State, modelConfig, thought.Origin, thought.ServiceToken, tasks.RuntimeMetrics))
 			privateMux.Handle("/", thought.PrivateHandler())
 			private = &http.Server{Handler: privateMux, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16384}
 			go func() {

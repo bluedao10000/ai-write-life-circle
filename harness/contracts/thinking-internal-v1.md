@@ -60,6 +60,20 @@ Thinking通过原服务Token读取`/internal/v1/readiness`，单次探测至多2
 
 该接口不新增心跳、数据库或调度权威，不替代进程自己的liveness探针。Go API可响应与完整业务数据健康是不同观测；汇总readiness表示启用Agent执行组件可用。
 
+`GET /internal/v1/runtime/metrics`安装在同一个Go私有loopback监听器，使用相同服务Token。公网API不提供该路径；未授权返回401，非GET返回405。成功响应为`text/plain; version=0.0.4; charset=utf-8`和`Cache-Control: no-store`，按Prometheus文本格式返回：
+
+| 指标 | 含义 |
+| --- | --- |
+| writer_agent_runtime_liveness / ready / degraded | Go私有处理器存活、聚合就绪和已知组件降级 |
+| writer_agent_worker_ready / executors / pending_tasks | 原Worker执行权政策、在线执行器与当前待办；心跳过期时省略待办样本 |
+| writer_agent_thinking_ready / tasks | Thinking readiness及其固定任务/恢复计数 |
+| writer_agent_worker_projection_tasks / samples | 持久任务回执投影覆盖的任务与终态步骤样本数 |
+| writer_agent_worker_task_receipts | 五种登记任务按accepted/running/completed/failed/interrupted/unknown计数 |
+| writer_agent_worker_task_transition_ms | 上述任务claim→started与started→terminal的P50/P95 |
+| writer_agent_worker_role_steps / tokens / duration_ms | Creative只读计划固定五角色的准入、结果、已知Usage与耗时P50/P95 |
+
+所有标签来自固定任务类型、固定角色和固定状态枚举；未知值不导出。无样本的计时值省略，不写零。来源读取失败返回无正文503，不回传任意错误。该端点只从现有健康、心跳和任务回执按需派生，不保存抓取历史、指标数据库或第二套任务状态；历史窗口仍受原回执保留策略约束。
+
 ## 经验提取会话
 
 ThinkingCreate 可包含 `memoryExtraction:{taskIds:[...]}`，须 `consent:true` 且不含 scope。Go验证1–4个成功任务并捕获公开结果投影版本；新会话版本为3，`resultVersion`是不含正文的`sha256:`令牌。ThinkingGrant、PrivateCreate、Session、Summary携带可选`memoryExtraction`；v1/v2旧会话继续使用原数字版本读取，但不能恢复新的付费提取。旧普通会话省略该字段。

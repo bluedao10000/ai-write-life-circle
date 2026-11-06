@@ -71,6 +71,10 @@ func TestStepMetricsAreDerivedFromAdmissionsAndTerminalResults(t *testing.T) {
 	if creativePlan.Tasks != 2 || creativePlan.Completed != 1 || creativePlan.Failed != 1 || creativePlan.ClaimToStartedP50Ms == nil || *creativePlan.ClaimToStartedP50Ms != 1000 || creativePlan.ClaimToStartedP95Ms == nil || *creativePlan.ClaimToStartedP95Ms != 2000 || creativePlan.StartedToTerminalP50Ms == nil || *creativePlan.StartedToTerminalP50Ms != 2000 || creativePlan.StartedToTerminalP95Ms == nil || *creativePlan.StartedToTerminalP95Ms != 4000 {
 		t.Fatalf("creative plan metrics=%+v", creativePlan)
 	}
+	exported, err := s.RuntimeMetrics(ctx)
+	if err != nil || exported.Tasks != 2 || exported.Samples != 3 || len(exported.Roles) != 5 || exported.Roles[0].Admissions != 2 || exported.Roles[0].InputTokens != 10 || len(exported.TaskKinds) != 5 || exported.TaskKinds[3].Kind != "creative.plan_check" || exported.TaskKinds[3].Completed != 1 {
+		t.Fatalf("exported metrics=%+v error=%v", exported, err)
+	}
 	raw, _ := json.Marshal(got)
 	if strings.Contains(string(raw), firstID) || strings.Contains(string(raw), secondID) || strings.Contains(string(raw), `"task"`) {
 		t.Fatal("metrics leaked task identity", string(raw))
@@ -82,6 +86,9 @@ func TestStepMetricsAreDerivedFromAdmissionsAndTerminalResults(t *testing.T) {
 	cancelled, cancel := context.WithCancel(ctx)
 	cancel()
 	if _, err := (&Service{State: s.State}).StepMetrics(cancelled); err != context.Canceled {
+		t.Fatal(err)
+	}
+	if _, err := (&Service{State: s.State}).RuntimeMetrics(cancelled); err != context.Canceled {
 		t.Fatal(err)
 	}
 }

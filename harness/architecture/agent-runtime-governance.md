@@ -123,3 +123,7 @@ Worker终态上报可携带至多五条stepResults，按callIndex排序并关联
 Creative只读计划额外按固定五角色返回Admissions、Results、completed/failed计数、已知Usage样本及累计输入/输出/cache tokens，耗时P50/P95只聚合实际终止结果；没有样本时返回null。没有终态结果的准入不会被推断为成功。
 
 接口不写入第二份指标账本，服务重新实例化后从原任务回执得到同一投影。它不返回任务ID、作品、正文、凭证或任意错误文本。当前历史窗口受原任务回执保留策略约束；不能将本地合成Provider耗时解释为真实模型SLO。
+
+`GET /internal/v1/runtime/metrics`在同一Go私有loopback监听器输出Prometheus文本。它将原运行health、Worker心跳、Thinking readiness和上述任务回执投影合并为每次抓取时重新计算的固定指标；不维护抓取链路、不会把旧心跳的待办数当成当前值，也不在Go进程内保存指标历史。端点要求原服务Token，只允许GET；无样本计时省略，来源失败返回无正文503。
+
+标签只允许五种任务类型、Creative只读计划五角色和固定生命周期/Usage状态。这样既能接入外部监控，又避免把任务ID、作品、消息、正文、凭证或任意错误变成高基数或敏感标签。健康与指标共用同一派生函数；回滚时移除路由即可，已有状态文件无需迁移。实时样本不等于长期保留或生产SLO，历史窗口仍由原权威数据决定。
