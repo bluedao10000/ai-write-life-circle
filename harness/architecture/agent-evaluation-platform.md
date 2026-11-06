@@ -38,7 +38,9 @@ Judge使用独立版本化的`judge-engineering-dev-v2`与`judge-engineering-hel
 
 `evaluation.judge`是Registry独立角色，无scope、无工具、单次模型请求。`completeJudgment`复用Pi Models API、受限fetch与ModelRequestGate，最终payload先做大小和token上限检查，再授权及预留，网络返回后结算usage。没有已知usage则保留预留；不自动重试。合成运行最多10次调用、100000 tokens，每次预留10000；本地预算只约束fixture，不授予Go业务额度。报告保留失败、调用轨迹与费用；任何执行失败使命令退出非零。
 
-人工标注可通过`pnpm eval:agent:judge -- [--split=held-out] --annotations=/absolute/path/annotations.json`导入JSON数组。每条包含`caseId`、所选数据集的`datasetVersion`（dev为`judge-engineering-dev-v2`，held-out为`judge-engineering-held-out-v1`）、`rubricVersion`、`reviewerId`、`annotatedAt`和`label`。pointwise的label为0–4整数总体分数；pairwise为原候选ID或`tie`。校准拒绝重复标注、未知案例、错版和非法标签，输出样本数、pointwise平均绝对误差及pairwise一致率。无人工样本时指标为null；测试中的合成标注不写入报告。该合成Judge固定返回分数，仅证明治理与计算链路，不证明评审质量或抗注入能力。
+人工标注可通过`pnpm eval:agent:judge -- [--split=held-out] --annotations=/absolute/path/annotations.json`导入JSON数组。每条包含`caseId`、所选数据集的`datasetVersion`（dev为`judge-engineering-dev-v2`，held-out为`judge-engineering-held-out-v1`）、`rubricVersion`、`reviewerId`、`annotatedAt`和`label`。pointwise的label为0–4整数总体分数；pairwise为原候选ID或`tie`。不同标注者可以独立标注同一案例；重复标注者/案例、未知案例、错版和非法标签会被拒绝。校准报告Judge对人工的pointwise平均绝对误差和pairwise判胜率，也报告人工标注人数、双人及以上覆盖案例数、标注者配对数、pointwise精确一致率/平均分差和pairwise精确一致率。没有对应双人标注的指标为null，单人案例不进入一致性分母。标注文件由评测者单独保管，合成测试标注不写入报告。
+
+这些是一致性描述统计，不估计偶然一致校正系数；样本数和覆盖案例数必须与比例同时阅读。当前dev/held-out各3项，尚无实际人工标注，所有人工一致性与Judge校准值保持null。合成Judge固定返回分数，仅证明治理与计算链路，不证明评审质量或抗注入能力。
 
 开发与留出集各有3项，本地合成运行均为3次调用、480个已观测usage tokens、0失败，未发生工具调用或真实模型请求。两套报告的`qualityValidated`均保持`false`；无人工标注时校准字段为null。这组结果证明数据集隔离和执行链路，不证明Judge与人工判断一致，也不证明真实模型下两个split的质量差异。
 

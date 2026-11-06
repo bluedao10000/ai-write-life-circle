@@ -45,13 +45,32 @@ test('pairwise ordering is recorded and labels map back to original candidate id
 
 test('calibration reports null without humans and rejects duplicate or mismatched annotations',async()=>{
  const judgment=await judgeCase(cases[0]!,async()=>JSON.stringify(point));
- assert.deepEqual(calibrate([judgment],[],dev.version),{samples:0,pointwiseSamples:0,pairwiseSamples:0,pointwiseMeanAbsoluteError:null,pairwiseAgreement:null});
+ assert.deepEqual(calibrate([judgment],[],dev.version),{samples:0,reviewers:0,doubleReviewedCases:0,pointwiseSamples:0,pairwiseSamples:0,pointwiseMeanAbsoluteError:null,pairwiseAgreement:null,humanAgreementPairs:0,pointwiseHumanPairs:0,pointwiseHumanExactAgreement:null,pointwiseHumanMeanAbsoluteDifference:null,pairwiseHumanPairs:0,pairwiseHumanAgreement:null});
  // Synthetic annotations test arithmetic, never become human evidence in reports.
  const annotation:HumanAnnotation={caseId:judgment.caseId,datasetVersion:dev.version,rubricVersion:'writing-judge-v1',reviewerId:'test-only',annotatedAt:'2026-11-04T00:00:00Z',label:2};
  assert.equal(calibrate([judgment],[annotation],dev.version).pointwiseMeanAbsoluteError,2);
  assert.throws(()=>calibrate([judgment],[annotation,annotation],dev.version),/INVALID/);
  assert.throws(()=>calibrate([judgment],[{...annotation,datasetVersion:'other'}],dev.version),/INVALID/);
  assert.throws(()=>calibrate([judgment],[{...annotation,label:'winner'}],dev.version),/INVALID/);
+});
+
+test('calibration reports agreement between independent reviewers by case and rubric mode',()=>{
+ const judgments=[
+  {caseId:'point',mode:'pointwise' as const,rubricVersion:'writing-judge-v1',promptVersion:'judge-prompt-v1',order:['answer'],score:3,winner:null,rationale:'',eligible:true},
+  {caseId:'pair',mode:'pairwise' as const,rubricVersion:'writing-judge-v1',promptVersion:'judge-prompt-v1',order:['better','worse'],score:null,winner:'better',rationale:'',eligible:true},
+  {caseId:'single',mode:'pointwise' as const,rubricVersion:'writing-judge-v1',promptVersion:'judge-prompt-v1',order:['answer'],score:4,winner:null,rationale:'',eligible:true},
+ ];
+ const annotation=(caseId:string,reviewerId:string,label:number|string):HumanAnnotation=>({caseId,datasetVersion:dev.version,rubricVersion:'writing-judge-v1',reviewerId,annotatedAt:'2026-11-04T00:00:00Z',label});
+ const result=calibrate(judgments,[
+  annotation('point','reviewer-a',2),annotation('point','reviewer-b',3),
+  annotation('pair','reviewer-a','better'),annotation('pair','reviewer-b','better'),
+  annotation('single','reviewer-c',4),
+ ],dev.version);
+ assert.equal(result.samples,5);assert.equal(result.reviewers,3);assert.equal(result.doubleReviewedCases,2);
+ assert.equal(result.pointwiseMeanAbsoluteError,1/3);assert.equal(result.pairwiseAgreement,1);
+ assert.equal(result.pointwiseHumanPairs,1);assert.equal(result.pointwiseHumanExactAgreement,0);assert.equal(result.pointwiseHumanMeanAbsoluteDifference,1);
+ assert.equal(result.pairwiseHumanPairs,1);assert.equal(result.pairwiseHumanAgreement,1);
+ assert.equal(result.humanAgreementPairs,2);
 });
 
 test('synthetic Judge runs actual Pi transport with reservation, settlement and no tools',async()=>{

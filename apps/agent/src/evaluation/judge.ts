@@ -34,12 +34,14 @@ export type HumanAnnotation=z.infer<typeof humanAnnotationSchema>;
 export function calibrate(judgments:Judgment[],input:HumanAnnotation[],datasetVersion:string){
  const byId=new Map(judgments.map(j=>[j.caseId,j]));
  if(byId.size!==judgments.length)throw Error('DUPLICATE_JUDGMENT');
- let pointwise=0,absoluteError=0,pairs=0,agreed=0;const seen=new Set<string>();
+ let pointwise=0,absoluteError=0,pairs=0,agreed=0;
+ const seen=new Set<string>(),reviewers=new Set<string>(),annotationsByCase=new Map<string,HumanAnnotation[]>();
  for(const raw of input){
   const annotation=humanAnnotationSchema.parse(raw),judgment=byId.get(annotation.caseId);
   const key=JSON.stringify([annotation.caseId,annotation.reviewerId]);
   if(seen.has(key)||annotation.datasetVersion!==datasetVersion||!judgment||annotation.rubricVersion!==judgment.rubricVersion)throw Error('INVALID_CALIBRATION_SAMPLE');
-  seen.add(key);
+  seen.add(key);reviewers.add(annotation.reviewerId);
+  const reviewersForCase=annotationsByCase.get(annotation.caseId)??[];reviewersForCase.push(annotation);annotationsByCase.set(annotation.caseId,reviewersForCase);
   if(judgment.mode==='pointwise'){
    if(typeof annotation.label!=='number'||judgment.score===null)throw Error('INVALID_CALIBRATION_LABEL');
    pointwise++;absoluteError+=Math.abs(annotation.label-judgment.score);
@@ -48,5 +50,31 @@ export function calibrate(judgments:Judgment[],input:HumanAnnotation[],datasetVe
    pairs++;if(annotation.label===judgment.winner)agreed++;
   }
  }
- return {samples:input.length,pointwiseSamples:pointwise,pairwiseSamples:pairs,pointwiseMeanAbsoluteError:pointwise?absoluteError/pointwise:null,pairwiseAgreement:pairs?agreed/pairs:null};
+ let pointwiseHumanPairs=0,pointwiseHumanExact=0,pointwiseHumanAbsoluteDifference=0;
+ let pairwiseHumanPairs=0,pairwiseHumanExact=0;
+ for(const annotations of annotationsByCase.values()){
+  for(let left=0;left<annotations.length;left++)for(let right=left+1;right<annotations.length;right++){
+   const a=annotations[left]!.label,b=annotations[right]!.label;
+   if(typeof a==='number'&&typeof b==='number'){
+    pointwiseHumanPairs++;pointwiseHumanAbsoluteDifference+=Math.abs(a-b);if(a===b)pointwiseHumanExact++;
+   }else if(typeof a==='string'&&typeof b==='string'){
+    pairwiseHumanPairs++;if(a===b)pairwiseHumanExact++;
+   }
+  }
+ }
+ return {
+  samples:input.length,
+  reviewers:reviewers.size,
+  doubleReviewedCases:[...annotationsByCase.values()].filter(annotations=>annotations.length>1).length,
+  pointwiseSamples:pointwise,
+  pairwiseSamples:pairs,
+  pointwiseMeanAbsoluteError:pointwise?absoluteError/pointwise:null,
+  pairwiseAgreement:pairs?agreed/pairs:null,
+  humanAgreementPairs:pointwiseHumanPairs+pairwiseHumanPairs,
+  pointwiseHumanPairs,
+  pointwiseHumanExactAgreement:pointwiseHumanPairs?pointwiseHumanExact/pointwiseHumanPairs:null,
+  pointwiseHumanMeanAbsoluteDifference:pointwiseHumanPairs?pointwiseHumanAbsoluteDifference/pointwiseHumanPairs:null,
+  pairwiseHumanPairs,
+  pairwiseHumanAgreement:pairwiseHumanPairs?pairwiseHumanExact/pairwiseHumanPairs:null,
+ };
 }

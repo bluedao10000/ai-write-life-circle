@@ -15,7 +15,7 @@ Phase 0 已完成源码审计和架构设计；Phase 1 已完成本地代码接�
 | Worker | 工程验证 | scheduler/dispatcher/TaskClient，五种Go任务；Review/Knowledge/Creative/Memory集成 | 统一合同已接入；待完善持久关联审计 |
 | 上下文 | 部分覆盖 | context-management、Working Memory来源绑定与无付费旧格式迁移；重启测试 | 摘要并非长期已确认事实 |
 | 长期记忆 | 部分覆盖 | Working来源、Semantic/Episodic检索、版本冲突提示、Procedural作者审核、主动提取、后台整理、模型关系建议、重复/替代/过期生命周期 | 工程链路已实现；待真实关系准确率、长期噪声控制与召回质量评测 |
-| Evaluation | 部分覆盖 | 统一schema/split/runner、五类与四能力覆盖校验、Go业务和故障适配、受治理Judge及其独立dev/held-out、显式预算的真实模型入口、人工标注导入、单/多角色开发集与保留集对照 | 待完成实际付费运行的质量、人工校准与代表性性能验收 |
+| Evaluation | 部分覆盖 | 统一schema/split/runner、五类与四能力覆盖校验、Go业务和故障适配、受治理Judge及其独立dev/held-out、显式预算的真实模型入口、Judge对人工校准及人工双评一致性统计、单/多角色开发集与保留集对照 | 待完成实际模型质量、真实人工标注校准和代表性性能验收 |
 | 安全 | 部分覆盖 | capability、隔离进程、工具授权、取消、幂等、记忆污染、同作者跨作品Session隔离及只读子角色工具输出拒绝 | 缺真实模型抗污染率、更广动态权限传播与并发预算竞争验证 |
 | 可观测性 | 部分覆盖 | 治理关联日志、跨进程健康；私有Prometheus文本按需导出五种Worker任务的生命周期/耗时、五角色Admissions/Results/Usage/耗时及Thinking恢复计数；均从原权威状态投影 | 缺跨重启长期窗口、代表性并发基线和真实模型诊断样本 |
 | 多角色协作 | 部分覆盖 | 默认关闭的Creative只读试点：Planner后由Researcher/Analyst/Critic并行检查，Coordinator汇总；dev/held-out对照、并发3准入、子预算精确合计和子上下文收窄通过 | 需真实模型同预算质量比较、代表性能与更广义动态子角色/审批策略 |
@@ -148,7 +148,7 @@ Phase 2仍未完整验收：Thinking独立业务终态、故障轨迹、独立�
 
 新增独立rubric、pointwise/pairwise严格输出、随机展示顺序记录和人工标注校准。Judge通过Registry角色`evaluation.judge`及统一ModelRequestGate执行；复用Pi Models API和受限网络传输，禁止工具，最终payload预留先于网络，usage结算先于返回，未知usage保留预留。
 
-`pnpm eval:agent:judge`执行3项本地HTTP合成案例，3次请求合计480 tokens；报告包含版本、顺序、轨迹、usage和失败。人工标注导入支持版本校验、去重、pointwise误差和pairwise一致率。当前人工样本为0、质量未验证，不将固定合成评分计作模型能力。
+`pnpm eval:agent:judge`执行3项本地HTTP合成案例，3次请求合计480 tokens；报告包含版本、顺序、轨迹、usage和失败。人工标注导入支持版本校验、去重、pointwise误差、Judge pairwise判胜率与标注者间一致性；后者分别报告pointwise精确一致率/平均分差、pairwise精确一致率、双评覆盖和标注者配对数。无双评样本时一致性为null。当前人工样本为0、质量未验证，不将固定合成评分计作模型能力。
 
 验收：全套118项Agent测试通过；Judge定向测试覆盖非法输出、确定性否决、顺序映射、校准数据约束、真实Pi请求前预留、授权/预留失败零请求、未知usage结算、超长输入拒绝和取消报告。类型检查、lint、构建及合成Judge命令通过。CI已配置Judge命令，未触发远程运行。无生产数据格式变更。
 
