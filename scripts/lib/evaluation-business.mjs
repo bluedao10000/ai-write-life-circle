@@ -233,6 +233,7 @@ async function creativePlanFailure(fixture,task,result,wait,worker){
  const queuedJob=await wait(queued,'failed plan-check job');
  const record=await wait(()=>taskRecord(queuedJob.jobId),'failed plan-check task');
  const failed=await wait(async()=>{const job=await currentJob(queuedJob.jobId);return job?.status==='failed'&&job},'failed plan-check receipt');
+ const finalRecord=await wait(async()=>{const value=await taskRecord(queuedJob.jobId);return value?.finished&&value},'model result receipts');
  const callsAtFailure=fixture.requests.length;
  await sleep(2200);
  const afterFailure=await currentJob(queuedJob.jobId);
@@ -246,6 +247,7 @@ async function creativePlanFailure(fixture,task,result,wait,worker){
  result.budgetExposure={tokens:record.task.reservedTokens,authority:'go'};
  result.metrics={
   failedWithProviderError:failed.status==='failed'&&failed.failureCode==='LLM_HTTP_ERROR',
+  roleResultsPersisted:finalRecord.stepResults?.some(step=>step.callIndex===1&&step.status==='completed'&&step.usage!=null)===true&&finalRecord.stepResults?.some(step=>step.status==='failed'&&step.usage===null)===true&&finalRecord.stepResults.every(step=>step.durationMs>=0&&finalRecord.modelSteps.some(admission=>admission.callIndex===step.callIndex)),
   unknownUsageRetained:failed.usage==null&&failed.usageIncomplete===true,
   parentReservationRetained:failed.reservedTokens===record.task.reservedTokens&&failed.reservedTokens>0,
   noAutomaticRetry:afterFailure?.status==='failed'&&afterFailure.attempts===1&&fixture.requests.length===callsAtFailure,

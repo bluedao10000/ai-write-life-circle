@@ -3,11 +3,13 @@ package agenttasks
 import (
 	"context"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/application"
+	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/llm"
 )
 
 // TaskDiagnostics projects persisted execution receipts without source text,
 // request payloads, credentials or another authoritative lifecycle.
 type TaskDiagnostics struct {
+	StepResults   []llm.StepResult   `json:"stepResults,omitempty"`
 	ModelSteps    []ModelStepReceipt `json:"modelSteps,omitempty"`
 	Audit         []ExecutionAudit   `json:"audit,omitempty"`
 	Schema        int                `json:"schemaVersion"`
@@ -56,5 +58,5 @@ func (s *Service) Diagnostics(ctx context.Context, id string) (TaskDiagnostics, 
 	if rec.Memory != nil {
 		sources = append(sources, memoryTaskIDs(*rec.Memory)...)
 	}
-	return TaskDiagnostics{ModelSteps: rec.ModelSteps, Audit: rec.Audit, Schema: 1, TaskID: t.ID, BookID: t.Book, Kind: t.Kind, Strategy: t.Strategy, OutputSchema: t.OutputSchema, Epoch: t.Epoch, Attempt: t.Attempt, Deadline: t.Deadline, Started: rec.Started, Finished: rec.Finished, Outcome: outcome, CompletedAt: rec.CompletedAt, SourceTaskIDs: sources}, nil
+	return TaskDiagnostics{StepResults: rec.StepResults, ModelSteps: rec.ModelSteps, Audit: rec.Audit, Schema: 1, TaskID: t.ID, BookID: t.Book, Kind: t.Kind, Strategy: t.Strategy, OutputSchema: t.OutputSchema, Epoch: t.Epoch, Attempt: t.Attempt, Deadline: t.Deadline, Started: rec.Started, Finished: rec.Finished, Outcome: outcome, CompletedAt: rec.CompletedAt, SourceTaskIDs: sources}, nil
 }

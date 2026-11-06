@@ -1,5 +1,5 @@
 {
-  "version": "agent-eval-v17",
+  "version": "agent-eval-v18",
   "split": "dev",
   "synthetic": true,
   "tasks": [
@@ -2576,6 +2576,11 @@
             "metric": "toolCalls",
             "operator": "eq",
             "value": 0
+          },
+          {
+            "metric": "roleResultsPersisted",
+            "operator": "eq",
+            "value": true
           }
         ],
         "forbidden": []

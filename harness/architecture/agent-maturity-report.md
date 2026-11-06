@@ -502,4 +502,10 @@ Go原任务事务保存有界claimed/started/terminal事件及固定原因码，
 
 Creative只读试点每次模型请求在网络前等待原Go started事务写入角色准入回执：固定role、callIndex、parentTaskId、子token上限和时间。Go按原策略登记的五角色及父预算精确校验，各子预算之和等于父预留；重复序号身份幂等，扩预算、换角色、跨父任务或错误任务类型被拒绝。回执随原任务保存并进入私有诊断，不创建子任务权威或新预算账本。
 
-真实Creative流程完成五角色模型执行，并读取持久回执验证角色、父任务关联和预算总和。Go agenttasks race、Agent149/149、全仓类型检查、lint和11份OpenAPI合同通过。模型请求均由本地合成Provider响应。该记录只证明模型请求准入；逐角色终态、已知Usage与延迟的持久审计仍待补齐。
+真实Creative流程完成五角色模型执行，并读取持久回执验证角色、父任务关联和预算总和。Go agenttasks race、Agent149/149、全仓类型检查、lint和11份OpenAPI合同通过。模型请求均由本地合成Provider响应。该记录只证明模型请求准入。
+
+### 2026-11-06 五角色结果持久化
+
+五个已准入角色现在可在原任务终态中保存请求状态、单调时钟耗时和Usage；输出正文不进入回执。Go只接受唯一callIndex对应的既有准入记录，并逐角色校验Usage上限。成功场景保存Planner、Researcher、Analyst、Critic、Coordinator的五个完成结果；Provider失败场景保存Planner的已知结果与其余已发送角色的未知结果，父任务usage仍保持未知，整笔预留不释放。
+
+真实Creative流程、开发可靠性11/11、Agent150/150、Go agenttasks race、类型检查、lint、构建与OpenAPI合同检查通过。开发评测从Go私有诊断读取结果，不以Worker日志或评测器自报代替持久证据。逐角色真实延迟分布、模型质量收益和跨重启历史指标仍未验证。

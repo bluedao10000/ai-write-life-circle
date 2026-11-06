@@ -43,6 +43,7 @@ type Task struct {
 	Request      llm.Request   `json:"request"`
 }
 type Record struct {
+	StepResults []llm.StepResult       `json:"stepResults,omitempty"`
 	ModelSteps  []ModelStepReceipt     `json:"modelSteps,omitempty"`
 	Audit       []ExecutionAudit       `json:"audit,omitempty"`
 	Outcome     string                 `json:"outcome,omitempty"`
@@ -542,6 +543,10 @@ func (s *Service) Action(ctx context.Context, id, action string, in Envelope) er
 			if in.Response.Usage != nil && (in.Response.Usage.CachedInputTokens < 0 || in.Response.Usage.CachedInputTokens > in.Response.Usage.InputTokens || in.Response.Usage.InputTokens < 0 || in.Response.Usage.InputTokens > 1000000 || in.Response.Usage.OutputTokens < 0 || in.Response.Usage.OutputTokens > s.Config.MaxOutputTokens) {
 				return llm.Fail("LLM_INVALID_USAGE")
 			}
+			if err := rec.validateStepResults(in.Response.StepResults); err != nil {
+				return err
+			}
+			rec.StepResults = in.Response.StepResults
 			var modelErr error
 			if action == "fail" {
 				if !failureAllowed(in.Failure) {

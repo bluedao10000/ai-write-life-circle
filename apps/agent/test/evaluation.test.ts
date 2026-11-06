@@ -221,3 +221,10 @@ test('consolidation graders require source, publication and terminal evidence',(
   }
  }
 });
+
+test('multi-role failure grading requires persisted admitted step results',()=>{
+ const task=data.tasks.find(task=>task.environment.scenario==='creative-plan-failure')!;
+ const metrics=Object.fromEntries(task.scorer.deterministic.map(rule=>[rule.metric,rule.value]));
+ assert.equal(grade(task,{...observation,metrics}).passed,true);
+ for(const value of [null,false])assert.equal(grade(task,{...observation,metrics:{...metrics,roleResultsPersisted:value}}).passed,false);
+});

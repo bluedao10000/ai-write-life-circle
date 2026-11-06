@@ -91,6 +91,12 @@ test('execution contract accepts expanded output usage without accepting unlimit
  assert.ok(agentModelResponseSchema.safeParse({text:'x'.repeat(512*1024),usage:{inputTokens:65536,outputTokens:131072}}).success);
  assert.equal(agentModelResponseSchema.safeParse({text:'x'.repeat(512*1024+1),usage:{inputTokens:1,outputTokens:1}}).success,false);
  assert.equal(agentModelResponseSchema.safeParse({text:'{}',usage:{inputTokens:1,outputTokens:131073}}).success,false);
+ const step={callIndex:1,status:'completed',durationMs:12.5,usage:{inputTokens:10,outputTokens:5}};
+ assert.ok(agentModelResponseSchema.safeParse({text:'{}',usage:{inputTokens:10,outputTokens:5},stepResults:[step]}).success);
+ for(const bad of [{...step,callIndex:0},{...step,status:'private'},{...step,durationMs:-1},{...step,usage:{inputTokens:10,outputTokens:-1}}]){
+  assert.equal(agentModelResponseSchema.safeParse({text:'{}',usage:null,stepResults:[bad]}).success,false);
+ }
+ assert.equal(agentModelResponseSchema.safeParse({text:'{}',usage:null,stepResults:Array.from({length:6},(_,index)=>({...step,callIndex:index+1}))}).success,false);
  const base={Provider:'openai-compatible',BaseURL:'https://api.deepseek.com',APIKey:'',Model:'deepseek-flash',ResponseFormat:'json_object',TokenParameter:'max_tokens',Timeout:180e9,MaxContextBytes:65536,MaxOutputTokens:131072,MaxResponseBytes:1024*1024};
  assert.ok(executionConfigSchema.safeParse(base).success);
  assert.equal(executionConfigSchema.safeParse({...base,MaxOutputTokens:131073}).success,false);

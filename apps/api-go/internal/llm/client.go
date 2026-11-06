@@ -15,10 +15,17 @@ type Request struct {
 	SchemaName  string         `json:"schemaName"`
 	Schema      map[string]any `json:"schema"`
 }
+type StepResult struct {
+	CallIndex  int     `json:"callIndex"`
+	Status     string  `json:"status"`
+	DurationMs float64 `json:"durationMs"`
+	Usage      *Usage  `json:"usage"`
+}
 type Response struct {
-	Text       string `json:"text"`
-	Usage      *Usage `json:"usage"`
-	ModelCalls int    `json:"modelCalls,omitempty"`
+	StepResults []StepResult `json:"stepResults,omitempty"`
+	Text        string       `json:"text"`
+	Usage       *Usage       `json:"usage"`
+	ModelCalls  int          `json:"modelCalls,omitempty"`
 }
 type Client interface {
 	Generate(context.Context, Request) (Response, error)

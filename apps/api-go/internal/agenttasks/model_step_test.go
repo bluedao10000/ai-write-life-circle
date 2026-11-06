@@ -2,6 +2,7 @@ package agenttasks
 
 import (
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/creative"
+	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/llm"
 	"testing"
 )
 
@@ -50,5 +51,34 @@ func TestReadonlyModelStepAdmissionIsBoundedAndIdempotent(t *testing.T) {
 	r.Task.Kind = "creative.organize"
 	if r.admitModelStep(r.ModelSteps[0].ModelStep) == nil {
 		t.Fatal("wrong task kind accepted")
+	}
+}
+
+func TestModelStepResultsRequireAdmissionAndValidUsage(t *testing.T) {
+	r := Record{Task: Task{ID: "parent", Kind: "creative.plan_check", Strategy: creative.PlanStrategyReadonly, Reserved: 10000}}
+	if err := r.admitModelStep(ModelStep{Role: "creative.plan.planner", CallIndex: 1, ParentTaskID: "parent", MaxTokens: 2000}); err != nil {
+		t.Fatal(err)
+	}
+	valid := llm.StepResult{CallIndex: 1, Status: "completed", DurationMs: 12.5, Usage: &llm.Usage{InputTokens: 100, OutputTokens: 20}}
+	if err := r.validateStepResults([]llm.StepResult{valid}); err != nil {
+		t.Fatal(err)
+	}
+	unknown := valid
+	unknown.Status = "failed"
+	unknown.Usage = nil
+	if err := r.validateStepResults([]llm.StepResult{unknown}); err != nil {
+		t.Fatal(err)
+	}
+	for _, change := range []func(*llm.StepResult){
+		func(v *llm.StepResult) { v.CallIndex = 2 }, func(v *llm.StepResult) { v.Status = "private text" }, func(v *llm.StepResult) { v.DurationMs = -1 }, func(v *llm.StepResult) { v.Usage = &llm.Usage{InputTokens: 2000, OutputTokens: 1} }, func(v *llm.StepResult) { v.Usage = &llm.Usage{InputTokens: 10, CachedInputTokens: 11} },
+	} {
+		bad := valid
+		change(&bad)
+		if r.validateStepResults([]llm.StepResult{bad}) == nil {
+			t.Fatal("invalid step result accepted", bad)
+		}
+	}
+	if r.validateStepResults([]llm.StepResult{valid, valid}) == nil {
+		t.Fatal("duplicate result accepted")
 	}
 }

@@ -32,6 +32,9 @@ test('readonly plan orchestration shares one parent execution across five fixed 
  assert.equal(result.modelCalls,readonlyPlanModelCalls);
  assert.deepEqual(result.usage,{inputTokens:500,outputTokens:100,cachedInputTokens:0});
  assert.equal(steps.length,5);
+ assert.equal(result.stepResults?.length,5);
+ assert(result.stepResults?.every(step=>step.status==='completed'&&step.durationMs>=0&&step.usage?.inputTokens===100));
+ assert.deepEqual(result.stepResults?.map(step=>step.callIndex),[1,2,3,4,5]);
  assert.deepEqual(new Set(steps.map(step=>step.role)),new Set(['creative.plan.planner','creative.plan.researcher','creative.plan.analyst','creative.plan.critic','creative.plan.coordinator']));
  assert.deepEqual(steps.map(step=>step.callIndex),steps.map((_,index)=>index+1));
  assert(steps.every(step=>step.maxModelCalls===5&&step.parentTaskId&&step.maxOutputTokens>=128));
@@ -91,7 +94,14 @@ test('readonly plan orchestration never presents partial usage as a complete set
   if(step.role==='creative.plan.planner')return responseFor(step);
   throw new GatewayError('LLM_HTTP_ERROR',{text:'',usage:null,modelCalls:1});
  }};
- await assert.rejects(()=>orchestratePlanCheck(task(),gateway,new AbortController().signal),(error)=>error instanceof GatewayError&&error.code==='LLM_HTTP_ERROR'&&error.response.modelCalls===4&&error.response.usage===null);
+ await assert.rejects(()=>orchestratePlanCheck(task(),gateway,new AbortController().signal),(error)=>{
+  if(!(error instanceof GatewayError))return false;
+  assert.equal(error.response.stepResults?.length,4);
+  assert.equal(error.response.stepResults?.filter(step=>step.status==='failed'&&step.usage===null).length,3);
+  assert(error.response.stepResults?.every(step=>step.durationMs>=0));
+  assert.deepEqual(error.response.stepResults?.map(step=>step.callIndex),[1,2,3,4]);
+  return error.code==='LLM_HTTP_ERROR'&&error.response.modelCalls===4&&error.response.usage===null;
+ });
 });
 
 test('readonly plan orchestration aborts parallel siblings when one role fails',async()=>{

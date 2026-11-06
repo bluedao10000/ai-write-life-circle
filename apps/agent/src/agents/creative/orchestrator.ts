@@ -123,8 +123,18 @@ export async function orchestratePlanCheck(task:AgentTask,gateway:StepGateway,si
   const childTokens=Math.floor(task.reservedTokens/readonlyPlanModelCalls);
   const tokenLimit=(callIndex:number)=>callIndex===readonlyPlanModelCalls?task.reservedTokens-childTokens*(readonlyPlanModelCalls-1):childTokens;
   const usage=new SharedUsage();
-  const step=(role:AgentRole,callIndex:number,system:string,input:string,schemaName:string,schema:Record<string,unknown>,maxOutputTokens:number,callSignal=signal)=>
-    gateway.executeStep(task,callSignal,{role,callIndex,maxModelCalls:readonlyPlanModelCalls,parentTaskId:task.taskId,system,input,schemaName,schema,maxTokens:tokenLimit(callIndex),maxOutputTokens});
+  const stepResults:NonNullable<AgentModelResponse['stepResults']>=[];
+  const step=async(role:AgentRole,callIndex:number,system:string,input:string,schemaName:string,schema:Record<string,unknown>,maxOutputTokens:number,callSignal=signal)=>{
+    const started=performance.now();
+    try{
+      const response=await gateway.executeStep(task,callSignal,{role,callIndex,maxModelCalls:readonlyPlanModelCalls,parentTaskId:task.taskId,system,input,schemaName,schema,maxTokens:tokenLimit(callIndex),maxOutputTokens});
+      stepResults.push({callIndex,status:'completed',durationMs:performance.now()-started,usage:response.usage});
+      return response;
+    }catch(error){
+      if(error instanceof GatewayError&&error.response.modelCalls)stepResults.push({callIndex,status:'failed',durationMs:performance.now()-started,usage:error.response.usage});
+      throw error;
+    }
+  };
   const collect=async(promise:Promise<AgentModelResponse>,callIndex:number)=>{
     let response:AgentModelResponse;
     try{response=await promise}catch(error){
@@ -136,12 +146,14 @@ export async function orchestratePlanCheck(task:AgentTask,gateway:StepGateway,si
   };
   const failed=(error:unknown):never=>{
     const code=error instanceof GatewayError?error.code:'LLM_INVALID_RESPONSE';
-    throw new GatewayError(code,{text:'',usage:usage.incomplete?null:usage.usage,modelCalls:Math.max(1,usage.calls)});
+    stepResults.sort((a,b)=>a.callIndex-b.callIndex);
+    throw new GatewayError(code,{text:'',usage:usage.incomplete?null:usage.usage,modelCalls:Math.max(1,usage.calls),stepResults});
   };
   const validIds=(values:string[])=>{
-    if(values.some(id=>!assetIds.has(id))||new Set(values).size!==values.length)throw new GatewayError('LLM_INVALID_OUTPUT',{text:'',usage:usage.usage,modelCalls:Math.max(1,usage.calls)});
+    if(values.some(id=>!assetIds.has(id))||new Set(values).size!==values.length)throw new GatewayError('LLM_INVALID_OUTPUT',{text:'',usage:usage.usage,modelCalls:Math.max(1,usage.calls),stepResults});
   };
 
+  try{
   const plannerResponse=await collect(step('creative.plan.planner',1,prompts.planner,task.request.input,'creative_plan_planner',intermediateSchemas.planner,limits.planner),1).catch(error=>failed(error));
   const planner=parseJson(plannerResponse.text,plannerSchema);
   validIds(planner.items.map(item=>item.assetId));
@@ -163,6 +175,8 @@ export async function orchestratePlanCheck(task:AgentTask,gateway:StepGateway,si
   const coordinatorInput=JSON.stringify({source,planner,research,analysis,critique});
   const coordinator=await collect(step('creative.plan.coordinator',5,task.request.system,coordinatorInput,task.request.schemaName||'creative_plan_check',task.request.schema,limits.coordinator),5).catch(error=>failed(error));
   parseJson(coordinator.text,z.record(z.string(),z.unknown()));
-  if(usage.calls!==readonlyPlanModelCalls)throw new GatewayError('LLM_INVALID_USAGE',{text:'',usage:usage.usage,modelCalls:Math.max(1,usage.calls)});
-  return {text:coordinator.text,usage:usage.usage,modelCalls:usage.calls};
+  if(usage.calls!==readonlyPlanModelCalls)throw new GatewayError('LLM_INVALID_USAGE',{text:'',usage:usage.usage,modelCalls:Math.max(1,usage.calls),stepResults});
+  stepResults.sort((a,b)=>a.callIndex-b.callIndex);
+  return {text:coordinator.text,usage:usage.usage,modelCalls:usage.calls,stepResults};
+  }catch(error){return failed(error)}
 }
