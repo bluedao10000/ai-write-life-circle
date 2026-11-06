@@ -58,6 +58,18 @@ Judge使用独立版本化的`judge-engineering-dev-v2`与`judge-engineering-hel
 
 live报告写入`.local/evals/agent/judge-live-{split}.json`，与合成报告分离，记录数据集、rubric/prompt、模型、逐案例使用量、审计轨迹、失败和人工校准结果。`realLLMCalled`反映是否为非loopback模型，`qualityValidated`始终为`false`；人工标注样本数和误差可以报告，但不会自动转化为Judge质量结论。当前验收只使用localhost兼容服务验证治理、预算与失败路径，没有发起付费模型请求。
 
+## Procedural Memory 人工语义评审
+
+`pnpm eval:agent:memory:quality -- --cases=/absolute/path/cases.json --template=/absolute/path/review.json`会根据已完成的经验提取建立独立评审模板。输入每个案例包含版本与split、caller声明的来源类型、模型/provider/prompt版本、绑定任务的原始来源与当前业务结果、提取候选正文、候选引用的任务ID及与现有经验的比较。候选任务和关系必须分别绑定到输入来源和比较集；UTF-8文本大小按Go现有合同限制。
+
+`cases.json`结构为`{version, split, origin, cases}`。每个case包含`caseId`、`extraction:{provider,model,promptVersion}`、`sourceTasks:[{taskId,kind,sourceText,outcomeText,sourceTruncated,outcomeTruncated}]`、`comparisons:[{memoryId,content}]`和`candidate:{content,taskIds,relations:[{memoryId,kind,reason}]}`。`origin`为`production`或`synthetic`；它是提交者声明。`taskIds`只能引用本case的sourceTasks，relations只能引用本case的comparisons。
+
+评审者阅读cases文件中的来源、结果和候选，并独立填写模板：证据支撑、可操作性、范围、证据限制、覆盖度、来源选择和逐条关系准确性。输入`--annotations=/absolute/path/annotations.json`后运行同一命令会生成`.local/evals/agent/memory-quality-{split}.json`。输出只含聚合指标、样本数、评审一致性及模型/prompt版本，不包含来源正文、候选正文、评语或Reviewer ID；输入和模板文件以本地私有权限写入。
+
+标注枚举分别为：证据`supported|mixed|unsupported|unclear`，可操作性`actionable|vague|not_reusable`，范围`appropriate|overgeneralized|fictional_leak|unclear`，限制`adequate|incomplete|missing`，覆盖`complete|minor_omission|material_omission|unclear`，来源选择`relevant|irrelevant_included|relevant_omitted|unclear`，关系`accurate|inaccurate|unclear`。模板包含每个案例与关系的ID，来源正文只在cases文件里，评审者同时读取两份文件。
+
+`qualitySuccessRate`按案例计算，只有该案例所有已提交的评审均满足全部六项维度的严格通过标签、且所有关系准确时才计为成功。维度率按已提交的独立评审计算；双人覆盖和逐维精确一致率同时报告。没有人工标注时分子为0、分母为0且比率为null。没有双评配对时一致率为null。报告固定`qualityValidated=false`：现阶段未制定合格阈值或最低样本量，也未形成裁决流程。数据集`origin`由提交者声明，工具不独立验证来源；合成数据只用于检验标注和指标计算，不能作为真实提取质量证据。评审器只做本地解析和汇总，不调用Provider。
+
 ## Thinking故障评测合同
 
 复用真实Go/Pi进程fixture，通过公开会话、取消与resume接口执行。Provider仅为本地合成边界。取消场景检查终态、晚到结果、重复消息与禁止恢复；恢复场景执行SIGKILL、重启、显式付费同意与幂等resume，检查原用户消息身份和attempt。预算由原Thinking Durable持久预留约束；报告将未知usage记为null，并独立记录thinking-durable预算暴露，不将保守预留伪装成已测token消耗。
