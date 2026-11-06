@@ -32,13 +32,20 @@ export function definition(role:string){
 }
 export function executionContext(value:ExecutionContext):ExecutionContext {
  definition(value.role);
- if(!Number.isFinite(value.deadline)||!Number.isSafeInteger(value.authorizationVersion)||value.authorizationVersion<0)throw Error('AGENT_CONFIG_CHANGED');
+ if(!value.executionId||!value.traceId||!Number.isFinite(value.deadline)||!Number.isSafeInteger(value.authorizationVersion)||value.authorizationVersion<0||value.scopes.some(scope=>!scope)||new Set(value.scopes).size!==value.scopes.length)throw Error('AGENT_CONFIG_CHANGED');
+ if(value.budget&&(!Number.isSafeInteger(value.budget.maxTokens)||value.budget.maxTokens<1||!Number.isSafeInteger(value.budget.maxModelCalls)||value.budget.maxModelCalls<1||!Number.isSafeInteger(value.budget.maxToolCalls)||value.budget.maxToolCalls<0))throw Error('AGENT_CONFIG_CHANGED');
  return Object.freeze({...value,...(value.budget?{budget:Object.freeze({...value.budget})}:{}),...(value.versions?{versions:Object.freeze({...value.versions})}:{}),scopes:Object.freeze([...value.scopes])});
 }
 export function workerContext(task:AgentTask,signal:AbortSignal,options?:{role?:AgentRole;parentTaskId?:string;maxModelCalls?:number;maxTokens?:number}){
  const role=options?.role??task.kind as AgentRole;
  const parent=options?.parentTaskId;
  return executionContext({executionId:parent?`${task.taskId}:${role}`:task.taskId,traceId:task.taskId,taskId:task.taskId,...(parent?{parentTaskId:parent}:{}),role,authorizationVersion:typeof task.consent.authorizationVersion==='number'?task.consent.authorizationVersion:0,executorEpoch:task.executorEpoch,scopes:[],versions:{prompt:task.strategyVersion,toolSchema:task.outputSchemaVersion},budget:{maxTokens:options?.maxTokens??task.reservedTokens,maxModelCalls:options?.maxModelCalls??1,maxToolCalls:0},deadline:Date.parse(task.deadline),signal});
+}
+/** Derive a delegated execution without creating a second task or budget authority. */
+export function childExecutionContext(parent:ExecutionContext,child:ExecutionContext):ExecutionContext {
+ const value=executionContext(child),within=(values:readonly string[],allowed:readonly string[])=>values.every(item=>allowed.includes(item));
+ if(!parent.taskId||value.taskId!==parent.taskId||value.parentTaskId!==parent.taskId||value.traceId!==parent.traceId||value.executionId===parent.executionId||value.authorizationVersion!==parent.authorizationVersion||value.executorEpoch!==parent.executorEpoch||value.deadline>parent.deadline||!within(value.scopes,parent.scopes)||!parent.budget||!value.budget||value.budget.maxTokens>parent.budget.maxTokens||value.budget.maxModelCalls>parent.budget.maxModelCalls||value.budget.maxToolCalls>parent.budget.maxToolCalls)throw Error('AGENT_CONFIG_CHANGED');
+ return value;
 }
 export function assertCurrent(context:ExecutionContext){
  context.signal.throwIfAborted();

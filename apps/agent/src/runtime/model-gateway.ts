@@ -1,4 +1,4 @@
-import {ModelRequestGate,workerContext,definition} from './governance/runtime.js';
+import {ModelRequestGate,workerContext,childExecutionContext,definition} from './governance/runtime.js';
 import type {ExecutionContext,AuthorizationManager,BudgetManager,AgentRole} from './governance/runtime.js';
 import {modelIdentity} from "./fingerprint.js";
 import {candidateBytes} from "./execution-policy.js";
@@ -104,7 +104,9 @@ export class ModelGateway {
     const cfg=this.config,deadline=AbortSignal.timeout(Math.max(1,Math.min(cfg.Timeout/1e6,Date.parse(task.deadline)-Date.now()))),abort=AbortSignal.any([signal,deadline]);
     const {runtime,model}=await configuredModel(cfg.BaseURL,cfg.Model,this.key,cfg.MaxContextBytes+20000,output);
     const thisAdmission=()=>this.admission(task,step);
-    const gate=new ModelRequestGate({...workerContext(task,abort,{role:step.role,parentTaskId:step.parentTaskId,maxModelCalls:step.maxModelCalls,maxTokens:step.maxTokens}),modelRequestId:`${task.taskId}:${step.role}:${step.callIndex}`},{authorize:async()=>{this.validate(task)}});
+    const parent=workerContext(task,abort,{maxModelCalls:step.maxModelCalls,maxTokens:task.reservedTokens});
+    const execution=orchestration?childExecutionContext(parent,workerContext(task,abort,{role:step.role,parentTaskId:step.parentTaskId,maxModelCalls:step.maxModelCalls,maxTokens:step.maxTokens})):parent;
+    const gate=new ModelRequestGate({...execution,modelRequestId:`${task.taskId}:${step.role}:${step.callIndex}`},{authorize:async()=>{this.validate(task)}});
     let usage:AgentModelResponse['usage']=null,transportError="",admissionError="";
     try {
       const result=await runtime.completeSimple(model,{systemPrompt:step.system,messages:[{role:"user",content:step.input,timestamp:Date.now()}]},{

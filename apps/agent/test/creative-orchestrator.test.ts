@@ -4,7 +4,7 @@ import {randomUUID} from 'node:crypto';
 import type {AgentModelResponse,AgentTask} from '@writer-agent/contracts';
 import {GatewayError,ModelGateway,executionFingerprint,type ModelStep} from '../src/runtime/model-gateway.js';
 import {orchestratePlanCheck,readonlyPlanModelCalls,readonlyPlanStrategy} from '../src/agents/creative/orchestrator.js';
-import {definition,workerContext} from '../src/runtime/governance/runtime.js';
+import {childExecutionContext,definition,executionContext,workerContext} from '../src/runtime/governance/runtime.js';
 
 const final='{"checks":[{"assetId":"plan-1","assessment":"diverged","quote":"他留下","explanation":"计划离开，正文选择留下。","question":"要修改计划吗？"}]}';
 function task():AgentTask{
@@ -60,6 +60,26 @@ test('readonly plan roles have no scopes or tools and split only the parent budg
   assert.equal(context.budget?.maxModelCalls,5);
  }
  assert.equal(contexts.reduce((sum,[,tokens])=>sum+tokens,0),source.reservedTokens);
+});
+
+test('delegated execution can only narrow its parent authority',()=>{
+ const source=task(),signal=new AbortController().signal;
+ const parent=workerContext(source,signal,{maxModelCalls:readonlyPlanModelCalls,maxTokens:source.reservedTokens});
+ const child=workerContext(source,signal,{role:'creative.plan.researcher',parentTaskId:source.taskId,maxModelCalls:readonlyPlanModelCalls,maxTokens:2000});
+ const valid=childExecutionContext(parent,child);
+ assert.equal(valid.executionId,child.executionId);assert.equal(valid.parentTaskId,source.taskId);assert.deepEqual(valid.budget,child.budget);
+ for(const invalid of [
+  executionContext({...child,traceId:'other'}),
+  executionContext({...child,parentTaskId:'other'}),
+  executionContext({...child,executionId:parent.executionId}),
+  executionContext({...child,authorizationVersion:child.authorizationVersion+1}),
+  executionContext({...child,executorEpoch:child.executorEpoch!+1}),
+  executionContext({...child,deadline:parent.deadline+1}),
+  executionContext({...child,scopes:['creative']}),
+  executionContext({...child,budget:{...child.budget!,maxTokens:source.reservedTokens+1}}),
+  executionContext({...child,budget:{...child.budget!,maxModelCalls:readonlyPlanModelCalls+1}}),
+  executionContext({...child,budget:{...child.budget!,maxToolCalls:1}}),
+ ])assert.throws(()=>childExecutionContext(parent,invalid),/AGENT_CONFIG_CHANGED/);
 });
 
 test('readonly plan output contract cannot be claimed as the legacy single-call contract',()=>{

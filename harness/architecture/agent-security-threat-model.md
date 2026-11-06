@@ -51,7 +51,9 @@ Planner、Researcher、Analyst和Critic的输出只能引用Go已绑定的plan a
 
 固定五角色试点还覆盖一次真实子预算篡改：Worker代理在Coordinator started请求中把`maxTokens`增加1，Go返回409，模型调用停在已准入的4次，前四个角色的已知Usage正常结算，未准入角色不产生伪stepResult，原任务以`AGENT_CONFIG_CHANGED`失败并停止Worker继续领取。场景没有Coordinator Provider请求、工具、Divergence或业务写入。
 
-该证据只覆盖固定五角色试点。通用父子任务、动态角色创建、审批降级和多个并行写入者竞争预算仍需独立实现与评测；Session隔离已由独立同作者双作品样本覆盖。
+该证据只覆盖固定五角色试点。真实任务API代理观察到Researcher、Analyst、Critic的started请求最大并发3；Go最终只保存五个唯一准入，每个22240 tokens、总和111200，与父预留一致。并发race测试在三个合法started中混入扩大1 token的重复角色，扩大请求被`AGENT_CONFIG_CHANGED`拒绝，重启后没有重复或扩张准入。Agent派生子上下文时还强制同任务、trace、授权版本和executor epoch，scope、deadline与三类预算只能收窄。
+
+通用动态父子任务、模型动态创建角色、审批降级和多个并行写入者竞争预算仍未实现；Session隔离已由独立同作者双作品样本覆盖。
 
 ## 写工具授权撤销证据
 

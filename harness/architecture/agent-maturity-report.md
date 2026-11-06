@@ -18,7 +18,7 @@ Phase 0 已完成源码审计和架构设计；Phase 1 已完成本地代码接�
 | Evaluation | 部分覆盖 | 统一schema/split/runner、五类与四能力覆盖校验、Go业务和故障适配、受治理Judge及其独立dev/held-out、显式预算的真实模型入口、人工标注导入、单/多角色开发集与保留集对照 | 待完成实际付费运行的质量、人工校准与代表性性能验收 |
 | 安全 | 部分覆盖 | capability、隔离进程、工具授权、取消、幂等、记忆污染、同作者跨作品Session隔离及只读子角色工具输出拒绝 | 缺真实模型抗污染率、更广动态权限传播与并发预算竞争验证 |
 | 可观测性 | 部分覆盖 | 治理关联日志、进程计数；五种Worker任务的生命周期计数/耗时和五角色Admissions/Results/Usage/耗时P50/P95均从持久回执派生；Thinking鉴权健康/诊断包含投影失败、恢复与未知费用会话数 | 缺跨进程聚合、长期保留窗口和外部指标导出 |
-| 多角色协作 | 部分覆盖 | 默认关闭的Creative只读试点：Planner后由Researcher/Analyst/Critic并行检查，Coordinator汇总；开发集与held-out工程对照通过 | 需真实模型同预算质量比较、代表性能与更广义子角色/审批策略 |
+| 多角色协作 | 部分覆盖 | 默认关闭的Creative只读试点：Planner后由Researcher/Analyst/Critic并行检查，Coordinator汇总；dev/held-out对照、并发3准入、子预算精确合计和子上下文收窄通过 | 需真实模型同预算质量比较、代表性能与更广义动态子角色/审批策略 |
 | 自主规划 | 未实现 | 有限模型/工具循环与显式恢复 | 有界Goal/Plan与审批版本绑定，须后置 |
 
 以上路径中 Agent 文件位于 `apps/agent/src`，测试位于 `apps/agent/test`；Go 文件位于 `apps/api-go/internal`。
@@ -537,6 +537,14 @@ Creative只读试点每次模型请求在网络前等待原Go started事务写�
 开发和保留样本分别观察到2–4次合成模型调用，均在4次上限内；工具调用为0。最新开发运行得到完整Usage并结算1120 tokens，保留运行缺失Usage时保留111200 tokens父预留且不填零。治理日志验证Researcher按授权、预留、模型开始、失败收口，所有子事件与父任务关联，工具事件为0。开发和保留Safety分类分别为10/10与2/2工程通过；报告保存在本地`.local/evals/agent/dev-safety.json`和`.local/evals/agent/held-out-safety.json`。
 
 这项证据证明工具声明缺失时模型文本不能自行升级为业务调用，不证明真实模型拒绝恶意提示的概率，也不能替代后续Scope传播、子预算和并行角色权限矩阵。
+
+### 2026-11-06 并发子预算与子上下文收窄
+
+统一Runtime新增`childExecutionContext`，从原父上下文派生执行视图：taskId、traceId、authorizationVersion与executorEpoch必须相同，executionId必须独立，scope、deadline、token/model/tool预算只能收窄。子上下文仍是原Go任务与Pi执行合同的只读派生，不创建第二任务、预算或权限权威。Worker的五角色请求现在经过该派生，而不只依赖调用方参数。
+
+`agent-eval-v22`与保留集`agent-eval-v7`在任务API代理记录model-step started请求的重叠。Researcher、Analyst、Critic实际最大并发3；Go保存五个唯一准入，每个22240 tokens，合计111200，与父预留一致。扩大预算、重复序号、foreign parent或未登记角色的Go race测试都在写入前拒绝，合法请求的callIndex、预算与幂等回执保持稳定。
+
+本批Agent完整回归158/158、类型检查、lint、Agent与Go构建、`go test -race ./...`、真实Agent task API合同和运行时健康检查通过；开发全集42/42工程通过，保留task-success5/5通过。两侧Creative单/多角色对照各6次合成调用、1800个已知usage tokens、0工具、0业务写入；单/多角色预留为22240/111200。该证据补齐固定只读试点的并发预算竞争和权限收窄，不证明允许模型动态创建角色，也不产生真实模型质量收益、角色冲突裁决能力或代表性成本结论。
 
 ### 2026-11-06 同作者跨作品Session隔离
 

@@ -82,7 +82,8 @@ test('single and multi plan checks require equivalent results and complete role 
  assert.equal(grade(task,{...observation,metrics}).passed,true);
  for(const rule of task.scorer.deterministic){
   assert.equal(grade(task,{...observation,metrics:{...metrics,[rule.metric]:null}}).passed,false,rule.metric+' missing');
-  assert.equal(grade(task,{...observation,metrics:{...metrics,[rule.metric]:typeof rule.value==='boolean'?!rule.value:Number(rule.value)+1}}).passed,false,rule.metric+' violated');
+  const violated=typeof rule.value==='boolean'?!rule.value:rule.operator==='gte'?Number(rule.value)-1:rule.operator==='lte'?Number(rule.value)+1:Number(rule.value)+1;
+  assert.equal(grade(task,{...observation,metrics:{...metrics,[rule.metric]:violated}}).passed,false,rule.metric+' violated');
  }
  assert.equal(grade(task,{...observation,metrics:{...metrics,equivalentResult:false,sameInput:false,parentLinksValid:false}}).passed,false);
  assert.equal(grade(task,{...observation,metrics:{...metrics,multiModelCalls:6,budgetRatio:1}}).passed,false);

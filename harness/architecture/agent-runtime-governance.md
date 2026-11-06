@@ -16,6 +16,12 @@ Registry 登记 Thinking、Review、Knowledge、Creative 的版本、工具集�
 
 Thinking BudgetAdapter 复用 Saved.execution.modelRequests、usage 和 Store.write；Worker Adapter 复用 Go claim/started/heartbeat/complete/fail。Go决定重试和正式点数，治理层不得补一个自动重试循环。只读Creative试点由一个Go父任务预留五个调用的总额，Pi按Planner、三个并行检查角色和Coordinator划分互不重叠的子预算，子预算总和等于父额；父任务中断后不自动重试。
 
+子执行由统一 `childExecutionContext` 派生。它要求同一taskId、traceId、authorizationVersion和executorEpoch，使用独立executionId，并强制scope、deadline、token/model/tool预算只能收窄；父任务没有的scope不能出现在子任务中。该上下文是原Go任务和Pi执行的只读视图，不是第三套任务或预算权威。固定五角色和普通Worker复用同一合同。
+
+真实Go/Pi验收中，Researcher、Analyst、Critic的started请求在任务API代理层达到并发3；Go原子保存五个角色准入，角色预算合计精确等于父任务预留111200 tokens。提交前增加并发race测试，向三个合法并行准入中混入扩大1 token的重复角色；扩大请求以`AGENT_CONFIG_CHANGED`拒绝，合法请求各保留原序号和预算，重启读取仍是五个唯一准入。
+
+本批完整验收包含158项Agent测试、类型检查、lint、Agent与Go构建、`go test -race ./...`、真实Agent task API合同和运行时健康检查。开发集42/42工程通过，保留任务成功集5/5通过；两侧固定只读对照都从真实任务API代理读到并发3、五个唯一准入和111200 tokens子预算总和。所有模型响应来自本地合成Provider，没有付费调用。
+
 ## 工具入口
 
 复用 tools/registry.ts 的 TypeBox/Zod 参数、scope 映射、返回大小、5秒超时和 StoryWrites 回执。ToolPolicy 从注册定义派生风险、safe/unsafe、输入/输出上限、授权与幂等要求。授权检查必须发生在本地缓存命中和回执重放之前；safe 只表示重放策略。Go 继续验证作者/作品/消息来源与正式写入，作者 messageId 保持业务幂等身份。

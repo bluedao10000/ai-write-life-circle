@@ -157,6 +157,7 @@ async function creativePlanComparison(fixture,task,result,wait,worker){
   const value=await json(creativePath);
   return value?.jobs?.filter(job=>[singleQueued.jobId,multiQueued.jobId].includes(job.jobId)).every(job=>job.status==='completed')?value:null;
  },'creative plan-check receipts');
+ const multiFinalTask=await taskRecord(multiQueued.jobId);
  const singleJob=state.jobs.find(job=>job.jobId===singleQueued.jobId),multiJob=state.jobs.find(job=>job.jobId===multiQueued.jobId);
  usage(result,[singleJob,multiJob]);
  const systems=multiRequests.map(request=>request.messages.find(message=>message.role==='system')?.content??'');
@@ -174,6 +175,7 @@ async function creativePlanComparison(fixture,task,result,wait,worker){
  const toolEvents=governance.filter(event=>event.toolName).length;
  const currentDivergences=await fixture.call(creative+'/divergences?chapterId='+book.chapters[0].chapterId);
  const afterPlan=await fixture.call(creative+'/assets/'+plan.assetId),afterChapter=await fixture.call(chapter);
+ const admissions=multiFinalTask?.modelSteps??[],startObservation=fixture.modelStepStartObservation;
  result.metrics={
   singleCompleted:singleJob.status==='completed'&&singleResult.assessment==='diverged',
   multiCompleted:multiJob.status==='completed'&&multiResult.assessment==='diverged',
@@ -184,6 +186,9 @@ async function creativePlanComparison(fixture,task,result,wait,worker){
   roleCount:Object.values(roles).filter(count=>count===1).length,
   governancePrecedesModel,
   parentLinksValid,
+  parallelChildAdmissionsMax:startObservation.maxConcurrent,
+  modelStepAdmissionCount:admissions.length,
+  childBudgetSumMatchesParent:admissions.length===5&&admissions.reduce((sum,item)=>sum+item.maxTokens,0)===multiTask.task.reservedTokens,
   toolEvents,
   singleModelCalls:singleJob.modelCalls,
   multiModelCalls:multiJob.modelCalls,

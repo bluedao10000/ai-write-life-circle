@@ -1,5 +1,5 @@
 {
-  "version": "agent-eval-v21",
+  "version": "agent-eval-v22",
   "split": "dev",
   "synthetic": true,
   "tasks": [
@@ -2441,6 +2441,21 @@
           },
           {
             "metric": "parentLinksValid",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "metric": "parallelChildAdmissionsMax",
+            "operator": "gte",
+            "value": 2
+          },
+          {
+            "metric": "modelStepAdmissionCount",
+            "operator": "eq",
+            "value": 5
+          },
+          {
+            "metric": "childBudgetSumMatchesParent",
             "operator": "eq",
             "value": true
           },
