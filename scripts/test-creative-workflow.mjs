@@ -302,6 +302,9 @@ try {
   assert.equal(metrics.samples, 5);
   assert.deepEqual(metrics.roles.map(role => role.role), ["creative.plan.planner", "creative.plan.researcher", "creative.plan.analyst", "creative.plan.critic", "creative.plan.coordinator"]);
   assert(metrics.roles.every(role => role.admissions === 1 && role.results === 1 && role.completed === 1 && role.failed === 0 && role.knownUsage === 1 && Number.isFinite(role.durationP50Ms) && Number.isFinite(role.durationP95Ms)));
+  assert.deepEqual(metrics.taskKinds.map(kind => kind.kind), ["review.execute", "knowledge.extract", "creative.organize", "creative.plan_check", "memory.consolidate"]);
+  const creativePlanMetrics = metrics.taskKinds.find(kind => kind.kind === "creative.plan_check");
+  assert(creativePlanMetrics.tasks >= 2 && creativePlanMetrics.completed >= 1 && Number.isFinite(creativePlanMetrics.claimToStartedP95Ms) && Number.isFinite(creativePlanMetrics.startedToTerminalP95Ms));
   assert(!JSON.stringify(metrics).includes(governed.task.taskId));
 
   assert.deepEqual([...governed.modelSteps].sort((a,b)=>a.callIndex-b.callIndex).map(step=>step.role), ['creative.plan.planner','creative.plan.researcher','creative.plan.analyst','creative.plan.critic','creative.plan.coordinator']);

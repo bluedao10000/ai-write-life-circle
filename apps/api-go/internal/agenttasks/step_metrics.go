@@ -4,6 +4,7 @@ import (
 	"context"
 	"math"
 	"sort"
+	"time"
 
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/creative"
 )
@@ -30,11 +31,41 @@ type StepMetrics struct {
 	Tasks         int               `json:"tasks"`
 	Samples       int               `json:"samples"`
 	Roles         []RoleStepMetrics `json:"roles"`
+	TaskKinds     []TaskKindMetrics `json:"taskKinds"`
+}
+
+type TaskKindMetrics struct {
+	Kind                   string   `json:"kind"`
+	Tasks                  int      `json:"tasks"`
+	Accepted               int      `json:"accepted"`
+	Running                int      `json:"running"`
+	Completed              int      `json:"completed"`
+	Failed                 int      `json:"failed"`
+	Interrupted            int      `json:"interrupted"`
+	Unknown                int      `json:"unknown"`
+	ClaimToStartedP50Ms    *float64 `json:"claimToStartedP50Ms"`
+	ClaimToStartedP95Ms    *float64 `json:"claimToStartedP95Ms"`
+	StartedToTerminalP50Ms *float64 `json:"startedToTerminalP50Ms"`
+	StartedToTerminalP95Ms *float64 `json:"startedToTerminalP95Ms"`
 }
 
 type roleStepAccumulator struct {
 	RoleStepMetrics
 	durations []float64
+}
+
+var taskMetricKinds = []string{
+	"review.execute",
+	"knowledge.extract",
+	"creative.organize",
+	"creative.plan_check",
+	"memory.consolidate",
+}
+
+type taskKindAccumulator struct {
+	TaskKindMetrics
+	claimDurations    []float64
+	terminalDurations []float64
 }
 
 // StepMetrics projects bounded execution metadata from persisted task
@@ -52,8 +83,18 @@ func (s *Service) StepMetrics(ctx context.Context) (StepMetrics, error) {
 	for i, role := range modelStepRoles {
 		byIndex[i].Role, byIndex[i].CallIndex = role, i+1
 	}
+	byKind := make([]taskKindAccumulator, len(taskMetricKinds))
+	for i, kind := range taskMetricKinds {
+		byKind[i].Kind = kind
+	}
 	out := StepMetrics{SchemaVersion: 1}
 	for _, record := range st.Tasks {
+		for i, kind := range taskMetricKinds {
+			if record.Task.Kind == kind {
+				accumulateTaskKind(&byKind[i], record)
+				break
+			}
+		}
 		if record.Task.Kind != "creative.plan_check" || record.Task.Strategy != creative.PlanStrategyReadonly {
 			continue
 		}
@@ -97,7 +138,65 @@ func (s *Service) StepMetrics(ctx context.Context) (StepMetrics, error) {
 		byIndex[i].DurationP95Ms = durationPercentile(byIndex[i].durations, .95)
 		out.Roles[i] = byIndex[i].RoleStepMetrics
 	}
+	out.TaskKinds = make([]TaskKindMetrics, len(byKind))
+	for i := range byKind {
+		byKind[i].ClaimToStartedP50Ms = durationPercentile(byKind[i].claimDurations, .5)
+		byKind[i].ClaimToStartedP95Ms = durationPercentile(byKind[i].claimDurations, .95)
+		byKind[i].StartedToTerminalP50Ms = durationPercentile(byKind[i].terminalDurations, .5)
+		byKind[i].StartedToTerminalP95Ms = durationPercentile(byKind[i].terminalDurations, .95)
+		out.TaskKinds[i] = byKind[i].TaskKindMetrics
+	}
 	return out, nil
+}
+
+func accumulateTaskKind(out *taskKindAccumulator, record Record) {
+	out.Tasks++
+	outcome := record.Outcome
+	if outcome == "" {
+		switch {
+		case record.ResultHash == "expired":
+			outcome = "interrupted"
+		case record.Finished:
+			outcome = "unknown"
+		case record.Started:
+			outcome = "running"
+		default:
+			outcome = "accepted"
+		}
+	}
+	switch outcome {
+	case "accepted":
+		out.Accepted++
+	case "running":
+		out.Running++
+	case "completed":
+		out.Completed++
+	case "failed":
+		out.Failed++
+	case "interrupted":
+		out.Interrupted++
+	default:
+		out.Unknown++
+	}
+	claimed, hasClaimed := auditTime(record.Audit, "claimed")
+	started, hasStarted := auditTime(record.Audit, "started")
+	terminal, hasTerminal := auditTime(record.Audit, "terminal")
+	if hasClaimed && hasStarted && !started.Before(claimed) {
+		out.claimDurations = append(out.claimDurations, float64(started.Sub(claimed))/float64(time.Millisecond))
+	}
+	if hasStarted && hasTerminal && !terminal.Before(started) {
+		out.terminalDurations = append(out.terminalDurations, float64(terminal.Sub(started))/float64(time.Millisecond))
+	}
+}
+
+func auditTime(events []ExecutionAudit, action string) (time.Time, bool) {
+	for _, event := range events {
+		if event.Action == action {
+			at, err := time.Parse(time.RFC3339Nano, event.At)
+			return at, err == nil
+		}
+	}
+	return time.Time{}, false
 }
 
 func durationPercentile(values []float64, fraction float64) *float64 {
