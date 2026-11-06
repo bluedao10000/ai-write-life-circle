@@ -103,3 +103,9 @@ Creative只读计划试点的每次模型调用沿用原started命令，可附�
 ## 五角色请求结果元数据
 
 Worker终态上报可携带至多五条stepResults，按callIndex排序并关联已准入角色。仅记录模型请求是否完成/失败、单调时钟耗时及Usage；不保存中间输出。Go在原任务终态事务中校验唯一序号、准入记录及预算上限并持久保存，未知Usage仍为空，任务费用仍按原业务结算。进程在上报前中断的角色仅保留准入，不能推断成功。终态字段要求Go先于Worker升级；回滚前先drain Creative并停止Worker，再回退Go，避免旧Go的严格解码拒绝新终态。
+
+## 五角色历史指标
+
+私有`GET /internal/v1/agent/tasks/metrics`使用原Worker服务凭证，按需读取`tasks-v1.json`并从同一条准入/结果证据派生五角色指标。每个角色分别返回Admissions、Results、completed/failed计数、已知Usage样本及累计输入/输出/cache tokens，耗时P50/P95只聚合实际终止结果；没有样本时返回null。没有终态结果的准入不会被推断为成功，接口不返回任务ID、作品、正文、凭证或任意错误文本。
+
+接口不写入第二份指标账本，Go重启后可直接从原任务回执恢复同一投影。当前历史窗口受原任务回执保留策略约束，只覆盖Creative只读试点；不能将本地合成Provider耗时解释为真实模型SLO。

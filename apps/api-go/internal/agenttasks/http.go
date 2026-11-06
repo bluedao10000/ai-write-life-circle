@@ -60,6 +60,11 @@ func (s *Service) Handler() http.Handler {
 			reply(w, s.WorkerStatus(), nil)
 			return
 		}
+		if r.Method == "GET" && r.URL.Path == "/internal/v1/agent/tasks/metrics" {
+			result, err := s.StepMetrics(r.Context())
+			reply(w, result, err)
+			return
+		}
 		if r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/internal/v1/agent/tasks/") && strings.HasSuffix(r.URL.Path, "/diagnostics") {
 			parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/internal/v1/agent/tasks/"), "/")
 			if len(parts) == 2 && len(parts[0]) == 36 {

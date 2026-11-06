@@ -294,6 +294,15 @@ try {
   assert(governed.stepResults.every(step=>step.status==='completed'&&step.durationMs>=0&&step.usage));
   assert.equal(new Set(governed.stepResults.map(step=>step.callIndex)).size,5);
   assert.deepEqual(governed.stepResults.map(step=>step.callIndex),[1,2,3,4,5]);
+  const metricsResponse = await fetch(`http://127.0.0.1:${taskPort}/internal/v1/agent/tasks/metrics`, { headers: { Authorization: "Bearer " + secrets.tasktoken } });
+  assert.equal(metricsResponse.status, 200);
+  const metrics = await metricsResponse.json();
+  assert.equal(metrics.schemaVersion, 1);
+  assert.equal(metrics.tasks, 1);
+  assert.equal(metrics.samples, 5);
+  assert.deepEqual(metrics.roles.map(role => role.role), ["creative.plan.planner", "creative.plan.researcher", "creative.plan.analyst", "creative.plan.critic", "creative.plan.coordinator"]);
+  assert(metrics.roles.every(role => role.admissions === 1 && role.results === 1 && role.completed === 1 && role.failed === 0 && role.knownUsage === 1 && Number.isFinite(role.durationP50Ms) && Number.isFinite(role.durationP95Ms)));
+  assert(!JSON.stringify(metrics).includes(governed.task.taskId));
 
   assert.deepEqual([...governed.modelSteps].sort((a,b)=>a.callIndex-b.callIndex).map(step=>step.role), ['creative.plan.planner','creative.plan.researcher','creative.plan.analyst','creative.plan.critic','creative.plan.coordinator']);
   assert(governed.modelSteps.every(step=>step.parentTaskId===governed.task.taskId&&Number.isFinite(Date.parse(step.at))));

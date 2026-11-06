@@ -20,17 +20,24 @@ type ModelStepReceipt struct {
 	At string `json:"at"`
 }
 
+var modelStepRoles = []string{
+	"creative.plan.planner",
+	"creative.plan.researcher",
+	"creative.plan.analyst",
+	"creative.plan.critic",
+	"creative.plan.coordinator",
+}
+
 func (r *Record) admitModelStep(step ModelStep) error {
 	invalid := func() error {
 		return application.Fail(409, "AGENT_CONFIG_CHANGED", "Model step differs from the registered execution policy.")
 	}
-	roles := []string{"creative.plan.planner", "creative.plan.researcher", "creative.plan.analyst", "creative.plan.critic", "creative.plan.coordinator"}
-	if r.Task.Kind != "creative.plan_check" || r.Task.Strategy != creative.PlanStrategyReadonly || step.ParentTaskID != r.Task.ID || step.CallIndex < 1 || step.CallIndex > len(roles) || step.Role != roles[step.CallIndex-1] {
+	if r.Task.Kind != "creative.plan_check" || r.Task.Strategy != creative.PlanStrategyReadonly || step.ParentTaskID != r.Task.ID || step.CallIndex < 1 || step.CallIndex > len(modelStepRoles) || step.Role != modelStepRoles[step.CallIndex-1] {
 		return invalid()
 	}
-	limit := r.Task.Reserved / len(roles)
-	if step.CallIndex == len(roles) {
-		limit = r.Task.Reserved - limit*(len(roles)-1)
+	limit := r.Task.Reserved / len(modelStepRoles)
+	if step.CallIndex == len(modelStepRoles) {
+		limit = r.Task.Reserved - limit*(len(modelStepRoles)-1)
 	}
 	if step.MaxTokens < 1 || step.MaxTokens != limit {
 		return invalid()
