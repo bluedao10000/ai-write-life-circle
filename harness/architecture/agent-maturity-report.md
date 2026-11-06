@@ -124,6 +124,8 @@ Phase 2剩余工作是真实模型下的质量与成本证据、独立人工校�
 
 这些任务耗时含进程准备和故障观察窗口，不能作为生产延迟。结果确认数据隔离、完整执行和确定性工程评分，不构成真实模型质量、成本或泛化结论。报告位于`.local/evals/agent/dev-all.json`及`.local/evals/agent/held-out-all.json`，未提交。
 
+随后`agent-eval-v9-memory`将Memory held-out从1项扩展到4项，增加真实Go/Pi的操作经验检索后删除、`memory.extract.v3`候选导入和`memory.consolidate`后台候选发布。完整held-out 16/16工程通过，34次合成模型调用、5次工具调用，Memory Retrieval实际观测2次，P50/P95为11.48/17.11 ms。held-out报告仍记录`realLLMCalled=false`、`qualityValidated=false`及`qualitySuccessRate=null`；此结果只验证执行合同，不衡量语义质量。总任务P95 11173.02 ms受进程与故障观察影响，不代表生产SLO。报告保存在`.local/evals/agent/held-out-all.json`。
+
 ### Go业务评测接入
 
 开发集升级为`agent-eval-v2`，新增Review正常完成、完成回执丢失重试、伪造来源拒绝三项真实Go/Pi进程评测。断言读取Go API结果，不使用进程退出码代替业务成功：前两项各保存1条候选，伪造来源保存0条并拒绝1条；每项模型调用1次、Go报告input/output为100/80 tokens，原稿均未变化。回执案例确认丢失1次确认响应，重试没有增加模型调用或候选。
