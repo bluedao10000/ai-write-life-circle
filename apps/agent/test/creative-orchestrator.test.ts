@@ -104,6 +104,22 @@ test('readonly plan orchestration never presents partial usage as a complete set
  });
 });
 
+test('readonly plan admission denial is not reported as a model call or step result',async()=>{
+ const gateway={config:{MaxOutputTokens:2048},executeStep:async(_task:AgentTask,_signal:AbortSignal,step:ModelStep)=>{
+  if(step.role==='creative.plan.coordinator')throw new GatewayError('AGENT_CONFIG_CHANGED',{text:'',usage:null});
+  return responseFor(step);
+ }};
+ await assert.rejects(()=>orchestratePlanCheck(task(),gateway,new AbortController().signal),(error)=>{
+  if(!(error instanceof GatewayError))return false;
+  assert.equal(error.code,'AGENT_CONFIG_CHANGED');
+  assert.equal(error.response.modelCalls,4);
+  assert.deepEqual(error.response.usage,{inputTokens:400,outputTokens:80,cachedInputTokens:0});
+  assert.deepEqual(error.response.stepResults?.map(step=>step.callIndex),[1,2,3,4]);
+  assert(error.response.stepResults?.every(step=>step.status==='completed'));
+  return true;
+ });
+});
+
 test('readonly plan orchestration aborts parallel siblings when one role fails',async()=>{
  let aborted=0;
  const gateway={config:{MaxOutputTokens:2048},executeStep:async(_task:AgentTask,signal:AbortSignal,step:ModelStep)=>{

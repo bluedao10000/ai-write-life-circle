@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
-import type {AgentTask} from '@writer-agent/contracts';
+import type {AgentModelResponse,AgentTask} from '@writer-agent/contracts';
 import {ModelGateway,GatewayError,executionConfigSchema,executionFingerprint,configuredModel,boundedModelFetch} from '../src/runtime/model-gateway.js';
 import {strategy,validateReviewPrompt} from '../src/agents/review/prompt.js';
 const systemPrompt = 'Review the supplied sources. Return JSON with findings.';
@@ -45,7 +45,9 @@ test('Pi bounded Review sends the task prompt and preserves dialect, usage and z
  const task:AgentTask={taskId:crypto.randomUUID(),kind:'review.execute',bookId:'synthetic',authorId:'author',leaseToken:crypto.randomUUID(),executorEpoch:1,attempt:1,deadline:new Date(Date.now()+15000).toISOString(),strategyVersion:strategy,revisionId:'fixture-rev',contentHash:'fixture-hash',inputHash:'sha256:'+'a'.repeat(64),model:{provider:config.Provider,model:config.Model,endpoint,execution:'local'},configFingerprint:executionFingerprint(config),outputSchemaVersion:'review-candidates-v1',reservedTokens:34048,budgetDay:'',consent:{},request:{system:systemPrompt,input:'{"sources":[]}',schemaName:'',schema:{type:'object'}}};
  try{
  const blockedGateway=new ModelGateway(config,'fixture-key',async()=>{throw Error('SYNTHETIC_STARTED_REJECTED')});
- await assert.rejects(executeReview(task,blockedGateway,new AbortController().signal));assert.equal(requests.length,0,'Go started rejection must precede network');
+ await assert.rejects(executeReview(task,blockedGateway,new AbortController().signal),(error:unknown)=>error instanceof GatewayError&&error.code==='MODEL_REQUEST_NOT_ADMITTED'&&error.response.modelCalls===undefined);assert.equal(requests.length,0,'Go started rejection must precede network');
+ const changedGateway=new ModelGateway(config,'fixture-key',async()=>{throw Error('AGENT_CONFIG_CHANGED')});
+ await assert.rejects(executeReview(task,changedGateway,new AbortController().signal),(error:unknown)=>error instanceof GatewayError&&error.code==='AGENT_CONFIG_CHANGED'&&error.response.modelCalls===undefined);assert.equal(requests.length,0,'changed execution policy must remain a no-call admission failure');
  const closedGateway=new ModelGateway(config,'fixture-key');
  await assert.rejects(executeReview(task,closedGateway,new AbortController().signal));assert.equal(requests.length,0,'missing business adapter must fail closed');
  const gateway=new ModelGateway(config,'fixture-key',async()=>{});validateReview(task,gateway);
@@ -84,6 +86,24 @@ test('stale executor stops before started or fail; no model call',async()=>{
  // Test the error path through the public scheduler lifecycle with a deterministic claim.
  let claimed=false;client.check=async()=>{};client.report=async()=>({});client.claim=async()=>{if(claimed)return null;claimed=true;return task};
  await assert.rejects(scheduler.run(new AbortController().signal),/AGENT_CONFIG_CHANGED/);assert.equal(actions,0,'incompatibility must not fail a valid domain task');
+});
+
+test('admission policy change is recorded before stopping an incompatible worker',async()=>{
+ const {Scheduler}=await import('../src/worker/scheduler.js');
+ const scheduler=new Scheduler({slots:1,kinds:['creative'],version:'fixture',origin:'http://127.0.0.1:1',token:'fixture',key:'fixture',model:executionConfigSchema.parse({Provider:'openai-compatible',BaseURL:'http://127.0.0.1:1/v1',APIKey:'',Model:'fixture',ResponseFormat:'none',TokenParameter:'max_tokens',Timeout:1e9,MaxContextBytes:12000,MaxOutputTokens:2048,MaxResponseBytes:256*1024})});
+ const value:AgentTask={taskId:crypto.randomUUID(),kind:'creative.plan_check',bookId:'book',authorId:'author',leaseToken:crypto.randomUUID(),executorEpoch:1,attempt:1,deadline:new Date(Date.now()+15000).toISOString(),strategyVersion:'creative-plan-check-readonly-v1',revisionId:'revision',contentHash:'sha256:'+'a'.repeat(64),inputHash:'sha256:'+'b'.repeat(64),model:{provider:'openai-compatible',model:'fixture',endpoint:'http://127.0.0.1:1/v1',execution:'local'},configFingerprint:executionFingerprint(scheduler.config.model),outputSchemaVersion:'creative-plan-check-candidates-v2',reservedTokens:10000,budgetDay:'fixture',consent:{},request:{system:'fixture',input:JSON.stringify({chapterTitle:'chapter',chapterText:'text',plans:[{assetId:'plan',kind:'event',plan:'plan'}]}),schemaName:'creative_plan_check',schema:{type:'object'}}};
+ const actions:{action:string;failureCode?:string;response:AgentModelResponse}[]=[];
+ scheduler.client.action=async(_task,_action,response={text:'',usage:null},failureCode)=>{actions.push({action:_action,...(failureCode?{failureCode}:{}),response});return {acknowledged:true}};
+ scheduler.gateway.executeStep=async(_task,_signal,step)=>{
+  if(step.role==='creative.plan.coordinator')throw new GatewayError('AGENT_CONFIG_CHANGED',{text:'',usage:null});
+  const text=step.role==='creative.plan.planner'?JSON.stringify({items:[{assetId:'plan',focus:'focus'}]}):step.role==='creative.plan.researcher'?JSON.stringify({findings:[{assetId:'plan',quote:'text',observation:'observation',assessment:'diverged'}]}):step.role==='creative.plan.analyst'?JSON.stringify({analyses:[{assetId:'plan',reasoning:'reasoning',assessment:'diverged'}]}):JSON.stringify({concerns:[{assetId:'plan',concern:'concern'}]});
+  return {text,usage:{inputTokens:10,outputTokens:5},modelCalls:1};
+ };
+ await (scheduler as unknown as {process(task:AgentTask,abort:AbortController):Promise<void>}).process(value,new AbortController());
+ assert.equal((scheduler as unknown as {incompatible:boolean}).incompatible,true);
+ assert.deepEqual(actions.map(action=>[action.action,action.failureCode]),[['fail','AGENT_CONFIG_CHANGED']]);
+ assert.equal(actions[0].response.modelCalls,4,'unadmitted policy failure is not counted as a fifth model call');
+ assert.equal(actions[0].response.stepResults?.length,4);
 });
 
 test('execution contract accepts expanded output usage without accepting unlimited output', async()=>{

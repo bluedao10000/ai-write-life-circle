@@ -82,3 +82,11 @@ func TestModelStepResultsRequireAdmissionAndValidUsage(t *testing.T) {
 		t.Fatal("duplicate result accepted")
 	}
 }
+
+func TestPreflightAdmissionFailuresCanBecomeTerminalReceipts(t *testing.T) {
+	for _, code := range []string{"AGENT_CONFIG_CHANGED", "MODEL_REQUEST_NOT_ADMITTED"} {
+		if !failureAllowed(code) {
+			t.Fatalf("%s must be recorded as a terminal execution failure", code)
+		}
+	}
+}

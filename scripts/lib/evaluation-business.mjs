@@ -22,7 +22,7 @@ export async function executeBusinessEvaluation(task,signal,result){
   if(task.environment.scenario.startsWith('procedural-'))return await procedural(fixture,task,result,wait,children);
   if(task.capability==='knowledge')return await knowledge(fixture,task,result,wait,worker,children);
   if(task.environment.scenario==='creative-plan-comparison')return await creativePlanComparison(fixture,task,result,wait,worker);
-  if(task.environment.scenario==='creative-plan-failure'||task.environment.scenario==='creative-plan-tool-attempt')return await creativePlanFailure(fixture,task,result,wait,worker);
+  if(task.environment.scenario==='creative-plan-failure'||task.environment.scenario==='creative-plan-tool-attempt'||task.environment.scenario==='creative-plan-child-budget-tamper')return await creativePlanFailure(fixture,task,result,wait,worker);
   if(task.capability==='creative')return await creative(fixture,task,result,wait,children);
   if(task.environment.scenario==='review-receipt')fixture.dropCompletion();
   const run=await fixture.enqueue();result.trace.push({action:'go_accepted'});
@@ -203,7 +203,8 @@ async function creativePlanComparison(fixture,task,result,wait,worker){
 
 async function creativePlanFailure(fixture,task,result,wait,worker){
  const toolAttempt=task.environment.scenario==='creative-plan-tool-attempt';
- const expectedFailure=toolAttempt?'LLM_TOOL_OUTPUT_FORBIDDEN':'LLM_HTTP_ERROR';
+ const childBudgetTamper=task.environment.scenario==='creative-plan-child-budget-tamper';
+ const expectedFailure=toolAttempt?'LLM_TOOL_OUTPUT_FORBIDDEN':childBudgetTamper?'AGENT_CONFIG_CHANGED':'LLM_HTTP_ERROR';
  const lines=task.request.split('\n').map(line=>line.trim()).filter(Boolean);
  const planText=lines.find(line=>line.startsWith('计划：'))?.slice(3);
  const chapterIndex=lines.findIndex(line=>line.startsWith('正文：'));
@@ -230,11 +231,20 @@ async function creativePlanFailure(fixture,task,result,wait,worker){
   const state=await json(taskPath);
   return Object.values(state?.tasks??{}).find(record=>record.task?.kind==='creative.plan_check'&&record.task?.bookId===book.bookId&&record.creative?.Claim?.Job?.jobId===jobId)??null;
  };
+ if(childBudgetTamper)fixture.tamperNextModelStep(5);
  const start=fixture.requests.length;
  await fixture.call(creative+'/plan-checks',{method:'POST',status:202,body:{chapterId:book.chapters[0].chapterId}});
  const queuedJob=await wait(queued,'failed plan-check job');
  const record=await wait(()=>taskRecord(queuedJob.jobId),'failed plan-check task');
- const failed=await wait(async()=>{const job=await currentJob(queuedJob.jobId);return job?.status==='failed'&&job},'failed plan-check receipt');
+ const failed=await wait(async()=>{
+  const job=await currentJob(queuedJob.jobId);
+  if(job?.status==='failed')return job;
+  if(worker.exitCode!==null){
+   result.metrics={workerExitCode:worker.exitCode??null,taskActionErrors:JSON.stringify(fixture.taskActionErrors),workerOutput:(worker.output??'').split('\n').filter(line=>line.includes('task_')||line.includes('executor_')||line.includes('worker_')).slice(-12).join('\n')};
+   throw Error('EVAL_WORKER_EXIT');
+  }
+  return null;
+ },'failed plan-check receipt');
  const finalRecord=await wait(async()=>{const value=await taskRecord(queuedJob.jobId);return value?.finished&&value},'model result receipts');
  const callsAtFailure=fixture.requests.length;
  await sleep(2200);
@@ -244,6 +254,7 @@ async function creativePlanFailure(fixture,task,result,wait,worker){
  const governance=(worker.output??'').split('\n').flatMap(line=>{try{const event=JSON.parse(line);return event.event==='agent_governance'&&event.taskId===record.task.taskId?[event]:[]}catch{return []}});
  const plannerActions=governance.filter(event=>event.role==='creative.plan.planner').map(event=>event.action);
  const researcherActions=governance.filter(event=>event.role==='creative.plan.researcher').map(event=>event.action);
+ const coordinatorActions=governance.filter(event=>event.role==='creative.plan.coordinator').map(event=>event.action);
  const failedSteps=finalRecord.stepResults?.filter(step=>step.status==='failed')??[];
  const divergencePage=await fixture.call(creative+'/divergences?chapterId='+book.chapters[0].chapterId);
  const afterPlan=await fixture.call(creative+'/assets/'+plan.assetId),afterChapter=await fixture.call(chapter),assets=await fixture.call(creative+'/assets');
@@ -276,8 +287,42 @@ async function creativePlanFailure(fixture,task,result,wait,worker){
   assets:assets.total,
   researcherFailureAudited:JSON.stringify(researcherActions)===JSON.stringify(['authorized','reserved','model_started','failed']),
  });
+ if(childBudgetTamper){
+  const evidence=fixture.stepTamperEvidence,results=finalRecord.stepResults??[],admissions=finalRecord.modelSteps??[];
+  const completedRoles={
+   planner:systems.filter(system=>system.startsWith('You are the planner in a read-only story-plan review')).length,
+   researcher:systems.filter(system=>system.startsWith('You are the evidence researcher in a read-only story-plan review')).length,
+   analyst:systems.filter(system=>system.startsWith('You are the continuity analyst in a read-only story-plan review')).length,
+   critic:systems.filter(system=>system.startsWith('You are the independent critic in a read-only story-plan review')).length,
+  };
+  Object.assign(metrics,{
+   roleResultsPersisted:results.length===4&&results.every(step=>step.status==='completed'&&step.usage!=null&&admissions.some(admission=>admission.callIndex===step.callIndex)),
+   failedStepAbsent:failedSteps.length===0,
+   knownUsageSettled:failed.usage!=null&&failed.usageIncomplete!==true,
+   noCoordinator:systems.every(system=>!system.startsWith('You compare an author\'s accepted plans for one chapter'))&&coordinatorActions.every(action=>action!=='reserved'&&action!=='model_started'),
+   admissionTampered:evidence?.callIndex===5&&evidence?.role==='creative.plan.coordinator'&&evidence.maxTokens===evidence.originalMaxTokens+evidence.maxTokensDelta,
+   goAdmissionRejected:evidence?.status===409&&evidence?.code==='AGENT_CONFIG_CHANGED',
+   coordinatorAdmissionDenied:JSON.stringify(coordinatorActions)===JSON.stringify(['authorized','failed']),
+   coordinatorProviderAbsent:systems.every(system=>!system.startsWith('You compare an author\'s accepted plans for one chapter')),
+   completedChildRoles:Object.values(completedRoles).every(count=>count===1),
+   modelStepAdmissions:admissions.length===4&&admissions.map(admission=>admission.callIndex).sort((a,b)=>a-b).every((callIndex,index)=>callIndex===index+1),
+   admissionReceipt:JSON.stringify(evidence),
+   taskActionErrors:JSON.stringify(fixture.taskActionErrors),
+   failedModelCalls:failed.modelCalls??null,
+   failedUsageIncomplete:failed.usageIncomplete===true,
+   completedStepResults:results.filter(step=>step.status==='completed').length,
+   modelStepAdmissionCount:admissions.length,
+   taskOutcome:finalRecord.outcome??null,
+   failureCode:failed.failureCode,
+   assets:assets.total,
+  });
+ }
  result.metrics=metrics;
- result.trace.push({action:toolAttempt?'model_tool_output_rejected':'provider_failure_reported'},{action:metrics.unknownUsageRetained?'unknown_usage_reservation_retained':'known_usage_settled'},{action:'automatic_retry_absent'});
+ result.trace.push(
+  {action:toolAttempt?'model_tool_output_rejected':childBudgetTamper?'model_step_admission_rejected':'provider_failure_reported'},
+  {action:childBudgetTamper?'known_usage_settled':metrics.unknownUsageRetained?'unknown_usage_reservation_retained':'known_usage_settled'},
+  {action:'automatic_retry_absent'},
+ );
  return result;
 }
 

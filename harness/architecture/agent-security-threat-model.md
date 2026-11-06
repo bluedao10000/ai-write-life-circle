@@ -41,7 +41,9 @@ Creative计划核对的Planner、Researcher、Analyst、Critic和Coordinator都�
 
 Planner、Researcher、Analyst和Critic的输出只能引用Go已绑定的plan assetId；Coordinator最终结果仍由Go重新核对计划、正文Revision、Hash和引文。并行角色失败会取消其余请求，授权或期限失效后每次网络请求前的Go started/heartbeat核验都会拒绝。真实跨进程测试证明五个角色各调用一次、没有工具事件、没有正文或计划写入。
 
-该证据只覆盖固定五角色试点。通用父子任务、动态角色创建、审批降级、子角色预算竞争和跨会话攻击仍需独立实现与评测。
+固定五角色试点还覆盖一次真实子预算篡改：Worker代理在Coordinator started请求中把`maxTokens`增加1，Go返回409，模型调用停在已准入的4次，前四个角色的已知Usage正常结算，未准入角色不产生伪stepResult，原任务以`AGENT_CONFIG_CHANGED`失败并停止Worker继续领取。场景没有Coordinator Provider请求、工具、Divergence或业务写入。
+
+该证据只覆盖固定五角色试点。通用父子任务、动态角色创建、审批降级、多个并行写入者竞争预算和跨会话攻击仍需独立实现与评测。
 
 ## 写工具授权撤销证据
 

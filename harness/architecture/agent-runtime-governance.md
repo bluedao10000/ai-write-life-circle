@@ -38,7 +38,7 @@ Thinking BudgetAdapter 复用 Saved.execution.modelRequests、usage 和 Store.wr
 
 ## Phase 1 实现与验收
 
-公共入口为 `apps/agent/src/runtime/governance/index.ts`。Registry 登记 Thinking 与四种 Go task kind，并校验 Worker 输出合同；ExecutionContext 固定角色、scope、期限、关联ID和版本，预算只读派生自原 Run/AgentTask。
+公共入口为 `apps/agent/src/runtime/governance/index.ts`。Registry 登记 Thinking 与五类 Go task kind，并校验 Worker 输出合同；ExecutionContext 固定角色、scope、期限、关联ID和版本，预算只读派生自原 Run/AgentTask。
 
 `ModelRequestGate` 已接入 PiHost 的回复与讨论压缩 stream，以及 Worker 的 complete。SDK最终payload钩子等待授权和原持久预留适配器；实际fetch要求该请求已准备且尚未发送。并发准备、未预留发送和重复发送均被拒绝。Worker适配器在最终payload阶段调用Go started和heartbeat，没有适配器的ModelGateway默认拒绝执行。usage结算、未知费用与重试仍沿用原实现。
 
@@ -99,6 +99,12 @@ Go在原Thinking私有监听器提供服务令牌保护的Runtime Health路由�
 Creative只读计划试点的每次模型调用沿用原started命令，可附带固定角色、callIndex、parentTaskId及maxTokens。Go按已登记五角色和原任务预留预算验证；只有原任务身份、策略和租约有效时才写入原任务回执。每个序号最多一条，重复身份幂等，修改角色或预算拒绝。Worker等待该事务成功才允许网络发送。
 
 回执只记录请求准入，不能作为模型成功或已知费用的证明。原任务仍拥有租约、预算和最终提交；没有第二套子任务权威。新增字段可选，旧普通任务不变；旧二进制忽略记录字段，但不支持新准入请求，部署需Go先于Worker升级。
+
+### 准入失败与模型调用分离
+
+ModelRequestGate在Go started事务失败时不再把该子调用推算给Provider，也不生成对应的stepResult。`AGENT_CONFIG_CHANGED`保留原失败码；其他准入拒绝归一为`MODEL_REQUEST_NOT_ADMITTED`。已完成并准入的调用继续携带真实Usage上报，未准入调用不计`modelCalls`、不占子预算，也不会让失败回执因伪造步骤结果被Go再次拒绝。
+
+Worker收到`AGENT_CONFIG_CHANGED`先提交原任务失败回执，再标记执行合同不兼容并停止领取新任务。真实Creative攻击在Coordinator扩预算请求上取得Go 409，前四个角色已结算，Coordinator请求未到Provider，任务以`AGENT_CONFIG_CHANGED`安全结束。
 
 ## 五角色请求结果元数据
 

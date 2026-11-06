@@ -22,8 +22,42 @@ export async function createPiWorkerFixture({chapters=0,executionEnv={},modelBud
  WRITER_AGENT_TASK_INTERNAL_PORT:String(taskPort),WRITER_AGENT_TASK_SERVICE_TOKEN_FILE:join(data.directory,'task'),
  WRITER_AGENT_PI_ORIGIN:`http://127.0.0.1:${piPort}`,WRITER_AGENT_PI_PORT:String(piPort),WRITER_AGENT_PI_INTERNAL_PORT:String(toolPort),WRITER_AGENT_PI_STORY_ORIGIN:`http://127.0.0.1:${toolPort}`,WRITER_AGENT_PI_SERVICE_TOKEN_FILE:join(data.directory,'rpc'),WRITER_AGENT_PI_CAPABILITY_KEY_FILE:join(data.directory,'capability'),WRITER_AGENT_PI_STATE_DIR:join(data.directory,'thinking-state'),WRITER_AGENT_PI_LLM_BASE_URL:data.origin+'/v1',WRITER_AGENT_PI_LLM_MODEL:'deterministic-test-only',WRITER_AGENT_PI_LLM_PROVIDER:'fixture',WRITER_AGENT_PI_LLM_API_KEY:'synthetic-only',WRITER_AGENT_PI_FIXTURE:'1',WRITER_AGENT_PI_MAX_DURATION_MS:'5000',
  WRITER_AGENT_TASK_ORIGIN:`http://127.0.0.1:${taskPort}`,WRITER_AGENT_PI_WORKER_FIXTURE:'1',WRITER_AGENT_PI_WORKER_VERSION:'synthetic-worker'};
- let dropped=0,dropNext=false;
- const proxy=httpServer(async(req,res)=>{try{const chunks=[];for await(const b of req)chunks.push(b);const response=await fetch(`http://127.0.0.1:${taskPort}`+req.url,{method:req.method,headers:req.headers,...(req.method==='POST'?{body:Buffer.concat(chunks)}:{})});const body=Buffer.from(await response.arrayBuffer());if(dropNext&&req.url.endsWith('/complete')&&response.ok){dropNext=false;dropped++;res.destroy();return}res.writeHead(response.status,Object.fromEntries(response.headers));res.end(body)}catch{res.writeHead(502);res.end()}});
+ let dropped=0,dropNext=false,pendingStepTamper,stepTamperEvidence;
+ const taskActionErrors=[];
+ function tamperNextModelStep(callIndex){
+  if(!Number.isSafeInteger(callIndex)||callIndex<1||callIndex>5)throw Error('INVALID_MODEL_STEP_TAMPER');
+  if(pendingStepTamper||stepTamperEvidence)throw Error('MODEL_STEP_TAMPER_ALREADY_CONFIGURED');
+  pendingStepTamper={callIndex,maxTokensDelta:1};
+ }
+ const proxy=httpServer(async(req,res)=>{try{
+  const chunks=[];for await(const b of req)chunks.push(b);
+  let body=Buffer.concat(chunks),tamper;
+  if(pendingStepTamper&&req.method==='POST'&&req.url.endsWith('/started')){
+   const value=JSON.parse(body.toString('utf8'));
+   if(value.modelStep?.callIndex===pendingStepTamper.callIndex){
+    const delta=pendingStepTamper.maxTokensDelta,originalMaxTokens=value.modelStep.maxTokens;
+    value.modelStep.maxTokens+=delta;
+    tamper={modelStep:{...value.modelStep},originalMaxTokens,maxTokensDelta:delta};
+    body=Buffer.from(JSON.stringify(value));
+    pendingStepTamper=undefined;
+   }
+  }
+  const headers={...req.headers};if(tamper)delete headers['content-length'];
+  const response=await fetch(`http://127.0.0.1:${taskPort}`+req.url,{method:req.method,headers,...(req.method==='POST'?{body}: {})});
+  const responseBody=Buffer.from(await response.arrayBuffer());
+  if(!response.ok&&req.url.includes('/internal/v1/agent/tasks/')){
+   let code,request;try{code=JSON.parse(responseBody.toString('utf8')).code}catch{}
+   try{request=JSON.parse(body.toString('utf8'))}catch{}
+   const failure=req.url.endsWith('/fail')&&request?.response?{modelCalls:request.response.modelCalls??null,usage:request.response.usage??null,stepResults:request.response.stepResults??[]}:undefined;
+   taskActionErrors.push({action:req.url.split('/').at(-1),status:response.status,...(code?{code}: {}),...(failure?{failure}: {})});
+  }
+  if(tamper){
+   let code;try{code=JSON.parse(responseBody.toString('utf8')).code}catch{}
+   stepTamperEvidence={...tamper.modelStep,maxTokensDelta:tamper.maxTokensDelta,originalMaxTokens:tamper.originalMaxTokens,status:response.status,code};
+  }
+  if(dropNext&&req.url.endsWith('/complete')&&response.ok){dropNext=false;dropped++;res.destroy();return}
+  res.writeHead(response.status,Object.fromEntries(response.headers));res.end(responseBody)
+ }catch{res.writeHead(502);res.end()}});
  await new Promise(r=>proxy.listen(0,'127.0.0.1',r));baseEnv.WRITER_AGENT_TASK_ORIGIN=`http://127.0.0.1:${proxy.address().port}`;
  Object.assign(baseEnv,executionEnv);
  const processes=new Set();let api,origin;
@@ -63,5 +97,5 @@ export async function createPiWorkerFixture({chapters=0,executionEnv={},modelBud
  const knowledge=await call(legacyBook+'/knowledge');
  await call(legacyBook+'/knowledge/pause',{method:'POST',body:{baseVersion:knowledge.version}});
  await call(legacyBook+'/creative/settings/pause',{method:'POST',body:{}});
- return{...data,get calls(){return data.calls},get knowledgeResponses(){return data.knowledgeResponses},get consolidationCalls(){return data.consolidationCalls},get planToolAttempts(){return data.planToolAttempts},get planToolAttemptName(){return data.planToolAttemptName},cases,env:baseEnv,keys,identityHeaders:identity.headers,start,stop,startAPI,call,enqueue,get,complete,switchOwner,expire,expireKnowledge,async rollBudgetDay(book){const path=join(data.state,'knowledge',Buffer.from(book).toString('base64url'),'index-v1.json');const value=JSON.parse(await readFile(path,'utf8'));assert.ok(!value.jobs.some(j=>j.status==='running'));value.budgetDay='2000-01-01';value.budgetTokens=1000000;value.budgetAttempts=20;await writeFile(path+'.fixture',JSON.stringify(value));await rename(path+'.fixture',path)},dropCompletion(){dropNext=true},get dropped(){return dropped},api:()=>api,taskOrigin:`http://127.0.0.1:${taskPort}`,async close(){for(const p of processes){p.kill('SIGCONT');await stop(p)}await new Promise(r=>proxy.close(r));await data.close()}}}catch(e){for(const p of processes)await stop(p);await data.close();throw e}
+ return{...data,get calls(){return data.calls},get knowledgeResponses(){return data.knowledgeResponses},get consolidationCalls(){return data.consolidationCalls},get planToolAttempts(){return data.planToolAttempts},get planToolAttemptName(){return data.planToolAttemptName},get stepTamperEvidence(){return stepTamperEvidence},get taskActionErrors(){return taskActionErrors},cases,env:baseEnv,keys,identityHeaders:identity.headers,start,stop,startAPI,call,enqueue,get,complete,switchOwner,expire,expireKnowledge,async rollBudgetDay(book){const path=join(data.state,'knowledge',Buffer.from(book).toString('base64url'),'index-v1.json');const value=JSON.parse(await readFile(path,'utf8'));assert.ok(!value.jobs.some(j=>j.status==='running'));value.budgetDay='2000-01-01';value.budgetTokens=1000000;value.budgetAttempts=20;await writeFile(path+'.fixture',JSON.stringify(value));await rename(path+'.fixture',path)},tamperNextModelStep,dropCompletion(){dropNext=true},get dropped(){return dropped},api:()=>api,taskOrigin:`http://127.0.0.1:${taskPort}`,async close(){for(const p of processes){p.kill('SIGCONT');await stop(p)}await new Promise(r=>proxy.close(r));await data.close()}}}catch(e){for(const p of processes)await stop(p);await data.close();throw e}
 }

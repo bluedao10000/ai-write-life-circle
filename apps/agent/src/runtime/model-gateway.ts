@@ -74,6 +74,14 @@ export function completionUsage(value:unknown,maxOutput:number):AgentModelRespon
   const valid=Number.isInteger(cached)&&cached>=0&&cached<=raw.prompt_tokens!&&(hit===undefined||details===undefined||hit===details);
   return {inputTokens:raw.prompt_tokens!,outputTokens:raw.completion_tokens!,cachedInputTokens:valid?cached:0};
 }
+const admissionDenialCodes=new Set([
+ "AGENT_CONFIG_CHANGED","MEMORY_SOURCE_CHANGED","CREATIVE_SUPERSEDED","CREATIVE_CONTEXT_TOO_LARGE",
+ "CREATIVE_NO_PLANS","CREATIVE_TURN_UNAVAILABLE","CREATIVE_LEASE_LOST","CREATIVE_UNKNOWN_JOB",
+]);
+function admissionFailure(error:unknown):GatewayError {
+ const code=error instanceof Error?error.message:"";
+ return new GatewayError(admissionDenialCodes.has(code)?code:"MODEL_REQUEST_NOT_ADMITTED",{text:"",usage:null});
+}
 export class ModelGateway {
   constructor(readonly config:ExecutionConfig,readonly key:string,readonly admission:(task:AgentTask,step?:ModelStep)=>Promise<void>=async()=>{throw Error('MODEL_RESERVATION_REQUIRED')}){}
   validate(task:AgentTask){
@@ -97,7 +105,7 @@ export class ModelGateway {
     const {runtime,model}=await configuredModel(cfg.BaseURL,cfg.Model,this.key,cfg.MaxContextBytes+20000,output);
     const thisAdmission=()=>this.admission(task,step);
     const gate=new ModelRequestGate({...workerContext(task,abort,{role:step.role,parentTaskId:step.parentTaskId,maxModelCalls:step.maxModelCalls,maxTokens:step.maxTokens}),modelRequestId:`${task.taskId}:${step.role}:${step.callIndex}`},{authorize:async()=>{this.validate(task)}});
-    let usage:AgentModelResponse['usage']=null,transportError="";
+    let usage:AgentModelResponse['usage']=null,transportError="",admissionError="";
     try {
       const result=await runtime.completeSimple(model,{systemPrompt:step.system,messages:[{role:"user",content:step.input,timestamp:Date.now()}]},{
         headers:{'X-Client-Request-Id':task.taskId},maxTokens:output,signal:abort,maxRetries:0,timeoutMs:cfg.Timeout/1e6,
@@ -111,7 +119,7 @@ export class ModelGateway {
           if(cfg.ResponseFormat==="json_schema")payload.response_format={type:"json_schema",json_schema:{name:step.schemaName,strict:true,schema:step.schema}};
           if(Array.isArray(payload.tools)&&payload.tools.length)throw new GatewayError("LLM_TOOL_OUTPUT_FORBIDDEN");
           if(Buffer.byteLength(JSON.stringify(payload))>cfg.MaxContextBytes)throw new GatewayError("LLM_CONTEXT_OVERFLOW");
-          await gate.prepare({reserve:()=>thisAdmission()});
+          try{await gate.prepare({reserve:()=>thisAdmission()})}catch(error){const failure=admissionFailure(error);admissionError=failure.code;throw failure}
           return payload;
         },
         onProviderStreamEvent(value){
@@ -121,6 +129,7 @@ export class ModelGateway {
       });
       const text=result.content.filter(b=>b.type==="text").map(b=>b.text).join("");
       const response={text,usage,modelCalls:1};
+      if(admissionError)throw new GatewayError(admissionError,{text:"",usage:null});
       if(abort.aborted)throw new GatewayError(deadline.aborted?"LLM_TIMEOUT":"REVIEW_INTERRUPTED",response);
       if(transportError)throw new GatewayError(transportError,response);
       if(result.content.some(b=>b.type==="toolCall"))throw new GatewayError("LLM_TOOL_OUTPUT_FORBIDDEN",response);
