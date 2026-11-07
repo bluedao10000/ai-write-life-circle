@@ -73,9 +73,6 @@ func (s *Service) Configure(ctx context.Context, a application.Actor, action, ke
 				autoMemory = *in.AutoMemoryConsolidation
 			}
 			minimum := s.reserve()
-			if multiAgent {
-				minimum *= PlanCheckModelCalls
-			}
 			if in.DailyTokenBudget < minimum || in.DailyTokenBudget > 100000000 || in.DailyJobBudget < 1 || in.DailyJobBudget > 1000 {
 				return validation("Set a daily token budget that covers at least one reserved call, and a bounded daily job budget.")
 			}
@@ -112,8 +109,8 @@ func (s *Service) Configure(ctx context.Context, a application.Actor, action, ke
 			if in.MultiAgentPlanCheck == nil {
 				return validation("multiAgentPlanCheck is required.")
 			}
-			if *in.MultiAgentPlanCheck && st.Settings.DailyTokenBudget < s.reserve()*PlanCheckModelCalls {
-				return validation("The daily token budget must cover one read-only plan review before enabling multi-agent comparison.")
+			if *in.MultiAgentPlanCheck && st.Settings.DailyTokenBudget < s.reserve() {
+				return validation("The daily token budget must cover one plan review before enabling multi-agent comparison.")
 			}
 			st.Settings.MultiAgentPlanCheck = *in.MultiAgentPlanCheck
 		case "memory":

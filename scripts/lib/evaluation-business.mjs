@@ -235,6 +235,7 @@ async function creative(fixture,task,result,wait,children){
 }
 
 async function creativePlanComparison(fixture,task,result,wait,worker){
+ const {pairCreativePlanRuns}=await import('../../apps/agent/src/evaluation/creative-plan-benchmark.ts');
  const lines=task.request.split('\n').map(line=>line.trim()).filter(Boolean);
  const planText=lines.find(line=>line.startsWith('计划：'))?.slice(3);
  const chapterIndex=lines.findIndex(line=>line.startsWith('正文：'));
@@ -277,7 +278,12 @@ async function creativePlanComparison(fixture,task,result,wait,worker){
   const value=await json(creativePath);
   return value?.jobs?.filter(job=>[singleQueued.jobId,multiQueued.jobId].includes(job.jobId)).every(job=>job.status==='completed')?value:null;
  },'creative plan-check receipts');
- const multiFinalTask=await taskRecord(multiQueued.jobId);
+ const finalTasks=await wait(async()=>{
+  const singleFinal=await taskRecord(singleQueued.jobId),multiFinal=await taskRecord(multiQueued.jobId);
+  return singleFinal?.finished&&multiFinal?.finished?{single:singleFinal,multi:multiFinal}:null;
+ },'finished plan-check task receipts');
+ const multiFinalTask=finalTasks.multi;
+ const singleFinalTask=finalTasks.single;
  const singleJob=state.jobs.find(job=>job.jobId===singleQueued.jobId),multiJob=state.jobs.find(job=>job.jobId===multiQueued.jobId);
  usage(result,[singleJob,multiJob]);
  const systems=multiRequests.map(request=>request.messages.find(message=>message.role==='system')?.content??'');
@@ -296,10 +302,44 @@ async function creativePlanComparison(fixture,task,result,wait,worker){
  const currentDivergences=await fixture.call(creative+'/divergences?chapterId='+book.chapters[0].chapterId);
  const afterPlan=await fixture.call(creative+'/assets/'+plan.assetId),afterChapter=await fixture.call(chapter);
  const admissions=multiFinalTask?.modelSteps??[],startObservation=fixture.modelStepStartObservation;
+ const claimStarted=record=>record?.creative?.Claim?.Started??record?.creative?.Claim?.started;
+ const deadlinePolicyMs=record=>{
+  const started=Date.parse(claimStarted(record)??''),deadline=Date.parse(record?.task?.deadline??'');
+  const duration=deadline-started;
+  if(!Number.isSafeInteger(duration)||duration<=0)throw Error('EVAL_PLAN_DEADLINE_EVIDENCE');
+  return duration;
+ };
+ const stepResults=multiFinalTask?.stepResults??[];
+ const roleResults=[
+  'creative.plan.planner','creative.plan.researcher','creative.plan.analyst','creative.plan.critic','creative.plan.coordinator',
+ ].map((role,index)=>{
+  const callIndex=index+1,result=stepResults.find(step=>step.callIndex===callIndex),usage=result?.usage??null;
+  return {
+   role:admissions.find(item=>item.callIndex===callIndex)?.role??`missing-role-${callIndex}`,callIndex,piRunId:result?.piRunId??null,status:result?.status??null,
+   durationMs:typeof result?.durationMs==='number'?result.durationMs:null,
+   usage:usage?{inputTokens:usage.inputTokens,outputTokens:usage.outputTokens}:null,
+  };
+ });
+ const roleDurations=roleResults.map(result=>({role:result.role,durationMs:result.durationMs}));
+ const durationMs=(job,record)=>{
+  const start=Date.parse(claimStarted(record)??''),end=Date.parse(job?.completedAt??'');
+  return Number.isFinite(start)&&Number.isFinite(end)&&end>=start?end-start:null;
+ };
+ const usageTokens=job=>job?.usage&&!job.usageIncomplete?job.usage.inputTokens+job.usage.outputTokens:null;
+ const candidate=out=>out?JSON.stringify({assessment:out.assessment,quote:out.evidence?.quote??'',explanation:out.explanation,question:out.question}):null;
+ const businessWrites=planUnchanged=>planUnchanged?0:1;
+ const pair=pairCreativePlanRuns({
+  datasetVersion:task.environment.datasetVersion??'creative-plan-check-inline-v1',
+  expected:task.environment.expected,evidenceText:chapterText,authoritativeDivergences:currentDivergences.items.length,
+  split:task.taskId.startsWith('held-out-')?'held-out':'dev',
+  caseId:task.environment.caseId??task.taskId,
+  single:{piRunId:singleFinalTask.piRunId??null,taskId:singleFinalTask.task.taskId,jobId:singleQueued.jobId,status:singleJob.status,finished:singleFinalTask.finished,strategyVersion:singleFinalTask.task.strategyVersion,outputSchemaVersion:singleFinalTask.task.outputSchemaVersion,revisionId:singleFinalTask.task.revisionId,contentHash:singleFinalTask.task.contentHash,inputHash:singleFinalTask.task.inputHash,provider:singleFinalTask.task.model.provider,model:singleFinalTask.task.model.model,deadlinePolicyMs:deadlinePolicyMs(singleFinalTask),reservedTokens:singleFinalTask.task.reservedTokens,modelCalls:singleJob.modelCalls??0,roleBudgets:[{role:'creative.plan.single',maxTokens:singleFinalTask.task.reservedTokens}],roleResults:[{role:'creative.plan.single',callIndex:1,piRunId:singleFinalTask.piRunId??null,status:singleJob.status==='completed'?'completed':singleJob.status==='failed'?'failed':null,durationMs:durationMs(singleJob,singleFinalTask),usage:singleJob.usage?{inputTokens:singleJob.usage.inputTokens,outputTokens:singleJob.usage.outputTokens}:null}],usageTokens:usageTokens(singleJob),unknownUsage:!!singleJob.usageIncomplete||!singleJob.usage,toolCalls:0,businessWrites:businessWrites(afterPlan.asset.version===plan.version&&afterChapter.headRevision.revisionId===saved.revisionId),durationMs:durationMs(singleJob,singleFinalTask),roleDurationsMs:[],output:candidate(singleResult)},
+  multi:{piRunId:multiFinalTask.piRunId??null,taskId:multiFinalTask.task.taskId,jobId:multiQueued.jobId,status:multiJob.status,finished:multiFinalTask.finished,strategyVersion:multiFinalTask.task.strategyVersion,outputSchemaVersion:multiFinalTask.task.outputSchemaVersion,revisionId:multiFinalTask.task.revisionId,contentHash:multiFinalTask.task.contentHash,inputHash:multiFinalTask.task.inputHash,provider:multiFinalTask.task.model.provider,model:multiFinalTask.task.model.model,deadlinePolicyMs:deadlinePolicyMs(multiFinalTask),reservedTokens:multiFinalTask.task.reservedTokens,modelCalls:multiJob.modelCalls??0,roleBudgets:admissions.map(item=>({role:item.role,maxTokens:item.maxTokens})),roleResults,usageTokens:usageTokens(multiJob),unknownUsage:!!multiJob.usageIncomplete||!multiJob.usage,toolCalls:toolEvents,businessWrites:businessWrites(afterPlan.asset.version===plan.version&&afterChapter.headRevision.revisionId===saved.revisionId),durationMs:durationMs(multiJob,multiFinalTask),roleDurationsMs:roleDurations,output:candidate(multiResult)},
+ });
  result.metrics={
-  singleCompleted:singleJob.status==='completed'&&singleResult.assessment==='diverged',
-  multiCompleted:multiJob.status==='completed'&&multiResult.assessment==='diverged',
-  sameInput:singleTask.task.inputHash===multiTask.task.inputHash&&singleTask.task.revisionId===multiTask.task.revisionId&&singleTask.task.contentHash===multiTask.task.contentHash,
+  singleCompleted:pair.checks.singleCompleted,
+  multiCompleted:pair.checks.multiCompleted,
+  sameInput:pair.checks.sameInput&&pair.checks.sameSavedRevision,
   equivalentResult:singleResult.assessment===multiResult.assessment&&singleResult.evidence?.quote===multiResult.evidence?.quote&&singleResult.explanation===multiResult.explanation&&singleResult.question===multiResult.question,
   oneSingleCall:singleRequests.length===1,
   fiveMultiCalls:multiRequests.length===5,
@@ -308,20 +348,44 @@ async function creativePlanComparison(fixture,task,result,wait,worker){
   parentLinksValid,
   parallelChildAdmissionsMax:startObservation.maxConcurrent,
   modelStepAdmissionCount:admissions.length,
-  childBudgetSumMatchesParent:admissions.length===5&&admissions.reduce((sum,item)=>sum+item.maxTokens,0)===multiTask.task.reservedTokens,
+  childBudgetSumMatchesParent:pair.checks.expectedCalls,
   toolEvents,
   singleModelCalls:singleJob.modelCalls,
   multiModelCalls:multiJob.modelCalls,
   totalModelCalls:singleJob.modelCalls+multiJob.modelCalls,
-  singleReservedTokens:singleTask.task.reservedTokens,
-  multiReservedTokens:multiTask.task.reservedTokens,
-  budgetRatio:multiTask.task.reservedTokens/singleTask.task.reservedTokens,
+  singleReservedTokens:singleFinalTask.task.reservedTokens,
+  multiReservedTokens:multiFinalTask.task.reservedTokens,
+  budgetRatio:multiFinalTask.task.reservedTokens/singleFinalTask.task.reservedTokens,
+  sameParentReservation:pair.checks.equalParentReservation,
+  sameProviderModel:pair.checks.sameModel,
+  sameDeadlinePolicy:pair.checks.sameDeadlinePolicy,
+  pairedCaseId:pair.caseId,
+  datasetVersion:pair.datasetVersion,
+  pairEligible:pair.eligible,
+  deterministicPassed:pair.deterministicPassed,
+  singleAssessmentCorrect:pair.checks.singleAssessmentCorrect,
+  multiAssessmentCorrect:pair.checks.multiAssessmentCorrect,
+  singleEvidenceGrounded:pair.checks.singleEvidenceGrounded,
+  multiEvidenceGrounded:pair.checks.multiEvidenceGrounded,
+  persistedRoleResults:pair.checks.persistedRoleResults,
+  persistedPiRunIds:pair.checks.persistedPiRunIds,
+  zeroTools:pair.checks.zeroTools,
+  zeroBusinessWrites:pair.checks.zeroBusinessWrites,
+  singleUsageTokens:pair.single.usageTokens,
+  multiUsageTokens:pair.multi.usageTokens,
+  singleUnknownUsageReservation:pair.single.unknownUsage?pair.single.reservedTokens:0,
+  multiUnknownUsageReservation:pair.multi.unknownUsage?pair.multi.reservedTokens:0,
+  singleDurationMs:pair.single.durationMs,
+  multiDurationMs:pair.multi.durationMs,
+  roleDurationsMs:JSON.stringify(pair.multi.roleDurationsMs),
+  pairRecord:JSON.stringify(pair),
   planUnchanged:afterPlan.asset.version===plan.version&&afterPlan.asset.summary===planText,
   sourceUnchanged:afterChapter.headRevision.revisionId===saved.revisionId,
   authoritativeDivergences:currentDivergences.items.length,
-  toolCalls:0,
+  toolCalls:pair.single.toolCalls+pair.multi.toolCalls,
   qualityEquivalent:null,
  };
+ result.budgetExposure={tokens:pair.single.reservedTokens+pair.multi.reservedTokens,authority:'go'};
  result.trace.push({action:'single_plan_check_completed'},{action:'multi_plan_check_completed'},{action:'go_plan_versions_verified'});
  return result;
 }

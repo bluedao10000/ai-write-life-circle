@@ -2,7 +2,7 @@
 
 日期：2026-11-07。基线：`25e6066f519fdb4386bbbbe334edb48badbc5c03`。
 
-Phase 0 已完成源码审计和架构设计；Phase 1 已完成本地代码接入和工程验收；Phase 2–4 部分实现；Phase 5 已完成默认关闭的只读试点工程接入，真实质量收益尚未验收；Phase 6 尚未实现。成熟度采用“工程验证 / 部分覆盖 / 未实现”，不以文件数量打分。此前同基线的本地 `pnpm verify` 已通过，包含 102 项 Agent 测试和 Go/Pi 真实进程集成；不代表真实模型任务成功率或全部威胁已验证。远程最新状态未刷新：GitHub API 最近返回账号停用403，本次使用本地 main 与已有跟踪引用。
+Phase 0 已完成源码审计和架构设计；Phase 1 已完成本地代码接入和工程验收；Phase 2–4 部分实现；Phase 5 已完成默认关闭的只读试点及同预算合成配对工程评测，真实质量收益和人工校准尚未验收；Phase 6 尚未实现。成熟度采用“工程验证 / 部分覆盖 / 未实现”，不以文件数量打分。此前同基线的本地 `pnpm verify` 已通过，包含 102 项 Agent 测试和 Go/Pi 真实进程集成；不代表真实模型任务成功率或全部威胁已验证。远程最新状态未刷新：GitHub API 最近返回账号停用403，本次使用本地 main 与已有跟踪引用。
 
 ## 能力矩阵
 
@@ -15,10 +15,10 @@ Phase 0 已完成源码审计和架构设计；Phase 1 已完成本地代码接�
 | Worker | 工程验证 | scheduler/dispatcher/TaskClient，五种Go任务；Review/Knowledge/Creative/Memory集成 | 统一合同已接入；待完善持久关联审计 |
 | 上下文 | 部分覆盖 | context-management、Working Memory来源绑定与无付费旧格式迁移；重启测试 | 摘要并非长期已确认事实 |
 | 长期记忆 | 部分覆盖 | Working来源、Semantic/Episodic检索、版本冲突提示、Procedural作者审核、主动提取、后台整理、模型关系建议、重复/替代/过期生命周期 | 工程链路已实现；待真实关系准确率、长期噪声控制与召回质量评测 |
-| Evaluation | 部分覆盖 | 统一schema/split/runner、每类独立版本的dev与held-out数据、五类与四能力覆盖校验、Go业务和故障适配（含API中断Review的独立dev/held-out样本）、受治理Judge及其独立dev/held-out、显式预算的真实模型入口、Judge对人工校准及人工双评一致性统计、单/多角色开发集与保留集对照 | 待完成实际模型质量、真实人工标注校准和代表性性能验收 |
+| Evaluation | 部分覆盖 | 统一schema/split/runner、每类独立版本的dev与held-out数据、五类与四能力覆盖校验、Go业务和故障适配（含API中断Review的独立dev/held-out样本）、受治理Judge及其独立dev/held-out、显式预算的真实模型入口、Judge对人工校准及人工双评一致性统计、Creative单/多角色同预算开发集与保留集合成配对评测 | 待完成实际模型质量、真实人工标注校准和代表性性能验收 |
 | 安全 | 部分覆盖 | capability、隔离进程、工具授权、取消、幂等、开发与保留集记忆污染、同作者跨作品Session隔离及只读子角色工具输出拒绝 | 缺真实模型抗污染率、更广动态权限传播与并发预算竞争验证 |
 | 可观测性 | 部分覆盖 | 治理关联日志、跨进程健康；私有Prometheus按需投影五种Worker任务、五角色Admissions/Results/Usage/耗时，以及Thinking持久Run状态、恢复次数、模型调用和终态耗时P50/P95 | 历史窗口随原会话保留策略；代表性并发基线和真实模型诊断样本仍缺 |
-| 多角色协作 | 部分覆盖 | 默认关闭的Creative只读试点：Planner后由Researcher/Analyst/Critic并行检查，Coordinator汇总；dev/held-out对照、并发3准入、子预算精确合计和子上下文收窄通过 | 需真实模型同预算质量比较、代表性能与更广义动态子角色/审批策略 |
+| 多角色协作 | 部分覆盖 | 默认关闭的Creative只读试点：Planner后由Researcher/Analyst/Critic并行检查，Coordinator汇总；相同单角色父预算下的dev/held-out配对工程评测、并发3准入、子预算精确合计和子上下文收窄通过 | 需真实模型质量比较、人工双评校准、代表性能与更广义动态子角色/审批策略 |
 | 自主规划 | 未实现 | 有限模型/工具循环与显式恢复 | 有界Goal/Plan与审批版本绑定，须后置 |
 
 以上路径中 Agent 文件位于 `apps/agent/src`，测试位于 `apps/agent/test`；Go 文件位于 `apps/api-go/internal`。
@@ -480,15 +480,13 @@ Go按严格来源合同返回422，没有候选发布；正式经验和Canon不�
 
 这证明模型文本不能越过Go的候选隔离、固定经验集合和作者审核，不证明真实模型抗污染能力。真实模型攻击成功率、跨会话攻击和更广权限传播仍待验证；Creative只读子角色的工具输出拒绝由后续场景补齐，Phase 4保持部分完成。
 
-## 单角色与只读多角色对照评测
+## 单角色与只读多角色同预算配对评测
 
-`agent-eval-v17`在开发集加入Creative计划核对对照，独立保留集升级为`agent-eval-v2`并加入不同材料。场景在同一章节Revision上先执行原单角色策略，再开启五角色只读策略；通过Task Registry保留的`creative.Claim.Job.jobId`把执行记录关联回Go Job，以Go Job完成和已提交Divergence作为业务终态，模型回答不作为结果权威。
+Creative 计划核对使用独立的 `creative-plan-check-dev-v2` 与 `creative-plan-check-held-out-v2` 数据集，在相同输入、章节修订、Provider/模型、截止策略和 Go 父任务预算下运行单角色与五角色模式。配对身份来自 Go 任务回执及持久化 Pi 角色结果；确定性评分只读取业务回执和结构化结果，并要求 Go 终态恰有一个 Divergence。业务评分不通过的配对不会进入 Judge 或人工质量统计。五角色预算平均分配，余数归 Coordinator。
 
-开发分类8/8、保留分类5/5工程通过。两种模式对计划与正文给出相同评估、引文、解释和问题；单角色1次、五角色5次模型调用，五个角色各一次。两次执行总预留为133440 tokens，比例为5；所有治理事件按授权、预留、模型开始、模型完成排列，20个事件共享治理父任务，无工具事件。计划、章节Revision和Go业务提交均未变化。
+两个 split 各有 3/3 组有效配对通过工程验收。每组单角色与五角色均预留 22,240 tokens；单角色发出 1 次模型请求，五角色各发出 5 次。模型请求由专用无工具 Judge 以随机候选顺序比较，并绑定 Judge rubric/prompt 版本。两边工具调用和业务写入均为零，计划、章节 Revision 与作者设置保持不变。全量报告分别位于本地 `.local/evals/agent/creative-plan-dev.json` 和 `.local/evals/agent/creative-plan-held-out.json`，包含 Go Job、Pi Run、策略和输出合同版本、请求轨迹、调用、usage、预留及耗时。
 
-Agent完整回归144/144、类型检查、lint及构建通过；Review API的155项检查和Creative真实Go/Pi流程保持通过。这项对照补齐了开发集与held-out上的确定性工程验收，不评价真实模型质量。`qualityEquivalent`保持`null`；角色独立判断、冲突处理、真实模型同预算质量、角色级P95和货币成本仍未测量。五角色试点继续默认关闭，Phase 5尚未完成真实收益验收。
-
-同一数据集版本还加入“Leader阶段结束后Provider失败”的可靠性场景。任一已发送角色缺失usage时，编排器将父usage降为未知，不把部分成功角色的数值当作完整成本。开发可靠性9/9与保留可靠性2/2通过：实际发出2–3次调用后Job进入`failed`，Coordinator未调用，无Divergence或正文/计划变化，2.2秒内没有自动重试；Go保留111200 tokens父预留且报告usage为null。该验证证明失败费用与提交边界，不评价真实Provider的错误率或恢复收益。
+本次只使用 localhost 合成 Provider，报告记录 `realLLMCalled=false`、`qualityValidated=false`；没有人工标注，单/多角色胜率、平局率及货币成本为 `null`。预算回归还直接验证 Provider 失败且 usage 未知时，Go 保留完整 22,240-token 父预留并且不隐式重试。确定性工程通过不代表语义质量收益；五角色继续默认关闭，Phase 5 仍需真实模型评测、人工双评校准和代表性性能证据。
 
 ## 后台整理的撤销终态与费用
 

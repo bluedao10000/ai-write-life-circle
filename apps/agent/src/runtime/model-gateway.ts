@@ -1,3 +1,4 @@
+import {randomUUID} from 'node:crypto';
 import {ModelRequestGate,workerContext,childExecutionContext,definition} from './governance/runtime.js';
 import type {ExecutionContext,AuthorizationManager,BudgetManager,AgentRole} from './governance/runtime.js';
 import {modelIdentity} from "./fingerprint.js";
@@ -22,6 +23,7 @@ export class GatewayError extends Error {
   constructor(readonly code:string,readonly response:AgentModelResponse={text:"",usage:null}){super(code)}
 }
 export type ModelStep={
+  piRunId?:string;
   role:AgentRole;
   system:string;
   input:string;
@@ -92,8 +94,8 @@ export class ModelGateway {
     if(task.configFingerprint!==executionFingerprint(this.config)||modelIdentity(task.model)!==executionFingerprint(this.config))throw new GatewayError("AGENT_CONFIG_CHANGED");
   }
   async execute(task:AgentTask,signal:AbortSignal):Promise<AgentModelResponse>{
-    const response=await this.executeStep(task,signal,{role:task.kind,system:task.request.system,input:task.request.input,schemaName:task.request.schemaName||"writing_review",schema:task.request.schema,maxTokens:task.reservedTokens,maxOutputTokens:Math.min(task.request.outputLimit??this.config.MaxOutputTokens,this.config.MaxOutputTokens),maxModelCalls:1,callIndex:1});
-    return {text:response.text,usage:response.usage};
+    const response=await this.executeStep(task,signal,{piRunId:randomUUID(),role:task.kind,system:task.request.system,input:task.request.input,schemaName:task.request.schemaName||"writing_review",schema:task.request.schema,maxTokens:task.reservedTokens,maxOutputTokens:Math.min(task.request.outputLimit??this.config.MaxOutputTokens,this.config.MaxOutputTokens),maxModelCalls:1,callIndex:1});
+    return {text:response.text,usage:response.usage,...(task.kind==='creative.plan_check'?{piRunId:response.piRunId}:{})};
   }
   async executeStep(task:AgentTask,signal:AbortSignal,step:ModelStep):Promise<AgentModelResponse>{
     this.validate(task);
@@ -106,7 +108,8 @@ export class ModelGateway {
     const thisAdmission=()=>this.admission(task,step);
     const parent=workerContext(task,abort,{maxModelCalls:step.maxModelCalls,maxTokens:task.reservedTokens});
     const execution=orchestration?childExecutionContext(parent,workerContext(task,abort,{role:step.role,parentTaskId:step.parentTaskId,maxModelCalls:step.maxModelCalls,maxTokens:step.maxTokens})):parent;
-    const gate=new ModelRequestGate({...execution,modelRequestId:`${task.taskId}:${step.role}:${step.callIndex}`},{authorize:async()=>{this.validate(task)}});
+    const piRunId=step.piRunId??randomUUID();
+    const gate=new ModelRequestGate({...execution,modelRequestId:piRunId},{authorize:async()=>{this.validate(task)}});
     let usage:AgentModelResponse['usage']=null,transportError="",admissionError="";
     try {
       const result=await runtime.completeSimple(model,{systemPrompt:step.system,messages:[{role:"user",content:step.input,timestamp:Date.now()}]},{
@@ -130,7 +133,7 @@ export class ModelGateway {
         },
       });
       const text=result.content.filter(b=>b.type==="text").map(b=>b.text).join("");
-      const response={text,usage,modelCalls:1};
+      const response={text,usage,modelCalls:1,piRunId};
       if(admissionError)throw new GatewayError(admissionError,{text:"",usage:null});
       if(abort.aborted)throw new GatewayError(deadline.aborted?"LLM_TIMEOUT":"REVIEW_INTERRUPTED",response);
       if(transportError)throw new GatewayError(transportError,response);

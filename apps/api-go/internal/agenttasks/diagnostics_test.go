@@ -13,7 +13,7 @@ func TestDiagnosticsProjectsReceiptsWithoutPayloads(t *testing.T) {
 	s, _ := fixture(t)
 	ctx := context.Background()
 	id := "00000000-0000-4000-8000-000000000001"
-	rec := Record{Task: Task{ID: id, Book: "book", Kind: "memory.consolidate", Lease: "private-lease", Config: "private-config", Request: llm.Request{Input: "private-manuscript"}}, Memory: &PreparedMemory{Sources: []MemorySourceBinding{{TaskID: "source-a", ResultVersion: "private-version"}}, Request: llm.Request{Input: "private-manuscript"}}}
+	rec := Record{PiRunID: "00000000-0000-4000-8000-000000000099", Task: Task{ID: id, Book: "book", Kind: "memory.consolidate", Lease: "private-lease", Config: "private-config", Request: llm.Request{Input: "private-manuscript"}}, Memory: &PreparedMemory{Sources: []MemorySourceBinding{{TaskID: "source-a", ResultVersion: "private-version"}}, Request: llm.Request{Input: "private-manuscript"}}}
 	rec.audit("claimed", "")
 	for _, step := range []struct {
 		started, finished   bool
@@ -26,7 +26,7 @@ func TestDiagnosticsProjectsReceiptsWithoutPayloads(t *testing.T) {
 			t.Fatal(err)
 		}
 		got, err := (&Service{State: s.State}).Diagnostics(ctx, id)
-		if err != nil || got.Outcome != step.want || got.Started != step.started || got.Finished != step.finished || len(got.Audit) != 1 || got.Audit[0].At != rec.Audit[0].At || len(got.SourceTaskIDs) != 1 || got.SourceTaskIDs[0] != "source-a" {
+		if err != nil || got.PiRunID != rec.PiRunID || got.Outcome != step.want || got.Started != step.started || got.Finished != step.finished || len(got.Audit) != 1 || got.Audit[0].At != rec.Audit[0].At || len(got.SourceTaskIDs) != 1 || got.SourceTaskIDs[0] != "source-a" {
 			t.Fatal(got, err)
 		}
 		raw, _ := json.Marshal(got)

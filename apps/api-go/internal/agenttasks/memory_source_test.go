@@ -23,6 +23,9 @@ func completeMemoryTask(t *testing.T, s *Service, kind, output string) *Task {
 	}
 	in := envelope(task)
 	in.Response = llm.Response{Text: output, Usage: &llm.Usage{InputTokens: 10, OutputTokens: 10}}
+	if kind == "creative" {
+		in.Response.PiRunID = "00000000-0000-4000-8000-000000000099"
+	}
 	if e = s.Action(ctx, task.ID, "started", in); e != nil {
 		t.Fatal(e)
 	}

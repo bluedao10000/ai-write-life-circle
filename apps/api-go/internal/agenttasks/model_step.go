@@ -66,11 +66,15 @@ func (r *Record) validateStepResults(results []llm.StepResult) error {
 		return invalid()
 	}
 	seen := map[int]bool{}
+	seenRunIDs := map[string]bool{}
 	for _, result := range results {
-		if seen[result.CallIndex] || math.IsNaN(result.DurationMs) || math.IsInf(result.DurationMs, 0) || result.DurationMs < 0 || result.DurationMs > 180000 || (result.Status != "completed" && result.Status != "failed") {
+		if seen[result.CallIndex] || len(result.PiRunID) > 128 || (result.PiRunID != "" && seenRunIDs[result.PiRunID]) || math.IsNaN(result.DurationMs) || math.IsInf(result.DurationMs, 0) || result.DurationMs < 0 || result.DurationMs > 180000 || (result.Status != "completed" && result.Status != "failed") {
 			return invalid()
 		}
 		seen[result.CallIndex] = true
+		if result.PiRunID != "" {
+			seenRunIDs[result.PiRunID] = true
+		}
 		var admitted *ModelStepReceipt
 		for i := range r.ModelSteps {
 			if r.ModelSteps[i].CallIndex == result.CallIndex {

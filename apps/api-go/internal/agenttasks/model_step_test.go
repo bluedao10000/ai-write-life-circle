@@ -59,9 +59,14 @@ func TestModelStepResultsRequireAdmissionAndValidUsage(t *testing.T) {
 	if err := r.admitModelStep(ModelStep{Role: "creative.plan.planner", CallIndex: 1, ParentTaskID: "parent", MaxTokens: 2000}); err != nil {
 		t.Fatal(err)
 	}
-	valid := llm.StepResult{CallIndex: 1, Status: "completed", DurationMs: 12.5, Usage: &llm.Usage{InputTokens: 100, OutputTokens: 20}}
+	valid := llm.StepResult{PiRunID: "00000000-0000-4000-8000-000000000001", CallIndex: 1, Status: "completed", DurationMs: 12.5, Usage: &llm.Usage{InputTokens: 100, OutputTokens: 20}}
 	if err := r.validateStepResults([]llm.StepResult{valid}); err != nil {
 		t.Fatal(err)
+	}
+	legacy := valid
+	legacy.PiRunID = ""
+	if err := r.validateStepResults([]llm.StepResult{legacy}); err != nil {
+		t.Fatal("legacy step result was rejected", err)
 	}
 	unknown := valid
 	unknown.Status = "failed"
@@ -80,6 +85,11 @@ func TestModelStepResultsRequireAdmissionAndValidUsage(t *testing.T) {
 	}
 	if r.validateStepResults([]llm.StepResult{valid, valid}) == nil {
 		t.Fatal("duplicate result accepted")
+	}
+	duplicateRun := valid
+	duplicateRun.CallIndex = 2
+	if r.validateStepResults([]llm.StepResult{valid, duplicateRun}) == nil {
+		t.Fatal("duplicate Pi run id accepted")
 	}
 }
 

@@ -14,13 +14,13 @@ Registry 登记 Thinking、Review、Knowledge、Creative 的版本、工具集�
 
 统一执行顺序：核验版本与取消 → 当前授权与执行栅栏 → 构造最终 payload → 校验输入/输出与策略 → 持久预留 → 允许网络发送 → 结算已知 usage 或保留未知费用 → 持久终态 → 发布。不得用 Promise 超时替代对真实网络调用的取消。
 
-Thinking BudgetAdapter 复用 Saved.execution.modelRequests、usage 和 Store.write；Worker Adapter 复用 Go claim/started/heartbeat/complete/fail。Go决定重试和正式点数，治理层不得补一个自动重试循环。只读Creative试点由一个Go父任务预留五个调用的总额，Pi按Planner、三个并行检查角色和Coordinator划分互不重叠的子预算，子预算总和等于父额；父任务中断后不自动重试。
+Thinking BudgetAdapter 复用 Saved.execution.modelRequests、usage 和 Store.write；Worker Adapter 复用 Go claim/started/heartbeat/complete/fail。Go决定重试和正式点数，治理层不得补一个自动重试循环。只读Creative试点与单角色使用同一Go父预留；Pi按Planner、三个并行检查角色和Coordinator划分五个互不重叠的子预算，Coordinator接收整数余数，子预算总和精确等于父额；父任务中断后不自动重试。
 
 子执行由统一 `childExecutionContext` 派生。它要求同一taskId、traceId、authorizationVersion和executorEpoch，使用独立executionId，并强制scope、deadline、token/model/tool预算只能收窄；父任务没有的scope不能出现在子任务中。该上下文是原Go任务和Pi执行的只读视图，不是第三套任务或预算权威。固定五角色和普通Worker复用同一合同。
 
-真实Go/Pi验收中，Researcher、Analyst、Critic的started请求在任务API代理层达到并发3；Go原子保存五个角色准入，角色预算合计精确等于父任务预留111200 tokens。提交前增加并发race测试，向三个合法并行准入中混入扩大1 token的重复角色；扩大请求以`AGENT_CONFIG_CHANGED`拒绝，合法请求各保留原序号和预算，重启读取仍是五个唯一准入。
+真实Go/Pi验收中，Researcher、Analyst、Critic的started请求在任务API代理层达到并发3；Go原子保存五个角色准入，角色预算合计精确等于父任务预留。提交前增加并发race测试，向三个合法并行准入中混入扩大1 token的重复角色；扩大请求以`AGENT_CONFIG_CHANGED`拒绝，合法请求各保留原序号和预算，重启读取仍是五个唯一准入。
 
-本批完整验收包含158项Agent测试、类型检查、lint、Agent与Go构建、`go test -race ./...`、真实Agent task API合同和运行时健康检查。开发集42/42工程通过，保留任务成功集5/5通过；两侧固定只读对照都从真实任务API代理读到并发3、五个唯一准入和111200 tokens子预算总和。所有模型响应来自本地合成Provider，没有付费调用。
+本批完整验收包含177项Agent测试、类型检查、lint、Agent与Go构建、`go test -race ./...`、真实Agent task API合同和运行时健康检查。开发与保留配对数据集各有3组合格记录，单角色和五角色从真实任务API取得相同父预留，五个子预算逐组精确合计；并发阶段仍观察到最多3个并行准入。所有模型响应来自本地合成Provider，没有付费调用。
 
 ## 工具入口
 

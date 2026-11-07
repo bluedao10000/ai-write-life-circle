@@ -40,7 +40,7 @@ func TestReadonlyPlanCheckUsesOneParentReservationAndFiveCalls(t *testing.T) {
 	if err != nil || claimed == nil {
 		t.Fatal("claim", err)
 	}
-	if claimed.Reserved != f.s.reserve()*PlanCheckModelCalls {
+	if claimed.Reserved != f.s.reserve() {
 		t.Fatalf("one parent reservation=%d", claimed.Reserved)
 	}
 	prepared, err := f.s.Prepare(ctx, claimed)
@@ -62,6 +62,19 @@ func TestReadonlyPlanCheckUsesOneParentReservationAndFiveCalls(t *testing.T) {
 	divergences, err := f.s.Divergences(ctx, chapter)
 	if err != nil || len(divergences) != 1 || divergences[0].Assessment != "diverged" {
 		t.Fatalf("divergences=%+v error=%v", divergences, err)
+	}
+}
+
+func TestSingleAndReadonlyPlanChecksReserveTheSameParentBudget(t *testing.T) {
+	f := setup(t)
+	for _, strategy := range []string{PlanStrategy, PlanStrategyReadonly} {
+		job := Job{Kind: "plan_check", Strategy: strategy}
+		if got := f.s.reserveFor(job); got != f.s.reserve() {
+			t.Fatalf("strategy %q reserved %d tokens, want %d", strategy, got, f.s.reserve())
+		}
+		if got := f.s.reservePoints(job); got != f.s.reservePoints(Job{Kind: "plan_check", Strategy: PlanStrategy}) {
+			t.Fatalf("strategy %q reserved different points: %d", strategy, got)
+		}
 	}
 }
 
@@ -114,6 +127,9 @@ func TestReadonlyPlanProviderFailureDoesNotScheduleAnotherAttempt(t *testing.T) 
 	job := st.Jobs[len(st.Jobs)-1]
 	if job.Status != "failed" || job.Attempts != 1 || job.ModelCalls != 2 || job.UsageIncomplete != true {
 		t.Fatalf("failed job=%+v", job)
+	}
+	if job.DebitedDay != claimed.Day || job.AttemptReserve != claimed.Reserved || st.BudgetTokens != claimed.Reserved || st.BudgetAttempts != 1 {
+		t.Fatalf("unknown usage did not retain the full parent reservation: job=%+v budgetTokens=%d budgetAttempts=%d", job, st.BudgetTokens, st.BudgetAttempts)
 	}
 	if next, err := f.s.Claim(ctx); err != nil || next != nil {
 		t.Fatalf("readonly failure was implicitly retried: %+v %v", next, err)
