@@ -364,6 +364,11 @@ try {
   assert.equal(pausedCreative.settings.paused, true);
   assert.equal(pausedCreative.jobs.retry, 1, "paused Creative lease returns to retry state");
   assert.equal((await call(`${creative}/divergences?chapterId=${chapter}`)).items.length, divergencesBeforePause, "late result must not commit a divergence");
+  const interruptedTask = await until(async () => {
+    const value = JSON.parse(await readFile(join(root, "go-state", "agent-runtime", "tasks-v1.json"), "utf8"));
+    return Object.values(value.tasks).find((record) => record.task?.kind === "creative.plan_check" && record.finished && record.outcome === "interrupted");
+  }, "paused task terminal receipt");
+  assert.equal(interruptedTask.task.request.input, "", "terminal task snapshot must be scrubbed");
   // Scenario F: idempotent replay and deletion invalidating derived work.
   const replay = await call(sessionPath + "/messages", { method: "POST", key: "m3", status: 202, body: { text: "写完第一章了，我们聊聊他为什么留下。" } });
   assert.equal(replay.messageId, m3);

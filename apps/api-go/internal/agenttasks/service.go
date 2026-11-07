@@ -453,7 +453,7 @@ func (s *Service) Action(ctx context.Context, id, action string, in Envelope) er
 		if rec.Finished {
 			return executorpolicy.ErrFenced
 		}
-		var memoryDenied error
+		var memoryDenied, creativeDenied error
 		if rec.Memory != nil && (action == "complete" || action == "fail") {
 			// Revocation prevents publication, but a live lease may still report
 			// terminal usage. Unknown costs remain reserved after execution starts.
@@ -465,6 +465,18 @@ func (s *Service) Action(ctx context.Context, id, action string, in Envelope) er
 				return err
 			}
 			memoryDenied = s.Memory.Check(ctx, app, *rec.Memory)
+		} else if rec.Creative != nil && (action == "complete" || action == "fail") {
+			// A pause or superseding edit can fence the Creative job while the
+			// Worker is still returning its terminal usage. Keep publication
+			// fenced, but let the domain receipt settle the original reservation.
+			if !(executorpolicy.Controller{State: s.State}).Valid("creative", "pi", t.Epoch, t.Lease) {
+				return executorpolicy.ErrFenced
+			}
+			app, err := s.resolveTask(t)
+			if err != nil {
+				return err
+			}
+			creativeDenied = s.creative(app).Check(ctx, rec.Creative)
 		} else if e := s.check(ctx, rec); e != nil {
 			return e
 		}
@@ -553,6 +565,8 @@ func (s *Service) Action(ctx context.Context, id, action string, in Envelope) er
 					return llm.Fail("LLM_INVALID_FAILURE")
 				}
 				modelErr = llm.Fail(in.Failure)
+			} else if creativeDenied != nil {
+				modelErr = creativeDenied
 			}
 			app, e := s.resolveTask(t)
 			if e != nil {
@@ -582,11 +596,15 @@ func (s *Service) Action(ctx context.Context, id, action string, in Envelope) er
 				return e
 			}
 			reason := in.Failure
-			if memoryDenied != nil {
+			if memoryDenied != nil || (creativeDenied != nil && in.Failure == "") {
 				reason = "TASK_REJECTED"
 			}
 			rec.audit("terminal", reason)
 			s.recordOutcome(&rec, app)
+			if rec.Creative != nil && (in.Failure == "CREATIVE_INTERRUPTED" || errors.Is(creativeDenied, executorpolicy.ErrFenced)) {
+				rec.Outcome = "interrupted"
+				rec.CompletedAt = time.Now().UTC().Format(time.RFC3339Nano)
+			}
 			rec.scrub()
 			rec.Finished = true
 			rec.ResultHash = fp

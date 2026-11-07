@@ -580,6 +580,6 @@ Agent运行时诊断单测验证多种终态、恢复次数、模型调用、已
 
 ### 2026-11-07 Creative暂停中断在途请求
 
-`test-creative-workflow.mjs`新增真实Go API与Pi Worker暂停竞态：本地Provider在Planner请求进入后延迟12秒，作者暂停Creative后，Worker心跳重新检查原Go Creative租约并触发Pi请求取消。测试在暂停响应后的2.5秒内观察到Provider连接在返回结果前关闭、Creative任务回到retry，Divergence数量保持不变；Worker模型期限为5秒，因此连接关闭早于Provider超时。
+`test-creative-workflow.mjs`新增真实Go API与Pi Worker暂停竞态：本地Provider在Planner请求进入后延迟12秒，作者暂停Creative后，Worker心跳重新检查原Go Creative租约并触发Pi请求取消。Go仍会拒绝迟到候选，但接受当前有效Worker租约下的终态用量回执，按未知费用结算完整预留并清理任务快照。测试在暂停响应后的2.5秒内观察到Provider连接关闭、Creative任务回到retry、Worker回执为interrupted且快照已清空，Divergence数量保持不变；Worker模型期限为5秒，因此连接关闭早于Provider超时。
 
-`pnpm test:creative`通过，构建Go API、Contracts与Agent后运行完整Creative流程；模型请求全部发往本地合成Provider。该项证明固定Creative执行路径的暂停、请求中断和迟到提交栅栏，不扩展为其他任务类型或真实Provider网络故障的覆盖结论。
+Go `agenttasks` race测试与`pnpm test:creative`通过；后者构建Go API、Contracts与Agent后运行完整Creative流程，模型请求全部发往本地合成Provider。该项证明固定Creative执行路径的暂停、未知费用结算、快照清理和迟到提交栅栏，不扩展为其他任务类型或真实Provider网络故障的覆盖结论。

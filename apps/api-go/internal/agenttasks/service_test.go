@@ -4,17 +4,21 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http/httptest"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/application"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/billing"
+	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/compat"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/creative"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/executorpolicy"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/knowledge"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/llm"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/review"
-	"net/http/httptest"
-	"strings"
-	"testing"
-	"time"
+	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/storage"
 )
 
 func fixture(t *testing.T) (*Service, *knowledge.Service) {
@@ -384,5 +388,88 @@ func TestPiReviewStartRechecksPlanAndReleasesUnusedReservation(t *testing.T) {
 	}
 	if !st.Tasks[task.ID].Finished || st.Tasks[task.ID].Started {
 		t.Fatal("denied task not terminated")
+	}
+}
+
+func TestCreativePauseTerminalReportSettlesUnknownUsageWithoutPublishing(t *testing.T) {
+	s, _ := fixture(t)
+	ctx := context.Background()
+	books, err := s.Management.OwnedBooks()
+	if err != nil || len(books) != 1 {
+		t.Fatal("fixture book", books, err)
+	}
+	owner := books[0].Owner
+	ledger := &billing.Ledger{State: s.State}
+	s.Management.UseMeter(ledger)
+	if err = ledger.SetPlan(ctx, owner.ID, billing.Plus); err != nil {
+		t.Fatal(err)
+	}
+	app, err := s.Management.Resolve(owner, books[0].Book.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	domain := creative.New(app, s.Config, nil)
+	domain.QueueOnly = true
+	domain.ExecutorOwner = "pi"
+	info := s.Config.Info()
+	if _, err = domain.Configure(ctx, owner, "enable", "creative-enable", creative.SettingsInput{Consent: true, Model: &info, DailyTokenBudget: 200000, DailyJobBudget: 20}); err != nil {
+		t.Fatal(err)
+	}
+	chapter := books[0].Book.Chapters[0].ID
+	if _, err = domain.CreateAsset(ctx, owner, "creative-plan", creative.AssetInput{Kind: "event", Status: "accepted", Content: creative.Content{Name: "主角留下", Plan: &creative.Plan{ChapterID: chapter}}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = domain.RequestPlanCheck(ctx, owner, "creative-plan-check", chapter); err != nil {
+		t.Fatal(err)
+	}
+	task, err := s.Claim(ctx, "fixture", s.Config.Fingerprint(), "creative")
+	if err != nil || task == nil {
+		t.Fatal("claim Creative task", task, err)
+	}
+	in := envelope(task)
+	if err = s.Action(ctx, task.ID, "started", in); err != nil {
+		t.Fatal("start model request", err)
+	}
+	before, err := ledger.View(ctx, owner.ID)
+	if err != nil || before.Day.Reserved == 0 {
+		t.Fatal("Creative model request was not reserved", before.Day, err)
+	}
+	if _, err = domain.Configure(ctx, owner, "pause", "creative-pause", creative.SettingsInput{}); err != nil {
+		t.Fatal("pause Creative", err)
+	}
+	if err = s.Action(ctx, task.ID, "heartbeat", in); err == nil {
+		t.Fatal("paused task heartbeat was accepted")
+	}
+	in.Response = llm.Response{Usage: nil, ModelCalls: 1}
+	in.Failure = "CREATIVE_INTERRUPTED"
+	if err = s.Action(ctx, task.ID, "fail", in); err != nil {
+		t.Fatal("terminal report after pause", err)
+	}
+	after, err := ledger.View(ctx, owner.ID)
+	if err != nil || after.Day.Reserved != 0 || after.Day.Used <= before.Day.Used {
+		t.Fatal("unknown usage reservation was not settled", before.Day, after.Day, err)
+	}
+	state, err := s.load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := state.Tasks[task.ID]
+	if !record.Finished || record.Outcome != "interrupted" || record.Task.Request.Input != "" {
+		t.Fatalf("terminal task was not scrubbed: %+v", record)
+	}
+	creativeState := creative.State{}
+	found, err := storage.Read(filepath.Join(app.State, "creative", compat.Key(app.Project), "state-v1.json"), &creativeState)
+	if err != nil || !found {
+		t.Fatal(err)
+	}
+	if len(creativeState.Jobs) != 1 || creativeState.Jobs[0].Status != "retry" || creativeState.Jobs[0].Failure != "CREATIVE_PAUSED" || creativeState.Jobs[0].ModelCalls != 1 || !creativeState.Jobs[0].UsageIncomplete {
+		t.Fatalf("paused job accounting or retry state changed: %+v", creativeState.Jobs)
+	}
+	if err = s.Action(ctx, task.ID, "fail", in); err != nil {
+		t.Fatal("terminal replay", err)
+	}
+	replayed, err := ledger.View(ctx, owner.ID)
+	if err != nil || replayed.Day.Used != after.Day.Used || replayed.Day.Reserved != 0 {
+		t.Fatal("terminal replay changed billing", replayed.Day, err)
 	}
 }
