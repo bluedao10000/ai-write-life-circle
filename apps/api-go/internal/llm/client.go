@@ -16,12 +16,14 @@ type Request struct {
 	Schema      map[string]any `json:"schema"`
 }
 type StepResult struct {
+	PiRunID    string  `json:"piRunId,omitempty"`
 	CallIndex  int     `json:"callIndex"`
 	Status     string  `json:"status"`
 	DurationMs float64 `json:"durationMs"`
 	Usage      *Usage  `json:"usage"`
 }
 type Response struct {
+	PiRunID     string       `json:"piRunId,omitempty"`
 	StepResults []StepResult `json:"stepResults,omitempty"`
 	Text        string       `json:"text"`
 	Usage       *Usage       `json:"usage"`

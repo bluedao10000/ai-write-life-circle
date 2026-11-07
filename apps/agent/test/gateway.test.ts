@@ -68,8 +68,11 @@ test('Pi bounded Review sends the task prompt and preserves dialect, usage and z
  const limited=new ModelGateway({...config,MaxResponseBytes:1024},'fixture-key',async()=>{});
  await assert.rejects(executeReview(task,limited,new AbortController().signal),(e:unknown)=>e instanceof GatewayError&&e.code==='LLM_RESPONSE_TOO_LARGE'&&e.response.modelCalls===1);
  const events=governance.map(line=>JSON.parse(line) as {action:string;modelRequestId?:string});
- assert(events.some(event=>event.action==='failed'&&event.modelRequestId===task.taskId+':review.execute:1'));
- assert.equal(events.filter(event=>event.modelRequestId===task.taskId+':review.execute:1'&&event.action==='model_started').length,requests.length);
+ const startedIds=events.filter(event=>event.action==='model_started').map(event=>event.modelRequestId??'');
+ assert.equal(startedIds.length,requests.length);
+ assert.equal(new Set(startedIds).size,requests.length);
+ assert(startedIds.every(id=>/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(id)));
+ assert(events.some(event=>event.action==='failed'&&startedIds.includes(event.modelRequestId??'')));
  }finally{console.log=originalLog;server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()))}
 });
 test('Review candidate Unicode limits match Go rune counts',async()=>{
@@ -111,8 +114,9 @@ test('execution contract accepts expanded output usage without accepting unlimit
  assert.ok(agentModelResponseSchema.safeParse({text:'x'.repeat(512*1024),usage:{inputTokens:65536,outputTokens:131072}}).success);
  assert.equal(agentModelResponseSchema.safeParse({text:'x'.repeat(512*1024+1),usage:{inputTokens:1,outputTokens:1}}).success,false);
  assert.equal(agentModelResponseSchema.safeParse({text:'{}',usage:{inputTokens:1,outputTokens:131073}}).success,false);
- const step={callIndex:1,status:'completed',durationMs:12.5,usage:{inputTokens:10,outputTokens:5}};
+ const step={piRunId:'00000000-0000-4000-8000-000000000001',callIndex:1,status:'completed',durationMs:12.5,usage:{inputTokens:10,outputTokens:5}};
  assert.ok(agentModelResponseSchema.safeParse({text:'{}',usage:{inputTokens:10,outputTokens:5},stepResults:[step]}).success);
+ assert.equal(agentModelResponseSchema.safeParse({text:'{}',usage:null,stepResults:[{...step,piRunId:'not-a-uuid'}]}).success,false);
  for(const bad of [{...step,callIndex:0},{...step,status:'private'},{...step,durationMs:-1},{...step,usage:{inputTokens:10,outputTokens:-1}}]){
   assert.equal(agentModelResponseSchema.safeParse({text:'{}',usage:null,stepResults:[bad]}).success,false);
  }

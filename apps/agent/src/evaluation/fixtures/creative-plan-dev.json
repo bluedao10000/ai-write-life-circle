@@ -1,0 +1,22 @@
+{
+  "version": "creative-plan-check-dev-v2",
+  "split": "dev",
+  "synthetic": true,
+  "cases": [
+    {
+      "caseId": "dev-lighthouse-choice",
+      "request": "计划：林舟会在灯塔熄灭后离开组织。\n正文：暴雨里，林舟收好行囊；天亮时，他最终选择留下修复灯塔。",
+      "expected": {"assessment":"diverged","evidenceQuote":"最终选择留下"}
+    },
+    {
+      "caseId": "dev-letter-kept",
+      "request": "计划：顾棠会把旧信交给港口的来访者。\n正文：顾棠取出旧信，在门口停了片刻，最终选择留下，没有交给来访者。",
+      "expected": {"assessment":"diverged","evidenceQuote":"最终选择留下"}
+    },
+    {
+      "caseId": "dev-bridge-crossing",
+      "request": "计划：沈遥会在桥修好后离开北岸。\n正文：桥面重新通行后，沈遥望向北岸，最终选择留下协助修缮。",
+      "expected": {"assessment":"diverged","evidenceQuote":"最终选择留下"}
+    }
+  ]
+}

@@ -21,7 +21,7 @@ function responseFor(step:ModelStep):AgentModelResponse{
   step.role==='creative.plan.researcher'?{findings:[{assetId:'plan-1',quote:'他最后留下',observation:'正文明确写他留下。',assessment:'diverged'}]}:
   step.role==='creative.plan.analyst'?{analyses:[{assetId:'plan-1',reasoning:'结果与计划相反。',assessment:'diverged'}]}:
   step.role==='creative.plan.critic'?{concerns:[{assetId:'plan-1',concern:'需要确认留下是否有意。'}]}:JSON.parse(final);
- return {text:JSON.stringify(body),usage:{inputTokens:100,outputTokens:20},modelCalls:1};
+ return {text:JSON.stringify(body),usage:{inputTokens:100,outputTokens:20},modelCalls:1,piRunId:step.piRunId};
 }
 
 test('readonly plan orchestration shares one parent execution across five fixed roles',async()=>{
@@ -30,16 +30,27 @@ test('readonly plan orchestration shares one parent execution across five fixed 
  const result=await orchestratePlanCheck(task(),gateway,new AbortController().signal);
  assert.equal(result.text,final);
  assert.equal(result.modelCalls,readonlyPlanModelCalls);
+ assert.equal(result.piRunId,result.stepResults?.[4]?.piRunId);
  assert.deepEqual(result.usage,{inputTokens:500,outputTokens:100,cachedInputTokens:0});
  assert.equal(steps.length,5);
  assert.equal(result.stepResults?.length,5);
- assert(result.stepResults?.every(step=>step.status==='completed'&&step.durationMs>=0&&step.usage?.inputTokens===100));
+ assert(result.stepResults?.every(step=>step.status==='completed'&&step.durationMs>=0&&step.usage?.inputTokens===100&&!!step.piRunId));
+ assert.equal(new Set(result.stepResults?.map(step=>step.piRunId)).size,5);
  assert.deepEqual(result.stepResults?.map(step=>step.callIndex),[1,2,3,4,5]);
  assert.deepEqual(new Set(steps.map(step=>step.role)),new Set(['creative.plan.planner','creative.plan.researcher','creative.plan.analyst','creative.plan.critic','creative.plan.coordinator']));
  assert.deepEqual(steps.map(step=>step.callIndex),steps.map((_,index)=>index+1));
  assert(steps.every(step=>step.maxModelCalls===5&&step.parentTaskId&&step.maxOutputTokens>=128));
  assert.equal(steps.reduce((sum,step)=>sum+step.maxOutputTokens,0),2048);
  assert.equal(steps.reduce((sum,step)=>sum+step.maxTokens,0),10000);
+});
+
+test('readonly plan assigns the parent remainder to the final coordinator',async()=>{
+ const source=task();source.reservedTokens=10003;
+ const steps:ModelStep[]=[];
+ const gateway={config:{MaxOutputTokens:2048},executeStep:async(_task:AgentTask,_signal:AbortSignal,step:ModelStep)=>{steps.push(step);return responseFor(step)}};
+ await orchestratePlanCheck(source,gateway,new AbortController().signal);
+ assert.deepEqual(steps.map(step=>step.maxTokens),[2000,2000,2000,2000,2003]);
+ assert.equal(steps.reduce((sum,step)=>sum+step.maxTokens,0),source.reservedTokens);
 });
 
 test('readonly plan roles have no scopes or tools and split only the parent budget',()=>{

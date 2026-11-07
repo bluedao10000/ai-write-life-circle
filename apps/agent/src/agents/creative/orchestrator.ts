@@ -1,3 +1,4 @@
+import {randomUUID} from 'node:crypto';
 import type {AgentModelResponse,AgentTask} from '@writer-agent/contracts';
 import {z} from 'zod';
 import type {ModelStep} from '../../runtime/model-gateway.js';
@@ -125,13 +126,13 @@ export async function orchestratePlanCheck(task:AgentTask,gateway:StepGateway,si
   const usage=new SharedUsage();
   const stepResults:NonNullable<AgentModelResponse['stepResults']>=[];
   const step=async(role:AgentRole,callIndex:number,system:string,input:string,schemaName:string,schema:Record<string,unknown>,maxOutputTokens:number,callSignal=signal)=>{
-    const started=performance.now();
+    const started=performance.now(),piRunId=randomUUID();
     try{
-      const response=await gateway.executeStep(task,callSignal,{role,callIndex,maxModelCalls:readonlyPlanModelCalls,parentTaskId:task.taskId,system,input,schemaName,schema,maxTokens:tokenLimit(callIndex),maxOutputTokens});
-      stepResults.push({callIndex,status:'completed',durationMs:performance.now()-started,usage:response.usage});
+      const response=await gateway.executeStep(task,callSignal,{piRunId,role,callIndex,maxModelCalls:readonlyPlanModelCalls,parentTaskId:task.taskId,system,input,schemaName,schema,maxTokens:tokenLimit(callIndex),maxOutputTokens});
+      stepResults.push({piRunId,callIndex,status:'completed',durationMs:performance.now()-started,usage:response.usage});
       return response;
     }catch(error){
-      if(error instanceof GatewayError&&error.response.modelCalls)stepResults.push({callIndex,status:'failed',durationMs:performance.now()-started,usage:error.response.usage});
+      if(error instanceof GatewayError&&error.response.modelCalls)stepResults.push({piRunId,callIndex,status:'failed',durationMs:performance.now()-started,usage:error.response.usage});
       throw error;
     }
   };
@@ -177,6 +178,6 @@ export async function orchestratePlanCheck(task:AgentTask,gateway:StepGateway,si
   parseJson(coordinator.text,z.record(z.string(),z.unknown()));
   if(usage.calls!==readonlyPlanModelCalls)throw new GatewayError('LLM_INVALID_USAGE',{text:'',usage:usage.usage,modelCalls:Math.max(1,usage.calls),stepResults});
   stepResults.sort((a,b)=>a.callIndex-b.callIndex);
-  return {text:coordinator.text,usage:usage.usage,modelCalls:usage.calls,stepResults};
+  return {text:coordinator.text,usage:usage.usage,modelCalls:usage.calls,piRunId:coordinator.piRunId,stepResults};
   }catch(error){return failed(error)}
 }

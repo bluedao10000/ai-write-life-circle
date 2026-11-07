@@ -62,6 +62,8 @@
     "eval:agent:memory": "pnpm eval:agent -- --category=memory",
     "eval:agent:safety": "pnpm eval:agent -- --category=safety",
     "eval:agent:performance": "pnpm eval:agent -- --category=performance",
+    "eval:agent:creative-plan": "pnpm build:api:go && pnpm build:agent && pnpm --filter @writer-agent/agent exec tsx scripts/evaluate-creative-plan.ts",
+    "eval:creative:plan-check": "pnpm build:api:go && pnpm build:agent && pnpm --filter @writer-agent/agent exec tsx scripts/evaluate-creative-plan.ts",
     "eval:agent:judge": "pnpm --filter @writer-agent/contracts build && pnpm --filter @writer-agent/agent exec tsx scripts/evaluate-judge.ts",
     "eval:agent:judge:live": "pnpm --filter @writer-agent/contracts build && pnpm --filter @writer-agent/agent exec tsx scripts/evaluate-judge.ts --live",
     "eval:agent:memory:quality": "pnpm --filter @writer-agent/contracts build && pnpm --filter @writer-agent/agent exec tsx scripts/evaluate-memory-quality.ts",

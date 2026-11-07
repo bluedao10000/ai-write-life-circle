@@ -16,11 +16,6 @@ coverage/
 apps/web/wrangler.auth.generated.toml
 apps/web/playwright-report/
 apps/web/test-results/
-# >>> Comet managed project state >>>
-!/.comet/
-/.comet/*
-!/.comet/config.yaml
-# <<< Comet managed project state <<<
 
 apps/web/test-results-api/
 
@@ -48,3 +43,8 @@ apps/web/test-results-thinking/
 .workbuddy-ai/
 
 apps/web/test-results-author-experience/
+# >>> Comet managed project state >>>
+!/.comet/
+/.comet/*
+!/.comet/config.yaml
+# <<< Comet managed project state <<<

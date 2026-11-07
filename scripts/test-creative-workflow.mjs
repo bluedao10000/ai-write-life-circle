@@ -333,7 +333,8 @@ try {
 
   assert.equal(governed.task.outputSchemaVersion, "creative-plan-check-candidates-v2");
   assert.equal(single.task.outputSchemaVersion, "creative-plan_check-candidates-v1");
-  assert(governed.task.reservedTokens > single.task.reservedTokens);
+  assert.equal(governed.task.reservedTokens, single.task.reservedTokens);
+  assert.equal(governed.modelSteps.reduce((sum,step)=>sum+step.maxTokens,0), governed.task.reservedTokens);
   const governance = output.split("\n").filter((line) => line.startsWith("{\"event\":\"agent_governance\"")).map((line) => JSON.parse(line)).filter((event) => event.taskId === governed.task.taskId);
   for (const role of ["creative.plan.planner", "creative.plan.researcher", "creative.plan.analyst", "creative.plan.critic", "creative.plan.coordinator"]) {
     const events = governance.filter((event) => event.role === role);

@@ -43,6 +43,7 @@ type Task struct {
 	Request      llm.Request   `json:"request"`
 }
 type Record struct {
+	PiRunID     string                 `json:"piRunId,omitempty"`
 	StepResults []llm.StepResult       `json:"stepResults,omitempty"`
 	ModelSteps  []ModelStepReceipt     `json:"modelSteps,omitempty"`
 	Audit       []ExecutionAudit       `json:"audit,omitempty"`
@@ -555,9 +556,24 @@ func (s *Service) Action(ctx context.Context, id, action string, in Envelope) er
 			if in.Response.Usage != nil && (in.Response.Usage.CachedInputTokens < 0 || in.Response.Usage.CachedInputTokens > in.Response.Usage.InputTokens || in.Response.Usage.InputTokens < 0 || in.Response.Usage.InputTokens > 1000000 || in.Response.Usage.OutputTokens < 0 || in.Response.Usage.OutputTokens > s.Config.MaxOutputTokens) {
 				return llm.Fail("LLM_INVALID_USAGE")
 			}
+			if in.Response.PiRunID != "" && len(in.Response.PiRunID) > 128 {
+				return llm.Fail("LLM_INVALID_USAGE")
+			}
 			if err := rec.validateStepResults(in.Response.StepResults); err != nil {
 				return err
 			}
+			if t.Kind == "creative.plan_check" && t.Strategy == creative.PlanStrategyReadonly && action == "complete" {
+				coordinatorRun := ""
+				for _, step := range in.Response.StepResults {
+					if step.CallIndex == creative.PlanCheckModelCalls {
+						coordinatorRun = step.PiRunID
+					}
+				}
+				if coordinatorRun != "" && in.Response.PiRunID != "" && coordinatorRun != in.Response.PiRunID {
+					return llm.Fail("LLM_INVALID_USAGE")
+				}
+			}
+			rec.PiRunID = in.Response.PiRunID
 			rec.StepResults = in.Response.StepResults
 			var modelErr error
 			if action == "fail" {
