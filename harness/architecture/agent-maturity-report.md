@@ -18,7 +18,7 @@ Phase 0 已完成源码审计和架构设计；Phase 1 已完成本地代码接�
 | Evaluation | 部分覆盖 | 统一schema/split/runner、每类独立版本的dev与held-out数据、五类与四能力覆盖校验、Go业务和故障适配（含API中断Review的独立dev/held-out样本）、受治理Judge及其独立dev/held-out、显式预算的真实模型入口、Judge对人工校准及人工双评一致性统计、单/多角色开发集与保留集对照 | 待完成实际模型质量、真实人工标注校准和代表性性能验收 |
 | 安全 | 部分覆盖 | capability、隔离进程、工具授权、取消、幂等、开发与保留集记忆污染、同作者跨作品Session隔离及只读子角色工具输出拒绝 | 缺真实模型抗污染率、更广动态权限传播与并发预算竞争验证 |
 | 可观测性 | 部分覆盖 | 治理关联日志、跨进程健康；私有Prometheus投影五种Worker任务、五角色Admissions/Results/Usage/耗时及固定24h/7d回执窗口，以及Thinking持久Run状态、恢复次数、模型调用和终态耗时P50/P95 | Worker窗口只覆盖当前仍保留的任务回执；Thinking历史随会话保留策略；代表性并发基线和真实模型诊断样本仍缺 |
-| 多角色协作 | 部分覆盖 | 默认关闭的Creative只读试点：Planner后由Researcher/Analyst/Critic并行检查，Coordinator汇总；dev/held-out对照、并发3准入、子预算精确合计和子上下文收窄通过 | 需真实模型同预算质量比较、代表性能与更广义动态子角色/审批策略 |
+| 多角色协作 | 部分覆盖 | 默认关闭的Creative只读试点：Planner后由Researcher/Analyst/Critic并行检查，Coordinator汇总；单/五角色共享父预算，独立dev/held-out配对、并发准入、子预算精确合计和子上下文收窄通过 | 需真实模型同预算质量比较、代表性能与更广义动态子角色/审批策略 |
 | 自主规划 | 未实现 | 有限模型/工具循环与显式恢复 | 有界Goal/Plan与审批版本绑定，须后置 |
 
 以上路径中 Agent 文件位于 `apps/agent/src`，测试位于 `apps/agent/test`；Go 文件位于 `apps/api-go/internal`。
@@ -611,3 +611,13 @@ dev reliability 13/13工程通过、19次合成模型调用；held-out 4/4、8�
 Creative五角色的准入和预留Token按持久准入时间计数；结果、状态、已知Usage、未知Usage及角色执行时长按父任务终态时间归属。已知Token、准入预留和未知Usage对应的保守预留分开汇总。一个采样时间用于两种窗口；窗口端点包含在内，缺失、无效和未来事件时间不计入。Prometheus仅输出固定窗口、任务类型、角色、状态、转换和分位标签，不包含任务、作者、作品、会话或运行标识。
 
 Go `agenttasks` 与 `agentruntime` race测试通过。`pnpm test:creative` 的本地Go/Pi合成Provider流程确认实际只读计划在两个窗口中均记录了五个角色的准入、终态结果、已知Usage、预留和执行时长；`pnpm test:runtime` 检查空任务存储仍输出24h/7d固定指标标签，且模型调用数为0。窗口只涵盖Go当前保留的任务回执，不构成完整历史留存承诺，也不证明生产SLO或真实模型质量。
+
+### 2026-11-07 同预算五角色配对评测
+
+Creative五角色计划核对不再把单角色每任务上限乘以5。Go的累计预留、每日预算准入和设置展示都使用原单角色父额；Pi将该额分成五个互不重叠的角色上限，Coordinator接收整数余数，五个上限精确合计为父额。单角色策略和现有存档不受影响。
+
+新增`creative-plan-check-dev-v1`与`creative-plan-check-held-out-v1`，各有3个版本、ID和请求内容不重叠的合成案例。配对器从真实Go任务回执核验保存Revision、Content Hash、inputHash、Provider/Model、deadline策略与父预留，拒绝重复或混合记录；任何确定性失败、缺口工具/业务写入、错误调用数或角色集合都不进入语义判断。
+
+开发与保留集各3/3配对工程通过。每集单角色为3次调用、五角色为15次调用，父预留合计均为66720 tokens且子预算逐组精确合计；工具调用和业务写入均为0。固定`creative-plan-check-pairwise-v1` Judge使用本地治理入口、随机候选顺序与独立预留，另执行6次合成调用并结算1200 tokens。当前没有独立真实模型输出或真人双评，单/多胜率、平局率、Judge与人工一致性和`qualityValidated`都保持`null`/`false`。
+
+Go全量race、Agent176/176、Agent类型检查、lint、构建、真实Creative Go/Pi流程以及两份本地配对报告通过。开发与保留集证明预算、配对资格、报告和评分链路，不证明五角色相对单角色的真实质量收益；试点继续默认关闭，Phase 5仍属部分覆盖。

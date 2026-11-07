@@ -1,0 +1,19 @@
+{
+  "version": "creative-plan-check-held-out-v1",
+  "split": "held-out",
+  "synthetic": true,
+  "cases": [
+    {
+      "caseId": "held-out-harbor-return",
+      "request": "计划：陆闻会在修船结束后返回南城。\n正文：船只修复完成，陆闻看着南城方向，最终选择留下完成码头的灯标。"
+    },
+    {
+      "caseId": "held-out-sealed-map",
+      "request": "计划：纪遥会把地图交给守门人。\n正文：纪遥展开地图，读完标记后最终选择留下，并未交给守门人。"
+    },
+    {
+      "caseId": "held-out-winter-road",
+      "request": "计划：闻溪会在冬路封闭前启程。\n正文：封路的消息传来，闻溪收起行李，最终选择留下照料伤员。"
+    }
+  ]
+}

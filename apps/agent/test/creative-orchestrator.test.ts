@@ -42,6 +42,15 @@ test('readonly plan orchestration shares one parent execution across five fixed 
  assert.equal(steps.reduce((sum,step)=>sum+step.maxTokens,0),10000);
 });
 
+test('readonly plan assigns the parent remainder to the final coordinator',async()=>{
+ const source=task();source.reservedTokens=10003;
+ const steps:ModelStep[]=[];
+ const gateway={config:{MaxOutputTokens:2048},executeStep:async(_task:AgentTask,_signal:AbortSignal,step:ModelStep)=>{steps.push(step);return responseFor(step)}};
+ await orchestratePlanCheck(source,gateway,new AbortController().signal);
+ assert.deepEqual(steps.map(step=>step.maxTokens),[2000,2000,2000,2000,2003]);
+ assert.equal(steps.reduce((sum,step)=>sum+step.maxTokens,0),source.reservedTokens);
+});
+
 test('readonly plan roles have no scopes or tools and split only the parent budget',()=>{
  const source=task();
  const contexts=[

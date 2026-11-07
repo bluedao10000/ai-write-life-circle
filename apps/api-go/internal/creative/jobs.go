@@ -255,9 +255,6 @@ func settlePoints(response llm.Response, sent bool) int {
 func meterOp(job string, attempt int) string { return "creative:" + job + ":" + strconv.Itoa(attempt) }
 
 func (s *Service) reserveFor(j Job) int {
-	if j.Strategy == PlanStrategyReadonly {
-		return s.reserve() * PlanCheckModelCalls
-	}
 	return s.reserve()
 }
 

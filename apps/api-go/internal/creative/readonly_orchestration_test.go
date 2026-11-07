@@ -40,7 +40,7 @@ func TestReadonlyPlanCheckUsesOneParentReservationAndFiveCalls(t *testing.T) {
 	if err != nil || claimed == nil {
 		t.Fatal("claim", err)
 	}
-	if claimed.Reserved != f.s.reserve()*PlanCheckModelCalls {
+	if claimed.Reserved != f.s.reserve() {
 		t.Fatalf("one parent reservation=%d", claimed.Reserved)
 	}
 	prepared, err := f.s.Prepare(ctx, claimed)
@@ -62,6 +62,19 @@ func TestReadonlyPlanCheckUsesOneParentReservationAndFiveCalls(t *testing.T) {
 	divergences, err := f.s.Divergences(ctx, chapter)
 	if err != nil || len(divergences) != 1 || divergences[0].Assessment != "diverged" {
 		t.Fatalf("divergences=%+v error=%v", divergences, err)
+	}
+}
+
+func TestSingleAndReadonlyPlanChecksReserveTheSameParentBudget(t *testing.T) {
+	f := setup(t)
+	for _, strategy := range []string{PlanStrategy, PlanStrategyReadonly} {
+		job := Job{Kind: "plan_check", Strategy: strategy}
+		if got := f.s.reserveFor(job); got != f.s.reserve() {
+			t.Fatalf("strategy %q reserved %d tokens, want %d", strategy, got, f.s.reserve())
+		}
+		if got := f.s.reservePoints(job); got != f.s.reservePoints(Job{Kind: "plan_check", Strategy: PlanStrategy}) {
+			t.Fatalf("strategy %q reserved different points: %d", strategy, got)
+		}
 	}
 }
 

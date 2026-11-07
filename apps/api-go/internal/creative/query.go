@@ -37,9 +37,6 @@ const Disclosure = "启用后，每轮灵感对话完成时，Writer Agent 会�
 
 func (s *Service) settingsView(st State) SettingsView {
 	reserve := s.reserve()
-	if st.Settings.MultiAgentPlanCheck {
-		reserve *= PlanCheckModelCalls
-	}
 	v := SettingsView{Settings: st.Settings, CurrentModel: s.Config.Info(), Disclosure: Disclosure, ReserveTokens: reserve, BudgetDay: st.BudgetDay, BudgetTokens: st.BudgetTokens, BudgetAttempts: st.BudgetAttempts}
 	v.Available = s.Config.ValidatePublic() == nil
 	v.NeedsModelConsent = st.Settings.Enabled && st.Settings.Model != s.Config.Info()

@@ -45,23 +45,23 @@ func TestReadonlyPlanPilotRequiresMeaningfulBudgetAndPersists(t *testing.T) {
 	f.enable()
 	ctx := context.Background()
 	if err := f.s.transaction(ctx, func(st *State) (bool, error) {
-		st.Settings.DailyTokenBudget = f.s.reserve() * 2
+		st.Settings.DailyTokenBudget = f.s.reserve() - 1
 		return true, nil
 	}); err != nil {
 		t.Fatal(err)
 	}
 	on := true
 	if _, err := f.s.Configure(ctx, author, "orchestration", compat.UUID(), SettingsInput{MultiAgentPlanCheck: &on}); err == nil {
-		t.Fatal("multi-agent mode accepted a budget below one five-call reservation")
+		t.Fatal("multi-agent mode accepted a budget below one parent reservation")
 	}
 	if err := f.s.transaction(ctx, func(st *State) (bool, error) {
-		st.Settings.DailyTokenBudget = f.s.reserve() * PlanCheckModelCalls
+		st.Settings.DailyTokenBudget = f.s.reserve()
 		return true, nil
 	}); err != nil {
 		t.Fatal(err)
 	}
 	view, err := f.s.Configure(ctx, author, "orchestration", compat.UUID(), SettingsInput{MultiAgentPlanCheck: &on})
-	if err != nil || !view.MultiAgentPlanCheck || view.ReserveTokens != f.s.reserve()*PlanCheckModelCalls {
+	if err != nil || !view.MultiAgentPlanCheck || view.ReserveTokens != f.s.reserve() {
 		t.Fatalf("enable readonly plan pilot: %+v %v", view, err)
 	}
 	restarted := New(f.s.App, f.s.Config, nil)
