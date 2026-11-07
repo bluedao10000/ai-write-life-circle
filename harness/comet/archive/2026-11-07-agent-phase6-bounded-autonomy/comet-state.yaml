@@ -1,0 +1,494 @@
+schema: comet.native.v4
+name: agent-phase6-bounded-autonomy
+language: en
+phase: archive
+status: done
+state_version: 11
+brief: brief.md
+document_constraints_version: 3
+shape_confirmation_hash: 87f36e2274bbcbf16caa1137f7849a5665ddb1fa83b290fc5746c0620e44c597
+spec_changes:
+  - capability: bounded-autonomy
+    operation: create
+    source: specs/bounded-autonomy/spec.md
+workspace:
+  isolation: current
+  change_branch: codex/agent-phase4-budget-race
+  target_branch: codex/agent-phase4-budget-race
+  finish: null
+loop:
+  stage: done
+  goal_cycle: 1
+  iteration: 2
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 1
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: brief.md
+    text: "**A1 — Explicit opt-in and compatibility:** A message without `autonomy`
+      keeps the existing Thinking protocol, one-message admission, budget,
+      tools, and output behavior. A bounded run is accepted only with a nonblank
+      goal, completion criteria, `approveReadOnlyTools: true`, at least one
+      authorized read-only scope, and a step/deadline limit within the selected
+      model/session ceilings; invalid or write-requesting configurations are
+      rejected before any model request."
+    result: passed
+    reason:
+      text: Autonomy is per-message opt-in. Go validates the nonblank goal and
+        criteria, explicit read-only-tool approval, at least one authorized
+        read-only scope, and step/deadline bounds before reservation or Pi
+        delivery; ordinary messages retain the existing one-message path.
+      truncated: false
+  - id: A2
+    source: brief.md
+    text: "**A2 — Bounded plan:** After the first model admission, the Agent must
+      persist `adopt_autonomy_plan` before using evidence tools. The plan echoes
+      the author goal and completion criteria, uses at most the admitted step
+      count, and can name only currently authorized read-only Story Tools.
+      Duplicate plans, unknown tools, scope expansion, write/organize tools, an
+      increased deadline/budget, or a plan over the effective limit fail without
+      executing the attempted step."
+    result: passed
+    reason:
+      text: adopt_autonomy_plan must be persisted before evidence tools run and is
+        bound to the exact author goal and criteria, unique planned IDs, the
+        admitted step ceiling, and currently authorized read-only Story Tools.
+        Duplicate, expanded, write, organize, unknown-tool, or over-limit plans
+        fail before the attempted step executes.
+      truncated: false
+  - id: A3
+    source: brief.md
+    text: "**A3 — Governed execution:** Planned tools execute through the existing
+      Tool Gateway and Go authorization with the original session, book, author,
+      authorization version, scopes, cancellation signal, and model/session
+      budget. The mode performs no write, story-recording, organizing, Canon, or
+      external business effect, and it cannot create another task or Agent."
+    result: passed
+    reason:
+      text: Planned evidence calls pass through the existing Tool Gateway and Go tool
+        authorization using the original session, book, author, authorization
+        version, scopes, cancellation/deadline, and model/session budget. The
+        autonomy path exposes no write, story-recording, organize, Canon,
+        external-effect, child-task, or child-Agent capability; resume does not
+        enter Creative intake.
+      truncated: false
+  - id: A4
+    source: brief.md
+    text: "**A4 — Explicit completion and failure:** The Agent must call
+      `complete_autonomy` with `complete` or `needs_input`. `complete` requires
+      every planned step ID; `needs_input` records the remaining step IDs and a
+      bounded reason. A run that omits this record, exceeds a limit, stops after
+      cancellation, or loses authorization fails or is cancelled without a
+      success claim. Existing restart behavior never automatically replays a
+      paid execution."
+    result: passed
+    reason:
+      text: complete_autonomy is required for success or needs_input, with all planned
+        IDs or the remaining IDs and a bounded reason. Successful evidence is
+        checkpointed and reused after explicit recovery without repeating the
+        business tool; completed and needs_input states seal further reads;
+        post-completion recovery drops tools and may produce final prose without
+        another completion call. Limits, cancellation, authorization loss, and
+        restart fail safely without a success claim or automatic paid replay.
+      truncated: false
+  - id: A5
+    source: brief.md
+    text: "**A5 — Product and evidence:** The API/UI expose the opt-in, completion
+      criteria, projected plan, status, and per-step state without exposing
+      token forms, credentials, or tool payloads. Tests use localhost synthetic
+      providers and cover valid completion, malformed/expanded plans, write-tool
+      denial, tool/provider failure, cancellation, deadline, restart/recovery,
+      and unchanged ordinary messages. Documentation labels the result
+      engineering evidence and keeps bounded autonomy default-off."
+    result: passed
+    reason:
+      text: The API and UI expose opt-in, completion criteria, admitted limits,
+        projected plan, status, per-step state, and completion summary without
+        token forms, credentials, or tool payloads. Localhost synthetic-provider
+        tests cover the required valid and failure paths, and documentation
+        labels the result as engineering evidence, keeps bounded autonomy
+        default-off, and does not claim real-model or independent validation.
+      truncated: false
+builder_handoff:
+  candidate_id: bc197748-facb-42e3-9eae-3cd66e4fc22d
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:1a78d71c-1a55-4187-b6cd-06ca1d760394
+  iteration: 2
+  summary:
+    text: "Repaired the bounded read-only autonomy run around the failed A3-A5
+      boundaries: resume no longer enters Creative intake, completed tool
+      evidence is retained in the original checkpoint and reused on recovery,
+      persisted completion/needs_input states are sealed, post-completion
+      recovery can emit the final prose turn, autonomy failures retain fixed
+      public recovery codes, and documentation now reports engineering evidence
+      without claiming real-model quality."
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+    - A3
+    - A4
+    - A5
+  acceptance_review:
+    - id: A1
+      status: implemented-with-evidence
+      evidence:
+        - packages/contracts/src/thinking.ts adds a strict optional autonomy
+          request and state while ordinary messages remain unchanged.
+        - apps/api-go/internal/thinking/http.go validates autonomy before
+          reservation/model delivery and permits autonomy only on original
+          message acceptance.
+        - apps/api-go/internal/thinking/autonomy_test.go covers admission
+          limits, public projection compatibility, Creative intake exclusion,
+          and same-key resume replay.
+        - "Observed: ordinary-message and default-off compatibility tests pass
+          in the full Agent suite and Go thinking race suite."
+      note: Autonomy remains per-message opt-in. Go checks completion criteria,
+        explicit read-only approval, scopes, model tool support, step count,
+        deadline, and forbidden combinations before the paid path; old clients
+        still receive the prior public projection.
+    - id: A2
+      status: implemented-with-evidence
+      evidence:
+        - apps/agent/src/runtime/governance/task-coordinator.ts enforces exact
+          goal/criteria, unique step IDs, admitted step ceiling, read-only tool
+          allowlist, and terminal-state sealing.
+        - apps/agent/src/tools/registry.ts requires a matching pending stepId
+          before an evidence request and removes all write, organizing, task,
+          Canon, and external-effect tools.
+        - apps/agent/test/autonomy.test.ts covers duplicate plan adoption,
+          unknown and mismatched step IDs, expanded plans, write-tool requests,
+          and the exact one-tool/four-turn floor.
+        - "Observed: the focused autonomy test file passes 11/11."
+      note: The first model turn must persist a plan through the governed tool
+        gateway. No evidence HTTP request occurs for an absent, duplicate,
+        expanded, mismatched, or out-of-scope step.
+    - id: A3
+      status: implemented-with-evidence
+      evidence:
+        - apps/agent/src/tools/registry.ts routes each evidence call through the
+          existing Tool Gateway and Go tool RPC under the current authorization.
+        - apps/api-go/internal/thinking/http.go now creates Creative intake only
+          for original messages; every resume and same-key replay is excluded.
+        - scripts/test-thinking-agent.mjs verifies zero write/organize tool
+          payloads, current-authorization execution, and unchanged business
+          version in a real Go/Pi process.
+        - "Observed: pnpm test:thinking and the Go thinking race suite pass with
+          localhost synthetic providers."
+      note: The mode can only execute planned read-only evidence and cannot create a
+        task or child Agent, including after explicit resume. A resumed autonomy
+        turn reuses the persisted plan and cannot enqueue the normal Creative
+        organizer.
+    - id: A4
+      status: implemented-with-evidence
+      evidence:
+        - apps/agent/src/sessions/store.ts persists private autonomy evidence in
+          the original Durable checkpoint and projects only the public
+          plan/completion state.
+        - apps/agent/src/runtime/pi-host.ts restores successful evidence on
+          resume, forces a tool-free final prose turn after completion, and
+          refuses evidence after completion or needs_input.
+        - apps/agent/src/runtime/governance/task-coordinator.ts reopens
+          unevidenced steps, preserves evidenced steps, and restores a persisted
+          completion instead of attempting a second completion tool call.
+        - apps/agent/test/autonomy.test.ts covers provider failure before and
+          after completion, evidence reuse without a repeated business tool,
+          needs_input sealing, cancellation, deadline, authorization revocation,
+          and unchanged ordinary execution.
+        - apps/api-go/internal/thinking/reliability.go maps autonomy failures to
+          the correct public recovery action;
+          apps/api-go/internal/thinking/autonomy_test.go covers those mappings
+          and resume intake replay.
+      note: A restart never automatically replays a paid attempt. Explicit resume uses
+        the same plan and limits, retains successful evidence, and can finish
+        from a persisted completion or return needs_input. A missing completion
+        record fails as AUTONOMY_INCOMPLETE and is never projected as success.
+    - id: A5
+      status: implemented-with-evidence
+      evidence:
+        - apps/web/src/features/inspiration/Composer.tsx and
+          apps/web/src/features/creative/InspirationWorkspace.tsx expose a
+          per-message completion criterion and bounded step control without
+          token-budget inputs.
+        - apps/web/src/features/inspiration/Messages.tsx renders plan status and
+          steps but no tool arguments, payloads, capabilities, or credentials.
+        - apps/web/src/features/thinking/errors.ts and
+          apps/api-go/internal/thinking/reliability.go expose fixed autonomy
+          error and recovery categories.
+        - apps/web/src/test/inspiration.test.tsx covers opt-in, no-token-form
+          behavior, projected status, and the unchanged ordinary path.
+        - harness/architecture/agent-maturity-report.md and related ADRs label
+          this as a default-off synthetic-provider engineering pilot and retain
+          real-model quality and production-readiness gaps.
+      note: The API/UI expose the requested control, completion criteria, status, and
+        per-step state with no sensitive payload projection. Product
+        documentation now distinguishes local engineering evidence from
+        independent acceptance and real-model quality.
+  checks:
+    - name:
+        text: Agent full tests
+        truncated: false
+      result: passed
+      note:
+        text: pnpm test:agent passed 188/188.
+        truncated: false
+    - name:
+        text: Real Go/Pi Thinking integration
+        truncated: false
+      result: passed
+      note:
+        text: pnpm test:thinking passed, including SIGKILL, restart, explicit resume,
+          and autonomy intake isolation with localhost synthetic providers.
+        truncated: false
+    - name:
+        text: Web and Worker authorization tests
+        truncated: false
+      result: passed
+      note:
+        text: Web passed 294/294 and Worker authorization passed 25/25.
+        truncated: false
+    - name:
+        text: Go full race suite
+        truncated: false
+      result: passed
+      note:
+        text: go test -race -count=1 ./... passed in apps/api-go.
+        truncated: false
+    - name:
+        text: OpenAPI contracts
+        truncated: false
+      result: passed
+      note:
+        text: pnpm openapi:check verified 11 contracts.
+        truncated: false
+    - name:
+        text: Type checks
+        truncated: false
+      result: passed
+      note:
+        text: pnpm typecheck passed for contracts, web, worker, and agent.
+        truncated: false
+    - name:
+        text: Lint
+        truncated: false
+      result: passed
+      note:
+        text: pnpm lint passed for web, contracts, and agent.
+        truncated: false
+    - name:
+        text: Production build
+        truncated: false
+      result: passed
+      note:
+        text: pnpm build passed for Go API, Agent, web client, and SSR worker.
+        truncated: false
+    - name:
+        text: Whitespace check
+        truncated: false
+      result: passed
+      note:
+        text: git diff --check passed.
+        truncated: false
+  checks_truncated: false
+  known_limits:
+    - text: All model responses in verification use localhost synthetic providers; no
+        paid or remote model request was made.
+      truncated: false
+    - text: The pilot does not establish real-model plan quality, prompt-injection
+        resistance rate, representative book performance, or production SLOs.
+      truncated: false
+    - text: Bounded autonomy remains default-off, read-only, and limited to one
+        Thinking message; dynamic child Agents, autonomous writes, and
+        unattended execution remain out of scope.
+      truncated: false
+  known_limits_truncated: false
+  review: null
+  submitted_at: 2026-11-07T11:18:29.326Z
+blockers: []
+verification:
+  candidate_id: bc197748-facb-42e3-9eae-3cd66e4fc22d
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:ad236815-7475-4673-9948-4586173f9b9a
+  iteration: 2
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks:
+    - id: agent-tests
+      name:
+        text: Agent full tests
+        truncated: false
+      argv_display:
+        - text: test:agent
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 8686
+    - id: thinking-integration
+      name:
+        text: Real Go/Pi Thinking integration
+        truncated: false
+      argv_display:
+        - text: test:thinking
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 22390
+    - id: web-tests
+      name:
+        text: Web and Worker authorization tests
+        truncated: false
+      argv_display:
+        - text: --filter
+          truncated: false
+        - text: "@writer-agent/web"
+          truncated: false
+        - text: test
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 6305
+    - id: go-race
+      name:
+        text: Go full race suite
+        truncated: false
+      argv_display:
+        - text: test
+          truncated: false
+        - text: -race
+          truncated: false
+        - text: -count=1
+          truncated: false
+        - text: ./...
+          truncated: false
+      argv_truncated: false
+      cwd_ref: apps/api-go
+      status: passed
+      exit_code: 0
+      duration_ms: 71985
+    - id: openapi
+      name:
+        text: OpenAPI contract checks
+        truncated: false
+      argv_display:
+        - text: openapi:check
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 1593
+    - id: typecheck
+      name:
+        text: Workspace type checks
+        truncated: false
+      argv_display:
+        - text: typecheck
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 7209
+    - id: lint
+      name:
+        text: Workspace lint
+        truncated: false
+      argv_display:
+        - text: lint
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 3144
+    - id: build
+      name:
+        text: Production build
+        truncated: false
+      argv_display:
+        - text: build
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 7467
+  summary:
+    text: "Independent inspection confirms candidate repair of the prior A3-A5
+      failures: /resume and idempotent resume replay avoid Creative intake,
+      successful evidence is reused after recovery without a second tool call,
+      completed and needs_input plans are sealed, post-completion recovery can
+      emit final prose without calling complete_autonomy again, and public
+      autonomy failures retain fixed recovery categories. All A1-A5 acceptance
+      items are covered by the candidate behavior and bound Runtime evidence."
+    truncated: false
+  risks:
+    - text: Validation uses localhost synthetic providers only and does not establish
+        real-model plan quality, injection resistance, representative book
+        performance, or production SLOs.
+      truncated: false
+    - text: Bounded autonomy remains default-off and read-only; autonomous writes,
+        dynamic child Agents, unattended execution, and broader production
+        validation remain out of scope.
+      truncated: false
+  risks_truncated: false
+  completed_at: 2026-11-07T11:26:34.415Z
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 1
+    outcome: fail
+    unresolved_ids:
+      - A3
+      - A4
+      - A5
+    summary:
+      text: "A1 and A2 pass: default-off compatibility, Go pre-model admission, and
+        plan-before-read enforcement are present. The candidate fails A3-A5
+        because explicit resume can create a creative task and lose completed
+        evidence, completed-plan recovery cannot always finish,
+        post-completion/needs_input state transitions are not sealed, and API
+        failure projection plus engineering evidence claims are inaccurate."
+      truncated: false
+    completed_at: 2026-11-07T11:03:49.584Z
+  - goal_cycle: 1
+    iteration: 2
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: "Independent inspection confirms candidate repair of the prior A3-A5
+        failures: /resume and idempotent resume replay avoid Creative intake,
+        successful evidence is reused after recovery without a second tool call,
+        completed and needs_input plans are sealed, post-completion recovery can
+        emit final prose without calling complete_autonomy again, and public
+        autonomy failures retain fixed recovery categories. All A1-A5 acceptance
+        items are covered by the candidate behavior and bound Runtime evidence."
+      truncated: false
+    completed_at: 2026-11-07T11:26:34.415Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-11-07T10:14:22.767Z
