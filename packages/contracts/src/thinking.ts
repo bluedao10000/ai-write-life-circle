@@ -63,7 +63,7 @@ export const thinkingRecoverySchema = z.object({
   continuationContext: z.string().trim().min(1).max(12000).optional(),
 }).strict();
 export const thinkingFailureSchema = z.object({
-  code: z.enum(["STORY_CONTEXT_UNAVAILABLE", "PROVIDER_TIMEOUT", "PROVIDER_UNAVAILABLE", "RATE_LIMITED", "CONTEXT_OVERFLOW", "TOOL_TIMEOUT", "TOOL_EXECUTION_FAILED", "SESSION_INTERRUPTED", "SESSION_EXPIRED", "AUTHORIZATION_REQUIRED", "MODEL_CONFIGURATION_ERROR", "BUDGET_EXCEEDED", "INTERNAL_ERROR"]),
+  code: z.enum(["STORY_CONTEXT_UNAVAILABLE", "PROVIDER_TIMEOUT", "PROVIDER_UNAVAILABLE", "RATE_LIMITED", "CONTEXT_OVERFLOW", "TOOL_TIMEOUT", "TOOL_EXECUTION_FAILED", "SESSION_INTERRUPTED", "SESSION_EXPIRED", "AUTHORIZATION_REQUIRED", "MODEL_CONFIGURATION_ERROR", "BUDGET_EXCEEDED", "AUTONOMY_INCOMPLETE", "AUTONOMY_LIMIT_EXCEEDED", "AUTONOMY_PLAN_REJECTED", "INTERNAL_ERROR"]),
   retryable: z.boolean(), autoRecoverable: z.boolean(),
   userAction: z.enum(["retry", "continue", "reauthorize", "provide_context", "new_session", "contact_support"]),
   contextRetained: z.literal(true), mayHaveIncurredCost: z.boolean(),
@@ -83,10 +83,65 @@ export const thinkingRunSchema = z.object({
 export type ThinkingRun = z.infer<typeof thinkingRunSchema>;
 export type ThinkingFailure = z.infer<typeof thinkingFailureSchema>;
 export type ThinkingRecovery = z.infer<typeof thinkingRecoverySchema>;
+export const thinkingAutonomyRequestSchema = z.object({
+  completionCriteria:z.string().trim().min(1).max(4000),
+  approveReadOnlyTools:z.literal(true),
+  maxSteps:z.number().int().min(1).max(8),
+  deadlineMs:z.number().int().min(1000).max(300000).optional(),
+}).strict();
+export const thinkingReadOnlyToolSchema = z.enum([
+  "retrieve_memory",
+  "search_knowledge",
+  "read_chapter",
+  "get_entity",
+  "find_related_chapters",
+  "get_author_notes",
+  "get_timeline",
+  "get_plot_threads",
+  "list_creative_assets",
+  "get_creative_asset",
+  "list_creative_proposals",
+  "list_open_questions",
+  "get_writing_context",
+  "compare_plan_with_manuscript",
+  "get_discussion_source",
+]);
+export const thinkingAutonomyPlanStepSchema = z.object({
+  stepId:z.string().regex(/^[A-Za-z0-9_-]{1,32}$/),
+  tool:thinkingReadOnlyToolSchema,
+  purpose:z.string().trim().min(1).max(240),
+  status:z.enum(["pending","running","completed","failed"]),
+}).strict();
+export const thinkingAutonomyPlanSchema = z.object({
+  goal:z.string().trim().min(1).max(12000),
+  completionCriteria:z.string().trim().min(1).max(4000),
+  steps:z.array(thinkingAutonomyPlanStepSchema).min(1).max(8),
+}).strict();
+export const thinkingAutonomyRemainingStepSchema=z.object({
+  stepId:z.string().regex(/^[A-Za-z0-9_-]{1,32}$/),
+  reason:z.string().trim().min(1).max(500),
+}).strict();
+export const thinkingAutonomyCompletionSchema=z.object({
+  status:z.enum(["complete","needs_input"]),
+  summary:z.string().trim().min(1).max(1000),
+  completedStepIds:z.array(z.string().regex(/^[A-Za-z0-9_-]{1,32}$/)).max(8),
+  remainingSteps:z.array(thinkingAutonomyRemainingStepSchema).max(8),
+}).strict();
+export const thinkingAutonomyStateSchema=z.object({
+  completionCriteria:z.string().trim().min(1).max(4000),
+  approveReadOnlyTools:z.literal(true),
+  maxSteps:z.number().int().min(1).max(8),
+  deadlineMs:z.number().int().positive().optional(),
+  status:z.enum(["planning","planned","running","completed","needs_input","failed","cancelled"]),
+  plan:thinkingAutonomyPlanSchema.optional(),
+  completion:thinkingAutonomyCompletionSchema.optional(),
+  errorCode:z.string().max(80).optional(),
+}).strict();
 export const thinkingMessageInputSchema = z
   .object({
     text: z.string().trim().min(1).max(12000),
     modelId: z.string().regex(/^[a-zA-Z0-9_-]{1,80}$/).optional(),
+    autonomy:thinkingAutonomyRequestSchema.optional(),
     selection: z
       .object({
         chapterId: z.string(),
@@ -176,6 +231,7 @@ export const thinkingMessageSchema = z
     errorCode: z.string().optional(),
     storyRecording: thinkingStoryRecordingSchema.optional(),
     usage: thinkingUsageSchema.optional(),
+    autonomy:thinkingAutonomyStateSchema.optional(),
   })
   .strict();
 export const thinkingSessionSchema = z
@@ -221,6 +277,12 @@ export type ThinkingLimits = z.infer<typeof thinkingLimitsSchema>;
 export type ThinkingModel = z.infer<typeof thinkingModelSchema>;
 export type ThinkingCreate = z.infer<typeof thinkingCreateSchema>;
 export type ThinkingMessageInput = z.infer<typeof thinkingMessageInputSchema>;
+export type ThinkingAutonomyRequest = z.infer<typeof thinkingAutonomyRequestSchema>;
+export type ThinkingAutonomyState = z.infer<typeof thinkingAutonomyStateSchema>;
+export type ThinkingAutonomyPlan = z.infer<typeof thinkingAutonomyPlanSchema>;
+export type ThinkingAutonomyPlanStep = z.infer<typeof thinkingAutonomyPlanStepSchema>;
+export type ThinkingAutonomyCompletion = z.infer<typeof thinkingAutonomyCompletionSchema>;
+export type ThinkingReadOnlyTool = z.infer<typeof thinkingReadOnlyToolSchema>;
 export type ThinkingSource = z.infer<typeof thinkingSourceSchema>;
 export type ThinkingSession = z.infer<typeof thinkingSessionSchema>;
 export type ThinkingMessage = z.infer<typeof thinkingMessageSchema>;

@@ -1,5 +1,6 @@
 import {governTool} from '../runtime/governance/tool-gateway.js';
 import {executionContext,type ExecutionContext,type AuthorizationManager} from '../runtime/governance/runtime.js';
+import {AutonomyCoordinator,allowedAutonomyTools,autonomyCompletionInputSchema,autonomyPlanInputSchema,autonomyTools} from '../runtime/governance/task-coordinator.js';
 import { canonicalJSON } from "../runtime/fingerprint.js";
 import { Type } from "typebox";
 import { z } from "zod";
@@ -13,6 +14,7 @@ import {
   discussionFocusInputSchema,
   type ThinkingSource,
   type ThinkingMessage,
+  type ThinkingAutonomyState,
 } from "@writer-agent/contracts";
 import type { Config } from "../config.js";
 export const storyNames = [
@@ -39,7 +41,13 @@ export const storyNames = [
 const mutationNames = new Set(["record_story_changes", "offer_story_changes", "update_discussion_focus"]);
 const storyChangeNames = new Set(["record_story_changes", "offer_story_changes"]);
 export type StoryWrites = Record<string, { arguments: unknown; tool?: string; result?: string }>;
-export type StoryExecution = {messageId: string; runId: string; dialogueRecording: boolean; writes: StoryWrites; persist: () => void | Promise<void>; onStoryRecording?: (state: NonNullable<ThinkingMessage["storyRecording"]>) => void};
+export type AutonomyExecution = {
+  coordinator: AutonomyCoordinator;
+  persist: () => void | Promise<void>;
+  project: (state: ThinkingAutonomyState) => void;
+  recordEvidence: (stepId: string, tool: string, output: string, sources: ThinkingSource[]) => void;
+};
+export type StoryExecution = {messageId: string; runId: string; dialogueRecording: boolean; writes: StoryWrites; persist: () => void | Promise<void>; onStoryRecording?: (state: NonNullable<ThinkingMessage["storyRecording"]>) => void; autonomy?: AutonomyExecution};
 const creativeNames = new Set<string>([
   "list_creative_assets",
   "get_creative_asset",
@@ -121,7 +129,18 @@ export function tools(
     },
     { additionalProperties: false },
   );
-  const granted = storyNames.filter((name) => (name!=="retrieve_memory"||scopes.includes("creative")) && (!mutationNames.has(name) || (execution && (name === "update_discussion_focus" || (name === "record_story_changes" ? execution.dialogueRecording : !execution.dialogueRecording)))) && scopes.includes(creativeNames.has(name) ? "creative" : name === "get_author_notes" ? "notes" : ["read_chapter", "find_related_chapters"].includes(name) ? "chapters" : "knowledge"));
+  const withAutonomyStep = (schema: object) => {
+    if (!execution?.autonomy) return schema;
+    const value = schema as { properties?: Record<string, unknown>; required?: string[] };
+    return {
+      ...value,
+      properties: { ...(value.properties ?? {}), stepId: Type.String({ minLength: 1, maxLength: 32 }) },
+      required: [...(value.required ?? []), "stepId"],
+    };
+  };
+  const scoped = storyNames.filter((name) => (name!=="retrieve_memory"||scopes.includes("creative")) && (!mutationNames.has(name) || (execution && (name === "update_discussion_focus" || (name === "record_story_changes" ? execution.dialogueRecording : !execution.dialogueRecording)))) && scopes.includes(creativeNames.has(name) ? "creative" : name === "get_author_notes" ? "notes" : ["read_chapter", "find_related_chapters"].includes(name) ? "chapters" : "knowledge"));
+  const autonomyAllowed = execution?.autonomy ? new Set(allowedAutonomyTools(scopes)) : undefined;
+  const granted = autonomyAllowed ? scoped.filter((name) => autonomyAllowed.has(name as (typeof autonomyTools)[number])) : scoped;
   const registrations:ToolRegistration[] = [
     ...granted.map(
       (name) =>
@@ -132,17 +151,39 @@ export function tools(
           description:
             descriptions[name] ??
             `Read-only author-scoped Story Tool: ${name}. No paths, bookId or authorId accepted. Chapter windows are limited; follow truncated/totalUTF16 to retrieve more.`,
-          parameters: name in mutations ? mutations[name as keyof typeof mutations] : (creativeNames.has(name)||name==="retrieve_memory") ? (narrow[name] ?? empty) : parameters,
+          parameters: withAutonomyStep(name in mutations ? mutations[name as keyof typeof mutations] : (creativeNames.has(name)||name==="retrieve_memory") ? (narrow[name] ?? empty) : parameters),
           async execute(args, _api, context) {
             const operationSignal = context.abortSignal ? AbortSignal.any([signal, context.abortSignal]) : signal;
             operationSignal.throwIfAborted();
-            if (!await onCall()) return budgetSpent();
+            const rawArguments = args as Record<string, unknown>;
+            const autonomyStep = execution?.autonomy && typeof rawArguments.stepId === "string"
+              ? rawArguments.stepId
+              : undefined;
+            if (execution?.autonomy && !autonomyStep)
+              throw Error("AUTONOMY_PLAN_REJECTED");
+            const requestArguments = autonomyStep
+              ? Object.fromEntries(Object.entries(rawArguments).filter(([key]) => key !== "stepId"))
+              : args;
+            if (execution?.autonomy) {
+              execution.autonomy.project(
+                execution.autonomy.coordinator.beginStep(
+                  autonomyStep as string,
+                  name as (typeof autonomyTools)[number],
+                ),
+              );
+              await execution.autonomy.persist();
+              operationSignal.throwIfAborted();
+            }
+            if (!await onCall()) {
+              if (execution?.autonomy) throw Error("AUTONOMY_LIMIT_EXCEEDED");
+              return budgetSpent();
+            }
             operationSignal.throwIfAborted();
             const mutation = mutationNames.has(name);
             const storyChange = storyChangeNames.has(name);
             // Both automatic and offered batches share the same logical-message receipt.
             const writeKey = storyChange ? "record_story_changes" : name;
-            const changeCount = storyChange ? (args as {changes:unknown[]}).changes.length : 0;
+            const changeCount = storyChange ? (requestArguments as {changes:unknown[]}).changes.length : 0;
             const report = (status: NonNullable<ThinkingMessage["storyRecording"]>["status"], code?:string, changeId?:string, count=changeCount) => {
               if (storyChange) execution?.onStoryRecording?.({status,changeCount:count,...(code?{code}:{}),...(changeId?{changeId}:{})});
             };
@@ -151,17 +192,17 @@ export function tools(
               const receipt = JSON.parse(text) as {status:"applied"|"offered"|"undone";changeId:string;changes?:unknown[]};
               report(receipt.status,undefined,receipt.changeId,receipt.changes?.length ?? changeCount);
             };
-            const fingerprint = canonicalJSON([name, args]);
+            const fingerprint = canonicalJSON([name, requestArguments]);
             if (mutation && execution) {
               const previous = execution.writes[writeKey];
               if (previous?.result) {reportReceipt(previous.result);await execution.persist();return toolText(previous.result, {alreadyRecorded: true});}
               if (previous && (previous.tool ?? writeKey) !== name) return feedback("PENDING_STORY_CHANGE", "The unresolved request used a different recording mode. Do not change the original operation; re-read its outcome before offering or recording a new batch.");
-              if (previous && canonicalJSON(previous.arguments) !== canonicalJSON(args)) return feedback("PENDING_STORY_CHANGE", "The previous request has no confirmed outcome. Retry only its exact arguments; do not submit a different batch.", {arguments: previous.arguments});
+              if (previous && canonicalJSON(previous.arguments) !== canonicalJSON(requestArguments)) return feedback("PENDING_STORY_CHANGE", "The previous request has no confirmed outcome. Retry only its exact arguments; do not submit a different batch.", {arguments: previous.arguments});
               if (uncertain.has(name)) return feedback("OUTCOME_UNKNOWN", "The save outcome is unknown. Do not claim it was saved or issue another batch this reply; the original request is retained for recovery.");
-              execution.writes[writeKey] = {arguments: args,tool:name};
+              execution.writes[writeKey] = {arguments: requestArguments,tool:name};
               report("saving");
               await execution.persist();
-            } else if (seen.has(fingerprint)) return {output: [{type: "text" as const, text: "This exact lookup was already attempted. Do not repeat it. Answer using available information and explain any gaps."}], details: {duplicate: true}};
+            } else if (!execution?.autonomy && seen.has(fingerprint)) return {output: [{type: "text" as const, text: "This exact lookup was already attempted. Do not repeat it. Answer using available information and explain any gaps."}], details: {duplicate: true}};
             operationSignal.throwIfAborted();
             seen.add(fingerprint);
             const deadline = AbortSignal.timeout(5000);
@@ -178,7 +219,7 @@ export function tools(
                 body: JSON.stringify({
                   sessionId: id,
                   tool: name,
-                  arguments: args,
+                  arguments: requestArguments,
                   ...(mutation && execution ? {messageId: execution.messageId, runId: execution.runId} : {}),
                 }),
                 signal: AbortSignal.any([operationSignal,deadline]),
@@ -193,6 +234,10 @@ export function tools(
               throw Error(deadline.aborted && !operationSignal.aborted ? "TOOL_TIMEOUT" : "TOOL_EXECUTION_FAILED");
             });
             } catch (error) {
+              if (execution?.autonomy && autonomyStep) {
+                execution.autonomy.coordinator.failStep(autonomyStep as string);
+                execution.autonomy.project(execution.autonomy.coordinator.projection());
+              }
               if (!mutation) throw error;
               report("unknown","OUTCOME_UNKNOWN");
               if (operationSignal.aborted) throw error;
@@ -211,16 +256,32 @@ export function tools(
                 report("unknown","OUTCOME_UNKNOWN");await execution?.persist();
                 return feedback("OUTCOME_UNKNOWN", "The save outcome is unknown. Do not claim success. Keep the original batch for recovery.");
               }
+              if (execution?.autonomy && autonomyStep) {
+                execution.autonomy.coordinator.failStep(autonomyStep as string);
+                execution.autonomy.project(execution.autonomy.coordinator.projection());
+              }
               report("failed","TOOL_EXECUTION_FAILED");await execution?.persist();
               throw Error("TOOL_EXECUTION_FAILED");
             }
-            if (mutation && execution) {execution.writes[writeKey] = {arguments: args,tool:name,result: text};reportReceipt(text);await execution.persist();}
+            if (mutation && execution) {execution.writes[writeKey] = {arguments: requestArguments,tool:name,result: text};reportReceipt(text);await execution.persist();}
             const value = JSON.parse(text) as { sources?: unknown[] };
             const sources = (value.sources ?? []).flatMap((src) => {
               const result = thinkingSourceSchema.safeParse(src);
               return result.success ? [result.data] : [];
             });
             onSources(sources);
+            if (execution?.autonomy && autonomyStep) {
+              execution.autonomy.recordEvidence(
+                autonomyStep,
+                String(name),
+                text,
+                sources,
+              );
+              execution.autonomy.project(
+                execution.autonomy.coordinator.completeStep(autonomyStep as string),
+              );
+              await execution.autonomy.persist();
+            }
             return {
               output: [{ type: "text" as const, text }],
               details: { sources },
@@ -228,7 +289,39 @@ export function tools(
           },
         }) satisfies ToolRegistration,
     ),
-    ...(!scopes.length ? [] : [{
+    ...(execution?.autonomy ? [
+      {
+        name:"adopt_autonomy_plan",
+        replay:"unsafe",
+        executionMode:"sequential",
+        description:"Adopt the one bounded read-only plan before using evidence tools. Echo the author's goal and completion criteria exactly. Each step must name a currently authorized read-only tool and use a unique stepId. This does not grant permissions or create tasks.",
+        parameters:Type.Unsafe(z.toJSONSchema(autonomyPlanInputSchema,{io:"input"})),
+        async execute(args,_api,context){
+          const operationSignal=context.abortSignal ? AbortSignal.any([signal,context.abortSignal]) : signal;
+          operationSignal.throwIfAborted();
+          const state=execution.autonomy!.coordinator.adopt(autonomyPlanInputSchema.parse(args));
+          execution.autonomy!.project(state);
+          await execution.autonomy!.persist();
+          return toolText(JSON.stringify(state));
+        },
+      } satisfies ToolRegistration,
+      {
+        name:"complete_autonomy",
+        replay:"unsafe",
+        executionMode:"sequential",
+        description:"Record the bounded run's final status. complete requires every planned step to have succeeded; needs_input must identify every remaining step and why. Call this before the final answer.",
+        parameters:Type.Unsafe(z.toJSONSchema(autonomyCompletionInputSchema,{io:"input"})),
+        async execute(args,_api,context){
+          const operationSignal=context.abortSignal ? AbortSignal.any([signal,context.abortSignal]) : signal;
+          operationSignal.throwIfAborted();
+          const state=execution.autonomy!.coordinator.complete(autonomyCompletionInputSchema.parse(args));
+          execution.autonomy!.project(state);
+          await execution.autonomy!.persist();
+          return toolText(JSON.stringify(state));
+        },
+      } satisfies ToolRegistration,
+    ] : []),
+    ...(!scopes.length || execution?.autonomy ? [] : [{
       name: "load_analysis_skill",
       replay: "safe",
       executionMode: "sequential",
@@ -262,7 +355,7 @@ export function tools(
   ];
   const context=governance?.context??executionContext({executionId:execution?.runId??id,traceId:execution?.runId??id,role:'thinking',sessionId:id,authorizationVersion:0,scopes,deadline:Date.now()+config.model.limits.maxDurationMs,signal});
   const authority=governance?.authority??{authorize:async()=>{const grant=await authorize(config,capability,signal);if(grant.sessionId!==id||scopes.some(scope=>!grant.scopes.includes(scope as typeof grant.scopes[number])))throw Error('AUTHORIZATION_REVOKED')}};
-  return registrations.map(tool=>governTool(tool,{name:tool.name,risk:mutationNames.has(tool.name)?'write':tool.name==='request_turn_organize'?'candidate':'read',replay:tool.replay??'unsafe',requiredScopes:tool.name==='retrieve_memory'?['creative','knowledge']:tool.name==='load_analysis_skill'?[]:[creativeNames.has(tool.name)?'creative':tool.name==='get_author_notes'?'notes':['read_chapter','find_related_chapters'].includes(tool.name)?'chapters':'knowledge'],maxInputBytes:64*1024,maxOutputBytes:config.model.limits.maxToolResultBytes,timeoutMs:5000,idempotencyRequired:mutationNames.has(tool.name)},context,authority));
+  return registrations.map(tool=>governTool(tool,{name:tool.name,risk:mutationNames.has(tool.name)?'write':tool.name==='request_turn_organize'?'candidate':'read',replay:tool.replay??'unsafe',requiredScopes:tool.name==='adopt_autonomy_plan'||tool.name==='complete_autonomy'||tool.name==='load_analysis_skill'?[]:tool.name==='retrieve_memory'?['creative','knowledge']:[creativeNames.has(tool.name)?'creative':tool.name==='get_author_notes'?'notes':['read_chapter','find_related_chapters'].includes(tool.name)?'chapters':'knowledge'],maxInputBytes:64*1024,maxOutputBytes:config.model.limits.maxToolResultBytes,timeoutMs:5000,idempotencyRequired:mutationNames.has(tool.name)},context,authority));
 }
 const toolText = (text: string, details: Record<string, JsonValue> = {}) => ({output:[{type:"text" as const,text}],details});
 const feedback = (code: string, message: string, extra: Record<string, unknown> = {}) => toolText(JSON.stringify({ok:false,code,message,...extra}), {recoverable:true,code});

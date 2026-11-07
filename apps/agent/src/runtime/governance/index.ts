@@ -2,3 +2,4 @@ export {runtimeVersion,definitions,definition,executionContext,workerContext,chi
 export type {AgentRole,ExecutionContext,AuthorizationManager,BudgetManager,AuditAction,AuditRecord,ToolAuditDetails} from './runtime.js';
 export {governTool} from './tool-gateway.js';
 export type {ToolPolicy} from './tool-gateway.js';
+export {AutonomyCoordinator,allowedAutonomyTools,autonomyPlanInputSchema,autonomyCompletionInputSchema} from './task-coordinator.js';

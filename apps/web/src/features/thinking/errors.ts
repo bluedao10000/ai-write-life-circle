@@ -36,6 +36,9 @@ const messages: Record<string, string> = {
   SESSION_BUSY: '这次讨论仍在回复，请等待完成或先停止。',
   CANCELLED: '已停止生成，收到的内容已保留。',
   AGENT_RESTARTED: '服务刚重启，这次回复被打断了，对话已保留。',
+  AUTONOMY_INCOMPLETE: '只读自主执行没有提交完成记录，这次回复未标记为成功。',
+  AUTONOMY_LIMIT_EXCEEDED: '这次自主执行的步骤或期限超过当前模型上限，请缩小目标后再试。',
+  AUTONOMY_PLAN_REJECTED: '自主计划与已完成步骤不一致，这次执行已停止，没有继续查阅资料。',
 };
 export const thinkingError = (code?: string) => messages[code ?? ''] ?? '这次回复没能完成，对话已保留，请稍后再问一次。';
 /** Billing and plan problems carry a precise author-facing explanation from our own API (problem.detail). */

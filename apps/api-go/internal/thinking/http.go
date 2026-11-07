@@ -54,6 +54,17 @@ func publicSessionView(r *http.Request, raw json.RawMessage) json.RawMessage {
 	delete(view, "run")
 	delete(view, "cancellationPending")
 	delete(view, "history")
+	if rawMessages, ok := view["messages"]; ok {
+		var messages []map[string]json.RawMessage
+		if json.Unmarshal(rawMessages, &messages) == nil {
+			for _, message := range messages {
+				delete(message, "autonomy")
+			}
+			if projectedMessages, err := json.Marshal(messages); err == nil {
+				view["messages"] = projectedMessages
+			}
+		}
+	}
 	projected, err := json.Marshal(view)
 	if err != nil {
 		return raw
@@ -557,6 +568,10 @@ func (s *Service) PublicHandler() http.Handler {
 				reply(w, nil, fail(422, "IDEMPOTENCY_KEY_REQUIRED"), 0)
 				return
 			}
+			// Only an original message acceptance enters Creative intake. A resume
+			// belongs to that same accepted turn; RetryIntake owns an initial hook
+			// that did not complete.
+			createsIntake := action == "messages"
 			e = storage.Lock(r.Context(), s.path()+"."+compat.Key(id)+".lock", func() error {
 				latest, err := s.owned(*a, book, id)
 				if err != nil {
@@ -564,7 +579,7 @@ func (s *Service) PublicHandler() http.Handler {
 				}
 				record = latest
 				if record.MemoryExtraction != nil {
-					if in.ModelID != "" || in.Selection != nil || in.Compact {
+					if in.ModelID != "" || in.Selection != nil || in.Compact || in.Autonomy != nil {
 						return fail(422, "INVALID_MEMORY_EXTRACTION")
 					}
 					if _, err := s.memoryExtractionContext(ctx, record); err != nil {
@@ -597,6 +612,9 @@ func (s *Service) PublicHandler() http.Handler {
 				}
 				if modelID(model) == modelID(record.Model) && !sameModelIdentity(model, record.Model) {
 					return fail(409, "MODEL_REAUTHORIZATION_REQUIRED")
+				}
+				if e := validateAutonomy(in, model, record.Scopes); e != nil {
+					return e
 				}
 
 				// Only explicit saved-version selections enter model context.
@@ -749,14 +767,14 @@ func (s *Service) PublicHandler() http.Handler {
 								current.ResumeBlocked = false
 							}
 							current.LastMessage = accepted.MessageID
-							if s.OnMessageAccepted != nil && current.MemoryExtraction == nil {
+							if s.OnMessageAccepted != nil && createsIntake && current.MemoryExtraction == nil && in.Autonomy == nil {
 								current.Intake = addIntake(current.Intake, accepted.MessageID)
 							}
 							st.Sessions[id] = current
 							record = current
 							return nil
 						}) == nil
-						if s.OnMessageAccepted != nil && record.MemoryExtraction == nil && !record.Deleted && !record.ResumeBlocked {
+						if s.OnMessageAccepted != nil && createsIntake && record.MemoryExtraction == nil && in.Autonomy == nil && !record.Deleted && !record.ResumeBlocked {
 							if s.OnMessageAccepted(r.Context(), record, accepted.MessageID) == nil && queued {
 								_ = s.dropIntake(r.Context(), id, accepted.MessageID)
 							}
@@ -803,4 +821,25 @@ func turnLimits(model Model, scopes []string, compact bool) Limits {
 		l.Turns = min(2, l.Turns)
 	}
 	return l
+}
+
+func validateAutonomy(in Message, model Model, scopes []string) error {
+	if in.Autonomy == nil {
+		return nil
+	}
+	criteria := strings.TrimSpace(in.Autonomy.CompletionCriteria)
+	if in.Recovery != nil || in.Selection != nil || in.Compact || criteria == "" || compat.UTF16Len(criteria) > 4000 || !in.Autonomy.ApproveReadOnly || in.Autonomy.MaxSteps < 1 || in.Autonomy.MaxSteps > 8 {
+		return fail(422, "VALIDATION_FAILED")
+	}
+	if len(scopes) == 0 || (model.ToolCalling != nil && !*model.ToolCalling) || model.Limits.Tools < 1 || model.Limits.Turns < 4 {
+		return fail(422, "AUTONOMY_LIMIT_EXCEEDED")
+	}
+	maxSteps := min(8, model.Limits.Tools, model.Limits.Turns-3)
+	if in.Autonomy.MaxSteps > maxSteps {
+		return fail(422, "AUTONOMY_LIMIT_EXCEEDED")
+	}
+	if in.Autonomy.DeadlineMs != nil && (*in.Autonomy.DeadlineMs < 1000 || *in.Autonomy.DeadlineMs > model.Limits.Duration) {
+		return fail(422, "AUTONOMY_LIMIT_EXCEEDED")
+	}
+	return nil
 }

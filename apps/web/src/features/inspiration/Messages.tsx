@@ -3,7 +3,7 @@
 // and recovery come only from the real ThinkingSession.
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
-import type { ThinkingMessage, ThinkingRecovery, ThinkingRun, ThinkingSource } from '@writer-agent/contracts'
+import type { ThinkingAutonomyState, ThinkingMessage, ThinkingRecovery, ThinkingRun, ThinkingSource } from '@writer-agent/contracts'
 import { Btn, Icon, Quote } from '../../components/vnext/ui'
 import { thinkingError } from '../thinking/errors'
 import ToolTimeline, { labelOf } from '../thinking/ToolTimeline'
@@ -45,10 +45,53 @@ export function readable(m: ThinkingMessage) {
 /** Copy and 创作笔记 take plain prose without Markdown markers. */
 export const plain = (t: string) => t.replace(/^#{1,6} /gm, '').replace(/^> ?/gm, '').replace(/\*\*/g, '').replace(/`/g, '')
 
-export function AuthorMsg({ m, fresh, note }: { m: Pick<ThinkingMessage, 'text'>; fresh: boolean; note?: ReactNode }) {
+export function AutonomyStatus({ state }: { state: ThinkingAutonomyState }) {
+  const label = {
+    planning: '正在建立只读计划',
+    planned: '计划已就绪',
+    running: '正在执行计划',
+    completed: '计划已完成',
+    needs_input: '需要补充信息',
+    failed: '计划未完成',
+    cancelled: '计划已取消',
+  }[state.status]
+  return (
+    <section aria-label="只读自主执行状态" className="mt-1.5 max-w-5/6 rounded-xl border border-line-soft bg-surface px-3 py-2.5 text-left">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-ui-sm">
+        <Icon name="target" className="h-3.5 w-3.5 text-ink-3" />
+        <span className="font-medium text-ink">{label}</span>
+        <span className="text-micro text-ink-3">最多 {state.maxSteps} 步 · 只读</span>
+      </div>
+      <p className="mt-1.5 text-ui-sm text-ink-2"><span className="text-ink-3">完成条件：</span>{state.completionCriteria}</p>
+      {state.plan ? (
+        <ol className="mt-2 space-y-1 border-l border-line-soft pl-3">
+          {state.plan.steps.map((step) => (
+            <li key={step.stepId} className="flex items-start gap-2 text-ui-sm text-ink-2">
+              <span aria-hidden className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${step.status === 'completed' ? 'bg-ok' : step.status === 'running' ? 'bg-ai' : step.status === 'failed' ? 'bg-warn' : 'bg-ink-4'}`} />
+              <span>{step.purpose}<span className="sr-only">；{step.status === 'completed' ? '已完成' : step.status === 'running' ? '进行中' : step.status === 'failed' ? '未完成' : '等待执行'}</span></span>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p className="mt-2 text-ui-sm text-ink-3">模型必须先提交计划，之后才能查阅作品资料。</p>
+      )}
+      {state.completion && (
+        <div className="mt-2 border-t border-line-soft pt-2 text-ui-sm text-ink-2">
+          <p>{state.completion.summary}</p>
+          {state.completion.remainingSteps.length > 0 && (
+            <p className="mt-1 text-ink-3">仍需补充：{state.completion.remainingSteps.map((step) => step.reason).join('；')}</p>
+          )}
+        </div>
+      )}
+    </section>
+  )
+}
+
+export function AuthorMsg({ m, fresh, note }: { m: Pick<ThinkingMessage, 'text'|'autonomy'>; fresh: boolean; note?: ReactNode }) {
   return (
     <div className={`group flex flex-col items-end ${fresh ? 'msg-in' : ''}`}>
       <div className="max-w-5/6 rounded-2xl bg-surface-2 px-4 py-2.5 text-ui-lg whitespace-pre-wrap break-words text-ink">{m.text}</div>
+      {m.autonomy && <AutonomyStatus state={m.autonomy} />}
       {note}
     </div>
   )

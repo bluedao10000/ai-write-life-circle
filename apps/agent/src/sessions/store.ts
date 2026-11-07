@@ -4,7 +4,7 @@ import { mkdirSync, readFileSync, writeFileSync, openSync, closeSync, fsyncSync,
 import { join } from "node:path";
 import type { JsonValue } from "@earendil-works/chord";
 import { AssistantEntry, type Harness, type SubmissionId, type Tx } from "@earendil-works/pi-durable";
-import { thinkingSessionSchema, type ThinkingSession, type ThinkingEvent, type ThinkingExecutionInput, type ThinkingRun } from "@writer-agent/contracts";
+import { thinkingAutonomyStateSchema, thinkingSessionSchema, type ThinkingMessage, type ThinkingSession, type ThinkingEvent, type ThinkingExecutionInput, type ThinkingRun, type ThinkingAutonomyState, type ThinkingSource } from "@writer-agent/contracts";
 import { failureFor } from "../runtime/reliability.js";
 import { durableContext, interruptDurable, openDurable, ThinkingState, type DurableRuntime } from "../runtime/durable.js";
 import { archiveBatch, archiveThreshold, iterateEventArchive, type ArchiveManifest } from "./event-archive.js";
@@ -23,13 +23,19 @@ export type RunExecution = {
   calls: number; turns: number; memoryCalls: number; spent: number;
   modelRequests: {id:string;reservedTokens:number;bound:number;input?:number;output?:number;status:"reserved"|"settled"}[];
 };
+export type AutonomyEvidence = {
+  tool: string;
+  output: string;
+  sources: ThinkingSource[];
+};
 export type Saved = {
   discussionMemory?: WorkingMemory;
   archive?: ArchiveManifest;
   epoch?: number;
   executionLease?: {owner:string;epoch:number;expiresAt:number};
   runs?: ThinkingRun[];
-  checkpoint?: { input: ThinkingExecutionInput; entries: unknown[]; messageId: string; storyWrites?: StoryWrites };
+  checkpoint?: { input: ThinkingExecutionInput; entries: unknown[]; messageId: string; storyWrites?: StoryWrites; autonomy?:ThinkingAutonomyState; autonomyEvidence?:Record<string,AutonomyEvidence> };
+  autonomy?: Record<string, ThinkingAutonomyState>;
   durable?: DurableRun;
   execution?: RunExecution;
   attempts?: Record<string, {durable:DurableRun;execution:RunExecution}>;
@@ -219,6 +225,7 @@ export class Store implements ExecutionAuthority {
   private validate(value: Saved, id: string) {
     if (value.schema !== 1 || value.view.sessionId !== id) throw Error("SESSION_STORAGE_INVALID");
     thinkingSessionSchema.parse(value.view);
+    for (const state of Object.values(value.autonomy ?? {})) thinkingAutonomyStateSchema.parse(state);
     if (value.accountingVersion !== 2) {
       if (!value.view.usage.incomplete) value.view.usage.charged = value.view.usage.input + value.view.usage.output;
       value.accountingVersion = 2;
@@ -235,6 +242,13 @@ export class Store implements ExecutionAuthority {
   private correlate(value:Saved) {
     const keys=new Map(Object.entries(value.requests).map(([key,receipt])=>[receipt.messageId,key]));
     for(const message of value.view.messages){const key=keys.get(message.id);if(message.role==="user"&&!message.requestKey&&key)message.requestKey=key;}
+  }
+  private restoreAutonomy(messages:readonly ThinkingMessage[], states?:Saved["autonomy"]):ThinkingMessage[] {
+    if(!states)return [...messages];
+    return messages.map(message=>{
+      const autonomy=states[message.id];
+      return autonomy?{...message,autonomy:structuredClone(autonomy)}:message;
+    });
   }
   private async initialize() {
     const ids = new Set(readdirSync(this.dir).flatMap(file => {
@@ -302,16 +316,19 @@ export class Store implements ExecutionAuthority {
     const header={...value.view};
     // Message rows are read separately without cloning authoritative history.
     Reflect.deleteProperty(header,"messages");Reflect.deleteProperty(header,"history");
-    return projectSnapshot(header,this.eventStore(id),limit);
+    const projected=projectSnapshot(header,this.eventStore(id),limit);
+    return {...projected,messages:this.restoreAutonomy(projected.messages,value.autonomy)};
   }
   history(id:string,before?:string,limit=80) {
     if(this.queues.has(id))throw Error("SESSION_PROJECTION_PENDING");
     this.checkAvailable(id);
     if(!this.saved.has(id)||this.saved.get(id)?.deleted||this.isDeleted(id))return;
-    return projectHistory(this.eventStore(id),before,limit);
+    const page=projectHistory(this.eventStore(id),before,limit);
+    return {...page,items:this.restoreAutonomy(page.items,this.saved.get(id)?.autonomy)};
   }
   private async restoreAnswer(value: Saved, harness: Harness) {
     if (value.view.status !== "running" || !value.view.run || !value.durable?.submissionId) return;
+    if (value.checkpoint?.input.autonomy && !["completed","needs_input"].includes(value.checkpoint.autonomy?.status??"")) return;
     const submission = await harness.submission(value.durable.submissionId as SubmissionId, durableContext);
     const receipt = await submission?.status(durableContext);
     if (receipt?.status !== "done" || receipt.type === "write") return;
@@ -432,6 +449,7 @@ export class Store implements ExecutionAuthority {
         delete s.durable;
         delete s.execution;
         delete s.attempts;
+        delete s.autonomy;
         delete s.view.run;
         this.saved.set(id, structuredClone(s));
         await this.purgeSaved(id);
@@ -441,6 +459,12 @@ export class Store implements ExecutionAuthority {
       s = this.read(id,false)!;
       const run = s.view.run;
       const authorMessage = s.view.messages.find(m=>m.id===run?.messageId && m.role==="user");
+      const autonomy=s.checkpoint?.autonomy;
+      if (s.checkpoint?.input.autonomy && autonomy && ["planning","planned","running"].includes(autonomy.status)) {
+        const failed:ThinkingAutonomyState={...autonomy,status:"failed",errorCode:"AGENT_RESTARTED"};
+        s.checkpoint.autonomy = failed;
+        if(run)(s.autonomy??={})[run.messageId]=failed;
+      }
       if(authorMessage?.storyRecording?.status==="saving") authorMessage.storyRecording={...authorMessage.storyRecording,status:"unknown",code:"OUTCOME_UNKNOWN"};
       const answerId = run ? run.messageId + "-answer" + (run.attempt > 1 ? "-" + run.attempt : "") : undefined;
       const answer = answerId ? s.view.messages.find(m=>m.role==="assistant" && m.id===answerId) : [...s.view.messages].reverse().find(m=>m.role==="assistant");

@@ -18,7 +18,7 @@ import { creativeError } from './labels'
 import { useCreativeOverview } from './useCreativeOverview'
 import { STORY_STARTERS, StoryDrawer, StoryReceipt, StoryRecordingStatus } from './StoryContinuity'
 import { AssetDrawer } from './AssetLibrary'
-import { Composer, ComposerQuote, ModelPicker, Notice } from '../inspiration/Composer'
+import { AutonomyControl, Composer, ComposerQuote, ModelPicker, Notice } from '../inspiration/Composer'
 import History from '../inspiration/History'
 import { AiMsg, AuthorMsg, Failure, Pending } from '../inspiration/Messages'
 import { ProposalDrawer, ReviewDrawer, TurnOrganize } from '../inspiration/Organize'
@@ -74,6 +74,9 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
   const [organizeConsent, setOrganizeConsent] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [include, setInclude] = useState(true)
+  const [autonomyEnabled, setAutonomyEnabled] = useState(false)
+  const [completionCriteria, setCompletionCriteria] = useState('')
+  const [autonomySteps, setAutonomySteps] = useState(1)
   const [localError, setLocalError] = useState('')
   const [failureDetails, setFailureDetails] = useState(false)
   const [turns, setTurns] = useState<CreativeTurn[]>([])
@@ -105,6 +108,10 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
   const landing = !t.selected && !outgoing
   const loading = !!t.selected && !session
   const sending = !!t.outgoing
+  const autonomyModel = session?.model ?? t.model
+  const autonomyCeiling = Math.max(1, Math.min(8, autonomyModel?.limits?.maxToolCalls ?? 1, (autonomyModel?.limits?.maxTurnsPerRequest ?? 4) - 3))
+  const autonomyAvailable = t.scopes.length > 0 && autonomyModel?.toolCalling !== false && (autonomyModel?.limits?.maxToolCalls ?? 1) >= 1 && (autonomyModel?.limits?.maxTurnsPerRequest ?? 4) >= 4
+  const effectiveAutonomySteps = Math.min(autonomySteps, autonomyCeiling)
   const title = session?.title ?? t.sessions.find((s) => s.sessionId === t.selected)?.title ?? '新的讨论'
   const storyState = story?.book === book && story.sessionId === sessionId ? story : null
   const storyContext = storyState?.context
@@ -307,12 +314,16 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
   const draft = t.draft
   // While the question is in flight it is shown in the thread, not twice.
   const shown = sending && draft.trim() === t.outgoing.trim() ? '' : draft
-  const canSend = !!draft.trim() && !t.busy && !running && !t.cancellationPending && !!t.model && t.modelAvailable && !loading
+  const canSend = !!draft.trim() && !t.busy && !running && !t.cancellationPending && !!t.model && t.modelAvailable && !loading && (!autonomyEnabled || (autonomyAvailable && !!completionCriteria.trim()))
   const send = async () => {
     setLocalError('')
     const text = draft.trim()
     if (!canSend) return
     if (seed && include) {
+      if (autonomyEnabled) {
+        setLocalError('只读自主执行不能同时附带选中原文。关闭其中一项后再发送。')
+        return
+      }
       try {
         if (!t.scopes.includes('chapters')) throw Error('附上原文需要先在「AI 资料范围」中允许读取本作品章节。也可以取消勾选，只发送问题。')
         const saved = await studio.workspace.prepareReview()
@@ -324,7 +335,18 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
       return
     }
     const go = () => {
-      t.send({ text })
+      t.send({
+        text,
+        ...(autonomyEnabled ? {
+          autonomy: {
+            completionCriteria: completionCriteria.trim(),
+            approveReadOnlyTools: true as const,
+            maxSteps: effectiveAutonomySteps,
+          },
+        } : {}),
+      })
+      setAutonomyEnabled(false)
+      setCompletionCriteria('')
       studio.setThinkingSeed('')
     }
     // First message: the landing fades and the composer glides to the bottom (View Transitions, when available).
@@ -466,6 +488,19 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
           <Icon name="chevronDown" className="h-3 w-3" />
         </Btn>
         </div>
+      }
+      autonomy={
+        <AutonomyControl
+          enabled={autonomyEnabled}
+          onEnabled={setAutonomyEnabled}
+          criteria={completionCriteria}
+          onCriteria={setCompletionCriteria}
+          maxSteps={effectiveAutonomySteps}
+          onMaxSteps={setAutonomySteps}
+          ceiling={autonomyCeiling}
+          available={autonomyAvailable}
+          disabled={t.busy && !running}
+        />
       }
       disabled={t.busy && !running}
     />

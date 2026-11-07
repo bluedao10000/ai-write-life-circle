@@ -165,6 +165,75 @@ try {
   await f.restartAPI();
   s=await f.call(path);assert.equal(s.run.status,'completed');
   assert.equal(s.messages.filter(m=>m.role==='user').length,acceptedUsers);
+  const autonomyCalls=f.calls.length;
+  const autonomyGoal="只读核对林舟与父亲的关系连续性";
+  const autonomyCriteria="核对连续性并说明依据";
+  await f.call(path+'/messages',{
+    method:'POST',
+    key:'bounded-autonomy',
+    body:{text:autonomyGoal,autonomy:{completionCriteria:autonomyCriteria,approveReadOnlyTools:true,maxSteps:1}},
+    status:202,
+  });
+  await wait();
+  thinkingSessionSchema.parse(s);
+  const autonomyUser=s.messages.findLast(message=>message.role==='user');
+  const autonomyReply=s.messages.at(-1);
+  assert.equal(autonomyReply.status,'completed',JSON.stringify(autonomyReply));
+  assert.equal(autonomyUser.autonomy?.status,'completed');
+  assert.equal(autonomyUser.autonomy?.plan?.steps[0]?.status,'completed');
+  assert.equal(autonomyUser.autonomy?.completion?.status,'complete');
+  const autonomyRequests=f.calls.slice(autonomyCalls);
+  const autonomyTools=autonomyRequests.flatMap(request=>(request.tools??[]).map(tool=>tool.function?.name));
+  assert(autonomyTools.includes('adopt_autonomy_plan'));
+  assert(autonomyTools.includes('complete_autonomy'));
+  assert(!autonomyTools.some(name=>['record_story_changes','offer_story_changes','request_turn_organize','update_discussion_focus'].includes(name)));
+  const businessVersion=(await f.call(`/v1/studio/books/${book.bookId}`)).version;
+  const crashCall=f.calls.length+2;
+  f.config.hangAfter=crashCall;
+  await f.call(path+'/messages',{
+    method:'POST',
+    key:'bounded-autonomy-crash',
+    body:{text:"崩溃前核对连续性",autonomy:{completionCriteria:autonomyCriteria,approveReadOnlyTools:true,maxSteps:1}},
+    status:202,
+  });
+  await f.waitForProviderCall(crashCall-1);
+  await f.stopAgent('SIGKILL');
+  f.config.hangAfter=null;
+  await f.restartAgent();
+  const interruptedAutonomyCalls=f.calls.length;
+  await delay(100);
+  assert.equal(f.calls.length,interruptedAutonomyCalls,'restart must not replay a paid autonomy request');
+  s=await f.call(path);
+  const interruptedAutonomy=s.messages.findLast(message=>message.role==='user');
+  assert.equal(interruptedAutonomy.autonomy?.status,'failed');
+  assert.equal(interruptedAutonomy.autonomy?.errorCode,'AGENT_RESTARTED');
+  await f.call(path+'/resume',{method:'POST',key:'bounded-autonomy-resume',body:{runId:s.run.runId,confirmAdditionalCost:true},status:202});
+  await wait();
+  const resumedAutonomy=s.messages.findLast(message=>message.role==='user');
+  assert.equal(
+    s.messages.at(-1).status,
+    'completed',
+    JSON.stringify({
+      reply:s.messages.at(-1),
+      author:s.messages.findLast(message=>message.role==='user'),
+      toolRequests:f.toolRequests.slice(-4),
+      requests:f.calls.slice(interruptedAutonomyCalls).map(request=>({
+        toolResults:request.messages.filter(message=>message.role==='tool').map(message=>message.content),
+        planPersisted:request.messages.some(message=>typeof message.content==='string'&&message.content.includes('Persisted plan JSON:')),
+      })),
+    }),
+  );
+  assert.equal(resumedAutonomy.autonomy?.status,'completed');
+  assert.equal(resumedAutonomy.autonomy?.completion?.status,'complete');
+  assert.equal(
+    f.calls.length,
+    interruptedAutonomyCalls+3,
+    JSON.stringify(f.calls.slice(interruptedAutonomyCalls).map(request=>({
+      toolResults:request.messages.filter(message=>message.role==='tool').length,
+      planPersisted:request.messages.some(message=>typeof message.content==='string'&&message.content.includes('Persisted plan JSON:')),
+    }))),
+  );
+  assert.equal((await f.call(`/v1/studio/books/${book.bookId}`)).version,businessVersion);
   const cancelledSession=await f.call(base+'/sessions',{method:'POST',key:'offline-cancel-session',body:{consent:true,model,scopes:[]},status:201});
   const cancelledPath=base+'/sessions/'+cancelledSession.sessionId;
   f.config.hang=true;callsBefore=f.calls.length;

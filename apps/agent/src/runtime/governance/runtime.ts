@@ -8,6 +8,7 @@ export const definitions=Object.freeze({
  'memory.extract.v3':{version:3,capability:'memory',mode:'durable',retry:'explicit',output:'memory-candidate-v3',tools:'none',modelCalls:'run-budget'},
  'memory.consolidate':{version:1,capability:'memory',mode:'go-task',retry:'none',output:'memory-candidate-v1',tools:'none',modelCalls:1},
  thinking:{version:1,capability:'thinking',mode:'durable',retry:'explicit',output:'thinking-v1',tools:'scoped',modelCalls:'run-budget'},
+ 'thinking.autonomy':{version:1,capability:'thinking',mode:'durable',retry:'explicit',output:'thinking-autonomy-v1',tools:'read-only-planned',modelCalls:'run-budget'},
  'creative.plan.planner':{version:1,capability:'creative',mode:'orchestration',retry:'explicit',output:'creative-plan-planner-v1',tools:'none',modelCalls:1},
  'creative.plan.researcher':{version:1,capability:'creative',mode:'orchestration',retry:'explicit',output:'creative-plan-research-v1',tools:'none',modelCalls:1},
  'creative.plan.analyst':{version:1,capability:'creative',mode:'orchestration',retry:'explicit',output:'creative-plan-analysis-v1',tools:'none',modelCalls:1},
