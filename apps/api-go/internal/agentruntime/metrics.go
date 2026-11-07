@@ -2,10 +2,14 @@ package agentruntime
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/llm"
 )
@@ -46,6 +50,23 @@ type RuntimeTaskMetrics struct {
 	Samples       int
 	Roles         []RuntimeRoleMetric
 	TaskKinds     []RuntimeTaskKindMetric
+}
+
+type ThinkingRunMetrics struct {
+	SchemaVersion   int      `json:"schemaVersion"`
+	Attempts        int      `json:"attempts"`
+	Accepted        int      `json:"accepted"`
+	Running         int      `json:"running"`
+	Checkpointed    int      `json:"checkpointed"`
+	Completed       int      `json:"completed"`
+	Failed          int      `json:"failed"`
+	Interrupted     int      `json:"interrupted"`
+	Cancelled       int      `json:"cancelled"`
+	Resumed         int      `json:"resumed"`
+	ModelCalls      int      `json:"modelCalls"`
+	TerminalSamples int      `json:"terminalSamples"`
+	DurationP50Ms   *float64 `json:"durationP50Ms"`
+	DurationP95Ms   *float64 `json:"durationP95Ms"`
 }
 
 type RuntimeMetricsSource func(context.Context) (RuntimeTaskMetrics, error)
@@ -104,7 +125,7 @@ func boolValue(value bool) string {
 	return "0"
 }
 
-func formatRuntimeMetrics(health RuntimeHealth, metrics RuntimeTaskMetrics) string {
+func formatRuntimeMetrics(health RuntimeHealth, metrics RuntimeTaskMetrics, thinkingRuns *ThinkingRunMetrics) string {
 	var p prometheusText
 
 	p.family("writer_agent_runtime_liveness", "Process liveness; always 1 when the private handler responds.")
@@ -133,6 +154,24 @@ func formatRuntimeMetrics(health RuntimeHealth, metrics RuntimeTaskMetrics) stri
 		p.integer("writer_agent_thinking_tasks", `state="failed_session"`, counts.Failed)
 		p.integer("writer_agent_thinking_tasks", `state="unpublished_session"`, counts.Unpublished)
 		p.integer("writer_agent_thinking_tasks", `state="recovery_pending"`, counts.Recovery)
+	}
+	if thinkingRuns != nil {
+		p.family("writer_agent_thinking_run_attempts", "Persisted Thinking run attempts by lifecycle state.")
+		for _, state := range []struct {
+			name  string
+			value int
+		}{{"accepted", thinkingRuns.Accepted}, {"running", thinkingRuns.Running}, {"checkpointed", thinkingRuns.Checkpointed}, {"completed", thinkingRuns.Completed}, {"failed", thinkingRuns.Failed}, {"interrupted", thinkingRuns.Interrupted}, {"cancelled", thinkingRuns.Cancelled}} {
+			p.integer("writer_agent_thinking_run_attempts", `state=`+label(state.name), state.value)
+		}
+		p.family("writer_agent_thinking_run_resumptions", "Persisted Thinking run attempts that resumed an earlier run.")
+		p.integer("writer_agent_thinking_run_resumptions", "", thinkingRuns.Resumed)
+		p.family("writer_agent_thinking_run_model_calls", "Model calls recorded by persisted Thinking runs.")
+		p.integer("writer_agent_thinking_run_model_calls", "", thinkingRuns.ModelCalls)
+		p.family("writer_agent_thinking_run_terminal_samples", "Terminal persisted Thinking runs available for duration percentiles.")
+		p.integer("writer_agent_thinking_run_terminal_samples", "", thinkingRuns.TerminalSamples)
+		p.family("writer_agent_thinking_run_duration_ms", "Persisted terminal Thinking run duration by quantile.")
+		p.optionalFloat("writer_agent_thinking_run_duration_ms", `quantile="0.5"`, thinkingRuns.DurationP50Ms)
+		p.optionalFloat("writer_agent_thinking_run_duration_ms", `quantile="0.95"`, thinkingRuns.DurationP95Ms)
 	}
 
 	p.family("writer_agent_worker_projection_tasks", "Creative read-only tasks represented by persisted step receipts.")
@@ -188,6 +227,82 @@ func formatRuntimeMetrics(health RuntimeHealth, metrics RuntimeTaskMetrics) stri
 	return p.body.String()
 }
 
+func probeThinkingRunMetrics(ctx context.Context, origin, token string) *ThinkingRunMetrics {
+	if origin == "" {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, origin+"/internal/v1/diagnostics", nil)
+	if err != nil {
+		return nil
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	res, err := client.Do(req)
+	if err != nil {
+		return nil
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return nil
+	}
+	data, err := io.ReadAll(io.LimitReader(res.Body, 32769))
+	if err != nil || len(data) > 32768 {
+		return nil
+	}
+	var response struct {
+		Metrics struct {
+			Persisted struct {
+				ThinkingRuns json.RawMessage `json:"thinkingRuns"`
+			} `json:"persisted"`
+		} `json:"metrics"`
+	}
+	if err := json.Unmarshal(data, &response); err != nil {
+		return nil
+	}
+	rawMetrics := response.Metrics.Persisted.ThinkingRuns
+	if len(rawMetrics) == 0 {
+		return nil
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(rawMetrics, &fields); err != nil {
+		return nil
+	}
+	for _, name := range []string{"schemaVersion", "attempts", "accepted", "running", "checkpointed", "completed", "failed", "interrupted", "cancelled", "resumed", "modelCalls", "terminalSamples", "durationP50Ms", "durationP95Ms"} {
+		if _, ok := fields[name]; !ok {
+			return nil
+		}
+	}
+	for _, name := range []string{"schemaVersion", "attempts", "accepted", "running", "checkpointed", "completed", "failed", "interrupted", "cancelled", "resumed", "modelCalls", "terminalSamples"} {
+		if strings.TrimSpace(string(fields[name])) == "null" {
+			return nil
+		}
+	}
+	var value ThinkingRunMetrics
+	if err := json.Unmarshal(rawMetrics, &value); err != nil || value.SchemaVersion != 1 {
+		return nil
+	}
+	values := []int{value.Attempts, value.Accepted, value.Running, value.Checkpointed, value.Completed, value.Failed, value.Interrupted, value.Cancelled, value.Resumed, value.ModelCalls, value.TerminalSamples}
+	for _, count := range values {
+		if count < 0 {
+			return nil
+		}
+	}
+	terminal := value.Completed + value.Failed + value.Interrupted + value.Cancelled
+	if value.Attempts != value.Accepted+value.Running+value.Checkpointed+terminal || value.TerminalSamples != terminal || value.Resumed > value.Attempts {
+		return nil
+	}
+	if value.TerminalSamples == 0 {
+		if value.DurationP50Ms != nil || value.DurationP95Ms != nil {
+			return nil
+		}
+	} else if value.DurationP50Ms == nil || value.DurationP95Ms == nil || math.IsNaN(*value.DurationP50Ms) || math.IsInf(*value.DurationP50Ms, 0) || math.IsNaN(*value.DurationP95Ms) || math.IsInf(*value.DurationP95Ms, 0) || *value.DurationP50Ms < 0 || *value.DurationP95Ms < *value.DurationP50Ms {
+		return nil
+	}
+	return &value
+}
+
 // RuntimeMetricsHandler is served only by the loopback private listener. It
 // renders current authorities on demand; no metric history or scrape ledger is
 // persisted in the application.
@@ -207,6 +322,8 @@ func RuntimeMetricsHandler(state string, config llm.Config, origin, token string
 			return
 		}
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
-		_, _ = w.Write([]byte(formatRuntimeMetrics(readRuntimeHealth(r.Context(), state, config, origin, token), metrics)))
+		health := readRuntimeHealth(r.Context(), state, config, origin, token)
+		thinkingRuns := probeThinkingRunMetrics(r.Context(), origin, token)
+		_, _ = w.Write([]byte(formatRuntimeMetrics(health, metrics, thinkingRuns)))
 	})
 }

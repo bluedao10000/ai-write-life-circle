@@ -74,7 +74,7 @@ export class PiHost {
   }
   private healthSnapshot(){return {storage:this.store.health(),closing:this.closing,activeTasks:this.active.size,pendingAdmissions:this.admissions.size,enabledModels:modelEntries(this.config).filter(entry=>entry.enabled).length}}
   health(){return runtimeHealth(this.healthSnapshot())}
-  diagnostics(){return runtimeDiagnostics(this.healthSnapshot())}
+  diagnostics(){return runtimeDiagnostics({...this.healthSnapshot(),runMetrics:this.store.runMetrics()})}
   getRecent(id:string) {
     return this.view(id,false);
   }

@@ -42,6 +42,22 @@ export type Saved = {
   requests: Record<string, { fingerprint: string; messageId: string }>;
   deleted?: boolean;
 };
+export type ThinkingRunMetrics = {
+  schemaVersion: 1;
+  attempts: number;
+  accepted: number;
+  running: number;
+  checkpointed: number;
+  completed: number;
+  failed: number;
+  interrupted: number;
+  cancelled: number;
+  resumed: number;
+  modelCalls: number;
+  terminalSamples: number;
+  durationP50Ms: number | null;
+  durationP95Ms: number | null;
+};
 export const idPattern = /^th-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 
 /** Durable documents own mutable state; this cache exposes only completed commits. */
@@ -115,6 +131,35 @@ export class Store implements ExecutionAuthority {
       if(value.view.usage?.incomplete)unknownUsageSessions++;
     }
     return {state:this.initialization==='failed'?'failed' as const:this.closed||this.closing?'closed' as const:this.initialization,sessions,failedSessions:this.failed.size,unpublishedSessions:this.unpublished.size,recoveryPending,unknownUsageSessions};
+  }
+  runMetrics(): ThinkingRunMetrics {
+    const result: ThinkingRunMetrics = {
+      schemaVersion: 1, attempts: 0, accepted: 0, running: 0, checkpointed: 0,
+      completed: 0, failed: 0, interrupted: 0, cancelled: 0, resumed: 0,
+      modelCalls: 0, terminalSamples: 0, durationP50Ms: null, durationP95Ms: null,
+    };
+    const durations: number[] = [];
+    const add = (run: ThinkingRun) => {
+      result.attempts++;
+      result[run.status]++;
+      result.resumed += Number(run.attempt > 1);
+      result.modelCalls += run.modelCalls;
+      if (["completed", "failed", "interrupted", "cancelled"].includes(run.status)) {
+        result.terminalSamples++;
+        durations.push(run.durationMs);
+      }
+    };
+    for (const saved of this.saved.values()) {
+      if (saved.deleted) continue;
+      for (const run of saved.runs ?? []) add(run);
+      if (saved.view.run) add(saved.view.run);
+    }
+    if (durations.length) {
+      durations.sort((a, b) => a - b);
+      result.durationP50Ms = durations[Math.ceil(durations.length * 0.5) - 1]!;
+      result.durationP95Ms = durations[Math.ceil(durations.length * 0.95) - 1]!;
+    }
+    return result;
   }
   private legacyPath(id: string) {
     this.path(id);

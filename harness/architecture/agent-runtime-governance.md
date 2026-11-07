@@ -56,7 +56,7 @@ Thinking BudgetAdapter 复用 Saved.execution.modelRequests、usage 和 Store.wr
 
 `governTool` 包装所有注册工具，包括本地analysis skill与StoryWrites回执重放：校验schema/输入大小、scope、当前授权、取消和期限，然后执行原工具及检查输出大小。执行仍使用原顺序调度、原意图持久化和Go回执。Thinking重新核验作者、作品、session、授权版本、模型与scope；本地缓存不能绕过这项检查。
 
-Thinking的版本和白名单审计记录加入原 `RunExecution`，随业务检查点提交，并跟随既往attempt映射保留。Worker继续使用Go的任务、started、预算和完成/失败回执作为持久事实；治理关联日志不构成第二个数据库。治理指标按固定role/action计数，属于进程内统计，不是跨重启总账。
+Thinking的版本和白名单审计记录加入原 `RunExecution`，随业务检查点提交，并跟随既往attempt映射保留。Worker继续使用Go的任务、started、预算和完成/失败回执作为持久事实；治理关联日志不构成第二个数据库。治理role/action计数属于进程内统计；Run生命周期指标另从原Durable会话中的历史`runs`与当前`view.run`按需投影，不写第二份账本。
 
 新增可选私有字段不改公共Thinking或Go协议；旧运行没有governance元数据时保留legacy语义，启动仍中断旧付费执行。现有layout=2迁移与墓碑规则不变。代码回滚需支持该布局，禁止恢复旧状态覆盖新费用/回执。
 
@@ -64,13 +64,13 @@ Thinking的版本和白名单审计记录加入原 `RunExecution`，随业务检
 
 2026-11-05终态审计验收：145项Agent测试、类型检查、lint、Agent与Go构建通过，`go test -race ./...`通过。真实Go/Pi进程重新通过Thinking、Review Worker、Creative五角色、Knowledge 10章、story-continuity与runtime-health；PiHost超时样本同时验证`model_started`和`failed`进入持久审计且没有伪造`model_finished`。全部模型请求由本地合成HTTP Provider响应。
 
-本阶段保留通用审批存储和长期记忆的既有边界。高风险业务仍依赖现有作者同意、消息证据和Go确认规则。只读多角色试点仅拆分一个既有Go任务的预算，不创建子任务权威。全局持久诊断、历史指标与统一健康聚合属于后续Observability阶段；不将本地日志标为完整持久审计。
+本阶段保留通用审批存储和长期记忆的既有边界。高风险业务仍依赖现有作者同意、消息证据和Go确认规则。只读多角色试点仅拆分一个既有Go任务的预算，不创建子任务权威。Thinking Run历史投影只汇总保留会话中的生命周期、模型调用、恢复次数和终态耗时，不将本地日志标为完整持久审计。
 
 ## Thinking健康与诊断合同
 
 健康从当前进程、Store初始化/关闭状态、失败会话、待投影提交及活动任务派生，不新增任务权威。liveness表示HTTP进程响应；readiness表示本地存储已初始化、未关闭且存在启用模型；degraded表示部分会话需要修复或投影恢复，健康会话仍可服务。Provider可用性不在健康探测时调用模型，显示not_probed；单次模型失败不等于存储损坏。
 
-保留原health响应，新增runtime字段；新增同服务令牌保护的liveness/readiness/diagnostics路径。诊断仅返回固定字段、有限标签的计数和组件状态，不含会话ID、正文、凭证或任意错误文本。失败和恢复计数来自Store内已有运行状态，投影重放后重新派生；进程累计指标明确标为process，不作为跨重启账本。Worker仍以Go现有heartbeat/status为权威，后续聚合不引入第二心跳服务。
+保留原health响应，新增runtime字段；新增同服务令牌保护的liveness/readiness/diagnostics路径。诊断仅返回固定字段、有限标签的计数和组件状态，不含会话ID、正文、凭证或任意错误文本。失败和恢复计数来自Store内已有运行状态，投影重放后重新派生；进程累计指标明确标为process，不作为跨重启账本。新增的Thinking Run聚合从已有Durable会话记录重新计算。Worker仍以Go现有heartbeat/status为权威，不引入第二心跳服务。
 
 生产入口仍在Store初始化成功后监听端口，启动失败直接退出；liveness不是迁移期间的进度接口。`--healthcheck`使用readiness。unpublishedSessions表示已观察到的提交后发布失败，不统计正在正常投影的短暂提交。
 
@@ -84,7 +84,7 @@ Tool Gateway使用单调时钟记录每次调用的耗时。tool_started包含�
 
 Go在原Thinking私有监听器提供服务令牌保护的Runtime Health路由。Worker就绪从原executorpolicy与心跳派生，Thinking通过受保护readiness接口读取；没有第二个心跳来源或持久状态。请求至多2秒，固定字段投影排除正文、凭证和任意错误。组件故障保持Go liveness可响应，整体readiness和degraded独立报告。失效Worker心跳的待办数为未知，不推导为零。
 
-现有公网agent-runtime响应、Go healthz与各进程healthcheck行为不变。新增接口需要原Thinking私有监听器已配置；未配置时继续使用已有Worker状态接口。详细字段与状态见thinking-internal-v1私有协议。跨进程历史指标和自动故障处置仍不在此读取接口中实现。
+现有公网agent-runtime响应、Go healthz与各进程healthcheck行为不变。新增接口需要原Thinking私有监听器已配置；未配置时继续使用已有Worker状态接口。详细字段与状态见thinking-internal-v1私有协议。该健康路由只报告当前状态；历史Run指标由后续Prometheus抓取读取Thinking诊断投影。
 
 ## Worker任务回执诊断
 
@@ -124,6 +124,6 @@ Creative只读计划额外按固定五角色返回Admissions、Results、complet
 
 接口不写入第二份指标账本，服务重新实例化后从原任务回执得到同一投影。它不返回任务ID、作品、正文、凭证或任意错误文本。当前历史窗口受原任务回执保留策略约束；不能将本地合成Provider耗时解释为真实模型SLO。
 
-`GET /internal/v1/runtime/metrics`在同一Go私有loopback监听器输出Prometheus文本。它将原运行health、Worker心跳、Thinking readiness和上述任务回执投影合并为每次抓取时重新计算的固定指标；不维护抓取链路、不会把旧心跳的待办数当成当前值，也不在Go进程内保存指标历史。端点要求原服务Token，只允许GET；无样本计时省略，来源失败返回无正文503。
+`GET /internal/v1/runtime/metrics`在同一Go私有loopback监听器输出Prometheus文本。它将原运行health、Worker心跳、Thinking readiness、Thinking诊断中的持久Run聚合和任务回执投影合并为每次抓取时重新计算的固定指标；不维护抓取链路、不会把旧心跳的待办数当成当前值，也不在Go进程内保存指标历史。Thinking指标包括固定生命周期状态、恢复次数、模型调用总数和终态Run耗时P50/P95。端点要求原服务Token，只允许GET；无样本计时省略，Thinking诊断暂不可用时省略其历史指标，来源失败返回无正文503。
 
-标签只允许五种任务类型、Creative只读计划五角色和固定生命周期/Usage状态。这样既能接入外部监控，又避免把任务ID、作品、消息、正文、凭证或任意错误变成高基数或敏感标签。健康与指标共用同一派生函数；回滚时移除路由即可，已有状态文件无需迁移。实时样本不等于长期保留或生产SLO，历史窗口仍由原权威数据决定。
+标签只允许五种任务类型、Creative只读计划五角色、Thinking Run固定生命周期状态及固定Usage状态。这样既能接入外部监控，又避免把任务ID、作品、消息、正文、凭证或任意错误变成高基数或敏感标签。指标只从原权威状态派生；回滚时移除路由即可，已有状态文件无需迁移。Thinking历史窗口随原会话保留策略变化，删除会话后其Run不再计入；本地合成Provider样本不代表生产SLO。

@@ -1,6 +1,6 @@
 # Agent Maturity：能力与验收证据
 
-日期：2026-11-06。基线：`25e6066f519fdb4386bbbbe334edb48badbc5c03`。
+日期：2026-11-07。基线：`25e6066f519fdb4386bbbbe334edb48badbc5c03`。
 
 Phase 0 已完成源码审计和架构设计；Phase 1 已完成本地代码接入和工程验收；Phase 2–4 部分实现；Phase 5 已完成默认关闭的只读试点工程接入，真实质量收益尚未验收；Phase 6 尚未实现。成熟度采用“工程验证 / 部分覆盖 / 未实现”，不以文件数量打分。此前同基线的本地 `pnpm verify` 已通过，包含 102 项 Agent 测试和 Go/Pi 真实进程集成；不代表真实模型任务成功率或全部威胁已验证。远程最新状态未刷新：GitHub API 最近返回账号停用403，本次使用本地 main 与已有跟踪引用。
 
@@ -9,7 +9,7 @@ Phase 0 已完成源码审计和架构设计；Phase 1 已完成本地代码接�
 | 能力 | 当前成熟度 | 实现与证据 | 缺口 / 下一步 |
 | --- | --- | --- | --- |
 | Durable执行 | 工程验证 | runtime/durable.ts、durable-crash/lifecycle测试；启动中断旧任务 | 治理生命周期映射，禁止自动付费恢复 |
-| 分层存储 | 工程验证 | sessions/store/event-store/projection；layered-storage-crash测试、10万事件基准；Thinking投影健康与诊断 | 待跨进程聚合及历史指标 |
+| 分层存储 | 工程验证 | sessions/store/event-store/projection；layered-storage-crash测试、10万事件基准；Thinking投影健康、诊断与从Durable Run记录派生的重启稳定指标 | 历史窗口随会话保留策略变化，删除会话后对应Run不再计入 |
 | 预算 | 工程验证，分路径治理 | PiHost payload后预留与usage检查点；Go agenttasks started/complete；Creative只读试点的五调用父预算、子预算总和及失败未知费用保留 | 尚无跨Go任务的通用父子预算事务 |
 | 授权及工具 | 部分覆盖 | tools/registry、Go工具RPC、strict schema、scope、epoch及StoryWrites | 本地重放前授权及ToolPolicy已接入；待扩展独立攻击集 |
 | Worker | 工程验证 | scheduler/dispatcher/TaskClient，五种Go任务；Review/Knowledge/Creative/Memory集成 | 统一合同已接入；待完善持久关联审计 |
@@ -17,7 +17,7 @@ Phase 0 已完成源码审计和架构设计；Phase 1 已完成本地代码接�
 | 长期记忆 | 部分覆盖 | Working来源、Semantic/Episodic检索、版本冲突提示、Procedural作者审核、主动提取、后台整理、模型关系建议、重复/替代/过期生命周期 | 工程链路已实现；待真实关系准确率、长期噪声控制与召回质量评测 |
 | Evaluation | 部分覆盖 | 统一schema/split/runner、每类独立版本的dev与held-out数据、五类与四能力覆盖校验、Go业务和故障适配、受治理Judge及其独立dev/held-out、显式预算的真实模型入口、Judge对人工校准及人工双评一致性统计、单/多角色开发集与保留集对照 | 待完成实际模型质量、真实人工标注校准和代表性性能验收 |
 | 安全 | 部分覆盖 | capability、隔离进程、工具授权、取消、幂等、开发与保留集记忆污染、同作者跨作品Session隔离及只读子角色工具输出拒绝 | 缺真实模型抗污染率、更广动态权限传播与并发预算竞争验证 |
-| 可观测性 | 部分覆盖 | 治理关联日志、跨进程健康；私有Prometheus文本按需导出五种Worker任务的生命周期/耗时、五角色Admissions/Results/Usage/耗时及Thinking恢复计数；均从原权威状态投影 | 缺跨重启长期窗口、代表性并发基线和真实模型诊断样本 |
+| 可观测性 | 部分覆盖 | 治理关联日志、跨进程健康；私有Prometheus按需投影五种Worker任务、五角色Admissions/Results/Usage/耗时，以及Thinking持久Run状态、恢复次数、模型调用和终态耗时P50/P95 | 历史窗口随原会话保留策略；代表性并发基线和真实模型诊断样本仍缺 |
 | 多角色协作 | 部分覆盖 | 默认关闭的Creative只读试点：Planner后由Researcher/Analyst/Critic并行检查，Coordinator汇总；dev/held-out对照、并发3准入、子预算精确合计和子上下文收窄通过 | 需真实模型同预算质量比较、代表性能与更广义动态子角色/审批策略 |
 | 自主规划 | 未实现 | 有限模型/工具循环与显式恢复 | 有界Goal/Plan与审批版本绑定，须后置 |
 
@@ -569,3 +569,11 @@ Creative只读试点每次模型请求在网络前等待原Go started事务写�
 验收读取实际Provider payload、Session响应、工具事件、来源和两个Revision：第二Session启动时不包含第一Session或两个作品的章节正文；越权`read_chapter`被广告并进入工具路径后被Go拒绝，没有完成事件或来源；第一Session没有收到反向内容；两个章节的Revision与正文未变；Capability、签名密钥和Provider Key未进入模型上下文或响应。
 
 开发与保留样本分别12/12与4/4工程通过。新场景各发出3次合成模型调用、2次工具尝试并结算1200 tokens，均在4次调用和2次工具上限内。Agent完整回归157/157、Go全量race、类型检查、lint、构建、11份OpenAPI合同及真实Go/Pi Thinking流程通过。该证据覆盖同作者跨作品Session上下文的可达边界，补齐原先只在两个作者间验证资源所有权而缺少直接Session隔离样本的缺口；不衡量真实模型主动泄露概率，跨作者长期记忆、动态子角色和并发预算竞争仍待继续验收。
+
+### 2026-11-07 Thinking持久Run指标
+
+Thinking的诊断指标从每个会话已有的历史`runs`和当前`view.run`重新派生，汇总尝试状态、恢复次数、模型调用总数及终态耗时P50/P95。Go私有Prometheus端点读取受服务令牌保护的Thinking诊断，将固定生命周期和分位指标与Worker指标一并输出。没有模型Usage的数据不会推导为Token或费用；会话删除后对应Run不再计入；不新增持久状态或数据库。
+
+Agent运行时诊断单测验证多种终态、恢复次数、模型调用与最近秩分位数跨Pi重启保持一致，且不泄漏Session ID或正文。Go race测试覆盖成功、异常结构和无Thinking实例；`pnpm test:thinking`使用本地合成Provider完成真实Go/Pi流程后检查Go导出值和Pi重启前后相等，`pnpm test:runtime`验证无Thinking时省略历史指标、恢复后正常导出且零模型调用。`pnpm test:agent`为166/166，Agent类型检查及`go test -race ./internal/agentruntime`通过。
+
+该投影提供保留会话范围的重启稳定汇总，不是按天/周窗口，也不代表真实Provider性能或SLO。会话保留期与真实模型诊断样本仍需后续确定。

@@ -19,10 +19,18 @@ func TestRuntimeMetricsHandlerProjectsAuthoritiesAndRejectsUnauthorizedReads(t *
 	var thinkingCalls atomic.Int32
 	thinking := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		thinkingCalls.Add(1)
-		if r.URL.Path != "/internal/v1/readiness" || r.Header.Get("Authorization") != "Bearer private-service-token" {
+		if r.Header.Get("Authorization") != "Bearer private-service-token" {
 			t.Error("wrong Thinking probe contract")
 		}
-		_, _ = w.Write([]byte(`{"schemaVersion":1,"liveness":true,"readiness":true,"degraded":false,"status":"ready","counts":{"activeTasks":2,"pendingAdmissions":1,"failedSessions":3,"unpublishedSessions":4,"recoveryPending":5}}`))
+		switch r.URL.Path {
+		case "/internal/v1/readiness":
+			_, _ = w.Write([]byte(`{"schemaVersion":1,"liveness":true,"readiness":true,"degraded":false,"status":"ready","counts":{"activeTasks":2,"pendingAdmissions":1,"failedSessions":3,"unpublishedSessions":4,"recoveryPending":5}}`))
+		case "/internal/v1/diagnostics":
+			_, _ = w.Write([]byte(`{"metrics":{"persisted":{"thinkingRuns":{"schemaVersion":1,"attempts":4,"accepted":1,"running":0,"checkpointed":0,"completed":1,"failed":1,"interrupted":1,"cancelled":0,"resumed":1,"modelCalls":7,"terminalSamples":3,"durationP50Ms":12,"durationP95Ms":90}}}}`))
+		default:
+			t.Errorf("unexpected Thinking path: %s", r.URL.Path)
+			http.NotFound(w, r)
+		}
 	}))
 	defer thinking.Close()
 
@@ -108,6 +116,12 @@ func TestRuntimeMetricsHandlerProjectsAuthoritiesAndRejectsUnauthorizedReads(t *
 		`writer_agent_worker_role_steps{role="creative.plan.researcher",state="admission"} 2`,
 		`writer_agent_worker_role_tokens{role="creative.plan.researcher",type="cached_input"} 30`,
 		`writer_agent_worker_role_duration_ms{role="creative.plan.researcher",quantile="0.95"} 50`,
+		`writer_agent_thinking_run_attempts{state="accepted"} 1`,
+		`writer_agent_thinking_run_attempts{state="failed"} 1`,
+		"writer_agent_thinking_run_resumptions 1",
+		"writer_agent_thinking_run_model_calls 7",
+		"writer_agent_thinking_run_terminal_samples 3",
+		`writer_agent_thinking_run_duration_ms{quantile="0.95"} 90`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("missing %q\n%s", want, body)
@@ -123,6 +137,24 @@ func TestRuntimeMetricsHandlerProjectsAuthoritiesAndRejectsUnauthorizedReads(t *
 	handler.ServeHTTP(res, req)
 	if res.Code != http.StatusMethodNotAllowed || res.Header().Get("Allow") != http.MethodGet {
 		t.Fatalf("mutation accepted: %d", res.Code)
+	}
+}
+
+func TestProbeThinkingRunMetricsOmitsInvalidOrUnavailableProjection(t *testing.T) {
+	for _, body := range []string{
+		`{"metrics":{"persisted":{"thinkingRuns":{"schemaVersion":1,"attempts":2,"accepted":0,"running":0,"checkpointed":0,"completed":1,"failed":0,"interrupted":0,"cancelled":0,"resumed":0,"modelCalls":1,"terminalSamples":1,"durationP50Ms":20,"durationP95Ms":10}}}}`,
+		`{"metrics":{"persisted":{"thinkingRuns":{"schemaVersion":2}}}}`,
+		`{"metrics":{"persisted":{"thinkingRuns":{"schemaVersion":1}}}}`,
+		`{"metrics":{"persisted":{}}}`,
+	} {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(body)) }))
+		if got := probeThinkingRunMetrics(context.Background(), server.URL, "token"); got != nil {
+			t.Fatalf("invalid projection accepted: %+v", got)
+		}
+		server.Close()
+	}
+	if got := probeThinkingRunMetrics(context.Background(), "", "token"); got != nil {
+		t.Fatalf("missing Thinking origin returned metrics: %+v", got)
 	}
 }
 

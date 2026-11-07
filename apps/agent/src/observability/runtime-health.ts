@@ -1,6 +1,6 @@
 import {runtimeVersion,governanceMetrics} from '../runtime/governance/index.js';
 import {reliabilityMetrics} from '../runtime/reliability.js';
-import type {Store} from '../sessions/store.js';
+import type {Store,ThinkingRunMetrics} from '../sessions/store.js';
 
 type Snapshot={storage:ReturnType<Store['health']>;closing:boolean;activeTasks:number;pendingAdmissions:number;enabledModels:number};
 /** Operational projection only: no IDs, payloads, credentials or provider probes. */
@@ -14,6 +14,6 @@ export function runtimeHealth(snapshot:Snapshot){
   counts:{sessions:storage.sessions,activeTasks:snapshot.activeTasks,pendingAdmissions:snapshot.pendingAdmissions,failedSessions:storage.failedSessions,unpublishedSessions:storage.unpublishedSessions,recoveryPending:storage.recoveryPending,unknownUsageSessions:storage.unknownUsageSessions},
  };
 }
-export function runtimeDiagnostics(snapshot:Snapshot){
- return {health:runtimeHealth(snapshot),metrics:{scope:'process',reliability:reliabilityMetrics(),governance:governanceMetrics()}};
+export function runtimeDiagnostics(snapshot:Snapshot&{runMetrics:ThinkingRunMetrics}){
+ return {health:runtimeHealth(snapshot),metrics:{scope:'process',reliability:reliabilityMetrics(),governance:governanceMetrics(),persisted:{thinkingRuns:snapshot.runMetrics}}};
 }

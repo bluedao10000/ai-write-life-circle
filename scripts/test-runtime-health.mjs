@@ -17,6 +17,7 @@ try{
  assert.match(initialMetrics.body,/writer_agent_runtime_ready 0/);
  assert.match(initialMetrics.body,/writer_agent_worker_executors\{state="enabled"\} 4/);
  assert.doesNotMatch(initialMetrics.body,/^writer_agent_worker_pending_tasks /m);
+ assert.doesNotMatch(initialMetrics.body,/^writer_agent_thinking_run_attempts/m);
  const pi=f.start('pi'),worker=f.start('pi-worker');
  await until(()=>pi.output.includes('agent_started')&&worker.output.includes('worker_started'),'processes ready');
  const ready=await until(async()=>{const {body}=await probe();return body.readiness&&body},'aggregate readiness');
@@ -29,6 +30,8 @@ try{
   /writer_agent_worker_executors\{state="online"\} 4/,
   /writer_agent_worker_pending_tasks 0/,
   /writer_agent_thinking_tasks\{state="failed_session"\} 0/,
+  /writer_agent_thinking_run_attempts\{state="completed"\} 0/,
+  /writer_agent_thinking_run_terminal_samples 0/,
   /writer_agent_worker_task_receipts\{kind="review\.execute",state="completed"\} 0/,
   /writer_agent_worker_role_steps\{role="creative\.plan\.planner",state="admission"\} 0/,
  ])assert.match(readyMetrics.body,expected);

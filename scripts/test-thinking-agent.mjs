@@ -53,6 +53,20 @@ try {
   assert.equal(s.messages.at(-1).sources.length, 3);
   assert(f.tools.includes("find_related_chapters"));
   assert.equal(f.tools.filter((t) => t === "read_chapter").length, 3);
+  const runtimeMetrics=async()=>{
+    const response=await fetch(f.toolOrigin+"/internal/v1/runtime/metrics",{headers:{Authorization:"Bearer "+f.token}});
+    assert.equal(response.status,200);
+    return response.text();
+  };
+  const firstRuntimeMetrics=await runtimeMetrics();
+  for(const expected of [
+    /writer_agent_thinking_run_attempts\{state="completed"\} 1/,
+    /writer_agent_thinking_run_terminal_samples 1/,
+    /writer_agent_thinking_run_model_calls [1-9][0-9]*/,
+    /writer_agent_thinking_run_duration_ms\{quantile="0.5"\} [0-9.]+/,
+  ])assert.match(firstRuntimeMetrics,expected);
+  await f.stopAgent();await f.restartAgent();
+  assert.equal(await runtimeMetrics(),firstRuntimeMetrics,"Thinking run metrics must survive process restart");
   const count = f.calls.length;
   assert.deepEqual(
     await f.call(path + "/messages", {
