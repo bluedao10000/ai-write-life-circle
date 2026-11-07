@@ -595,3 +595,11 @@ Go `agenttasks` race测试与`pnpm test:creative`通过；后者构建Go API、C
 统一Evaluation可靠性集合新增独立的`review-api-outage`开发和保留样本，分别升级为`agent-eval-v24-reliability`与`agent-eval-v9-reliability`。评分读取真实Go任务、Review回执、费用账户和本地Provider连接状态：API断开会取消在途请求；租约过期后旧attempt进入`REVIEW_INTERRUPTED`；原费用预留保持开放以覆盖未知Usage；执行器停用期间不重试；重新启用后原业务策略只允许一次新attempt，结算新预留且不接受旧响应。
 
 dev reliability为12/12工程通过，16次合成模型调用；held-out为3/3通过，6次合成模型调用。两个API中断样本均发出2次请求、0次工具调用；首次Usage保持未知，Go记录的暴露上限为34,228 tokens，未将其记为实际消耗。新样本的开发集与保留集评分器均验证全部约束。执行使用本地合成Provider，不产生真实模型质量或生产可靠性结论；质量成功率保持`null`。
+
+### 2026-11-07 Knowledge API中断后的未知用量标记
+
+Knowledge attempt租约过期后，Go现在检查原执行器的持久启动标记：只有明确未启动才会退还预留；请求已启动或标记不可用时，重试任务继续保留预算并将`usageIncomplete`置为true。已知未启动的取消与supersede仍按原逻辑退还预留。单元回归同时检查已启动attempt进入重试后预算保留、用量未知。
+
+开发集`agent-eval-v25-reliability`新增`knowledge-api-outage`，保留集`agent-eval-v10-reliability`加入措辞和正文独立的同场景。真实Go API与Pi Worker运行本地Provider请求期间停止API；Worker心跳取消Provider连接，夹具推进原租约到期并重启API后由新Worker恢复。评分读取Go任务、Knowledge视图和账本文件，验证旧attempt终态、旧费用仍开放、usage不完整、新预留已结算、只发生一次重试与一次Revision提交。
+
+dev reliability 13/13工程通过、19次合成模型调用；held-out 4/4、8次合成模型调用。两个新样本各执行2次模型请求、0次工具调用，Go保留旧token与点数预留并报告34,298 tokens预算暴露；未知Usage的输入、输出与计费Token保持`null`。定向`pnpm --filter @writer-agent/agent exec tsx --test test/evaluation.test.ts`为28/28，Knowledge与AgentTasks race测试通过，`node scripts/test-pi-knowledge-faults.mjs`通过。模型端仅使用本地合成Provider，评测质量成功率为`null`。

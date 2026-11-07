@@ -167,3 +167,9 @@ ModelRequestGate把准入失败与后续模型调用严格分离：前四个已�
 `agent-eval-v24-reliability`与held-out `agent-eval-v9-reliability`各含一个独立`review-api-outage`样本。真实Go API停止期间，Pi Worker心跳失败应取消正在等待的Provider连接。租约到期后，Go将旧Review标记为`REVIEW_INTERRUPTED`并按原重试策略排队；测试先停用执行器，确认不会新发请求，再重新启用并观察单次新attempt完成。
 
 评分同时检查：旧attempt的Go费用预留仍开放以覆盖未知Usage、新attempt的已知Usage已结算、原文未变、只有新租约可以提交候选、Provider迟到响应不能改写结果。未知Usage对应的`inputTokens`、`outputTokens`和`chargedTokens`保持null；预算暴露使用Go任务保存的首个attempt token预留加新attempt已知用量。dev reliability 12/12工程通过、16次合成模型调用；held-out 3/3通过、6次合成模型调用。每个新样本恰有2次请求、0次工具调用，预算暴露为34,228 tokens。样本验证故障执行合同，不报告真实Provider可用性、真实成本或模型质量。
+
+## Knowledge API中断与未知用量恢复
+
+`agent-eval-v25-reliability`与held-out `agent-eval-v10-reliability`各含一个独立`knowledge-api-outage`样本。Pi Worker进入本地Provider请求后停止Go API，Worker心跳取消在途请求；测试夹具推进旧租约到期，再重启Go API并启动新Worker。恢复时，Go只有在持久执行标记证明模型请求未开始时才会退还旧预留；已开始或启动状态不明的attempt保留费用预留并设置`usageIncomplete`。旧attempt到期后原Knowledge业务策略只创建一次重试，新attempt的已知费用正常结算，原Revision仍是唯一业务提交来源。
+
+评分读取Go Knowledge任务、token预算和点数账本，要求Provider观察到取消、旧task到期、token与费用预留持续保留、`usageIncomplete=true`、Worker停止期间没有重试、新attempt完成并结算且Revision只有一个完成任务。两份新样本均发出2次合成模型请求、0次工具调用；Go报告的token预算暴露为34,298，`inputTokens`、`outputTokens`和`chargedTokens`保持null。dev reliability 13/13、19次合成模型调用；held-out 4/4、8次合成模型调用。该证据覆盖Go回执丢失时的费用与业务恢复合同，不代表真实Provider网络、模型质量或生产可用性。

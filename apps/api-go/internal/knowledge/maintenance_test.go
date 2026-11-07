@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/application"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/compat"
+	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/executorpolicy"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/harness"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/llm"
 	"os"
@@ -403,6 +404,43 @@ func TestExpiredUnstartedAttemptsRefundBeforeCancellationOrReplacement(t *testin
 				t.Fatal("replacement task did not complete", st.Jobs)
 			}
 		})
+	}
+}
+
+func TestExpiredStartedAttemptKeepsUnknownUsageAcrossRetry(t *testing.T) {
+	s, _, b, c := setup(t)
+	ctx := context.Background()
+	save(t, s, b.Chapters[0].ID, "林舟来自北港。")
+	enable(t, s)
+	first, err := s.Claim(ctx)
+	if err != nil || first == nil {
+		t.Fatal("first claim failed", err)
+	}
+	if err = (executorpolicy.Controller{State: s.App.State}).Guard(ctx, "knowledge", first.Job.ExecutorOwner, first.Job.ExecutorEpoch, first.Job.Lease, false, func() error { return nil }); err != nil {
+		t.Fatal("failed to persist started lease", err)
+	}
+	if err = s.transaction(ctx, func(st *State) (bool, error) {
+		for i := range st.Jobs {
+			if st.Jobs[i].ID == first.Job.ID {
+				st.Jobs[i].Deadline = time.Now().Add(-time.Minute).UTC().Format(time.RFC3339Nano)
+				return true, nil
+			}
+		}
+		return false, nil
+	}); err != nil {
+		t.Fatal("failed to expire started lease", err)
+	}
+
+	second, err := s.Claim(ctx)
+	if err != nil || second == nil {
+		t.Fatal("expired task was not retried", err)
+	}
+	st, err := s.load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !second.Job.UsageIncomplete || st.Jobs[0].Attempts != 2 || st.BudgetAttempts != 2 || st.BudgetTokens < 2*s.reserve() || c.calls.Load() != 0 {
+		t.Fatal("unknown first attempt was not retained through retry", second.Job, st.BudgetAttempts, st.BudgetTokens, c.calls.Load())
 	}
 }
 

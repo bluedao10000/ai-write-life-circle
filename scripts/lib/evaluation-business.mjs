@@ -124,10 +124,12 @@ async function knowledge(fixture,task,result,wait,worker,children){
  const chapter=`/v1/projects/${book.bookId}/chapters/${book.chapters[0].chapterId}`;
  const before=await fixture.call(chapter);
  const saved=await fixture.call(chapter+'/revisions',{method:'POST',status:201,body:{baseRevisionId:before.headRevision.revisionId,markdown:task.request}});
- const fault=task.environment.scenario==='knowledge-crash'||task.environment.scenario==='knowledge-timeout';
- if(fault)await fetch(fixture.origin+'/control',{method:'POST',body:JSON.stringify({mode:task.environment.scenario==='knowledge-crash'?'knowledge-slow':'knowledge-timeout'})});
+ const scenario=task.environment.scenario;
+ const fault=scenario==='knowledge-crash'||scenario==='knowledge-timeout'||scenario==='knowledge-api-outage';
+ if(fault)await fetch(fixture.origin+'/control',{method:'POST',body:JSON.stringify({mode:scenario==='knowledge-timeout'?'knowledge-timeout':'knowledge-slow'})});
  const page=await fixture.call(root);
- await fixture.call(root+'/enable',{method:'POST',body:{baseVersion:page.version,consent:true,model:page.model,dailyTokenBudget:task.stoppingCriteria.maxTokens,dailyJobBudget:1}});
+ await fixture.call(root+'/enable',{method:'POST',body:{baseVersion:page.version,consent:true,model:page.model,dailyTokenBudget:task.stoppingCriteria.maxTokens,dailyJobBudget:scenario==='knowledge-api-outage'?2:1}});
+ if(scenario==='knowledge-api-outage')return knowledgeApiOutage(fixture,task,result,wait,worker,children,root,saved,chapter,book.bookId);
  if(fault)return knowledgeFault(fixture,task,result,wait,worker,children,root,saved,chapter);
  const job=await wait(async()=>{const {items}=await fixture.call(root+'/jobs');return items.find(j=>j.revisionId===saved.revisionId&&['completed','failed'].includes(j.status))});
  const view=await fixture.call(root),after=await fixture.call(chapter);
@@ -136,6 +138,68 @@ async function knowledge(fixture,task,result,wait,worker,children){
  result.metrics={completed:job.status==='completed',businessCommitted:job.status==='completed',entities:view.entities.length,assertions:assertions.length,provenanceValid:sources.length>0&&sources.every(s=>s.bookId===book.bookId&&s.revisionId===saved.revisionId&&task.request.includes(s.quote)),sourceUnchanged:after.headRevision.revisionId===saved.revisionId,canonAssets:(await fixture.call(base+'/creative/assets')).total,authorIsolated:await isolated(fixture,root),promptVersion:job.strategyVersion,model:job.model.model};
  result.trace.push({action:'go_knowledge_terminal_read',name:job.status});
  if(task.environment.scenario==='knowledge-memory')await memoryProbe(fixture,task,result,wait,children,base);
+ return result;
+}
+async function knowledgeApiOutage(fixture,task,result,wait,worker,children,root,saved,chapter,bookId){
+ const baselineCalls=fixture.calls,disconnected=fixture.disconnectedRequests;
+ await wait(()=>fixture.calls>baselineCalls);
+ const firstJob=await wait(async()=>{
+  const {items}=await fixture.call(root+'/jobs');
+  return items.find(job=>job.revisionId===saved.revisionId&&job.status==='running'&&job.attempts===1);
+ });
+ await fixture.stop(fixture.api());result.trace.push({action:'go_api_stopped'});
+ await wait(()=>fixture.disconnectedRequests>disconnected);
+ result.trace.push({action:'knowledge_request_cancelled'});
+ await fixture.stop(worker);
+ await fixture.expireKnowledge(bookId);
+ await fixture.startAPI();result.trace.push({action:'go_api_restarted'});
+ const firstAccountPath=join(fixture.state,'billing','accounts',Buffer.from('fixture-author').toString('base64url')+'.json');
+ const firstAccount=JSON.parse(await readFile(firstAccountPath,'utf8'));
+ const firstOperation='knowledge:'+firstJob.jobId+':1';
+ const beforeRetry=await fixture.call(root);
+ const knowledgeState=JSON.parse(await readFile(join(fixture.state,'knowledge',Buffer.from(bookId).toString('base64url'),'index-v1.json'),'utf8'));
+ const firstStoredJob=knowledgeState.jobs.find(job=>job.jobId===firstJob.jobId);
+ const noRetryWhileWorkerStopped=fixture.calls===baselineCalls+1;
+ await fetch(fixture.origin+'/control',{method:'POST',body:JSON.stringify({mode:'valid'})});
+ const replacement=fixture.start('pi-worker');children.push(replacement);
+ await wait(()=>{if(replacement.exitCode!==null)throw Error('EVAL_WORKER_EXIT');return replacement.output.includes('worker_started')});
+ const recovered=await wait(async()=>{
+  const {items}=await fixture.call(root+'/jobs');
+  return items.find(job=>job.jobId===firstJob.jobId&&['completed','failed'].includes(job.status));
+ });
+ const after=await fixture.call(chapter),finalView=await fixture.call(root);
+ const {items}=await fixture.call(root+'/jobs');
+ const completed=items.find(job=>job.jobId===firstJob.jobId);
+ const taskRegistry=JSON.parse(await readFile(join(fixture.state,'agent-runtime','tasks-v1.json'),'utf8'));
+ const expiredTask=Object.values(taskRegistry.tasks).find(record=>record.task?.kind==='knowledge.extract'&&record.task?.revisionId===saved.revisionId&&record.task?.attempt===1);
+ const retryOperation='knowledge:'+firstJob.jobId+':2';
+ const finalAccount=await wait(async()=>{
+  const account=JSON.parse(await readFile(firstAccountPath,'utf8'));
+  return account.done?.[retryOperation]&&!account.open?.[retryOperation]&&account;
+ });
+ const retryReservationOpen=!!finalAccount.open?.[retryOperation];
+ const retryReservationDone=!!finalAccount.done?.[retryOperation];
+ const assertions=finalView.assertions.filter(assertion=>assertion.sources.some(source=>source.revisionId===saved.revisionId));
+ const modelCalls=fixture.calls-baselineCalls;
+ result.inputTokens=null;result.outputTokens=null;result.chargedTokens=null;
+ result.budgetExposure={tokens:finalView.budgetTokens,authority:'go'};
+ result.metrics={
+  providerRequestCancelled:fixture.disconnectedRequests===disconnected+1,
+  oldTaskExpired:!!expiredTask&&expiredTask.started&&expiredTask.finished&&expiredTask.resultHash==='expired',
+  unknownReservationRetained:!!firstAccount.open?.[firstOperation]?.points&&!!finalAccount.open?.[firstOperation],
+  unknownTokenReservationRetained:Number.isSafeInteger(firstStoredJob?.attemptReserve)&&firstStoredJob.attemptReserve>0&&beforeRetry.budgetTokens>=firstStoredJob.attemptReserve&&finalView.budgetTokens>=firstStoredJob.attemptReserve,
+  usageIncomplete:completed?.usageIncomplete===true,
+  noRetryWhileWorkerStopped,
+  retryCompleted:recovered.status==='completed'&&recovered.attempts===2,
+  retryReservationSettled:retryReservationDone&&!retryReservationOpen,
+  retryReservationOpen,
+  retryReservationDone,
+  oneBusinessCommit:completed.status==='completed'&&items.filter(job=>job.revisionId===saved.revisionId&&job.status==='completed').length===1&&assertions.length>0&&recovered.attempts===2,
+  sourceUnchanged:after.headRevision.revisionId===saved.revisionId,
+  modelCalls,
+  toolCalls:0,
+ };
+ result.trace.push({action:'unknown_usage_and_reservation_read'},{action:'new_task_claimed'},{action:'knowledge_retry_completed'});
  return result;
 }
 async function creative(fixture,task,result,wait,children){

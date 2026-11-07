@@ -264,6 +264,9 @@ func (s *Service) claim(ctx context.Context) (*ClaimedJob, error) {
 				}
 			}
 			if j.Status == "running" {
+				if startedOrUnknownLease(policy, policyErr, j.Lease) {
+					st.Jobs[i].UsageIncomplete = true
+				}
 				refundUnstartedExpiredLease(st, &st.Jobs[i], policy, policyErr, now)
 				st.Jobs[i].Status = "retry"
 				st.Jobs[i].Failure = "KNOWLEDGE_INTERRUPTED"
@@ -275,6 +278,9 @@ func (s *Service) claim(ctx context.Context) (*ClaimedJob, error) {
 				continue
 			}
 			if (j.Status == "cancelled" || j.Status == "superseded") && j.Lease != "" {
+				if startedOrUnknownLease(policy, policyErr, j.Lease) {
+					st.Jobs[i].UsageIncomplete = true
+				}
 				refundUnstartedExpiredLease(st, &st.Jobs[i], policy, policyErr, now)
 				st.Jobs[i].Lease = ""
 				changed = true
@@ -333,6 +339,14 @@ func (s *Service) claim(ctx context.Context) (*ClaimedJob, error) {
 	return &ClaimedJob{Job: *chosen, Snapshot: snapshot, Reserved: reservedThisAttempt, Day: debitedDay, Started: compat.Now()}, nil
 }
 
+func startedOrUnknownLease(policy executorpolicy.State, policyErr error, lease string) bool {
+	if policyErr != nil {
+		return true
+	}
+	marker, known := policy.Kinds["knowledge"].Leases[lease]
+	return !known || marker.Started
+}
+
 // refundUnstartedExpiredLease releases the conservative reservation only when
 // the durable executor marker proves the model request never started. Clearing
 // the domain marker makes this settlement idempotent across process restarts.
@@ -365,6 +379,7 @@ func (s *Service) Prepare(ctx context.Context, claim *ClaimedJob) (*PreparedJob,
 	p.Request, err = s.prepareRequest(ctx, claim.Job, p.Revision, claim.Snapshot, p.Allowed)
 	return p, err
 }
+
 // Complete is the sole evidence-validation and domain commit path for both executors.
 func (s *Service) complete(ctx context.Context, p *PreparedJob, response llm.Response, sent bool, err error) error {
 	started, _ := time.Parse(time.RFC3339Nano, p.Claim.Started)

@@ -45,7 +45,7 @@ test('evaluation refuses missing evidence, exceeded budget and contaminated held
 });
 
 test('each evaluation category has its own versioned development and held-out data',()=>{
- assert.equal(development.tasks.length,43);assert.equal(heldOut.tasks.length,18);
+ assert.equal(development.tasks.length,44);assert.equal(heldOut.tasks.length,19);
  for(const category of ['task-success','reliability','memory','safety','performance'] as const){
   const dev=selectEvaluationDataset(development,category),held=selectEvaluationDataset(heldOut,category);
   assert(dev.tasks.length>0);assert(held.tasks.length>0);
@@ -119,6 +119,23 @@ test('business evaluation requires Go evidence, rejects duplicate candidates and
 test('Go API outage reliability is independently graded in development and held-out sets',async()=>{
  for(const dataset of [development,heldOut]){
   const task=dataset.tasks.find(task=>task.environment.scenario==='review-api-outage')!;
+  const metrics=Object.fromEntries(task.scorer.deterministic.map(rule=>[rule.metric,rule.value]));
+  const sample={...observation,metrics,inputTokens:null,outputTokens:null,chargedTokens:null,modelCalls:2,budgetExposure:{tokens:40000,authority:'go' as const}};
+  const passed=await runEvaluation([task],async()=>sample);
+  assert.equal(passed.results[0]!.passed,true,dataset.split);
+  for(const rule of task.scorer.deterministic){
+   const violated=typeof rule.value==='boolean'?!rule.value:rule.value===0?1:Number(rule.value)+1;
+   const result=await runEvaluation([task],async()=>({...sample,metrics:{...metrics,[rule.metric]:violated}}));
+   assert.equal(result.results[0]!.passed,false,dataset.split+': '+rule.metric);
+  }
+  const noExposure=await runEvaluation([task],async()=>({...sample,budgetExposure:undefined}));
+  assert.equal(noExposure.results[0]!.passed,false,dataset.split+': unknown usage without Go exposure');
+ }
+});
+
+test('Knowledge API outage grading requires unknown usage and retained retry evidence in both splits',async()=>{
+ for(const dataset of [development,heldOut]){
+  const task=dataset.tasks.find(task=>task.environment.scenario==='knowledge-api-outage')!;
   const metrics=Object.fromEntries(task.scorer.deterministic.map(rule=>[rule.metric,rule.value]));
   const sample={...observation,metrics,inputTokens:null,outputTokens:null,chargedTokens:null,modelCalls:2,budgetExposure:{tokens:40000,authority:'go' as const}};
   const passed=await runEvaluation([task],async()=>sample);

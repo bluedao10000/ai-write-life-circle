@@ -1,5 +1,5 @@
 {
-  "version": "agent-eval-v9-reliability",
+  "version": "agent-eval-v10-reliability",
   "split": "held-out",
   "synthetic": true,
   "tasks": [
@@ -155,6 +155,41 @@
           {"metric": "originalReservationStillOpen", "operator": "eq", "value": true},
           {"metric": "onePolicyRetry", "operator": "eq", "value": true},
           {"metric": "lateResponseInert", "operator": "eq", "value": true},
+          {"metric": "sourceUnchanged", "operator": "eq", "value": true},
+          {"metric": "modelCalls", "operator": "eq", "value": 2},
+          {"metric": "toolCalls", "operator": "eq", "value": 0}
+        ],
+        "forbidden": []
+      }
+    },
+    {
+      "taskId": "held-out-knowledge-api-outage",
+      "category": "reliability",
+      "capability": "knowledge",
+      "difficulty": "boundary",
+      "request": "Go 服务在 Knowledge 调用执行中失联。验证旧费用不释放、用量仍标为不完整，新的租约恢复后只提交一份观察。阿宁在江宁寻找铜铃。",
+      "environment": {
+        "scenario": "knowledge-api-outage",
+        "fixture": "synthetic-v1",
+        "initialState": {}
+      },
+      "stoppingCriteria": {
+        "timeoutMs": 45000,
+        "maxTokens": 100000,
+        "maxModelCalls": 2,
+        "maxToolCalls": 0
+      },
+      "scorer": {
+        "deterministic": [
+          {"metric": "providerRequestCancelled", "operator": "eq", "value": true},
+          {"metric": "oldTaskExpired", "operator": "eq", "value": true},
+          {"metric": "unknownReservationRetained", "operator": "eq", "value": true},
+          {"metric": "unknownTokenReservationRetained", "operator": "eq", "value": true},
+          {"metric": "usageIncomplete", "operator": "eq", "value": true},
+          {"metric": "noRetryWhileWorkerStopped", "operator": "eq", "value": true},
+          {"metric": "retryCompleted", "operator": "eq", "value": true},
+          {"metric": "retryReservationSettled", "operator": "eq", "value": true},
+          {"metric": "oneBusinessCommit", "operator": "eq", "value": true},
           {"metric": "sourceUnchanged", "operator": "eq", "value": true},
           {"metric": "modelCalls", "operator": "eq", "value": 2},
           {"metric": "toolCalls", "operator": "eq", "value": 0}
