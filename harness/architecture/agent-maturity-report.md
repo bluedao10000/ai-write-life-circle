@@ -577,3 +577,9 @@ Thinking的诊断指标从每个会话已有的历史`runs`、当前`view.run`�
 Agent运行时诊断单测验证多种终态、恢复次数、模型调用、已知与未知Usage、Token投影和最近秩分位数跨Pi重启保持一致，且不泄漏Session ID或正文。Go race测试覆盖成功、异常结构和无Thinking实例；`pnpm test:thinking`使用本地合成Provider完成真实Go/Pi流程后检查Go导出的Usage和Pi重启前后数值相等，`pnpm test:runtime`验证无Thinking时省略历史指标、恢复后正常导出且零模型调用。`pnpm test:agent`为166/166，Agent类型检查及`go test -race ./internal/agentruntime`通过。
 
 该投影提供保留会话范围的重启稳定汇总，不是按天/周窗口，也不代表真实Provider性能或SLO。会话保留期与真实模型诊断样本仍需后续确定。
+
+### 2026-11-07 Creative暂停中断在途请求
+
+`test-creative-workflow.mjs`新增真实Go API与Pi Worker暂停竞态：本地Provider在Planner请求进入后延迟12秒，作者暂停Creative后，Worker心跳重新检查原Go Creative租约并触发Pi请求取消。测试在暂停响应后的2.5秒内观察到Provider连接在返回结果前关闭、Creative任务回到retry，Divergence数量保持不变；Worker模型期限为5秒，因此连接关闭早于Provider超时。
+
+`pnpm test:creative`通过，构建Go API、Contracts与Agent后运行完整Creative流程；模型请求全部发往本地合成Provider。该项证明固定Creative执行路径的暂停、请求中断和迟到提交栅栏，不扩展为其他任务类型或真实Provider网络故障的覆盖结论。

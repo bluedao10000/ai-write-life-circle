@@ -31,6 +31,10 @@ for (const name of ["bearer", "token", "secret", "tasktoken"]) {
 }
 await mkdir(join(root, "harness"));
 const calls = { chat: 0, organize: 0, plan: 0, orchestration: { planner: 0, researcher: 0, analyst: 0, critic: 0, coordinator: 0 } };
+let slowPlanner = false;
+let plannerEntered = 0;
+let plannerAborted = 0;
+let plannerResponded = 0;
 
 // Deterministic stand-in for the model: echo chat, and organize by keywords.
 function organize(input) {
@@ -69,6 +73,22 @@ const provider = createServer(async (req, res) => {
     out = organize(JSON.parse(userText));
   } else if (system.startsWith("You are the planner")) {
     calls.orchestration.planner++;
+    if (slowPlanner) {
+      plannerEntered++;
+      const result = await new Promise((resolve) => {
+        const timer = setTimeout(() => resolve("complete"), 12000);
+        timer.unref();
+        res.once("close", () => {
+          if (!res.writableEnded) {
+            plannerAborted++;
+            clearTimeout(timer);
+            resolve("aborted");
+          }
+        });
+      });
+      if (result === "aborted") return;
+      plannerResponded++;
+    }
     const source = JSON.parse(userText);
     out = { items: source.plans.map((plan) => ({ assetId: plan.assetId, focus: "检查计划与正文是否一致" })) };
   } else if (system.startsWith("You are the evidence researcher")) {
@@ -329,6 +349,21 @@ try {
     const current = await call(sessionPath);
     assert.fail(JSON.stringify({ turn: thirdTurn, answer: current.messages.find((m) => m.id === thirdTurn.answerId) }));
   }
+  // Pausing a live Creative task propagates through the Worker heartbeat,
+  // aborts the provider request, and leaves no late divergence behind.
+  const divergencesBeforePause = (await call(`${creative}/divergences?chapterId=${chapter}`)).items.length;
+  const plannerCountBeforePause = calls.orchestration.planner;
+  slowPlanner = true;
+  await call(creative + "/plan-checks", { method: "POST", key: "check-pause-in-flight", status: 202, body: { chapterId: chapter } });
+  await until(() => plannerEntered > 0 && calls.orchestration.planner > plannerCountBeforePause, "planner entered slow provider");
+  await call(creative + "/settings/pause", { method: "POST", key: "pause-in-flight", body: {} });
+  await until(() => plannerAborted > 0, "pause aborted provider request", 2500);
+  slowPlanner = false;
+  assert.equal(plannerResponded, 0, "paused provider request must not finish with a model result");
+  const pausedCreative = await call(creative);
+  assert.equal(pausedCreative.settings.paused, true);
+  assert.equal(pausedCreative.jobs.retry, 1, "paused Creative lease returns to retry state");
+  assert.equal((await call(`${creative}/divergences?chapterId=${chapter}`)).items.length, divergencesBeforePause, "late result must not commit a divergence");
   // Scenario F: idempotent replay and deletion invalidating derived work.
   const replay = await call(sessionPath + "/messages", { method: "POST", key: "m3", status: 202, body: { text: "写完第一章了，我们聊聊他为什么留下。" } });
   assert.equal(replay.messageId, m3);
