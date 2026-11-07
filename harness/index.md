@@ -19,6 +19,7 @@
 | 表达研究 | [inspire](workflows/inspire.md) | references/、notes/ |
 | 接受提案 | [accept](workflows/accept.md) | proposals/、decisions/ |
 | 会话交接 | [handoff](workflows/handoff.md) | state/current.md |
+| 小说上下文维护 | [context 子系统](../apps/context/harness/index.md) | apps/context/ |
 
 规则：默认只读 1 个工作流、相关索引和至多 5 个相关文件。上下文不足时按需扩大并说明。
 
