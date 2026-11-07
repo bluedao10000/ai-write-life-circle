@@ -55,6 +55,197 @@ func parseFiles(t *testing.T, files []testFile) Preview {
 	return preview
 }
 
+func markedCoverNCXEPUB(firstBody, secondBody, tocTarget string) []testFile {
+	return []testFile{
+		{"mimetype", "application/epub+zip"},
+		{"META-INF/container.xml", `<container><rootfiles><rootfile full-path="OEBPS/content.opf"/></rootfiles></container>`},
+		{"OEBPS/content.opf", `<package version="2.0"><metadata><title>封面目录回归</title></metadata><manifest><item id="toc" href="toc.ncx" media-type="application/x-dtbncx+xml"/><item id="cover" href="titlepage.xhtml" media-type="application/xhtml+xml"/><item id="first" href="first.xhtml" media-type="application/xhtml+xml"/><item id="second" href="second.xhtml" media-type="application/xhtml+xml"/></manifest><spine toc="toc"><itemref idref="cover"/><itemref idref="first"/><itemref idref="second"/></spine></package>`},
+		{"OEBPS/toc.ncx", `<ncx><navMap><navPoint><navLabel><text>开始</text></navLabel><content src="` + tocTarget + `"/></navPoint></navMap></ncx>`},
+		{"OEBPS/titlepage.xhtml", `<html xmlns="http://www.w3.org/1999/xhtml"><head><meta name="calibre:cover" content="true"/></head><body><h1>书名</h1><p>版权信息</p><svg xmlns="http://www.w3.org/2000/svg"><image href="cover.jpg"/></svg></body></html>`},
+		{"OEBPS/first.xhtml", `<html xmlns="http://www.w3.org/1999/xhtml"><body><h1>第一章</h1><p>` + firstBody + `</p></body></html>`},
+		{"OEBPS/second.xhtml", `<html xmlns="http://www.w3.org/1999/xhtml"><body><h1>第二章</h1><p>` + secondBody + `</p></body></html>`},
+	}
+}
+
+func TestEPUBEmptyCoverTOCFallsBackToSpineAndKeepsPerChapterLimit(t *testing.T) {
+	firstBody := "甲开头" + strings.Repeat("甲", 550_000) + "甲结尾"
+	secondBody := "乙开头" + strings.Repeat("乙", 550_000) + "乙结尾"
+	preview := parseFiles(t, markedCoverNCXEPUB(firstBody, secondBody, "titlepage.xhtml"))
+	if len(preview.Chapters) != 2 {
+		t.Fatalf("expected one chapter per body spine document, got %d", len(preview.Chapters))
+	}
+	if len(preview.Chapters[0].Markdown) >= MaxMarkdownBytes || len(preview.Chapters[1].Markdown) >= MaxMarkdownBytes {
+		t.Fatalf("spine chapters should each fit below the limit: %d, %d", len(preview.Chapters[0].Markdown), len(preview.Chapters[1].Markdown))
+	}
+	if len(preview.Chapters[0].Markdown)+len(preview.Chapters[1].Markdown) <= MaxMarkdownBytes {
+		t.Fatal("fixture must exceed the single chapter limit when combined")
+	}
+	if preview.Chapters[0].Title != "第一章" || preview.Chapters[1].Title != "第二章" ||
+		!strings.Contains(preview.Chapters[0].Markdown, "甲开头") || !strings.Contains(preview.Chapters[0].Markdown, "甲结尾") ||
+		!strings.Contains(preview.Chapters[1].Markdown, "乙开头") || !strings.Contains(preview.Chapters[1].Markdown, "乙结尾") {
+		t.Fatalf("spine content or order was not preserved: %+v", []string{preview.Chapters[0].Title, preview.Chapters[1].Title})
+	}
+	if strings.Contains(preview.Chapters[0].Markdown, "乙开头") || strings.Contains(preview.Chapters[1].Markdown, "甲开头") {
+		t.Fatal("body documents were combined or reordered")
+	}
+	if strings.Contains(preview.Chapters[0].Markdown, "版权信息") || strings.Contains(preview.Chapters[1].Markdown, "版权信息") {
+		t.Fatal("Calibre cover text should not be imported as a body chapter")
+	}
+	foundWarning := false
+	for _, warning := range preview.Warnings {
+		foundWarning = foundWarning || warning.Code == "TOC_UNUSABLE"
+	}
+	if !foundWarning {
+		t.Fatalf("expected unusable TOC warning, got %+v", preview.Warnings)
+	}
+}
+
+func TestEPUBUnknownUnmarkedEmptyTOCTargetFallsBackWithoutCoverChapter(t *testing.T) {
+	files := markedCoverNCXEPUB("正文一", "正文二", "frontmatter.xhtml")
+	for i := range files {
+		if files[i].name == "OEBPS/content.opf" {
+			files[i].body = strings.ReplaceAll(files[i].body, "titlepage.xhtml", "frontmatter.xhtml")
+		}
+		if files[i].name == "OEBPS/titlepage.xhtml" {
+			files[i].name = "OEBPS/frontmatter.xhtml"
+			files[i].body = `<html xmlns="http://www.w3.org/1999/xhtml"><head><title>书名</title></head><body></body></html>`
+		}
+	}
+	preview := parseFiles(t, files)
+	if len(preview.Chapters) != 2 || preview.Chapters[0].Title != "第一章" || preview.Chapters[1].Title != "第二章" {
+		t.Fatalf("unmarked title page was imported as a chapter: %+v", preview.Chapters)
+	}
+	for _, chapter := range preview.Chapters {
+		if strings.Contains(chapter.Markdown, "书名") || strings.Contains(chapter.Markdown, "版权信息") {
+			t.Fatalf("unmarked title page text appeared in a body chapter: %+v", chapter)
+		}
+	}
+	for _, warning := range preview.Warnings {
+		if warning.Code == "TOC_UNUSABLE" {
+			return
+		}
+	}
+	t.Fatalf("expected unusable TOC warning, got %+v", preview.Warnings)
+}
+
+func TestEPUBUnknownUnmarkedHeadingOnlyCoverTargetFallsBack(t *testing.T) {
+	files := markedCoverNCXEPUB("正文一", "正文二", "frontmatter.xhtml")
+	for i := range files {
+		if files[i].name == "OEBPS/content.opf" {
+			files[i].body = strings.ReplaceAll(files[i].body, "titlepage.xhtml", "frontmatter.xhtml")
+		}
+		if files[i].name == "OEBPS/titlepage.xhtml" {
+			files[i].name = "OEBPS/frontmatter.xhtml"
+			files[i].body = `<html xmlns="http://www.w3.org/1999/xhtml"><body><h1>书名</h1></body></html>`
+		}
+		if files[i].name == "OEBPS/toc.ncx" {
+			files[i].body = strings.Replace(files[i].body, "<text>开始</text>", "<text>书名</text>", 1)
+		}
+	}
+	preview := parseFiles(t, files)
+	if len(preview.Chapters) != 2 || preview.Chapters[0].Title != "第一章" || preview.Chapters[1].Title != "第二章" ||
+		!strings.Contains(preview.Chapters[0].Markdown, "# 书名") || !strings.Contains(preview.Chapters[0].Markdown, "正文一") ||
+		strings.Contains(preview.Chapters[1].Markdown, "书名") {
+		t.Fatalf("unmarked title should be retained with the first body chapter: %+v", preview.Chapters)
+	}
+	for _, warning := range preview.Warnings {
+		if warning.Code == "TOC_UNUSABLE" {
+			return
+		}
+	}
+	t.Fatalf("expected unusable TOC warning, got %+v", preview.Warnings)
+}
+
+func TestEPUBHeadingOnlyTitlepageInUsableTOCRemainsChapterStart(t *testing.T) {
+	files := standardEPUB(
+		`<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="title" href="titlepage.xhtml" media-type="application/xhtml+xml"/><item id="body" href="body.xhtml" media-type="application/xhtml+xml"/><item id="second" href="second.xhtml" media-type="application/xhtml+xml"/>`,
+		`<itemref idref="title"/><itemref idref="body"/><itemref idref="second"/>`,
+		`<li><a href="titlepage.xhtml">卷首</a></li><li><a href="second.xhtml">第二章</a></li>`,
+		testFile{"OEBPS/titlepage.xhtml", `<html><body><h1>第一章</h1></body></html>`},
+		testFile{"OEBPS/body.xhtml", `<html><body><p>标题单独位于 titlepage 文件，正文在后续 spine 文件。</p></body></html>`},
+		testFile{"OEBPS/second.xhtml", `<html><body><h1>第二章</h1><p>第二章正文。</p></body></html>`},
+	)
+	preview := parseFiles(t, files)
+	if len(preview.Chapters) != 2 || preview.Chapters[0].Title != "卷首" || preview.Chapters[1].Title != "第二章" {
+		t.Fatalf("titlepage-named chapter start was suppressed: %+v", preview.Chapters)
+	}
+	if !strings.Contains(preview.Chapters[0].Markdown, "标题单独位于 titlepage 文件") || strings.Contains(preview.Chapters[0].Markdown, "第二章正文") {
+		t.Fatalf("valid cross-spine chapter boundary changed: %+v", preview.Chapters)
+	}
+}
+
+func TestEPUBSingleHeadingOnlyChapterContinuesAcrossSpineDocuments(t *testing.T) {
+	files := standardEPUB(
+		`<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="start" href="start.xhtml" media-type="application/xhtml+xml"/><item id="body" href="body.xhtml" media-type="application/xhtml+xml"/>`,
+		`<itemref idref="start"/><itemref idref="body"/>`,
+		`<li><a href="start.xhtml">第一章</a></li>`,
+		testFile{"OEBPS/start.xhtml", `<html><body><h1>第一章</h1></body></html>`},
+		testFile{"OEBPS/body.xhtml", `<html><body><p>单章正文位于后续 spine 文件。</p></body></html>`},
+	)
+	preview := parseFiles(t, files)
+	if len(preview.Chapters) != 1 || preview.Chapters[0].Title != "第一章" ||
+		!strings.Contains(preview.Chapters[0].Markdown, "单章正文位于后续 spine 文件") {
+		t.Fatalf("single heading-only chapter start was split or dropped: %+v", preview.Chapters)
+	}
+}
+
+func TestEPUBEmptySpineDocumentWithValidTOCAnchorCanStartChapter(t *testing.T) {
+	files := standardEPUB(
+		`<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="start" href="start.xhtml" media-type="application/xhtml+xml"/><item id="body" href="body.xhtml" media-type="application/xhtml+xml"/>`,
+		`<itemref idref="start"/><itemref idref="body"/>`,
+		`<li><a href="start.xhtml#chapter-start">第一章</a></li>`,
+		testFile{"OEBPS/start.xhtml", `<html><body><div id="chapter-start"></div></body></html>`},
+		testFile{"OEBPS/body.xhtml", `<html><body><p>空锚点页之后的章节正文。</p></body></html>`},
+	)
+	preview := parseFiles(t, files)
+	if len(preview.Chapters) != 1 || preview.Chapters[0].Title != "第一章" ||
+		!strings.Contains(preview.Chapters[0].Markdown, "空锚点页之后的章节正文") {
+		t.Fatalf("valid empty anchor target did not preserve its chapter range: %+v", preview.Chapters)
+	}
+	for _, warning := range preview.Warnings {
+		if warning.Code == "TOC_UNUSABLE" {
+			t.Fatalf("valid TOC anchor was treated as unusable: %+v", preview.Warnings)
+		}
+	}
+}
+
+func TestEPUBMarkedCoverTOCParentDoesNotCreateChapterOrHideChildren(t *testing.T) {
+	files := markedCoverNCXEPUB("第一章正文", "第二章正文", "titlepage.xhtml")
+	for i := range files {
+		if files[i].name == "OEBPS/toc.ncx" {
+			files[i].body = `<ncx><navMap><navPoint><navLabel><text>封面</text></navLabel><content src="titlepage.xhtml"/><navPoint><navLabel><text>第一章</text></navLabel><content src="first.xhtml"/></navPoint><navPoint><navLabel><text>第二章</text></navLabel><content src="second.xhtml"/></navPoint></navPoint></navMap></ncx>`
+		}
+	}
+	preview := parseFiles(t, files)
+	if len(preview.Chapters) != 2 || preview.Chapters[0].Title != "第一章" || preview.Chapters[1].Title != "第二章" {
+		t.Fatalf("marked cover or its children produced the wrong chapters: %+v", preview.Chapters)
+	}
+	if !strings.Contains(preview.Chapters[0].Markdown, "第一章正文") || !strings.Contains(preview.Chapters[1].Markdown, "第二章正文") {
+		t.Fatalf("nested chapter targets were lost: %+v", preview.Chapters)
+	}
+	if strings.Contains(preview.Chapters[0].Markdown, "版权信息") || strings.Contains(preview.Chapters[1].Markdown, "版权信息") {
+		t.Fatal("marked cover text should not be imported as a body chapter")
+	}
+	for _, warning := range preview.Warnings {
+		if warning.Code == "TOC_PARTIAL" {
+			t.Fatalf("a skipped marked cover should not make the body TOC appear partial: %+v", preview.Warnings)
+		}
+	}
+}
+
+func TestEPUBChapterOver2MiBStillFails(t *testing.T) {
+	body := strings.Repeat("正文", 360_000)
+	archive, size := makeEPUB(t, markedCoverNCXEPUB(body, "", "first.xhtml")...)
+	_, err := Parse(bytes.NewReader(archive), size)
+	if err == nil {
+		t.Fatal("expected a single oversized chapter to fail")
+	}
+	parseErr, ok := err.(*Error)
+	if !ok || parseErr.Code != "EPUB_CHAPTER_TOO_LARGE" {
+		t.Fatalf("expected EPUB_CHAPTER_TOO_LARGE, got %v", err)
+	}
+}
+
 func TestEPUB3MultipleChaptersInOneDocumentAndVolumes(t *testing.T) {
 	files := standardEPUB(
 		`<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="text" href="text.xhtml" media-type="application/xhtml+xml"/>`,
@@ -122,6 +313,26 @@ func TestEPUBChapterCanSpanSpineDocuments(t *testing.T) {
 	}
 	if strings.Contains(preview.Chapters[0].Markdown, "第二章") || !strings.Contains(preview.Chapters[1].Markdown, "第二章正文") {
 		t.Fatalf("span boundary: %+v", preview.Chapters)
+	}
+}
+
+func TestEPUBChapterCanStartWithHeadingOnlySpineDocument(t *testing.T) {
+	files := standardEPUB(
+		`<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="first" href="first.xhtml" media-type="application/xhtml+xml"/><item id="body" href="body.xhtml" media-type="application/xhtml+xml"/><item id="second" href="second.xhtml" media-type="application/xhtml+xml"/>`,
+		`<itemref idref="first"/><itemref idref="body"/><itemref idref="second"/>`,
+		`<li><a href="first.xhtml">第一章</a></li><li><a href="second.xhtml">第二章</a></li>`,
+		testFile{"OEBPS/first.xhtml", `<html><body><h1>第一章</h1></body></html>`},
+		testFile{"OEBPS/body.xhtml", `<html><body><p>章节正文从后续 spine 文件开始。</p></body></html>`},
+		testFile{"OEBPS/second.xhtml", `<html><body><h1>第二章</h1><p>下一章正文。</p></body></html>`},
+	)
+	preview := parseFiles(t, files)
+	if len(preview.Chapters) != 2 || preview.Chapters[0].Title != "第一章" || preview.Chapters[1].Title != "第二章" {
+		t.Fatalf("heading-only chapter start was split: %+v", preview.Chapters)
+	}
+	if !strings.Contains(preview.Chapters[0].Markdown, "章节正文从后续 spine 文件开始") ||
+		strings.Contains(preview.Chapters[0].Markdown, "下一章正文") ||
+		!strings.Contains(preview.Chapters[1].Markdown, "下一章正文") {
+		t.Fatalf("cross-spine chapter boundary changed: %+v", preview.Chapters)
 	}
 }
 
