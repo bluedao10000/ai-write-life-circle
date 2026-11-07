@@ -130,6 +130,7 @@ type document struct {
 	href    string
 	nodes   []textNode
 	anchors map[string]int
+	cover   bool
 }
 type textNode struct {
 	Kind  string
@@ -291,15 +292,22 @@ func Parse(file io.ReaderAt, size int64) (Preview, error) {
 		if e != nil {
 			return Preview{}, applicationError(422, "EPUB_CONTENT_INVALID", "EPUB 正文不可安全解码。")
 		}
-		nodes, anchors, e := parseXHTML(b)
+		nodes, anchors, cover, e := parseXHTML(b)
 		if e != nil {
 			return Preview{}, applicationError(422, "EPUB_XHTML_INVALID", "EPUB 正文 XHTML 无法解析。")
 		}
-		docs = append(docs, document{href: href, nodes: nodes, anchors: anchors})
+		docs = append(docs, document{
+			href: href, nodes: nodes, anchors: anchors,
+			cover: cover,
+		})
 	}
-	if len(toc) > 0 {
-		preview.Chapters = fromTOC(docs, toc, &preview.Warnings)
-		if !tocCoversSpine(docs, toc) {
+	contentTOC := withoutCoverTargets(docs, toc)
+	if len(toc) > 0 && len(contentTOC) == 0 {
+		preview.Warnings = warn(preview.Warnings, "TOC_UNUSABLE", "目录无法可靠对应正文，已按阅读顺序切分。")
+		preview.Chapters = fromSpine(docs)
+	} else if len(contentTOC) > 0 {
+		preview.Chapters = fromTOC(docs, contentTOC, &preview.Warnings)
+		if !tocCoversSpine(docs, contentTOC) {
 			preview.Warnings = warn(
 				preview.Warnings,
 				"TOC_PARTIAL",
@@ -487,10 +495,10 @@ func parseNAV(b []byte, navPath string) []tocTarget {
 	return out
 }
 
-func parseXHTML(b []byte) ([]textNode, map[string]int, error) {
+func parseXHTML(b []byte) ([]textNode, map[string]int, bool, error) {
 	decoded, err := decodeHTML(b)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, false, err
 	}
 	if isUTF8(decoded) {
 		decoded = bytes.ReplaceAll(decoded, []byte("encoding=\"gbk\""), []byte("encoding=\"utf-8\""))
@@ -498,8 +506,9 @@ func parseXHTML(b []byte) ([]textNode, map[string]int, error) {
 	}
 	root, err := xhtml.Parse(bytes.NewReader(decoded))
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, false, err
 	}
+	cover := hasCalibreCoverMarker(root)
 	out := []textNode{}
 	character := 0
 	hidden := 0
@@ -587,24 +596,94 @@ func parseXHTML(b []byte) ([]textNode, map[string]int, error) {
 		}
 	}
 	walk(root, false)
-	return out, anchors, nil
+	return out, anchors, cover, nil
+}
+
+func hasCalibreCoverMarker(root *xhtml.Node) bool {
+	var walk func(*xhtml.Node) bool
+	walk = func(n *xhtml.Node) bool {
+		if n.Type == xhtml.ElementNode && strings.EqualFold(n.Data, "meta") {
+			name, content := "", ""
+			for _, attr := range n.Attr {
+				switch strings.ToLower(attr.Key) {
+				case "name":
+					name = strings.TrimSpace(attr.Val)
+				case "content":
+					content = strings.TrimSpace(attr.Val)
+				}
+			}
+			if strings.EqualFold(name, "calibre:cover") && strings.EqualFold(content, "true") {
+				return true
+			}
+		}
+		for child := n.FirstChild; child != nil; child = child.NextSibling {
+			if walk(child) {
+				return true
+			}
+		}
+		return false
+	}
+	return walk(root)
 }
 
 func fromSpine(docs []document) []Chapter {
 	out := []Chapter{}
-	for i, d := range docs {
-		md := render(d.nodes)
+	pendingHeadings := []textNode{}
+	pendingSource := ""
+	for _, d := range docs {
+		if d.cover {
+			continue
+		}
+		if isHeadingOnly(d.nodes) {
+			if pendingSource == "" {
+				pendingSource = d.href
+			}
+			pendingHeadings = append(pendingHeadings, d.nodes...)
+			continue
+		}
+		nodes := d.nodes
+		source := d.href
+		if len(pendingHeadings) > 0 {
+			nodes = append(append([]textNode{}, pendingHeadings...), d.nodes...)
+		}
+		md := render(nodes)
 		if md == "" {
 			continue
 		}
 		title := firstHeading(d.nodes)
 		if title == "" {
+			title = firstHeading(nodes)
+		}
+		if title == "" {
 			title = fmt.Sprintf("第%d章", len(out)+1)
 		}
-		out = append(out, Chapter{Title: title, Markdown: md, SourcePart: d.href})
-		_ = i
+		out = append(out, Chapter{Title: title, Markdown: md, SourcePart: source})
+		pendingHeadings = nil
+		pendingSource = ""
+	}
+	if len(pendingHeadings) > 0 {
+		md := render(pendingHeadings)
+		if md != "" {
+			title := firstHeading(pendingHeadings)
+			if title == "" {
+				title = fmt.Sprintf("第%d章", len(out)+1)
+			}
+			out = append(out, Chapter{Title: title, Markdown: md, SourcePart: pendingSource})
+		}
 	}
 	return out
+}
+
+func isHeadingOnly(nodes []textNode) bool {
+	if hasSubstantiveProse(nodes) {
+		return false
+	}
+	for _, node := range nodes {
+		if len(node.Kind) == 2 && node.Kind[0] == 'h' && node.Kind[1] >= '1' && node.Kind[1] <= '6' {
+			return true
+		}
+	}
+	return false
 }
 
 func fromTOC(docs []document, toc []tocTarget, warnings *[]Warning) []Chapter {
@@ -744,6 +823,9 @@ func fromTOC(docs []document, toc []tocTarget, warnings *[]Warning) []Chapter {
 	// Account for actual node ranges, including prose before the first anchor
 	// and between structural TOC containers. File-level coverage cannot detect it.
 	for d, doc := range docs {
+		if doc.cover {
+			continue
+		}
 		for n := 0; n < len(doc.nodes); {
 			if covered[d][n] {
 				n++
@@ -832,11 +914,70 @@ func tocCoversSpine(docs []document, toc []tocTarget) bool {
 		seen[item.Path] = true
 	}
 	for _, doc := range docs {
+		if doc.cover {
+			continue
+		}
 		if !seen[doc.href] {
 			return false
 		}
 	}
 	return true
+}
+
+func withoutCoverTargets(docs []document, toc []tocTarget) []tocTarget {
+	positions := make(map[string]int, len(docs))
+	for i, doc := range docs {
+		positions[doc.href] = i
+	}
+	usableTarget := false
+	for _, item := range toc {
+		if i, ok := positions[item.Path]; ok && !docs[i].cover &&
+			(hasSubstantiveProse(docs[i].nodes) || tocHasValidAnchor(docs[i], item)) {
+			usableTarget = true
+			break
+		}
+	}
+	for i := range docs {
+		if !docs[i].cover && len(docs[i].nodes) == 0 && !documentHasValidTOCAnchor(docs[i], toc) {
+			docs[i].cover = true
+		}
+	}
+	out := make([]tocTarget, 0, len(toc))
+	skippedAncestors := []int{}
+	for _, item := range toc {
+		for len(skippedAncestors) > 0 && item.Depth <= skippedAncestors[len(skippedAncestors)-1] {
+			skippedAncestors = skippedAncestors[:len(skippedAncestors)-1]
+		}
+		skip := false
+		if i, ok := positions[item.Path]; ok {
+			doc := docs[i]
+			skip = doc.cover || !usableTarget && !hasSubstantiveProse(doc.nodes) && !tocHasValidAnchor(doc, item)
+		}
+		if skip {
+			skippedAncestors = append(skippedAncestors, item.Depth)
+			continue
+		}
+		item.Depth -= len(skippedAncestors)
+		out = append(out, item)
+	}
+	return out
+}
+
+func tocHasValidAnchor(doc document, item tocTarget) bool {
+	if item.Path != doc.href || item.Fragment == "" {
+		return false
+	}
+	_, ok := doc.anchors[item.Fragment]
+	return ok
+}
+
+func documentHasValidTOCAnchor(doc document, toc []tocTarget) bool {
+	for _, item := range toc {
+		if tocHasValidAnchor(doc, item) {
+			return true
+		}
+	}
+	return false
 }
 
 func nodeIndex(nodes []textNode, character int) int {
