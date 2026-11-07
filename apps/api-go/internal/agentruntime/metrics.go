@@ -53,20 +53,25 @@ type RuntimeTaskMetrics struct {
 }
 
 type ThinkingRunMetrics struct {
-	SchemaVersion   int      `json:"schemaVersion"`
-	Attempts        int      `json:"attempts"`
-	Accepted        int      `json:"accepted"`
-	Running         int      `json:"running"`
-	Checkpointed    int      `json:"checkpointed"`
-	Completed       int      `json:"completed"`
-	Failed          int      `json:"failed"`
-	Interrupted     int      `json:"interrupted"`
-	Cancelled       int      `json:"cancelled"`
-	Resumed         int      `json:"resumed"`
-	ModelCalls      int      `json:"modelCalls"`
-	TerminalSamples int      `json:"terminalSamples"`
-	DurationP50Ms   *float64 `json:"durationP50Ms"`
-	DurationP95Ms   *float64 `json:"durationP95Ms"`
+	SchemaVersion         int      `json:"schemaVersion"`
+	Attempts              int      `json:"attempts"`
+	Accepted              int      `json:"accepted"`
+	Running               int      `json:"running"`
+	Checkpointed          int      `json:"checkpointed"`
+	Completed             int      `json:"completed"`
+	Failed                int      `json:"failed"`
+	Interrupted           int      `json:"interrupted"`
+	Cancelled             int      `json:"cancelled"`
+	Resumed               int      `json:"resumed"`
+	ModelCalls            int      `json:"modelCalls"`
+	KnownUsageRequests    int      `json:"knownUsageRequests"`
+	UnknownUsageRequests  int      `json:"unknownUsageRequests"`
+	InputTokens           int      `json:"inputTokens"`
+	OutputTokens          int      `json:"outputTokens"`
+	UnknownReservedTokens int      `json:"unknownReservedTokens"`
+	TerminalSamples       int      `json:"terminalSamples"`
+	DurationP50Ms         *float64 `json:"durationP50Ms"`
+	DurationP95Ms         *float64 `json:"durationP95Ms"`
 }
 
 type RuntimeMetricsSource func(context.Context) (RuntimeTaskMetrics, error)
@@ -167,6 +172,14 @@ func formatRuntimeMetrics(health RuntimeHealth, metrics RuntimeTaskMetrics, thin
 		p.integer("writer_agent_thinking_run_resumptions", "", thinkingRuns.Resumed)
 		p.family("writer_agent_thinking_run_model_calls", "Model calls recorded by persisted Thinking runs.")
 		p.integer("writer_agent_thinking_run_model_calls", "", thinkingRuns.ModelCalls)
+		p.family("writer_agent_thinking_model_requests", "Persisted Thinking model requests by usage settlement state.")
+		p.integer("writer_agent_thinking_model_requests", `state="settled"`, thinkingRuns.KnownUsageRequests)
+		p.integer("writer_agent_thinking_model_requests", `state="unknown"`, thinkingRuns.UnknownUsageRequests)
+		p.family("writer_agent_thinking_model_tokens", "Known input and output tokens from settled Thinking model requests.")
+		p.integer("writer_agent_thinking_model_tokens", `type="input"`, thinkingRuns.InputTokens)
+		p.integer("writer_agent_thinking_model_tokens", `type="output"`, thinkingRuns.OutputTokens)
+		p.family("writer_agent_thinking_model_unknown_reserved_tokens", "Conservative token reservations retained for Thinking requests with unknown usage.")
+		p.integer("writer_agent_thinking_model_unknown_reserved_tokens", "", thinkingRuns.UnknownReservedTokens)
 		p.family("writer_agent_thinking_run_terminal_samples", "Terminal persisted Thinking runs available for duration percentiles.")
 		p.integer("writer_agent_thinking_run_terminal_samples", "", thinkingRuns.TerminalSamples)
 		p.family("writer_agent_thinking_run_duration_ms", "Persisted terminal Thinking run duration by quantile.")
@@ -269,12 +282,12 @@ func probeThinkingRunMetrics(ctx context.Context, origin, token string) *Thinkin
 	if err := json.Unmarshal(rawMetrics, &fields); err != nil {
 		return nil
 	}
-	for _, name := range []string{"schemaVersion", "attempts", "accepted", "running", "checkpointed", "completed", "failed", "interrupted", "cancelled", "resumed", "modelCalls", "terminalSamples", "durationP50Ms", "durationP95Ms"} {
+	for _, name := range []string{"schemaVersion", "attempts", "accepted", "running", "checkpointed", "completed", "failed", "interrupted", "cancelled", "resumed", "modelCalls", "knownUsageRequests", "unknownUsageRequests", "inputTokens", "outputTokens", "unknownReservedTokens", "terminalSamples", "durationP50Ms", "durationP95Ms"} {
 		if _, ok := fields[name]; !ok {
 			return nil
 		}
 	}
-	for _, name := range []string{"schemaVersion", "attempts", "accepted", "running", "checkpointed", "completed", "failed", "interrupted", "cancelled", "resumed", "modelCalls", "terminalSamples"} {
+	for _, name := range []string{"schemaVersion", "attempts", "accepted", "running", "checkpointed", "completed", "failed", "interrupted", "cancelled", "resumed", "modelCalls", "knownUsageRequests", "unknownUsageRequests", "inputTokens", "outputTokens", "unknownReservedTokens", "terminalSamples"} {
 		if strings.TrimSpace(string(fields[name])) == "null" {
 			return nil
 		}
@@ -283,7 +296,7 @@ func probeThinkingRunMetrics(ctx context.Context, origin, token string) *Thinkin
 	if err := json.Unmarshal(rawMetrics, &value); err != nil || value.SchemaVersion != 1 {
 		return nil
 	}
-	values := []int{value.Attempts, value.Accepted, value.Running, value.Checkpointed, value.Completed, value.Failed, value.Interrupted, value.Cancelled, value.Resumed, value.ModelCalls, value.TerminalSamples}
+	values := []int{value.Attempts, value.Accepted, value.Running, value.Checkpointed, value.Completed, value.Failed, value.Interrupted, value.Cancelled, value.Resumed, value.ModelCalls, value.KnownUsageRequests, value.UnknownUsageRequests, value.InputTokens, value.OutputTokens, value.UnknownReservedTokens, value.TerminalSamples}
 	for _, count := range values {
 		if count < 0 {
 			return nil

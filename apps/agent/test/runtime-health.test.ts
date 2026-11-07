@@ -21,6 +21,9 @@ test('authenticated runtime diagnostics expose projection failure and restart re
  const value=saved(id);value.view.title='private-title';
  value.runs=[run('completed',1,10,2),run('failed',2,20,1),run('interrupted',1,30,4)];
  value.view.run=run('cancelled',3,40,3);
+ const execution=(modelRequests:NonNullable<Saved['execution']>['modelRequests']):NonNullable<Saved['execution']>=>({calls:0,turns:0,memoryCalls:0,spent:0,modelRequests});
+ value.attempts={[value.runs[0]!.runId]:{durable:{conversationId:1},execution:execution([{id:'settled-old',reservedTokens:120,bound:120,input:100,output:20,status:'settled'},{id:'unknown-old',reservedTokens:1000,bound:1000,status:'reserved'}])}};
+ value.execution=execution([{id:'settled-current',reservedTokens:480,bound:480,input:300,output:100,status:'settled'}]);
  const config={state:dir,port:1,version:'fixture',token:'private-token',key:'private-key',model:value.view.model,storyOrigin:'http://127.0.0.1:1'};
  let store=new Store(dir),host=new PiHost(config,store);
  await store.write(value);
@@ -43,7 +46,7 @@ test('authenticated runtime diagnostics expose projection failure and restart re
   const diagnostic=await (await fetch(origin+'diagnostics',{headers})).text();
   for(const secret of [id,'private-title','private-token','private-key','private-failure'])assert.equal(diagnostic.includes(secret),false);
   const runMetrics=(JSON.parse(diagnostic) as {metrics:{persisted:{thinkingRuns:Record<string,unknown>}}}).metrics.persisted.thinkingRuns;
-  assert.deepEqual(runMetrics,{schemaVersion:1,attempts:4,accepted:0,running:0,checkpointed:0,completed:1,failed:1,interrupted:1,cancelled:1,resumed:2,modelCalls:10,terminalSamples:4,durationP50Ms:20,durationP95Ms:40});
+  assert.deepEqual(runMetrics,{schemaVersion:1,attempts:4,accepted:0,running:0,checkpointed:0,completed:1,failed:1,interrupted:1,cancelled:1,resumed:2,modelCalls:10,knownUsageRequests:2,unknownUsageRequests:1,inputTokens:400,outputTokens:120,unknownReservedTokens:1000,terminalSamples:4,durationP50Ms:20,durationP95Ms:40});
   db.exec('DROP TRIGGER reject_event');
   await host.close();
   assert.equal((await fetch(origin+'readiness',{headers})).status,503);

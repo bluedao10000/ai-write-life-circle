@@ -54,6 +54,11 @@ export type ThinkingRunMetrics = {
   cancelled: number;
   resumed: number;
   modelCalls: number;
+  knownUsageRequests: number;
+  unknownUsageRequests: number;
+  inputTokens: number;
+  outputTokens: number;
+  unknownReservedTokens: number;
   terminalSamples: number;
   durationP50Ms: number | null;
   durationP95Ms: number | null;
@@ -136,9 +141,23 @@ export class Store implements ExecutionAuthority {
     const result: ThinkingRunMetrics = {
       schemaVersion: 1, attempts: 0, accepted: 0, running: 0, checkpointed: 0,
       completed: 0, failed: 0, interrupted: 0, cancelled: 0, resumed: 0,
-      modelCalls: 0, terminalSamples: 0, durationP50Ms: null, durationP95Ms: null,
+      modelCalls: 0, knownUsageRequests: 0, unknownUsageRequests: 0,
+      inputTokens: 0, outputTokens: 0, unknownReservedTokens: 0,
+      terminalSamples: 0, durationP50Ms: null, durationP95Ms: null,
     };
     const durations: number[] = [];
+    const addExecution = (execution?: RunExecution) => {
+      for (const request of execution?.modelRequests ?? []) {
+        if (request.status === "settled" && Number.isSafeInteger(request.input) && Number.isSafeInteger(request.output) && request.input! >= 0 && request.output! >= 0) {
+          result.knownUsageRequests++;
+          result.inputTokens += request.input!;
+          result.outputTokens += request.output!;
+        } else {
+          result.unknownUsageRequests++;
+          result.unknownReservedTokens += request.reservedTokens;
+        }
+      }
+    };
     const add = (run: ThinkingRun) => {
       result.attempts++;
       result[run.status]++;
@@ -153,6 +172,8 @@ export class Store implements ExecutionAuthority {
       if (saved.deleted) continue;
       for (const run of saved.runs ?? []) add(run);
       if (saved.view.run) add(saved.view.run);
+      for (const attempt of Object.values(saved.attempts ?? {})) addExecution(attempt.execution);
+      addExecution(saved.execution);
     }
     if (durations.length) {
       durations.sort((a, b) => a - b);

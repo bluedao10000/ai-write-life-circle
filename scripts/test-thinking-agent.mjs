@@ -63,6 +63,9 @@ try {
     /writer_agent_thinking_run_attempts\{state="completed"\} 1/,
     /writer_agent_thinking_run_terminal_samples 1/,
     /writer_agent_thinking_run_model_calls [1-9][0-9]*/,
+    /writer_agent_thinking_model_requests\{state="settled"\} [1-9][0-9]*/,
+    /writer_agent_thinking_model_tokens\{type="input"\} [1-9][0-9]*/,
+    /writer_agent_thinking_model_tokens\{type="output"\} [1-9][0-9]*/,
     /writer_agent_thinking_run_duration_ms\{quantile="0.5"\} [0-9.]+/,
   ])assert.match(firstRuntimeMetrics,expected);
   await f.stopAgent();await f.restartAgent();

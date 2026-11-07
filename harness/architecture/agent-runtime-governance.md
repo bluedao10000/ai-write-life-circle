@@ -124,6 +124,6 @@ Creative只读计划额外按固定五角色返回Admissions、Results、complet
 
 接口不写入第二份指标账本，服务重新实例化后从原任务回执得到同一投影。它不返回任务ID、作品、正文、凭证或任意错误文本。当前历史窗口受原任务回执保留策略约束；不能将本地合成Provider耗时解释为真实模型SLO。
 
-`GET /internal/v1/runtime/metrics`在同一Go私有loopback监听器输出Prometheus文本。它将原运行health、Worker心跳、Thinking readiness、Thinking诊断中的持久Run聚合和任务回执投影合并为每次抓取时重新计算的固定指标；不维护抓取链路、不会把旧心跳的待办数当成当前值，也不在Go进程内保存指标历史。Thinking指标包括固定生命周期状态、恢复次数、模型调用总数和终态Run耗时P50/P95。端点要求原服务Token，只允许GET；无样本计时省略，Thinking诊断暂不可用时省略其历史指标，来源失败返回无正文503。
+`GET /internal/v1/runtime/metrics`在同一Go私有loopback监听器输出Prometheus文本。它将原运行health、Worker心跳、Thinking readiness、Thinking诊断中的持久Run聚合和任务回执投影合并为每次抓取时重新计算的固定指标；不维护抓取链路、不会把旧心跳的待办数当成当前值，也不在Go进程内保存指标历史。Thinking指标包括固定生命周期状态、恢复次数、模型调用总数、终态Run耗时P50/P95、已结算Usage对应的输入/输出Token，以及Usage未知请求的数量和预留上限。未知预留只表示保守上界，不当作实际Token或费用。端点要求原服务Token，只允许GET；无样本计时省略，Thinking诊断暂不可用时省略其历史指标，来源失败返回无正文503。
 
 标签只允许五种任务类型、Creative只读计划五角色、Thinking Run固定生命周期状态及固定Usage状态。这样既能接入外部监控，又避免把任务ID、作品、消息、正文、凭证或任意错误变成高基数或敏感标签。指标只从原权威状态派生；回滚时移除路由即可，已有状态文件无需迁移。Thinking历史窗口随原会话保留策略变化，删除会话后其Run不再计入；本地合成Provider样本不代表生产SLO。

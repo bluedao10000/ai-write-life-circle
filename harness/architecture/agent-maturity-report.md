@@ -572,8 +572,8 @@ Creative只读试点每次模型请求在网络前等待原Go started事务写�
 
 ### 2026-11-07 Thinking持久Run指标
 
-Thinking的诊断指标从每个会话已有的历史`runs`和当前`view.run`重新派生，汇总尝试状态、恢复次数、模型调用总数及终态耗时P50/P95。Go私有Prometheus端点读取受服务令牌保护的Thinking诊断，将固定生命周期和分位指标与Worker指标一并输出。没有模型Usage的数据不会推导为Token或费用；会话删除后对应Run不再计入；不新增持久状态或数据库。
+Thinking的诊断指标从每个会话已有的历史`runs`、当前`view.run`及原`RunExecution.modelRequests`重新派生，汇总尝试状态、恢复次数、模型调用总数、已知Usage输入/输出Token、未知Usage请求及其预留上限、终态耗时P50/P95。Go私有Prometheus端点读取受服务令牌保护的Thinking诊断，将固定生命周期、Usage和分位指标与Worker指标一并输出。未知请求预留只作为上限，不冒充实际Token或费用；会话删除后对应Run和Usage不再计入；不新增持久状态或数据库。
 
-Agent运行时诊断单测验证多种终态、恢复次数、模型调用与最近秩分位数跨Pi重启保持一致，且不泄漏Session ID或正文。Go race测试覆盖成功、异常结构和无Thinking实例；`pnpm test:thinking`使用本地合成Provider完成真实Go/Pi流程后检查Go导出值和Pi重启前后相等，`pnpm test:runtime`验证无Thinking时省略历史指标、恢复后正常导出且零模型调用。`pnpm test:agent`为166/166，Agent类型检查及`go test -race ./internal/agentruntime`通过。
+Agent运行时诊断单测验证多种终态、恢复次数、模型调用、已知与未知Usage、Token投影和最近秩分位数跨Pi重启保持一致，且不泄漏Session ID或正文。Go race测试覆盖成功、异常结构和无Thinking实例；`pnpm test:thinking`使用本地合成Provider完成真实Go/Pi流程后检查Go导出的Usage和Pi重启前后数值相等，`pnpm test:runtime`验证无Thinking时省略历史指标、恢复后正常导出且零模型调用。`pnpm test:agent`为166/166，Agent类型检查及`go test -race ./internal/agentruntime`通过。
 
 该投影提供保留会话范围的重启稳定汇总，不是按天/周窗口，也不代表真实Provider性能或SLO。会话保留期与真实模型诊断样本仍需后续确定。

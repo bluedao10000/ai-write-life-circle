@@ -26,7 +26,7 @@ func TestRuntimeMetricsHandlerProjectsAuthoritiesAndRejectsUnauthorizedReads(t *
 		case "/internal/v1/readiness":
 			_, _ = w.Write([]byte(`{"schemaVersion":1,"liveness":true,"readiness":true,"degraded":false,"status":"ready","counts":{"activeTasks":2,"pendingAdmissions":1,"failedSessions":3,"unpublishedSessions":4,"recoveryPending":5}}`))
 		case "/internal/v1/diagnostics":
-			_, _ = w.Write([]byte(`{"metrics":{"persisted":{"thinkingRuns":{"schemaVersion":1,"attempts":4,"accepted":1,"running":0,"checkpointed":0,"completed":1,"failed":1,"interrupted":1,"cancelled":0,"resumed":1,"modelCalls":7,"terminalSamples":3,"durationP50Ms":12,"durationP95Ms":90}}}}`))
+			_, _ = w.Write([]byte(`{"metrics":{"persisted":{"thinkingRuns":{"schemaVersion":1,"attempts":4,"accepted":1,"running":0,"checkpointed":0,"completed":1,"failed":1,"interrupted":1,"cancelled":0,"resumed":1,"modelCalls":7,"knownUsageRequests":3,"unknownUsageRequests":1,"inputTokens":900,"outputTokens":250,"unknownReservedTokens":4096,"terminalSamples":3,"durationP50Ms":12,"durationP95Ms":90}}}}`))
 		default:
 			t.Errorf("unexpected Thinking path: %s", r.URL.Path)
 			http.NotFound(w, r)
@@ -120,6 +120,11 @@ func TestRuntimeMetricsHandlerProjectsAuthoritiesAndRejectsUnauthorizedReads(t *
 		`writer_agent_thinking_run_attempts{state="failed"} 1`,
 		"writer_agent_thinking_run_resumptions 1",
 		"writer_agent_thinking_run_model_calls 7",
+		`writer_agent_thinking_model_requests{state="settled"} 3`,
+		`writer_agent_thinking_model_requests{state="unknown"} 1`,
+		`writer_agent_thinking_model_tokens{type="input"} 900`,
+		`writer_agent_thinking_model_tokens{type="output"} 250`,
+		"writer_agent_thinking_model_unknown_reserved_tokens 4096",
 		"writer_agent_thinking_run_terminal_samples 3",
 		`writer_agent_thinking_run_duration_ms{quantile="0.95"} 90`,
 	} {
@@ -142,7 +147,7 @@ func TestRuntimeMetricsHandlerProjectsAuthoritiesAndRejectsUnauthorizedReads(t *
 
 func TestProbeThinkingRunMetricsOmitsInvalidOrUnavailableProjection(t *testing.T) {
 	for _, body := range []string{
-		`{"metrics":{"persisted":{"thinkingRuns":{"schemaVersion":1,"attempts":2,"accepted":0,"running":0,"checkpointed":0,"completed":1,"failed":0,"interrupted":0,"cancelled":0,"resumed":0,"modelCalls":1,"terminalSamples":1,"durationP50Ms":20,"durationP95Ms":10}}}}`,
+		`{"metrics":{"persisted":{"thinkingRuns":{"schemaVersion":1,"attempts":2,"accepted":0,"running":0,"checkpointed":0,"completed":1,"failed":0,"interrupted":0,"cancelled":0,"resumed":0,"modelCalls":1,"knownUsageRequests":1,"unknownUsageRequests":0,"inputTokens":10,"outputTokens":5,"unknownReservedTokens":0,"terminalSamples":1,"durationP50Ms":20,"durationP95Ms":10}}}}`,
 		`{"metrics":{"persisted":{"thinkingRuns":{"schemaVersion":2}}}}`,
 		`{"metrics":{"persisted":{"thinkingRuns":{"schemaVersion":1}}}}`,
 		`{"metrics":{"persisted":{}}}`,
