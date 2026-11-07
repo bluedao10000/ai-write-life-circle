@@ -30,6 +30,8 @@ try{
  await until(async()=>{const s=await f.call(base+'/sessions/'+session.sessionId);return s.messages.some(m=>m.role==='assistant'&&m.text.includes('合成思考回复'))},'Thinking independent of Review');await f.complete(r.runId);
  // Cancel after started; a late provider response must remain inert.
  before=f.calls;r=await f.enqueue();await until(()=>f.calls>before,'cancel target entered provider');await f.call('/v1/projects/review-fixture/reviews/'+r.runId+'/cancel',{method:'POST',body:{}});await sleep(2100);assert.equal((await f.get(r.runId)).status,'cancelled');
+ // API loss aborts the active Provider request. Recovery retries only after the old lease expires.
+ await f.select({...f.cases[0],fake:'api-down-slow'});before=f.calls;const disconnected=f.disconnectedRequests;r=await f.enqueue();await until(()=>f.calls>before,'API outage target entered provider');await f.stop(f.api());await until(()=>f.disconnectedRequests>disconnected,'Provider observed cancellation after API loss');await f.expire(r.runId);f.switchOwner('review','disabled');await f.startAPI();const interrupted=await f.get(r.runId);assert.equal(interrupted.status,'queued');assert.equal(interrupted.failureCode,'REVIEW_INTERRUPTED');assert.equal(interrupted.findings.length,0);await sleep(300);assert.equal(f.calls,before+1);f.setMode('valid');f.switchOwner('review','pi');const recovered=await f.complete(r.runId);assert.equal(recovered.findings.length,1);await sleep(2200);assert.equal((await f.get(r.runId)).findings.length,1);assert.equal(f.calls,before+2);
  // Two Node workers race, but one lease is valid.
  await f.select(f.cases[0]);const other=f.start('pi-worker');await ready(other,'worker_started');before=f.calls;r=await f.enqueue();await f.complete(r.runId);assert.equal(f.calls,before+1);await f.stop(other);
  // Node dies after the model started. Only a new lease may eventually commit.
@@ -38,5 +40,5 @@ try{
  await f.stop(f.api());await f.startAPI();await until(async()=>{const s=await f.call('/v1/agent-runtime');return s.executors.review.ready},'worker reconnected after API restart');
  // disabled is a maintenance switch, not a second executor; queued work resumes on pi.
  f.switchOwner('review','disabled');assert.equal((await f.call('/v1/agent-runtime')).executors.review.executorOwner,'disabled');before=f.calls;r=await f.enqueue();await sleep(300);assert.equal(f.calls,before);f.switchOwner('review','pi');await f.complete(r.runId);assert.equal((await f.call('/v1/agent-runtime')).executors.review.executorOwner,'pi');
- console.log('PASS: actual Go API + Pi Thinking + Pi Worker; Review cases, evidence rejection, Pi-only ownership, cancellation, duplicate workers, SIGKILL, API restart, disabled/resume and Thinking isolation. Fixture model only.');
+ console.log('PASS: actual Go API + Pi Thinking + Pi Worker; Review cases, evidence rejection, cancellation, API-loss abort and fenced retry, duplicate workers, SIGKILL, API restart, disabled/resume and Thinking isolation. Fixture model only.');
 }finally{await f.close()}

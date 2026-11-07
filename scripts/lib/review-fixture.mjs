@@ -8,13 +8,14 @@ export async function createReviewFixture({modelBudget}={}) {
   const directory = await mkdtemp(join(tmpdir(), 'writer-review-fixture-'))
   const harness = join(directory, 'harness'), state = join(directory, 'state')
   await mkdir(join(harness, 'manuscript'), { recursive: true })
-  let mode = 'valid', calls = 0, reviewCalls = 0, knowledgeResponses = 0, consolidationCalls = 0, planToolAttempts = 0, planToolAttemptName = ''
+  let mode = 'valid', calls = 0, disconnectedRequests = 0, reviewCalls = 0, knowledgeResponses = 0, consolidationCalls = 0, planToolAttempts = 0, planToolAttemptName = ''
  const requests=[]
   async function select(value = cases[0]) {
     mode = value.fake
     await writeFile(join(harness, 'manuscript/CH-003.md'), `# 历史记录\nID: CH-003\norder: 3\n\n${value.history}\n`)
     await writeFile(join(harness, 'manuscript/CH-008.md'), `# 当前审查夹具\nID: CH-008\norder: 8\n\n${value.target}\n\n测试编号：${value.id}\n`)
   }
+  function setMode(value) { mode = value }
   await select()
   const server = createServer(async (req, res) => {
     if (req.url === '/control' && req.method === 'POST') {
@@ -24,6 +25,7 @@ export async function createReviewFixture({modelBudget}={}) {
     if (req.url === '/stats') { res.end(JSON.stringify({ calls, reviewCalls, mode })); return }
     if (req.url !== '/v1/chat/completions') { res.writeHead(404).end(); return }
     calls++
+    res.once('close',()=>{if(!res.writableFinished)disconnectedRequests++})
     let body = ''; for await (const chunk of req) body += chunk
     const request = JSON.parse(body)
     if(modelBudget&&(calls>modelBudget.maxModelCalls||calls*(100+(request.max_completion_tokens??request.max_tokens??2048))>modelBudget.maxTokens)){
@@ -110,6 +112,7 @@ export async function createReviewFixture({modelBudget}={}) {
     reviewCalls++
     const selectedMode = mode
     if (selectedMode === 'slow') await new Promise((resolve) => setTimeout(resolve, 1800))
+    if (selectedMode === 'api-down-slow') await new Promise((resolve) => setTimeout(resolve, 2800))
     if (selectedMode === 'failure') { res.writeHead(503).end('private-provider-message'); return }
     const target = input.sources.find((s) => s.kind === 'target'), history = input.sources.find((s) => s.kind === 'historical_chapter')
     const finding = { type: input.reviewTypes[0], title: '两处记录可能存在差异', inference: 'AI 候选推断：两处记录可能不一致，需要作者核对。', question: '这是有意保留的差异吗？', alternativeExplanation: '也可能是角色认知、时间变化或有意的信息不对称。', evidence: [
@@ -125,7 +128,7 @@ export async function createReviewFixture({modelBudget}={}) {
   })
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
   const origin = `http://127.0.0.1:${server.address().port}`
-  return { directory, harness, state, origin, requests, select, get calls() { return calls }, get reviewCalls() { return reviewCalls }, get knowledgeResponses(){return knowledgeResponses}, get consolidationCalls(){return consolidationCalls}, get planToolAttempts(){return planToolAttempts}, get planToolAttemptName(){return planToolAttemptName},
+  return { directory, harness, state, origin, requests, select, setMode, get calls() { return calls }, get disconnectedRequests(){return disconnectedRequests}, get reviewCalls() { return reviewCalls }, get knowledgeResponses(){return knowledgeResponses}, get consolidationCalls(){return consolidationCalls}, get planToolAttempts(){return planToolAttempts}, get planToolAttemptName(){return planToolAttemptName},
     async sourceBytes() { return Promise.all(['CH-003', 'CH-008'].map((id) => readFile(join(harness, `manuscript/${id}.md`), 'utf8'))) },
     async close() { server.closeAllConnections(); await new Promise((resolve) => server.close(resolve)); await rm(directory, { recursive: true, force: true }) },
   }

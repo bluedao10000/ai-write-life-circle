@@ -583,3 +583,9 @@ Agent运行时诊断单测验证多种终态、恢复次数、模型调用、已
 `test-creative-workflow.mjs`新增真实Go API与Pi Worker暂停竞态：本地Provider在Planner请求进入后延迟12秒，作者暂停Creative后，Worker心跳重新检查原Go Creative租约并触发Pi请求取消。Go仍会拒绝迟到候选，但接受当前有效Worker租约下的终态用量回执，按未知费用结算完整预留并清理任务快照。测试在暂停响应后的2.5秒内观察到Provider连接关闭、Creative任务回到retry、Worker回执为interrupted且快照已清空，Divergence数量保持不变；Worker模型期限为5秒，因此连接关闭早于Provider超时。
 
 Go `agenttasks` race测试与`pnpm test:creative`通过；后者构建Go API、Contracts与Agent后运行完整Creative流程，模型请求全部发往本地合成Provider。该项证明固定Creative执行路径的暂停、未知费用结算、快照清理和迟到提交栅栏，不扩展为其他任务类型或真实Provider网络故障的覆盖结论。
+
+### 2026-11-07 Go API中断Review模型请求
+
+`test-pi-review-worker.mjs`新增真实Go API、Pi Worker和localhost Provider故障路径：Review请求进入Provider后停止Go API，Worker下一次租约心跳失败会取消在途HTTP请求，Provider观察到连接关闭。将原租约推进到过期后重启API，Review按原业务策略进入`queued`并标记`REVIEW_INTERRUPTED`；停用执行器期间没有新模型请求或候选。恢复Pi执行器后仅有一次新attempt完成，旧Provider延迟响应到达后仍未改变最终单条Finding，模型请求总数为2。
+
+`pnpm test:pi:worker`构建Go API、控制工具和Agent，并运行真实Go/Pi Thinking/Worker流程通过。全部模型请求均由本地合成Provider提供。该项覆盖API短暂不可用时的请求取消、租约失效和既有Review重试策略，不代表真实Provider网络表现或生产可用性指标。
