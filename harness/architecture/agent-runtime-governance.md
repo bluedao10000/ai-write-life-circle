@@ -20,7 +20,7 @@ Thinking BudgetAdapter 复用 Saved.execution.modelRequests、usage 和 Store.wr
 
 真实Go/Pi验收中，Researcher、Analyst、Critic的started请求在任务API代理层达到并发3；Go原子保存五个角色准入，角色预算合计精确等于父任务预留。提交前增加并发race测试，向三个合法并行准入中混入扩大1 token的重复角色；扩大请求以`AGENT_CONFIG_CHANGED`拒绝，合法请求各保留原序号和预算，重启读取仍是五个唯一准入。
 
-本批完整验收包含176项Agent测试、类型检查、lint、Agent与Go构建、`go test -race ./...`、真实Agent task API合同和运行时健康检查。开发与保留配对数据集各有3组合格记录，单角色和五角色从真实任务API取得相同父预留，五个子预算逐组精确合计；并发阶段仍观察到最多3个并行准入。所有模型响应来自本地合成Provider，没有付费调用。
+本批完整验收包含177项Agent测试、类型检查、lint、Agent与Go构建、`go test -race ./...`、真实Agent task API合同和运行时健康检查。开发与保留配对数据集各有3组合格记录，单角色和五角色从真实任务API取得相同父预留，五个子预算逐组精确合计；并发阶段仍观察到最多3个并行准入。所有模型响应来自本地合成Provider，没有付费调用。
 
 ## 工具入口
 

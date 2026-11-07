@@ -31,11 +31,16 @@ export function assertIndependentCreativePlanDatasets(dev:CreativePlanDataset,he
 }
 
 const runSchema=z.object({
- taskId:nonblank(128),jobId:nonblank(128),status:z.enum(['pending','running','retry','completed','failed','cancelled']),
+ taskId:nonblank(128),jobId:nonblank(128),status:z.enum(['pending','running','retry','completed','failed','cancelled']),finished:z.boolean(),
  revisionId:nonblank(128),contentHash:nonblank(160),inputHash:nonblank(160),
  provider:nonblank(80),model:nonblank(160),deadlinePolicyMs:z.number().int().positive(),
  reservedTokens:z.number().int().positive(),modelCalls:z.number().int().min(0).max(5),
  roleBudgets:z.array(z.object({role:nonblank(100),maxTokens:z.number().int().positive()}).strict()).max(5),
+ roleResults:z.array(z.object({
+  role:nonblank(100),callIndex:z.number().int().min(1).max(5),
+  status:z.enum(['completed','failed']).nullable(),durationMs:z.number().nonnegative().nullable(),
+  usage:z.object({inputTokens:z.number().int().nonnegative(),outputTokens:z.number().int().nonnegative()}).strict().nullable(),
+ }).strict()).max(5),
  usageTokens:z.number().int().nonnegative().nullable(),unknownUsage:z.boolean(),
  toolCalls:z.number().int().nonnegative(),businessWrites:z.number().int().nonnegative(),
  durationMs:z.number().nonnegative().nullable(),roleDurationsMs:z.array(z.object({role:nonblank(100),durationMs:z.number().nonnegative().nullable()}).strict()).max(5),
@@ -44,7 +49,7 @@ const runSchema=z.object({
 export type CreativePlanRun=z.infer<typeof runSchema>;
 const pairInputSchema=z.object({datasetVersion:nonblank(120),split:z.enum(['dev','held-out']),caseId:z.string().regex(/^[a-z0-9-]+$/),single:runSchema,multi:runSchema}).strict();
 export type CreativePlanPair=z.infer<typeof pairInputSchema> & {
- checks:{sameSavedRevision:boolean;sameInput:boolean;sameModel:boolean;sameDeadlinePolicy:boolean;equalParentReservation:boolean;childBudgetBounded:boolean;zeroTools:boolean;zeroBusinessWrites:boolean;singleCompleted:boolean;multiCompleted:boolean;expectedCalls:boolean;validCandidates:boolean};
+ checks:{sameSavedRevision:boolean;sameInput:boolean;sameModel:boolean;sameDeadlinePolicy:boolean;equalParentReservation:boolean;childBudgetBounded:boolean;zeroTools:boolean;zeroBusinessWrites:boolean;persistedTaskResults:boolean;persistedRoleResults:boolean;singleCompleted:boolean;multiCompleted:boolean;expectedCalls:boolean;validCandidates:boolean};
  deterministicPassed:boolean;
  eligible:boolean;
 };
@@ -66,13 +71,21 @@ export function pairCreativePlanRuns(input:unknown):CreativePlanPair{
  const uniqueRoles=new Set(multi.roleBudgets.map(item=>item.role));
  const childBudgetBounded=multi.roleBudgets.reduce((sum,item)=>sum+item.maxTokens,0)<=multi.reservedTokens&&
   [...uniqueRoles].every(role=>roles.includes(role))&&uniqueRoles.size===multi.roleBudgets.length;
+ const resultsByCall=new Map(multi.roleResults.map(result=>[result.callIndex,result]));
+ const persistedRoleResults=multi.roleResults.length===roles.length&&resultsByCall.size===roles.length&&
+  roles.every((role,index)=>{
+   const result=resultsByCall.get(index+1);
+   return result?.role===role&&result.status==='completed'&&typeof result.durationMs==='number'&&result.usage!==null;
+  })&&multi.usageTokens!==null&&multi.roleResults.reduce((sum,result)=>sum+(result.usage?.inputTokens??0)+(result.usage?.outputTokens??0),0)===multi.usageTokens;
  const checks={
   ...identityChecks,
   childBudgetBounded,
   zeroTools:single.toolCalls===0&&multi.toolCalls===0,
   zeroBusinessWrites:single.businessWrites===0&&multi.businessWrites===0,
-  singleCompleted:single.status==='completed',
-  multiCompleted:multi.status==='completed',
+  persistedTaskResults:single.finished&&multi.finished,
+  persistedRoleResults,
+  singleCompleted:single.finished&&single.status==='completed',
+  multiCompleted:multi.finished&&multi.status==='completed',
   expectedCalls:single.modelCalls===1&&multi.modelCalls===5&&multi.roleBudgets.length===roles.length&&
    roles.every(role=>uniqueRoles.has(role))&&multi.roleBudgets.reduce((sum,item)=>sum+item.maxTokens,0)===multi.reservedTokens,
   validCandidates:!!single.output&&!!multi.output,

@@ -278,8 +278,12 @@ async function creativePlanComparison(fixture,task,result,wait,worker){
   const value=await json(creativePath);
   return value?.jobs?.filter(job=>[singleQueued.jobId,multiQueued.jobId].includes(job.jobId)).every(job=>job.status==='completed')?value:null;
  },'creative plan-check receipts');
- const multiFinalTask=await taskRecord(multiQueued.jobId);
- const singleFinalTask=await taskRecord(singleQueued.jobId);
+ const finalTasks=await wait(async()=>{
+  const singleFinal=await taskRecord(singleQueued.jobId),multiFinal=await taskRecord(multiQueued.jobId);
+  return singleFinal?.finished&&multiFinal?.finished?{single:singleFinal,multi:multiFinal}:null;
+ },'finished plan-check task receipts');
+ const multiFinalTask=finalTasks.multi;
+ const singleFinalTask=finalTasks.single;
  const singleJob=state.jobs.find(job=>job.jobId===singleQueued.jobId),multiJob=state.jobs.find(job=>job.jobId===multiQueued.jobId);
  usage(result,[singleJob,multiJob]);
  const systems=multiRequests.map(request=>request.messages.find(message=>message.role==='system')?.content??'');
@@ -306,7 +310,17 @@ async function creativePlanComparison(fixture,task,result,wait,worker){
   return duration;
  };
  const stepResults=multiFinalTask?.stepResults??[];
- const roleDurations=admissions.map(admission=>({role:admission.role,durationMs:stepResults.find(step=>step.callIndex===admission.callIndex)?.durationMs??null}));
+ const roleResults=[
+  'creative.plan.planner','creative.plan.researcher','creative.plan.analyst','creative.plan.critic','creative.plan.coordinator',
+ ].map((role,index)=>{
+  const callIndex=index+1,result=stepResults.find(step=>step.callIndex===callIndex),usage=result?.usage??null;
+  return {
+   role,callIndex,status:result?.status??null,
+   durationMs:typeof result?.durationMs==='number'?result.durationMs:null,
+   usage:usage?{inputTokens:usage.inputTokens,outputTokens:usage.outputTokens}:null,
+  };
+ });
+ const roleDurations=roleResults.map(result=>({role:result.role,durationMs:result.durationMs}));
  const durationMs=(job,record)=>{
   const start=Date.parse(claimStarted(record)??''),end=Date.parse(job?.completedAt??'');
   return Number.isFinite(start)&&Number.isFinite(end)&&end>=start?end-start:null;
@@ -318,8 +332,8 @@ async function creativePlanComparison(fixture,task,result,wait,worker){
   datasetVersion:task.environment.datasetVersion??'creative-plan-check-inline-v1',
   split:task.taskId.startsWith('held-out-')?'held-out':'dev',
   caseId:task.environment.caseId??task.taskId,
-  single:{taskId:singleFinalTask.task.taskId,jobId:singleQueued.jobId,status:singleJob.status,revisionId:singleFinalTask.task.revisionId,contentHash:singleFinalTask.task.contentHash,inputHash:singleFinalTask.task.inputHash,provider:singleFinalTask.task.model.provider,model:singleFinalTask.task.model.model,deadlinePolicyMs:deadlinePolicyMs(singleFinalTask),reservedTokens:singleFinalTask.task.reservedTokens,modelCalls:singleJob.modelCalls??0,roleBudgets:[{role:'creative.plan.single',maxTokens:singleFinalTask.task.reservedTokens}],usageTokens:usageTokens(singleJob),unknownUsage:!!singleJob.usageIncomplete||!singleJob.usage,toolCalls:0,businessWrites:businessWrites(afterPlan.asset.version===plan.version&&afterChapter.headRevision.revisionId===saved.revisionId),durationMs:durationMs(singleJob,singleFinalTask),roleDurationsMs:[],output:candidate(singleResult)},
-  multi:{taskId:multiFinalTask.task.taskId,jobId:multiQueued.jobId,status:multiJob.status,revisionId:multiFinalTask.task.revisionId,contentHash:multiFinalTask.task.contentHash,inputHash:multiFinalTask.task.inputHash,provider:multiFinalTask.task.model.provider,model:multiFinalTask.task.model.model,deadlinePolicyMs:deadlinePolicyMs(multiFinalTask),reservedTokens:multiFinalTask.task.reservedTokens,modelCalls:multiJob.modelCalls??0,roleBudgets:admissions.map(item=>({role:item.role,maxTokens:item.maxTokens})),usageTokens:usageTokens(multiJob),unknownUsage:!!multiJob.usageIncomplete||!multiJob.usage,toolCalls:toolEvents,businessWrites:businessWrites(afterPlan.asset.version===plan.version&&afterChapter.headRevision.revisionId===saved.revisionId),durationMs:durationMs(multiJob,multiFinalTask),roleDurationsMs:roleDurations,output:candidate(multiResult)},
+  single:{taskId:singleFinalTask.task.taskId,jobId:singleQueued.jobId,status:singleJob.status,finished:singleFinalTask.finished,revisionId:singleFinalTask.task.revisionId,contentHash:singleFinalTask.task.contentHash,inputHash:singleFinalTask.task.inputHash,provider:singleFinalTask.task.model.provider,model:singleFinalTask.task.model.model,deadlinePolicyMs:deadlinePolicyMs(singleFinalTask),reservedTokens:singleFinalTask.task.reservedTokens,modelCalls:singleJob.modelCalls??0,roleBudgets:[{role:'creative.plan.single',maxTokens:singleFinalTask.task.reservedTokens}],roleResults:[],usageTokens:usageTokens(singleJob),unknownUsage:!!singleJob.usageIncomplete||!singleJob.usage,toolCalls:0,businessWrites:businessWrites(afterPlan.asset.version===plan.version&&afterChapter.headRevision.revisionId===saved.revisionId),durationMs:durationMs(singleJob,singleFinalTask),roleDurationsMs:[],output:candidate(singleResult)},
+  multi:{taskId:multiFinalTask.task.taskId,jobId:multiQueued.jobId,status:multiJob.status,finished:multiFinalTask.finished,revisionId:multiFinalTask.task.revisionId,contentHash:multiFinalTask.task.contentHash,inputHash:multiFinalTask.task.inputHash,provider:multiFinalTask.task.model.provider,model:multiFinalTask.task.model.model,deadlinePolicyMs:deadlinePolicyMs(multiFinalTask),reservedTokens:multiFinalTask.task.reservedTokens,modelCalls:multiJob.modelCalls??0,roleBudgets:admissions.map(item=>({role:item.role,maxTokens:item.maxTokens})),roleResults,usageTokens:usageTokens(multiJob),unknownUsage:!!multiJob.usageIncomplete||!multiJob.usage,toolCalls:toolEvents,businessWrites:businessWrites(afterPlan.asset.version===plan.version&&afterChapter.headRevision.revisionId===saved.revisionId),durationMs:durationMs(multiJob,multiFinalTask),roleDurationsMs:roleDurations,output:candidate(multiResult)},
  });
  result.metrics={
   singleCompleted:pair.checks.singleCompleted,

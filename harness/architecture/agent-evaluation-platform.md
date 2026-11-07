@@ -130,9 +130,9 @@ Safety分类以本地合成Provider运行9/9工程通过，共12次模型调用�
 
 当前策略让单角色和五角色获得相同的Go父预留；五个角色的准入上限之和等于该父额，Coordinator接收整数余数。独立的`creative-plan-check-dev-v1`与`creative-plan-check-held-out-v1`各含3个案例，加载器拒绝版本、ID或请求内容跨split复用。`pnpm eval:creative:plan-check -- --split=dev|held-out`通过真实Go/Pi进程和localhost Provider执行，配对器只接受保存Revision与Hash、inputHash、Provider/Model、deadline策略和父预留完全一致，且调用数、角色集合、零工具和零业务写入均合格的记录。
 
-报告分别列出确定性资格、Go Usage/预留、单角色与五角色任务延迟、五角色逐角色延迟、Judge调用/Usage/预留及人工双评一致性；`pairRecord`和候选正文只写入未跟踪的本地报告，不复制到提交文档。语义质量使用`creative-plan-check-pairwise-v1` rubric，合格候选随机排序并映射回原模式。缺少独立模型输出和真人双评时，单胜率、多胜率、平局率及`qualityValidated`保持`null`/`false`。
+报告分别列出确定性资格、Go Usage/预留、单角色与五角色任务延迟、五角色逐角色延迟、Judge调用/Usage/预留及人工双评一致性；`pairRecord`和候选正文只写入未跟踪的本地报告，不复制到提交文档。五角色配对只有在原AgentTask已终态且保存了五个完成结果、数值耗时和非空Usage，并且逐角色Usage与父任务已知Usage一致时才合格；缺失结果不会被写成0或从日志补齐。语义质量使用`creative-plan-check-pairwise-v1` rubric，合格候选随机排序并映射回原模式。缺少独立模型输出和真人双评时，单胜率、多胜率、平局率及`qualityValidated`保持`null`/`false`。
 
-开发与保留集各3组配对、3/3工程通过；单角色各3次调用、五角色各15次调用，两组父预留合计分别为66720 tokens，五角色子预算逐组精确等于父额，工具调用与业务写入为0。Judge另执行6次localhost合成调用并产生1200 known usage tokens；这些数据不构成真实模型质量证据。Go`./...`全量race、Agent176/176、契约构建、真实Creative Go/Pi流程和两份配对报告通过。
+开发与保留集各3组配对、3/3工程通过；单角色各3次调用、五角色各15次调用，两组父预留合计分别为66720 tokens，五角色子预算逐组精确等于父额，6/6配对均保存五个完成角色结果并具备正式延迟样本，工具调用与业务写入为0。Judge另执行6次localhost合成调用并产生1200 known usage tokens；这些数据不构成真实模型质量证据。Go`./...`全量race、Agent177/177、契约构建、真实Creative Go/Pi流程和两份配对报告通过。
 
 ## 只读编排失败与未知费用
 

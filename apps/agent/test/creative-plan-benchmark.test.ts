@@ -13,9 +13,10 @@ const held=loadCreativePlanDataset(fixture('creative-plan-held-out'));
 const roles=['creative.plan.planner','creative.plan.researcher','creative.plan.analyst','creative.plan.critic','creative.plan.coordinator'];
 function run(id:string,mode:'single'|'multi'):CreativePlanRun{
  return {
-  taskId:`task-${id}`,jobId:`job-${id}`,status:'completed',revisionId:'revision',contentHash:'content',inputHash:'input',
+  taskId:`task-${id}`,jobId:`job-${id}`,status:'completed',finished:true,revisionId:'revision',contentHash:'content',inputHash:'input',
   provider:'fixture',model:'synthetic',deadlinePolicyMs:17000,reservedTokens:10000,modelCalls:mode==='single'?1:5,
   roleBudgets:mode==='single'?[{role:'creative.plan.single',maxTokens:10000}]:roles.map((role,index)=>({role,maxTokens:index===4?2000:2000})),
+  roleResults:mode==='single'?[]:roles.map((role,index)=>({role,callIndex:index+1,status:'completed' as const,durationMs:index+1,usage:{inputTokens:100,outputTokens:100}})),
   usageTokens:mode==='single'?300:1000,unknownUsage:false,toolCalls:0,businessWrites:0,durationMs:mode==='single'?10:50,
   roleDurationsMs:mode==='multi'?roles.map((role,index)=>({role,durationMs:index+1})):[],
   output:JSON.stringify({assessment:'diverged',quote:'evidence',explanation:'计划与正文不同。',question:'这是有意的吗？'}),
@@ -51,6 +52,25 @@ test('child role caps exactly consume the shared parent budget and reject expans
  const expanded={...run('multi','multi'),roleBudgets:roles.map((role,index)=>({role,maxTokens:index===4?2001:2000}))};
  const changed=pairCreativePlanRuns({datasetVersion:dev.version,split:'dev',caseId:'dev-lighthouse-choice',single:run('single','single'),multi:expanded});
  assert.equal(changed.checks.childBudgetBounded,false);assert.equal(changed.eligible,false);
+});
+
+test('paired results require a finished task and five persisted completed role results',()=>{
+ const complete=run('multi','multi');
+ const reordered=pair('dev-lighthouse-choice',run('single','single'),{...complete,roleResults:[...complete.roleResults].reverse()});
+ assert.equal(reordered.checks.persistedTaskResults,true);assert.equal(reordered.checks.persistedRoleResults,true);assert.equal(reordered.eligible,true);
+ const unfinished=pairCreativePlanRuns({datasetVersion:dev.version,split:'dev',caseId:'dev-lighthouse-choice',single:run('single','single'),multi:{...complete,finished:false}});
+ assert.equal(unfinished.checks.persistedTaskResults,false);assert.equal(unfinished.eligible,false);
+ for(const changed of [
+  {...complete,roleResults:complete.roleResults.slice(0,4)},
+  {...complete,roleResults:complete.roleResults.map((result,index)=>index===2?{...result,status:'failed' as const}:result)},
+  {...complete,roleResults:complete.roleResults.map((result,index)=>index===1?{...result,durationMs:null}:result)},
+  {...complete,roleResults:complete.roleResults.map((result,index)=>index===4?{...result,usage:null}:result)},
+  {...complete,usageTokens:999},
+ ]){
+  const value=pairCreativePlanRuns({datasetVersion:dev.version,split:'dev',caseId:'dev-lighthouse-choice',single:run('single','single'),multi:changed});
+  assert.equal(value.checks.persistedRoleResults,false);
+  assert.equal(value.eligible,false);
+ }
 });
 
 test('pairwise Judge records random order, mapped winner and fixed plan-check rubric',async()=>{

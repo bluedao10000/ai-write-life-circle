@@ -618,6 +618,6 @@ Creative五角色计划核对不再把单角色每任务上限乘以5。Go的累
 
 新增`creative-plan-check-dev-v1`与`creative-plan-check-held-out-v1`，各有3个版本、ID和请求内容不重叠的合成案例。配对器从真实Go任务回执核验保存Revision、Content Hash、inputHash、Provider/Model、deadline策略与父预留，拒绝重复或混合记录；任何确定性失败、缺口工具/业务写入、错误调用数或角色集合都不进入语义判断。
 
-开发与保留集各3/3配对工程通过。每集单角色为3次调用、五角色为15次调用，父预留合计均为66720 tokens且子预算逐组精确合计；工具调用和业务写入均为0。固定`creative-plan-check-pairwise-v1` Judge使用本地治理入口、随机候选顺序与独立预留，另执行6次合成调用并结算1200 tokens。当前没有独立真实模型输出或真人双评，单/多胜率、平局率、Judge与人工一致性和`qualityValidated`都保持`null`/`false`。
+开发与保留集各3/3配对工程通过。每集单角色为3次调用、五角色为15次调用，父预留合计均为66720 tokens且子预算逐组精确合计；配对器等待原AgentTask进入终态，并要求每个五角色任务保存五个完成结果、数值耗时、非空Usage及与父任务一致的角色Usage合计，6/6配对均满足后才进入评测。工具调用和业务写入均为0。固定`creative-plan-check-pairwise-v1` Judge使用本地治理入口、随机候选顺序与独立预留，另执行6次合成调用并结算1200 tokens。当前没有独立真实模型输出或真人双评，单/多胜率、平局率、Judge与人工一致性和`qualityValidated`都保持`null`/`false`。
 
-Go全量race、Agent176/176、Agent类型检查、lint、构建、真实Creative Go/Pi流程以及两份本地配对报告通过。开发与保留集证明预算、配对资格、报告和评分链路，不证明五角色相对单角色的真实质量收益；试点继续默认关闭，Phase 5仍属部分覆盖。
+Go全量race、Agent177/177、Agent类型检查、lint、构建、真实Creative Go/Pi流程以及两份本地配对报告通过。开发与保留集证明预算、配对资格、报告和评分链路，不证明五角色相对单角色的真实质量收益；试点继续默认关闭，Phase 5仍属部分覆盖。
