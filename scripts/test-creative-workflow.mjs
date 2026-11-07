@@ -325,6 +325,15 @@ try {
   assert.deepEqual(metrics.taskKinds.map(kind => kind.kind), ["review.execute", "knowledge.extract", "creative.organize", "creative.plan_check", "memory.consolidate"]);
   const creativePlanMetrics = metrics.taskKinds.find(kind => kind.kind === "creative.plan_check");
   assert(creativePlanMetrics.tasks >= 2 && creativePlanMetrics.completed >= 1 && Number.isFinite(creativePlanMetrics.claimToStartedP95Ms) && Number.isFinite(creativePlanMetrics.startedToTerminalP95Ms));
+  assert(Number.isFinite(Date.parse(metrics.sampledAt)));
+  assert.deepEqual(metrics.windows.map(window => window.window), ["24h", "7d"]);
+  for (const window of metrics.windows) {
+    const plan = window.taskKinds.find(kind => kind.kind === "creative.plan_check");
+    assert(plan.claimed >= 1 && plan.started >= 1 && plan.completed >= 1 && plan.claimToStartedSamples >= 1 && plan.startedToTerminalSamples >= 1);
+    assert(Number.isFinite(plan.claimToStartedP50Ms) && Number.isFinite(plan.claimToStartedP95Ms) && Number.isFinite(plan.startedToTerminalP50Ms) && Number.isFinite(plan.startedToTerminalP95Ms));
+    assert.deepEqual(window.roles.map(role => role.role), metrics.roles.map(role => role.role));
+    assert(window.roles.every(role => role.admissions >= 1 && role.results >= 1 && role.completed >= 1 && role.knownUsage >= 1 && role.unknownUsage === 0 && role.reservedTokens > 0 && role.unknownReservedTokens === 0 && Number.isFinite(role.durationP50Ms) && Number.isFinite(role.durationP95Ms)));
+  }
   assert(!JSON.stringify(metrics).includes(governed.task.taskId));
 
   assert.deepEqual([...governed.modelSteps].sort((a,b)=>a.callIndex-b.callIndex).map(step=>step.role), ['creative.plan.planner','creative.plan.researcher','creative.plan.analyst','creative.plan.critic','creative.plan.coordinator']);

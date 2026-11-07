@@ -46,10 +46,53 @@ type RuntimeTaskKindMetric struct {
 
 type RuntimeTaskMetrics struct {
 	SchemaVersion int
+	SampledAt     string
 	Tasks         int
 	Samples       int
 	Roles         []RuntimeRoleMetric
 	TaskKinds     []RuntimeTaskKindMetric
+	Windows       []RuntimeTaskMetricWindow
+}
+
+type RuntimeTaskMetricWindow struct {
+	Window    string
+	Duration  string
+	TaskKinds []RuntimeTaskKindWindowMetric
+	Roles     []RuntimeRoleWindowMetric
+}
+
+type RuntimeTaskKindWindowMetric struct {
+	Kind                     string
+	Claimed                  int
+	Started                  int
+	Completed                int
+	Failed                   int
+	Interrupted              int
+	Unknown                  int
+	ClaimToStartedSamples    int
+	ClaimToStartedP50Ms      *float64
+	ClaimToStartedP95Ms      *float64
+	StartedToTerminalSamples int
+	StartedToTerminalP50Ms   *float64
+	StartedToTerminalP95Ms   *float64
+}
+
+type RuntimeRoleWindowMetric struct {
+	Role                  string
+	Admissions            int
+	Results               int
+	Completed             int
+	Failed                int
+	KnownUsage            int
+	UnknownUsage          int
+	ReservedTokens        int
+	UnknownReservedTokens int
+	InputTokens           int
+	OutputTokens          int
+	CachedInputTokens     int
+	DurationSamples       int
+	DurationP50Ms         *float64
+	DurationP95Ms         *float64
 }
 
 type ThinkingRunMetrics struct {
@@ -236,6 +279,72 @@ func formatRuntimeMetrics(health RuntimeHealth, metrics RuntimeTaskMetrics, thin
 		p.integer("writer_agent_worker_role_tokens", current+`,type="cached_input"`, role.CachedInputTokens)
 		p.optionalFloat("writer_agent_worker_role_duration_ms", current+`,quantile="0.5"`, role.DurationP50Ms)
 		p.optionalFloat("writer_agent_worker_role_duration_ms", current+`,quantile="0.95"`, role.DurationP95Ms)
+	}
+
+	p.family("writer_agent_worker_window_task_events", "Persisted Worker task lifecycle events in fixed recent windows.")
+	p.family("writer_agent_worker_window_task_transition_samples", "Persisted task transition duration samples in fixed recent windows.")
+	p.family("writer_agent_worker_window_task_transition_ms", "Persisted task transition latency by fixed window, kind, transition and quantile.")
+	p.family("writer_agent_worker_window_role_events", "Persisted Creative read-only role admissions, results and usage states in fixed recent windows.")
+	p.family("writer_agent_worker_window_role_tokens", "Known role usage and admitted reservations in fixed recent windows.")
+	p.family("writer_agent_worker_window_role_duration_samples", "Persisted read-only role duration samples in fixed recent windows.")
+	p.family("writer_agent_worker_window_role_duration_ms", "Persisted read-only role result duration by fixed window and quantile.")
+	seenWindows := map[string]bool{}
+	for _, window := range metrics.Windows {
+		if window.Window != "24h" && window.Window != "7d" {
+			continue
+		}
+		if seenWindows[window.Window] {
+			continue
+		}
+		seenWindows[window.Window] = true
+		windowLabel := `window=` + label(window.Window)
+		for _, task := range window.TaskKinds {
+			if !exposedTaskKinds[task.Kind] {
+				continue
+			}
+			labels := windowLabel + `,kind=` + label(task.Kind)
+			for _, state := range []struct {
+				name  string
+				value int
+			}{{"claimed", task.Claimed}, {"started", task.Started}, {"completed", task.Completed}, {"failed", task.Failed}, {"interrupted", task.Interrupted}, {"unknown", task.Unknown}} {
+				p.integer("writer_agent_worker_window_task_events", labels+`,state=`+label(state.name), state.value)
+			}
+		}
+
+		for _, task := range window.TaskKinds {
+			if !exposedTaskKinds[task.Kind] {
+				continue
+			}
+			labels := windowLabel + `,kind=` + label(task.Kind)
+			p.integer("writer_agent_worker_window_task_transition_samples", labels+`,transition="claim_to_started"`, task.ClaimToStartedSamples)
+			p.integer("writer_agent_worker_window_task_transition_samples", labels+`,transition="started_to_terminal"`, task.StartedToTerminalSamples)
+			p.optionalFloat("writer_agent_worker_window_task_transition_ms", labels+`,transition="claim_to_started",quantile="0.5"`, task.ClaimToStartedP50Ms)
+			p.optionalFloat("writer_agent_worker_window_task_transition_ms", labels+`,transition="claim_to_started",quantile="0.95"`, task.ClaimToStartedP95Ms)
+			p.optionalFloat("writer_agent_worker_window_task_transition_ms", labels+`,transition="started_to_terminal",quantile="0.5"`, task.StartedToTerminalP50Ms)
+			p.optionalFloat("writer_agent_worker_window_task_transition_ms", labels+`,transition="started_to_terminal",quantile="0.95"`, task.StartedToTerminalP95Ms)
+		}
+
+		for _, role := range window.Roles {
+			if !exposedRoles[role.Role] {
+				continue
+			}
+			labels := windowLabel + `,role=` + label(role.Role)
+			for _, state := range []struct {
+				name  string
+				value int
+			}{{"admission", role.Admissions}, {"result", role.Results}, {"completed", role.Completed}, {"failed", role.Failed}, {"known_usage", role.KnownUsage}, {"unknown_usage", role.UnknownUsage}} {
+				p.integer("writer_agent_worker_window_role_events", labels+`,state=`+label(state.name), state.value)
+			}
+			for _, tokens := range []struct {
+				name  string
+				value int
+			}{{"reserved", role.ReservedTokens}, {"unknown_reserved", role.UnknownReservedTokens}, {"input", role.InputTokens}, {"output", role.OutputTokens}, {"cached_input", role.CachedInputTokens}} {
+				p.integer("writer_agent_worker_window_role_tokens", labels+`,type=`+label(tokens.name), tokens.value)
+			}
+			p.integer("writer_agent_worker_window_role_duration_samples", labels, role.DurationSamples)
+			p.optionalFloat("writer_agent_worker_window_role_duration_ms", labels+`,quantile="0.5"`, role.DurationP50Ms)
+			p.optionalFloat("writer_agent_worker_window_role_duration_ms", labels+`,quantile="0.95"`, role.DurationP95Ms)
+		}
 	}
 	return p.body.String()
 }

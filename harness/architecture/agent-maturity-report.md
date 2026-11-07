@@ -17,7 +17,7 @@ Phase 0 已完成源码审计和架构设计；Phase 1 已完成本地代码接�
 | 长期记忆 | 部分覆盖 | Working来源、Semantic/Episodic检索、版本冲突提示、Procedural作者审核、主动提取、后台整理、模型关系建议、重复/替代/过期生命周期 | 工程链路已实现；待真实关系准确率、长期噪声控制与召回质量评测 |
 | Evaluation | 部分覆盖 | 统一schema/split/runner、每类独立版本的dev与held-out数据、五类与四能力覆盖校验、Go业务和故障适配（含API中断Review的独立dev/held-out样本）、受治理Judge及其独立dev/held-out、显式预算的真实模型入口、Judge对人工校准及人工双评一致性统计、单/多角色开发集与保留集对照 | 待完成实际模型质量、真实人工标注校准和代表性性能验收 |
 | 安全 | 部分覆盖 | capability、隔离进程、工具授权、取消、幂等、开发与保留集记忆污染、同作者跨作品Session隔离及只读子角色工具输出拒绝 | 缺真实模型抗污染率、更广动态权限传播与并发预算竞争验证 |
-| 可观测性 | 部分覆盖 | 治理关联日志、跨进程健康；私有Prometheus按需投影五种Worker任务、五角色Admissions/Results/Usage/耗时，以及Thinking持久Run状态、恢复次数、模型调用和终态耗时P50/P95 | 历史窗口随原会话保留策略；代表性并发基线和真实模型诊断样本仍缺 |
+| 可观测性 | 部分覆盖 | 治理关联日志、跨进程健康；私有Prometheus投影五种Worker任务、五角色Admissions/Results/Usage/耗时及固定24h/7d回执窗口，以及Thinking持久Run状态、恢复次数、模型调用和终态耗时P50/P95 | Worker窗口只覆盖当前仍保留的任务回执；Thinking历史随会话保留策略；代表性并发基线和真实模型诊断样本仍缺 |
 | 多角色协作 | 部分覆盖 | 默认关闭的Creative只读试点：Planner后由Researcher/Analyst/Critic并行检查，Coordinator汇总；dev/held-out对照、并发3准入、子预算精确合计和子上下文收窄通过 | 需真实模型同预算质量比较、代表性能与更广义动态子角色/审批策略 |
 | 自主规划 | 未实现 | 有限模型/工具循环与显式恢复 | 有界Goal/Plan与审批版本绑定，须后置 |
 
@@ -603,3 +603,11 @@ Knowledge attempt租约过期后，Go现在检查原执行器的持久启动标�
 开发集`agent-eval-v25-reliability`新增`knowledge-api-outage`，保留集`agent-eval-v10-reliability`加入措辞和正文独立的同场景。真实Go API与Pi Worker运行本地Provider请求期间停止API；Worker心跳取消Provider连接，夹具推进原租约到期并重启API后由新Worker恢复。评分读取Go任务、Knowledge视图和账本文件，验证旧attempt终态、旧费用仍开放、usage不完整、新预留已结算、只发生一次重试与一次Revision提交。
 
 dev reliability 13/13工程通过、19次合成模型调用；held-out 4/4、8次合成模型调用。两个新样本各执行2次模型请求、0次工具调用，Go保留旧token与点数预留并报告34,298 tokens预算暴露；未知Usage的输入、输出与计费Token保持`null`。定向`pnpm --filter @writer-agent/agent exec tsx --test test/evaluation.test.ts`为28/28，Knowledge与AgentTasks race测试通过，`node scripts/test-pi-knowledge-faults.mjs`通过。模型端仅使用本地合成Provider，评测质量成功率为`null`。
+
+### 2026-11-07 Worker近期历史窗口
+
+`/internal/v1/agent/tasks/metrics`和`/internal/v1/runtime/metrics`现在同时输出固定24小时和7天窗口；数据在读取时从原`tasks-v1.json`派生，既有累计指标、百分位、任务状态和存储格式保持现有语义。任务领取和启动按各自审计时间计数，终态按终态审计时间计数；claim→started样本按started时间、started→terminal样本按terminal时间归属。每种任务均输出固定状态计数、样本数和最近秩P50/P95，空样本不输出分位值。
+
+Creative五角色的准入和预留Token按持久准入时间计数；结果、状态、已知Usage、未知Usage及角色执行时长按父任务终态时间归属。已知Token、准入预留和未知Usage对应的保守预留分开汇总。一个采样时间用于两种窗口；窗口端点包含在内，缺失、无效和未来事件时间不计入。Prometheus仅输出固定窗口、任务类型、角色、状态、转换和分位标签，不包含任务、作者、作品、会话或运行标识。
+
+Go `agenttasks` 与 `agentruntime` race测试通过。`pnpm test:creative` 的本地Go/Pi合成Provider流程确认实际只读计划在两个窗口中均记录了五个角色的准入、终态结果、已知Usage、预留和执行时长；`pnpm test:runtime` 检查空任务存储仍输出24h/7d固定指标标签，且模型调用数为0。窗口只涵盖Go当前保留的任务回执，不构成完整历史留存承诺，也不证明生产SLO或真实模型质量。
