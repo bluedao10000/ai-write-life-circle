@@ -45,7 +45,7 @@ test('evaluation refuses missing evidence, exceeded budget and contaminated held
 });
 
 test('each evaluation category has its own versioned development and held-out data',()=>{
- assert.equal(development.tasks.length,42);assert.equal(heldOut.tasks.length,17);
+ assert.equal(development.tasks.length,43);assert.equal(heldOut.tasks.length,18);
  for(const category of ['task-success','reliability','memory','safety','performance'] as const){
   const dev=selectEvaluationDataset(development,category),held=selectEvaluationDataset(heldOut,category);
   assert(dev.tasks.length>0);assert(held.tasks.length>0);
@@ -114,6 +114,23 @@ test('business evaluation requires Go evidence, rejects duplicate candidates and
  const source=data.tasks.find(task=>task.environment.scenario==='review-evidence')!;
  assert.equal(grade(source,{...observation,metrics:{...metrics,findings:0,rejectedCount:1,completionAcknowledgementsDropped:0}}).passed,true);
  assert.equal(grade(source,{...observation,metrics:{...metrics,completionAcknowledgementsDropped:0}}).passed,false);
+});
+
+test('Go API outage reliability is independently graded in development and held-out sets',async()=>{
+ for(const dataset of [development,heldOut]){
+  const task=dataset.tasks.find(task=>task.environment.scenario==='review-api-outage')!;
+  const metrics=Object.fromEntries(task.scorer.deterministic.map(rule=>[rule.metric,rule.value]));
+  const sample={...observation,metrics,inputTokens:null,outputTokens:null,chargedTokens:null,modelCalls:2,budgetExposure:{tokens:40000,authority:'go' as const}};
+  const passed=await runEvaluation([task],async()=>sample);
+  assert.equal(passed.results[0]!.passed,true,dataset.split);
+  for(const rule of task.scorer.deterministic){
+   const violated=typeof rule.value==='boolean'?!rule.value:rule.value===0?1:Number(rule.value)+1;
+   const result=await runEvaluation([task],async()=>({...sample,metrics:{...metrics,[rule.metric]:violated}}));
+   assert.equal(result.results[0]!.passed,false,dataset.split+': '+rule.metric);
+  }
+  const noExposure=await runEvaluation([task],async()=>({...sample,budgetExposure:undefined}));
+  assert.equal(noExposure.results[0]!.passed,false,dataset.split+': unknown usage without Go exposure');
+ }
 });
 
 test('memory and creative business graders require provenance, author isolation and no canon promotion',()=>{

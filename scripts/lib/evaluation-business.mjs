@@ -25,6 +25,7 @@ export async function executeBusinessEvaluation(task,signal,result){
   if(task.environment.scenario==='creative-plan-failure'||task.environment.scenario==='creative-plan-tool-attempt'||task.environment.scenario==='creative-plan-child-budget-tamper')return await creativePlanFailure(fixture,task,result,wait,worker);
   if(task.capability==='creative')return await creative(fixture,task,result,wait,children);
   if(task.environment.scenario==='review-receipt')fixture.dropCompletion();
+  if(task.environment.scenario==='review-api-outage')return await reviewApiOutage(fixture,task,result,wait,sources);
   const run=await fixture.enqueue();result.trace.push({action:'go_accepted'});
   const final=await wait(async()=>{const state=await fixture.get(run.runId);return ['completed','failed','cancelled'].includes(state.status)&&state});
   if(task.environment.scenario==='review-receipt'){
@@ -43,6 +44,61 @@ export async function executeBusinessEvaluation(task,signal,result){
   result.modelCalls=fixture.calls;
   if(fixture.calls&&result.chargedTokens===0){result.chargedTokens=null;result.inputTokens=null;result.outputTokens=null}
  }
+}
+
+async function reviewApiOutage(fixture,task,result,wait,sources){
+ const before=fixture.calls,disconnected=fixture.disconnectedRequests;
+ fixture.setMode('api-down-slow');
+ const run=await fixture.enqueue();result.trace.push({action:'go_accepted'});
+ await wait(()=>fixture.calls>before);
+ await fixture.stop(fixture.api());result.trace.push({action:'go_api_stopped'});
+ await wait(()=>fixture.disconnectedRequests>disconnected);
+ result.trace.push({action:'provider_request_cancelled'});
+ await fixture.expire(run.runId);
+ result.trace.push({action:'old_lease_expired'});
+ fixture.switchOwner('review','disabled');
+ result.trace.push({action:'executor_disabled'});
+ await fixture.startAPI();
+ result.trace.push({action:'go_api_restarted'});
+ const interrupted=await fixture.get(run.runId);
+ result.trace.push({action:'interrupted_run_read',name:interrupted.status});
+ await sleep(300);
+ const taskState=JSON.parse(await readFile(join(fixture.state,'agent-runtime','tasks-v1.json'),'utf8'));
+ const firstTask=Object.values(taskState.tasks).find(record=>record.task?.kind==='review.execute'&&record.review?.Run?.runId===run.runId&&record.task.attempt===1);
+ const accountPath=join(fixture.state,'billing','accounts',Buffer.from('fixture-author').toString('base64url')+'.json');
+ const account=JSON.parse(await readFile(accountPath,'utf8'));
+ result.trace.push({action:'unknown_reservation_read'});
+ const firstOperation='review:'+run.runId+':1',retryOperation='review:'+run.runId+':2';
+ const unknownReservation=account.open?.[firstOperation];
+ const noRetryWhileDisabled=fixture.calls===before+1;
+ fixture.setMode('valid');
+ fixture.switchOwner('review','pi');
+ result.trace.push({action:'executor_reenabled'});
+ const recovered=await fixture.complete(run.runId);
+ result.trace.push({action:'retry_result_read'});
+ await sleep(2200);
+ const after=await fixture.get(run.runId),afterSources=await fixture.sourceBytes();
+ const finalAccount=JSON.parse(await readFile(accountPath,'utf8'));
+ const firstAttemptReserve=firstTask?.task?.reservedTokens??0;
+ const retryUsage=recovered.usage?recovered.usage.inputTokens+recovered.usage.outputTokens:null;
+ result.inputTokens=null;result.outputTokens=null;result.chargedTokens=null;
+ if(firstAttemptReserve>0&&retryUsage!==null)result.budgetExposure={tokens:firstAttemptReserve+retryUsage,authority:'go'};
+ result.metrics={
+  providerRequestCancelled:fixture.disconnectedRequests===disconnected+1,
+  oldAttemptInterrupted:interrupted.status==='queued'&&interrupted.failureCode==='REVIEW_INTERRUPTED'&&interrupted.findings.length===0,
+  unknownReservationRetained:!!unknownReservation&&unknownReservation.points>0&&!!firstTask?.finished,
+  noRetryWhileExecutorDisabled:noRetryWhileDisabled,
+  retryCompleted:recovered.status==='completed'&&after.status==='completed',
+  retryReservationSettled:!!finalAccount.done?.[retryOperation]&&!finalAccount.open?.[retryOperation],
+  originalReservationStillOpen:!!finalAccount.open?.[firstOperation],
+  onePolicyRetry:fixture.calls===before+2,
+  lateResponseInert:after.findings.length===1&&after.findings[0]?.findingId===recovered.findings[0]?.findingId,
+  sourceUnchanged:sources.every((value,index)=>value===afterSources[index]),
+  modelCalls:fixture.calls-before,
+  toolCalls:0,
+ };
+ result.trace.push({action:'go_recovered'},{action:'retry_completed'},{action:'old_result_fenced'});
+ return result;
 }
 
 function usage(result,records){

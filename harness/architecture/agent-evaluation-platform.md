@@ -161,3 +161,9 @@ ModelRequestGate把准入失败与后续模型调用严格分离：前四个已�
 `agent-eval-v17`新增三个独立开发样本：`consolidation-candidate`、`consolidation-revoked`和`consolidation-crash`。每项运行真实Go任务队列和Pi Worker，由两个独立Review任务建立来源，之后执行一次受治理整理；禁止工具调用。成功样本检查候选-only、来源/结果版本绑定和提取来源；撤销样本检查失败回执、零候选及未知费用；SIGKILL样本等待原租约自然到期，检查中断回执及重启后零新增模型调用。
 
 每项最多3次合成模型调用、200000 tokens、0次工具调用；普通场景45秒、SIGKILL场景60秒。用量未知时不填造token或货币成本，使用Go已结算预算或保留预留作为预算暴露证据。报告记录`memory-consolidation-v1`提示版本。确定性评分器对每个约束均有缺失值与违反值测试；这些样本不证明真实模型整理质量。
+
+## Go API中断Review请求
+
+`agent-eval-v24-reliability`与held-out `agent-eval-v9-reliability`各含一个独立`review-api-outage`样本。真实Go API停止期间，Pi Worker心跳失败应取消正在等待的Provider连接。租约到期后，Go将旧Review标记为`REVIEW_INTERRUPTED`并按原重试策略排队；测试先停用执行器，确认不会新发请求，再重新启用并观察单次新attempt完成。
+
+评分同时检查：旧attempt的Go费用预留仍开放以覆盖未知Usage、新attempt的已知Usage已结算、原文未变、只有新租约可以提交候选、Provider迟到响应不能改写结果。未知Usage对应的`inputTokens`、`outputTokens`和`chargedTokens`保持null；预算暴露使用Go任务保存的首个attempt token预留加新attempt已知用量。dev reliability 12/12工程通过、16次合成模型调用；held-out 3/3通过、6次合成模型调用。每个新样本恰有2次请求、0次工具调用，预算暴露为34,228 tokens。样本验证故障执行合同，不报告真实Provider可用性、真实成本或模型质量。

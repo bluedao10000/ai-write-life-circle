@@ -15,7 +15,7 @@ Phase 0 已完成源码审计和架构设计；Phase 1 已完成本地代码接�
 | Worker | 工程验证 | scheduler/dispatcher/TaskClient，五种Go任务；Review/Knowledge/Creative/Memory集成 | 统一合同已接入；待完善持久关联审计 |
 | 上下文 | 部分覆盖 | context-management、Working Memory来源绑定与无付费旧格式迁移；重启测试 | 摘要并非长期已确认事实 |
 | 长期记忆 | 部分覆盖 | Working来源、Semantic/Episodic检索、版本冲突提示、Procedural作者审核、主动提取、后台整理、模型关系建议、重复/替代/过期生命周期 | 工程链路已实现；待真实关系准确率、长期噪声控制与召回质量评测 |
-| Evaluation | 部分覆盖 | 统一schema/split/runner、每类独立版本的dev与held-out数据、五类与四能力覆盖校验、Go业务和故障适配、受治理Judge及其独立dev/held-out、显式预算的真实模型入口、Judge对人工校准及人工双评一致性统计、单/多角色开发集与保留集对照 | 待完成实际模型质量、真实人工标注校准和代表性性能验收 |
+| Evaluation | 部分覆盖 | 统一schema/split/runner、每类独立版本的dev与held-out数据、五类与四能力覆盖校验、Go业务和故障适配（含API中断Review的独立dev/held-out样本）、受治理Judge及其独立dev/held-out、显式预算的真实模型入口、Judge对人工校准及人工双评一致性统计、单/多角色开发集与保留集对照 | 待完成实际模型质量、真实人工标注校准和代表性性能验收 |
 | 安全 | 部分覆盖 | capability、隔离进程、工具授权、取消、幂等、开发与保留集记忆污染、同作者跨作品Session隔离及只读子角色工具输出拒绝 | 缺真实模型抗污染率、更广动态权限传播与并发预算竞争验证 |
 | 可观测性 | 部分覆盖 | 治理关联日志、跨进程健康；私有Prometheus按需投影五种Worker任务、五角色Admissions/Results/Usage/耗时，以及Thinking持久Run状态、恢复次数、模型调用和终态耗时P50/P95 | 历史窗口随原会话保留策略；代表性并发基线和真实模型诊断样本仍缺 |
 | 多角色协作 | 部分覆盖 | 默认关闭的Creative只读试点：Planner后由Researcher/Analyst/Critic并行检查，Coordinator汇总；dev/held-out对照、并发3准入、子预算精确合计和子上下文收窄通过 | 需真实模型同预算质量比较、代表性能与更广义动态子角色/审批策略 |
@@ -589,3 +589,9 @@ Go `agenttasks` race测试与`pnpm test:creative`通过；后者构建Go API、C
 `test-pi-review-worker.mjs`新增真实Go API、Pi Worker和localhost Provider故障路径：Review请求进入Provider后停止Go API，Worker下一次租约心跳失败会取消在途HTTP请求，Provider观察到连接关闭。将原租约推进到过期后重启API，Review按原业务策略进入`queued`并标记`REVIEW_INTERRUPTED`；停用执行器期间没有新模型请求或候选。恢复Pi执行器后仅有一次新attempt完成，旧Provider延迟响应到达后仍未改变最终单条Finding，模型请求总数为2。
 
 `pnpm test:pi:worker`构建Go API、控制工具和Agent，并运行真实Go/Pi Thinking/Worker流程通过。全部模型请求均由本地合成Provider提供。该项覆盖API短暂不可用时的请求取消、租约失效和既有Review重试策略，不代表真实Provider网络表现或生产可用性指标。
+
+### 2026-11-07 API中断进入可靠性开发与保留集
+
+统一Evaluation可靠性集合新增独立的`review-api-outage`开发和保留样本，分别升级为`agent-eval-v24-reliability`与`agent-eval-v9-reliability`。评分读取真实Go任务、Review回执、费用账户和本地Provider连接状态：API断开会取消在途请求；租约过期后旧attempt进入`REVIEW_INTERRUPTED`；原费用预留保持开放以覆盖未知Usage；执行器停用期间不重试；重新启用后原业务策略只允许一次新attempt，结算新预留且不接受旧响应。
+
+dev reliability为12/12工程通过，16次合成模型调用；held-out为3/3通过，6次合成模型调用。两个API中断样本均发出2次请求、0次工具调用；首次Usage保持未知，Go记录的暴露上限为34,228 tokens，未将其记为实际消耗。新样本的开发集与保留集评分器均验证全部约束。执行使用本地合成Provider，不产生真实模型质量或生产可靠性结论；质量成功率保持`null`。
