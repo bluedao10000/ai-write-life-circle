@@ -28,6 +28,12 @@ func recoveryFailure(code, detail string) Failure {
 	case code == "STORY_CONTEXT_UNAVAILABLE":
 		f.Code = "STORY_CONTEXT_UNAVAILABLE"
 		f.UserAction = "retry"
+	case code == "AUTONOMY_INCOMPLETE":
+		f.Code = "AUTONOMY_INCOMPLETE"
+		f.UserAction = "continue"
+	case code == "AUTONOMY_LIMIT_EXCEEDED" || code == "AUTONOMY_PLAN_REJECTED":
+		f.Code = code
+		f.UserAction = "new_session"
 	case strings.Contains(code, "TOOL_TIMEOUT"):
 		f.Code = "TOOL_TIMEOUT"
 		f.UserAction = "retry"

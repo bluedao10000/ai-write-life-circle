@@ -47,7 +47,8 @@ export async function startThinkingFixture({ live = false, taskProtocol = false,
   const providerWaiters = new Set(), hangingProviders = new Set();
   const calls = [],
     tools = [],
-    config = { hang: false, unknown: false };
+    toolRequests = [],
+    config = { hang: false, hangAfter: null, unknown: false };
   let api, agent, apiOrigin;
   const provider = createServer(async (req, res) => {
     let raw = "";
@@ -64,7 +65,7 @@ export async function startThinkingFixture({ live = false, taskProtocol = false,
       return;
     }
     res.writeHead(200, { "Content-Type": "text/event-stream" });
-    if (config.hang) {
+    if (config.hang || (Number.isInteger(config.hangAfter) && calls.length >= config.hangAfter)) {
       hangingProviders.add(res);res.once("close",()=>hangingProviders.delete(res));
       res.flushHeaders();
       return;
@@ -82,8 +83,71 @@ export async function startThinkingFixture({ live = false, taskProtocol = false,
         });
     const related = results.find((r) => r.items),
       sources = results.flatMap((r) => r.sources ?? []);
+    const offeredTools = (body.tools ?? []).map((tool) => tool.function?.name);
+    const boundedAutonomy = offeredTools.includes("adopt_autonomy_plan");
+    const goal = body.messages[lastUser]?.content;
+    const persistedAutonomyPlan = body.messages.some(
+      (message) =>
+        typeof message.content === "string" &&
+        message.content.includes("Persisted plan JSON:"),
+    );
+    const autonomyComplete = results.some((result) => result.completion);
+    const autonomyEvidence = results.some(
+      (result) =>
+        !result.completion &&
+        result.plan === undefined &&
+        ["items", "assertions", "entities", "sources", "notice"].some((key) => key in result),
+    );
     let delta;
-    if (chatDelta) delta = await chatDelta(body);
+    if (boundedAutonomy) {
+      if (results.length === 0 && !persistedAutonomyPlan)
+        delta = {
+          tool_calls: [{
+            index: 0,
+            id: "autonomy-plan-" + calls.length,
+            type: "function",
+            function: {
+              name: "adopt_autonomy_plan",
+              arguments: JSON.stringify({
+                goal,
+                completionCriteria: "核对连续性并说明依据",
+                steps: [{stepId:"step-1",tool:"search_knowledge",purpose:"核对连续性资料"}],
+              }),
+            },
+          }],
+        };
+      else if (!autonomyEvidence && !autonomyComplete)
+        delta = {
+          tool_calls: [{
+            index: 0,
+            id: "autonomy-read-" + calls.length,
+            type: "function",
+            function: {
+              name: "search_knowledge",
+              arguments: JSON.stringify({stepId:"step-1",query:"林舟 父亲 连续性"}),
+            },
+          }],
+        };
+      else if (!autonomyComplete)
+        delta = {
+          tool_calls: [{
+            index: 0,
+            id: "autonomy-complete-" + calls.length,
+            type: "function",
+            function: {
+              name: "complete_autonomy",
+              arguments: JSON.stringify({
+                status: "complete",
+                summary: "已核对授权资料并给出连续性结论。",
+                completedStepIds: ["step-1"],
+                remainingSteps: [],
+              }),
+            },
+          }],
+        };
+      else
+        delta = {content:"核对完成：现有资料支持讨论连续性，但这仍是创作分析，不是正式设定。"};
+    } else if (chatDelta) delta = await chatDelta(body);
     else if (config.unknown)
       delta = {
         tool_calls: [
@@ -131,8 +195,13 @@ export async function startThinkingFixture({ live = false, taskProtocol = false,
           "林舟与父亲从争执到理解，可能由信息差与保护动机推动；这是一种解释，并非作者已经确认的事实。" +
           sources.map((s) => `[[source:${s.sourceId}]]`).join(""),
       };
-    if (delta.tool_calls)
+    if (delta.tool_calls) {
       tools.push(...delta.tool_calls.map((t) => t.function.name));
+      toolRequests.push(...delta.tool_calls.map((tool) => ({
+        name: tool.function.name,
+        arguments: tool.function.arguments,
+      })));
+    }
     const send = (part) =>
       res.write(
         "data: " +
@@ -357,6 +426,7 @@ export async function startThinkingFixture({ live = false, taskProtocol = false,
         });
       },
       tools,
+      toolRequests,
       config,
       call,
       close,

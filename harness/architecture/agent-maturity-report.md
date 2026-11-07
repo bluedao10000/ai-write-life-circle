@@ -2,7 +2,7 @@
 
 日期：2026-11-07。基线：`25e6066f519fdb4386bbbbe334edb48badbc5c03`。
 
-Phase 0 已完成源码审计和架构设计；Phase 1 已完成本地代码接入和工程验收；Phase 2–4 部分实现；Phase 5 已完成默认关闭的只读试点及同预算合成配对工程评测，真实质量收益和人工校准尚未验收；Phase 6 尚未实现。成熟度采用“工程验证 / 部分覆盖 / 未实现”，不以文件数量打分。此前同基线的本地 `pnpm verify` 已通过，包含 102 项 Agent 测试和 Go/Pi 真实进程集成；不代表真实模型任务成功率或全部威胁已验证。远程最新状态未刷新：GitHub API 最近返回账号停用403，本次使用本地 main 与已有跟踪引用。
+Phase 0 已完成源码审计和架构设计；Phase 1 已完成本地代码接入和工程验收；Phase 2–4 部分实现；Phase 5 已完成默认关闭的只读试点及同预算合成配对工程评测，真实质量收益和人工校准尚未验收；Phase 6 已完成默认关闭的单消息有界只读自主执行试点，完整或无人值守自主执行仍未验收。成熟度采用“工程验证 / 部分覆盖 / 未实现”，不以文件数量打分。此前同基线的本地 `pnpm verify` 已通过，包含完整 Agent 测试和 Go/Pi 真实进程集成；不代表真实模型任务成功率或全部威胁已验证。远程最新状态未刷新：GitHub API 最近返回账号停用403，本次使用本地 main 与已有跟踪引用。
 
 ## 能力矩阵
 
@@ -17,9 +17,9 @@ Phase 0 已完成源码审计和架构设计；Phase 1 已完成本地代码接�
 | 长期记忆 | 部分覆盖 | Working来源、Semantic/Episodic检索、版本冲突提示、Procedural作者审核、主动提取、后台整理、模型关系建议、重复/替代/过期生命周期 | 工程链路已实现；待真实关系准确率、长期噪声控制与召回质量评测 |
 | Evaluation | 部分覆盖 | 统一schema/split/runner、每类独立版本的dev与held-out数据、五类与四能力覆盖校验、Go业务和故障适配（含API中断Review的独立dev/held-out样本）、受治理Judge及其独立dev/held-out、显式预算的真实模型入口、Judge对人工校准及人工双评一致性统计、Creative单/多角色同预算开发集与保留集合成配对评测 | 待完成实际模型质量、真实人工标注校准和代表性性能验收 |
 | 安全 | 部分覆盖 | capability、隔离进程、工具授权、取消、幂等、开发与保留集记忆污染、同作者跨作品Session隔离及只读子角色工具输出拒绝 | 缺真实模型抗污染率、更广动态权限传播与并发预算竞争验证 |
-| 可观测性 | 部分覆盖 | 治理关联日志、跨进程健康；私有Prometheus按需投影五种Worker任务、五角色Admissions/Results/Usage/耗时，以及Thinking持久Run状态、恢复次数、模型调用和终态耗时P50/P95 | 历史窗口随原会话保留策略；代表性并发基线和真实模型诊断样本仍缺 |
-| 多角色协作 | 部分覆盖 | 默认关闭的Creative只读试点：Planner后由Researcher/Analyst/Critic并行检查，Coordinator汇总；相同单角色父预算下的dev/held-out配对工程评测、并发3准入、子预算精确合计和子上下文收窄通过 | 需真实模型质量比较、人工双评校准、代表性能与更广义动态子角色/审批策略 |
-| 自主规划 | 未实现 | 有限模型/工具循环与显式恢复 | 有界Goal/Plan与审批版本绑定，须后置 |
+| 可观测性 | 部分覆盖 | 治理关联日志、跨进程健康；私有Prometheus投影五种Worker任务、五角色Admissions/Results/Usage/耗时及固定24h/7d回执窗口，以及Thinking持久Run状态、恢复次数、模型调用和终态耗时P50/P95 | Worker窗口只覆盖当前仍保留的任务回执；Thinking历史随会话保留策略；代表性并发基线和真实模型诊断样本仍缺 |
+| 多角色协作 | 部分覆盖 | 默认关闭的Creative只读试点：Planner后由Researcher/Analyst/Critic并行检查，Coordinator汇总；相同单角色父预算下的独立dev/held-out配对工程评测、并发3准入、子预算精确合计和子上下文收窄通过 | 需真实模型质量比较、人工双评校准、代表性能与更广义动态子角色/审批策略 |
+| 自主规划 | 工程验证，仅限有界只读试点 | Thinking逐消息开启；Go准入后由Pi持久化Goal/Plan、执行计划内只读工具并要求完成回执；取消、期限、授权撤销、SIGKILL和显式恢复通过 | 真实模型计划质量、注入抵抗率、复杂书稿步骤选择、生产SLO与自动写入/无人值守执行未验收 |
 
 以上路径中 Agent 文件位于 `apps/agent/src`，测试位于 `apps/agent/test`；Go 文件位于 `apps/api-go/internal`。
 
@@ -75,7 +75,7 @@ Runtime Governance 已完成实际执行接入和本地工程验收。Thinking �
 - `test-pi-knowledge-worker.mjs --quick`：10 章通过；`test-pi-knowledge-faults.mjs`：未知费用保留、预算、暂停、丢失回执、SIGKILL、版本替换与删除通过。
 - `test-runtime-health.mjs`：鉴权、Go 活性、Thinking 停止/重启、Worker 心跳过期及未知待办计数通过，零模型请求。
 
-模型使用本地合成 HTTP Provider，未发生付费调用。这些结果证明执行合同与工程边界，不衡量真实模型质量。父子预算、受控多 Agent、完整历史审计与自主执行仍按后续阶段验收。当前实现保留 Go 业务权威及 Thinking/Worker 进程隔离，无新增生产数据格式变更。
+模型使用本地合成 HTTP Provider，未发生付费调用。这些结果证明执行合同与工程边界，不衡量真实模型质量。跨任务及动态父子预算、更广义受控多 Agent、完整历史审计与完整自主执行仍未验收。当前实现保留 Go 业务权威及 Thinking/Worker 进程隔离。
 
 | 验收项 | 证据 |
 | --- | --- |
@@ -601,3 +601,41 @@ Knowledge attempt租约过期后，Go现在检查原执行器的持久启动标�
 开发集`agent-eval-v25-reliability`新增`knowledge-api-outage`，保留集`agent-eval-v10-reliability`加入措辞和正文独立的同场景。真实Go API与Pi Worker运行本地Provider请求期间停止API；Worker心跳取消Provider连接，夹具推进原租约到期并重启API后由新Worker恢复。评分读取Go任务、Knowledge视图和账本文件，验证旧attempt终态、旧费用仍开放、usage不完整、新预留已结算、只发生一次重试与一次Revision提交。
 
 dev reliability 13/13工程通过、19次合成模型调用；held-out 4/4、8次合成模型调用。两个新样本各执行2次模型请求、0次工具调用，Go保留旧token与点数预留并报告34,298 tokens预算暴露；未知Usage的输入、输出与计费Token保持`null`。定向`pnpm --filter @writer-agent/agent exec tsx --test test/evaluation.test.ts`为28/28，Knowledge与AgentTasks race测试通过，`node scripts/test-pi-knowledge-faults.mjs`通过。模型端仅使用本地合成Provider，评测质量成功率为`null`。
+
+### 2026-11-07 Worker近期历史窗口
+
+`/internal/v1/agent/tasks/metrics`和`/internal/v1/runtime/metrics`现在同时输出固定24小时和7天窗口；数据在读取时从原`tasks-v1.json`派生，既有累计指标、百分位、任务状态和存储格式保持现有语义。任务领取和启动按各自审计时间计数，终态按终态审计时间计数；claim→started样本按started时间、started→terminal样本按terminal时间归属。每种任务均输出固定状态计数、样本数和最近秩P50/P95，空样本不输出分位值。
+
+Creative五角色的准入和预留Token按持久准入时间计数；结果、状态、已知Usage、未知Usage及角色执行时长按父任务终态时间归属。已知Token、准入预留和未知Usage对应的保守预留分开汇总。一个采样时间用于两种窗口；窗口端点包含在内，缺失、无效和未来事件时间不计入。Prometheus仅输出固定窗口、任务类型、角色、状态、转换和分位标签，不包含任务、作者、作品、会话或运行标识。
+
+Go `agenttasks` 与 `agentruntime` race测试通过。`pnpm test:creative` 的本地Go/Pi合成Provider流程确认实际只读计划在两个窗口中均记录了五个角色的准入、终态结果、已知Usage、预留和执行时长；`pnpm test:runtime` 检查空任务存储仍输出24h/7d固定指标标签，且模型调用数为0。窗口只涵盖Go当前保留的任务回执，不构成完整历史留存承诺，也不证明生产SLO或真实模型质量。
+
+### 2026-11-07 同预算五角色配对评测
+
+Creative五角色计划核对不再把单角色每任务上限乘以5。Go的累计预留、每日预算准入和设置展示都使用原单角色父额；Pi将该额分成五个互不重叠的角色上限，Coordinator接收整数余数，五个上限精确合计为父额。单角色策略和现有存档不受影响。
+
+新增`creative-plan-check-dev-v1`与`creative-plan-check-held-out-v1`，各有3个版本、ID和请求内容不重叠的合成案例。配对器从真实Go任务回执核验保存Revision、Content Hash、inputHash、Provider/Model、deadline策略与父预留，拒绝重复或混合记录；任何确定性失败、缺口工具/业务写入、错误调用数或角色集合都不进入语义判断。
+
+开发与保留集各3/3配对工程通过。每集单角色为3次调用、五角色为15次调用，父预留合计均为66720 tokens且子预算逐组精确合计；配对器等待原AgentTask进入终态，并要求每个五角色任务保存五个完成结果、数值耗时、非空Usage及与父任务一致的角色Usage合计，6/6配对均满足后才进入评测。工具调用和业务写入均为0。固定`creative-plan-check-pairwise-v1` Judge使用本地治理入口、随机候选顺序与独立预留，另执行6次合成调用并结算1200 tokens。当前没有独立真实模型输出或真人双评，单/多胜率、平局率、Judge与人工一致性和`qualityValidated`都保持`null`/`false`。
+
+Go全量race、Agent177/177、Agent类型检查、lint、构建、真实Creative Go/Pi流程以及两份本地配对报告通过。开发与保留集证明预算、配对资格、报告和评分链路，不证明五角色相对单角色的真实质量收益；试点继续默认关闭，Phase 5仍属部分覆盖。
+
+### 2026-11-07 有界只读自主执行
+
+Thinking消息新增默认关闭的可选`autonomy`请求：作者逐消息填写完成条件、显式批准只读工具并选择最多8步；请求不提供Token预算字段。Go在预留费用和调用Pi前验证模型工具能力、scope、步骤与期限。普通消息不增加模型调用、持久字段或新的公开投影。
+
+Pi新增`thinking.autonomy`治理角色。第一次模型回合只能先通过`adopt_autonomy_plan`持久化一条与作者目标和完成条件一致的计划；计划不得增加步骤、替换工具或扩大权限。之后每个证据工具都必须携带计划内`stepId`，并由原Tool Gateway、Go工具RPC、当前授权版本、取消信号和任务期限再次校验。自主模式不注册正文写入、设定写入、组织任务、Canon、计费或其他外部效果工具，也不创建子Agent、队列、数据库或第二份预算账本。
+
+计划、步骤状态和完成记录保存在原Thinking消息的Durable checkpoint，并在同一`Saved`文档按消息ID建立私有投影索引。消息正文仍使用旧严格合同，当前版本只在读取Session快照时附加自主状态，因此旧版Agent可以在回滚后继续读取会话。`complete`必须覆盖全部步骤，`needs_input`必须为每个未完成步骤给出原因；缺少完成记录、计划撤销授权或工具额度耗尽都以显式错误结束，不发布成功终态。进程重启不会自动重放付费请求，恢复使用原计划并在Go重新授权后继续。旧浏览器响应会剥离新增状态；写入或组织需求必须回到普通Thinking与Go授权路径。
+
+本地工程回归证据如下：
+
+- A1：Go admission测试覆盖普通消息兼容、显式批准、可用scope、步骤/期限上限与自主消息不进入Creative intake；公开Session的旧客户端投影不包含自主字段。
+- A2：`autonomy.test.ts`覆盖合法计划、扩步/越权计划、重复计划、写工具请求和错误步ID；非法计划不会产生证据工具请求。
+- A3：计划先于读取持久化；`search_knowledge`在`stepId`匹配后经原Tool Gateway和Go授权执行，授权撤销时业务工具调用为0。Provider请求中的普通写入、组织与讨论焦点工具均被移除。Resume及同一resume key重放不会创建新的Creative intake任务。
+- A4：单工具/四回合下限、`complete`、`needs_input`、工具失败、Provider失败、取消、期限、授权撤销、SIGKILL后不自动重放及显式恢复均有回归。恢复会重建已成功读取的证据并封印终态，真实Go/Pi流程只追加3次合成模型调用便完成原计划。
+- A5：Web测试覆盖逐消息开启、完成条件、步骤选择、无Token表单、持久计划/完成状态展示和不暴露工具参数；自主错误使用固定恢复类别，普通消息仍走单次调用路径。
+
+本地完整工程验证结果：`pnpm test:agent`188/188、Web294/294与Worker鉴权25/25、`pnpm test:thinking`真实Go/Pi流程、`go test -race -count=1 ./...`、Contracts/Agent/Web类型检查、Web/Agent lint、Web生产构建以及11份OpenAPI合同。所有模型响应来自localhost合成Provider，没有付费请求。
+
+该试点证明计划扩步、权限收窄、只读工具隔离、完成合同和故障恢复的工程边界，不证明真实模型会生成高质量计划，也不代表注入抵抗成功率、复杂书稿步骤选择或生产SLO。自主执行保持默认关闭；模型动态创建子Agent、自动写入和无人值守多步骤执行不属于本次验收。

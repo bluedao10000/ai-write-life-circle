@@ -126,8 +126,15 @@ type Message struct {
 	Recovery  *Recovery  `json:"recovery,omitempty"`
 	ModelID   string     `json:"modelId,omitempty"`
 	Text      string     `json:"text"`
+	Autonomy  *Autonomy  `json:"autonomy,omitempty"`
 	Selection *Selection `json:"selection,omitempty"`
 	Compact   bool       `json:"compact,omitempty"`
+}
+type Autonomy struct {
+	CompletionCriteria string `json:"completionCriteria"`
+	ApproveReadOnly    bool   `json:"approveReadOnlyTools"`
+	MaxSteps           int    `json:"maxSteps"`
+	DeadlineMs         *int   `json:"deadlineMs,omitempty"`
 }
 type Source struct {
 	ID        string `json:"sourceId"`
@@ -164,6 +171,12 @@ func fail(status int, code string) error {
 		detail = "提取结果格式无效，或包含不支持的操作。请重新提取。"
 	case "INVALID_MEMORY_EVIDENCE":
 		detail = "请选择已完成的任务，候选只能引用本次选中的来源。"
+	case "AUTONOMY_LIMIT_EXCEEDED":
+		detail = "自主执行的步骤或期限超过当前模型上限，请缩小目标后重试。"
+	case "AUTONOMY_INCOMPLETE":
+		detail = "自主执行没有提交完成记录，本轮没有被标记为成功。"
+	case "AUTONOMY_PLAN_REJECTED":
+		detail = "自主计划与已完成步骤不一致，本轮已停止且没有继续检索。"
 	}
 	return application.Fail(status, code, detail)
 }

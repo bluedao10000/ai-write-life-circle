@@ -105,7 +105,66 @@ export function ModelPicker({ models, value, onPick, disabled, wide }: {
   )
 }
 
-export function Composer({ value, onChange, onSend, onStop, running, sending, canSend, quote, inputRef, landing, wide, picker, sourceAccess, disabled }: {
+export function AutonomyControl({ enabled, onEnabled, criteria, onCriteria, maxSteps, onMaxSteps, ceiling, available, disabled }: {
+  enabled: boolean
+  onEnabled: (value: boolean) => void
+  criteria: string
+  onCriteria: (value: string) => void
+  maxSteps: number
+  onMaxSteps: (value: number) => void
+  ceiling: number
+  available: boolean
+  disabled?: boolean
+}) {
+  return (
+    <div className="border-t border-line-soft px-3 pt-2 pb-2.5">
+      <div className="flex flex-wrap items-center gap-2">
+        <Btn
+          size="sm"
+          pressed={enabled}
+          disabled={disabled || !available}
+          onClick={() => onEnabled(!enabled)}
+          ariaLabel={enabled ? '关闭只读自主执行' : '开启只读自主执行'}
+          className="max-md:min-h-11"
+        >
+          <Icon name="target" className="h-3.5 w-3.5" />
+          只读自主执行
+        </Btn>
+        <span className="text-micro text-ink-3">
+          {available ? '先写完成条件；本轮只查阅已授权资料，不写正文或设定。' : '先在「AI 资料范围」中允许至少一项作品资料。'}
+        </span>
+      </div>
+      {enabled && (
+        <div className="fade mt-2 grid gap-2 md:grid-cols-[minmax(0,1fr)_8rem]">
+          <TextArea
+            label="完成条件"
+            rows={2}
+            maxLength={4000}
+            disabled={disabled}
+            value={criteria}
+            onChange={onCriteria}
+            placeholder="例如：核对两条章节证据，给出可引用的连续性结论"
+            className="min-h-16"
+          />
+          <label className="flex items-center justify-between gap-2 rounded-lg border border-line-soft px-3 text-ui-sm text-ink-2">
+            <span>最多步骤</span>
+            <select
+              aria-label="自主执行最多步骤"
+              value={maxSteps}
+              disabled={disabled}
+              onChange={(event) => onMaxSteps(Number(event.target.value))}
+              className="bg-transparent py-2 text-ink outline-none"
+            >
+              {Array.from({ length: ceiling }, (_, index) => index + 1).map((value) => <option key={value} value={value}>{value}</option>)}
+            </select>
+          </label>
+        </div>
+      )}
+    </div>
+  )
+}
+
+export function Composer({ value, onChange, onSend, onStop, running, sending, canSend, quote, inputRef, landing, wide, picker, sourceAccess, autonomy, disabled }: {
   value: string
   onChange: (v: string) => void
   onSend: () => void
@@ -121,6 +180,7 @@ export function Composer({ value, onChange, onSend, onStop, running, sending, ca
   wide: boolean
   picker: ReactNode
   sourceAccess?: ReactNode
+  autonomy?: ReactNode
   disabled?: boolean
 }) {
   const coarse = useMedia('(pointer: coarse)')
@@ -147,6 +207,7 @@ export function Composer({ value, onChange, onSend, onStop, running, sending, ca
         className={`scroll field-sizing-content px-4 pt-3.5 pb-1 ${landing ? 'min-h-18 max-h-72' : 'min-h-11 max-h-60 max-md:max-h-36'}`}
       />
       {sourceAccess && <div className="px-3 pb-1">{sourceAccess}</div>}
+      {autonomy}
       <div className="flex min-w-0 items-center gap-2 px-2 pb-2">
         {picker}
         {wide && <span className="ml-auto shrink-0 text-micro text-ink-4">{running ? '回复中…' : sending ? '正在发送…' : 'Enter 发送 · Shift + Enter 换行'}</span>}

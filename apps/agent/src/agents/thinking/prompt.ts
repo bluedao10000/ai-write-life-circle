@@ -10,6 +10,18 @@ export const storyRecordingInstruction = `Record explicit author decisions with 
 
 export const storyOfferingInstruction = storyRecordingInstruction.replace("Record explicit author decisions with record_story_changes", "Offer explicit author decisions for manual recording with offer_story_changes") + " Automatic recording is off. An offered receipt means changes can be recorded by the author; it does not mean settings were saved or changed. Ordinary chat with no story changes needs no receipt. Focus updates only remember this discussion and may still be used.";
 
+import type {ThinkingAutonomyPlan} from "@writer-agent/contracts";
+
+export function boundedAutonomyInstruction(goal:string, completionCriteria:string, maxSteps:number, plan?:ThinkingAutonomyPlan): string {
+  const base=`Bounded read-only autonomy is explicitly enabled for this message. Goal JSON: ${JSON.stringify(goal)}. Completion criteria JSON: ${JSON.stringify(completionCriteria)}.`;
+  if(plan)return `${base}
+The plan below is already durably adopted for this same message; do not adopt a different or broader plan. Persisted plan JSON: ${JSON.stringify(plan)}.
+Every evidence call must include the matching stepId. Never call a write, story-recording, organizing, Canon, billing, network, filesystem or task-creation tool. Account for every step, then call complete_autonomy before the final response. If the evidence cannot satisfy the criteria, use needs_input and list each remaining step with a short reason.`;
+  return `${base}
+Before calling any Story Tool, call adopt_autonomy_plan exactly once. Its goal and completionCriteria must equal those JSON strings. Create one to ${maxSteps} steps with unique stepIds; each step must use a currently available read-only Story Tool. Every evidence call must include the matching stepId. Never call a write, story-recording, organizing, Canon, billing, network, filesystem or task-creation tool.
+Account for every planned step. Call complete_autonomy with status complete only after all planned evidence calls succeeded. If the evidence cannot satisfy the criteria, use needs_input and list each remaining step with a short reason. Call complete_autonomy before the final response. A reply without that persisted completion record fails.`;
+}
+
 export function sourceAccessInstruction(scopes: readonly string[], toolCalling = true): string {
   if (!toolCalling)
     return (scopes.includes("creative") ? "Fresh creative state is supplied as story context. " : "Current source access: none. ") + "This model cannot look up additional saved material or record changes. For manuscript analysis, ask for a passage or a model with source tools; do not claim to have checked the manuscript.";

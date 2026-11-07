@@ -34,6 +34,10 @@ try{
   /writer_agent_thinking_run_terminal_samples 0/,
   /writer_agent_worker_task_receipts\{kind="review\.execute",state="completed"\} 0/,
   /writer_agent_worker_role_steps\{role="creative\.plan\.planner",state="admission"\} 0/,
+  /writer_agent_worker_window_task_events\{window="24h",kind="review\.execute",state="claimed"\} 0/,
+  /writer_agent_worker_window_task_events\{window="7d",kind="review\.execute",state="claimed"\} 0/,
+  /writer_agent_worker_window_role_events\{window="24h",role="creative\.plan\.planner",state="admission"\} 0/,
+  /writer_agent_worker_window_role_tokens\{window="7d",role="creative\.plan\.planner",type="unknown_reserved"\} 0/,
  ])assert.match(readyMetrics.body,expected);
  await f.stop(pi);
  const withoutThinking=(await probe()).body;

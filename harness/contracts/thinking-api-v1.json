@@ -1111,6 +1111,420 @@
           }
         ]
       },
+      "thinkingAutonomyCompletion": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "complete",
+              "needs_input"
+            ]
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "completedStepIds": {
+            "maxItems": 8,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,32}$"
+            }
+          },
+          "remainingSteps": {
+            "maxItems": 8,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "stepId": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9_-]{1,32}$"
+                },
+                "reason": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 500
+                }
+              },
+              "required": [
+                "stepId",
+                "reason"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "status",
+          "summary",
+          "completedStepIds",
+          "remainingSteps"
+        ],
+        "additionalProperties": false
+      },
+      "thinkingAutonomyPlan": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "goal": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 12000
+          },
+          "completionCriteria": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "steps": {
+            "minItems": 1,
+            "maxItems": 8,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "stepId": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9_-]{1,32}$"
+                },
+                "tool": {
+                  "type": "string",
+                  "enum": [
+                    "retrieve_memory",
+                    "search_knowledge",
+                    "read_chapter",
+                    "get_entity",
+                    "find_related_chapters",
+                    "get_author_notes",
+                    "get_timeline",
+                    "get_plot_threads",
+                    "list_creative_assets",
+                    "get_creative_asset",
+                    "list_creative_proposals",
+                    "list_open_questions",
+                    "get_writing_context",
+                    "compare_plan_with_manuscript",
+                    "get_discussion_source"
+                  ]
+                },
+                "purpose": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 240
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "pending",
+                    "running",
+                    "completed",
+                    "failed"
+                  ]
+                }
+              },
+              "required": [
+                "stepId",
+                "tool",
+                "purpose",
+                "status"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "goal",
+          "completionCriteria",
+          "steps"
+        ],
+        "additionalProperties": false
+      },
+      "thinkingAutonomyPlanStep": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "stepId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,32}$"
+          },
+          "tool": {
+            "type": "string",
+            "enum": [
+              "retrieve_memory",
+              "search_knowledge",
+              "read_chapter",
+              "get_entity",
+              "find_related_chapters",
+              "get_author_notes",
+              "get_timeline",
+              "get_plot_threads",
+              "list_creative_assets",
+              "get_creative_asset",
+              "list_creative_proposals",
+              "list_open_questions",
+              "get_writing_context",
+              "compare_plan_with_manuscript",
+              "get_discussion_source"
+            ]
+          },
+          "purpose": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "running",
+              "completed",
+              "failed"
+            ]
+          }
+        },
+        "required": [
+          "stepId",
+          "tool",
+          "purpose",
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "thinkingAutonomyRemainingStep": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "stepId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,32}$"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "stepId",
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "thinkingAutonomyRequest": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "completionCriteria": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "approveReadOnlyTools": {
+            "type": "boolean",
+            "const": true
+          },
+          "maxSteps": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 8
+          },
+          "deadlineMs": {
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 300000
+          }
+        },
+        "required": [
+          "completionCriteria",
+          "approveReadOnlyTools",
+          "maxSteps"
+        ],
+        "additionalProperties": false
+      },
+      "thinkingAutonomyState": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "completionCriteria": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "approveReadOnlyTools": {
+            "type": "boolean",
+            "const": true
+          },
+          "maxSteps": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 8
+          },
+          "deadlineMs": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "planning",
+              "planned",
+              "running",
+              "completed",
+              "needs_input",
+              "failed",
+              "cancelled"
+            ]
+          },
+          "plan": {
+            "type": "object",
+            "properties": {
+              "goal": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 12000
+              },
+              "completionCriteria": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4000
+              },
+              "steps": {
+                "minItems": 1,
+                "maxItems": 8,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "stepId": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9_-]{1,32}$"
+                    },
+                    "tool": {
+                      "type": "string",
+                      "enum": [
+                        "retrieve_memory",
+                        "search_knowledge",
+                        "read_chapter",
+                        "get_entity",
+                        "find_related_chapters",
+                        "get_author_notes",
+                        "get_timeline",
+                        "get_plot_threads",
+                        "list_creative_assets",
+                        "get_creative_asset",
+                        "list_creative_proposals",
+                        "list_open_questions",
+                        "get_writing_context",
+                        "compare_plan_with_manuscript",
+                        "get_discussion_source"
+                      ]
+                    },
+                    "purpose": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 240
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "pending",
+                        "running",
+                        "completed",
+                        "failed"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "stepId",
+                    "tool",
+                    "purpose",
+                    "status"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "goal",
+              "completionCriteria",
+              "steps"
+            ],
+            "additionalProperties": false
+          },
+          "completion": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "complete",
+                  "needs_input"
+                ]
+              },
+              "summary": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1000
+              },
+              "completedStepIds": {
+                "maxItems": 8,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9_-]{1,32}$"
+                }
+              },
+              "remainingSteps": {
+                "maxItems": 8,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "stepId": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9_-]{1,32}$"
+                    },
+                    "reason": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 500
+                    }
+                  },
+                  "required": [
+                    "stepId",
+                    "reason"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "status",
+              "summary",
+              "completedStepIds",
+              "remainingSteps"
+            ],
+            "additionalProperties": false
+          },
+          "errorCode": {
+            "type": "string",
+            "maxLength": 80
+          }
+        },
+        "required": [
+          "completionCriteria",
+          "approveReadOnlyTools",
+          "maxSteps",
+          "status"
+        ],
+        "additionalProperties": false
+      },
       "thinkingCancelReceipt": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -1626,6 +2040,36 @@
             "type": "string",
             "pattern": "^[a-zA-Z0-9_-]{1,80}$"
           },
+          "autonomy": {
+            "type": "object",
+            "properties": {
+              "completionCriteria": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4000
+              },
+              "approveReadOnlyTools": {
+                "type": "boolean",
+                "const": true
+              },
+              "maxSteps": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 8
+              },
+              "deadlineMs": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 300000
+              }
+            },
+            "required": [
+              "completionCriteria",
+              "approveReadOnlyTools",
+              "maxSteps"
+            ],
+            "additionalProperties": false
+          },
           "selection": {
             "type": "object",
             "properties": {
@@ -1703,6 +2147,9 @@
               "AUTHORIZATION_REQUIRED",
               "MODEL_CONFIGURATION_ERROR",
               "BUDGET_EXCEEDED",
+              "AUTONOMY_INCOMPLETE",
+              "AUTONOMY_LIMIT_EXCEEDED",
+              "AUTONOMY_PLAN_REJECTED",
               "INTERNAL_ERROR"
             ]
           },
@@ -2268,6 +2715,184 @@
                     "incomplete"
                   ],
                   "additionalProperties": false
+                },
+                "autonomy": {
+                  "type": "object",
+                  "properties": {
+                    "completionCriteria": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 4000
+                    },
+                    "approveReadOnlyTools": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "maxSteps": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 8
+                    },
+                    "deadlineMs": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "planning",
+                        "planned",
+                        "running",
+                        "completed",
+                        "needs_input",
+                        "failed",
+                        "cancelled"
+                      ]
+                    },
+                    "plan": {
+                      "type": "object",
+                      "properties": {
+                        "goal": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 12000
+                        },
+                        "completionCriteria": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 4000
+                        },
+                        "steps": {
+                          "minItems": 1,
+                          "maxItems": 8,
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "stepId": {
+                                "type": "string",
+                                "pattern": "^[A-Za-z0-9_-]{1,32}$"
+                              },
+                              "tool": {
+                                "type": "string",
+                                "enum": [
+                                  "retrieve_memory",
+                                  "search_knowledge",
+                                  "read_chapter",
+                                  "get_entity",
+                                  "find_related_chapters",
+                                  "get_author_notes",
+                                  "get_timeline",
+                                  "get_plot_threads",
+                                  "list_creative_assets",
+                                  "get_creative_asset",
+                                  "list_creative_proposals",
+                                  "list_open_questions",
+                                  "get_writing_context",
+                                  "compare_plan_with_manuscript",
+                                  "get_discussion_source"
+                                ]
+                              },
+                              "purpose": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 240
+                              },
+                              "status": {
+                                "type": "string",
+                                "enum": [
+                                  "pending",
+                                  "running",
+                                  "completed",
+                                  "failed"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "stepId",
+                              "tool",
+                              "purpose",
+                              "status"
+                            ],
+                            "additionalProperties": false
+                          }
+                        }
+                      },
+                      "required": [
+                        "goal",
+                        "completionCriteria",
+                        "steps"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "completion": {
+                      "type": "object",
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "complete",
+                            "needs_input"
+                          ]
+                        },
+                        "summary": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 1000
+                        },
+                        "completedStepIds": {
+                          "maxItems": 8,
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "pattern": "^[A-Za-z0-9_-]{1,32}$"
+                          }
+                        },
+                        "remainingSteps": {
+                          "maxItems": 8,
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "stepId": {
+                                "type": "string",
+                                "pattern": "^[A-Za-z0-9_-]{1,32}$"
+                              },
+                              "reason": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 500
+                              }
+                            },
+                            "required": [
+                              "stepId",
+                              "reason"
+                            ],
+                            "additionalProperties": false
+                          }
+                        }
+                      },
+                      "required": [
+                        "status",
+                        "summary",
+                        "completedStepIds",
+                        "remainingSteps"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "errorCode": {
+                      "type": "string",
+                      "maxLength": 80
+                    }
+                  },
+                  "required": [
+                    "completionCriteria",
+                    "approveReadOnlyTools",
+                    "maxSteps",
+                    "status"
+                  ],
+                  "additionalProperties": false
                 }
               },
               "required": [
@@ -2384,6 +3009,36 @@
           "modelId": {
             "type": "string",
             "pattern": "^[a-zA-Z0-9_-]{1,80}$"
+          },
+          "autonomy": {
+            "type": "object",
+            "properties": {
+              "completionCriteria": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4000
+              },
+              "approveReadOnlyTools": {
+                "type": "boolean",
+                "const": true
+              },
+              "maxSteps": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 8
+              },
+              "deadlineMs": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 300000
+              }
+            },
+            "required": [
+              "completionCriteria",
+              "approveReadOnlyTools",
+              "maxSteps"
+            ],
+            "additionalProperties": false
           },
           "selection": {
             "type": "object",
@@ -2588,6 +3243,184 @@
               "output",
               "charged",
               "incomplete"
+            ],
+            "additionalProperties": false
+          },
+          "autonomy": {
+            "type": "object",
+            "properties": {
+              "completionCriteria": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4000
+              },
+              "approveReadOnlyTools": {
+                "type": "boolean",
+                "const": true
+              },
+              "maxSteps": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 8
+              },
+              "deadlineMs": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "planning",
+                  "planned",
+                  "running",
+                  "completed",
+                  "needs_input",
+                  "failed",
+                  "cancelled"
+                ]
+              },
+              "plan": {
+                "type": "object",
+                "properties": {
+                  "goal": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 12000
+                  },
+                  "completionCriteria": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4000
+                  },
+                  "steps": {
+                    "minItems": 1,
+                    "maxItems": 8,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "stepId": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z0-9_-]{1,32}$"
+                        },
+                        "tool": {
+                          "type": "string",
+                          "enum": [
+                            "retrieve_memory",
+                            "search_knowledge",
+                            "read_chapter",
+                            "get_entity",
+                            "find_related_chapters",
+                            "get_author_notes",
+                            "get_timeline",
+                            "get_plot_threads",
+                            "list_creative_assets",
+                            "get_creative_asset",
+                            "list_creative_proposals",
+                            "list_open_questions",
+                            "get_writing_context",
+                            "compare_plan_with_manuscript",
+                            "get_discussion_source"
+                          ]
+                        },
+                        "purpose": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 240
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "pending",
+                            "running",
+                            "completed",
+                            "failed"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "stepId",
+                        "tool",
+                        "purpose",
+                        "status"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "goal",
+                  "completionCriteria",
+                  "steps"
+                ],
+                "additionalProperties": false
+              },
+              "completion": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "complete",
+                      "needs_input"
+                    ]
+                  },
+                  "summary": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1000
+                  },
+                  "completedStepIds": {
+                    "maxItems": 8,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9_-]{1,32}$"
+                    }
+                  },
+                  "remainingSteps": {
+                    "maxItems": 8,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "stepId": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z0-9_-]{1,32}$"
+                        },
+                        "reason": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 500
+                        }
+                      },
+                      "required": [
+                        "stepId",
+                        "reason"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "status",
+                  "summary",
+                  "completedStepIds",
+                  "remainingSteps"
+                ],
+                "additionalProperties": false
+              },
+              "errorCode": {
+                "type": "string",
+                "maxLength": 80
+              }
+            },
+            "required": [
+              "completionCriteria",
+              "approveReadOnlyTools",
+              "maxSteps",
+              "status"
             ],
             "additionalProperties": false
           }
@@ -3171,6 +4004,36 @@
                 "type": "string",
                 "pattern": "^[a-zA-Z0-9_-]{1,80}$"
               },
+              "autonomy": {
+                "type": "object",
+                "properties": {
+                  "completionCriteria": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4000
+                  },
+                  "approveReadOnlyTools": {
+                    "type": "boolean",
+                    "const": true
+                  },
+                  "maxSteps": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 8
+                  },
+                  "deadlineMs": {
+                    "type": "integer",
+                    "minimum": 1000,
+                    "maximum": 300000
+                  }
+                },
+                "required": [
+                  "completionCriteria",
+                  "approveReadOnlyTools",
+                  "maxSteps"
+                ],
+                "additionalProperties": false
+              },
               "selection": {
                 "type": "object",
                 "properties": {
@@ -3244,6 +4107,27 @@
           "capability"
         ],
         "additionalProperties": false
+      },
+      "thinkingReadOnlyTool": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "string",
+        "enum": [
+          "retrieve_memory",
+          "search_knowledge",
+          "read_chapter",
+          "get_entity",
+          "find_related_chapters",
+          "get_author_notes",
+          "get_timeline",
+          "get_plot_threads",
+          "list_creative_assets",
+          "get_creative_asset",
+          "list_creative_proposals",
+          "list_open_questions",
+          "get_writing_context",
+          "compare_plan_with_manuscript",
+          "get_discussion_source"
+        ]
       },
       "thinkingRecovery": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -3375,6 +4259,9 @@
                   "AUTHORIZATION_REQUIRED",
                   "MODEL_CONFIGURATION_ERROR",
                   "BUDGET_EXCEEDED",
+                  "AUTONOMY_INCOMPLETE",
+                  "AUTONOMY_LIMIT_EXCEEDED",
+                  "AUTONOMY_PLAN_REJECTED",
                   "INTERNAL_ERROR"
                 ]
               },
@@ -3962,6 +4849,184 @@
                     "incomplete"
                   ],
                   "additionalProperties": false
+                },
+                "autonomy": {
+                  "type": "object",
+                  "properties": {
+                    "completionCriteria": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 4000
+                    },
+                    "approveReadOnlyTools": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "maxSteps": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 8
+                    },
+                    "deadlineMs": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "planning",
+                        "planned",
+                        "running",
+                        "completed",
+                        "needs_input",
+                        "failed",
+                        "cancelled"
+                      ]
+                    },
+                    "plan": {
+                      "type": "object",
+                      "properties": {
+                        "goal": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 12000
+                        },
+                        "completionCriteria": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 4000
+                        },
+                        "steps": {
+                          "minItems": 1,
+                          "maxItems": 8,
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "stepId": {
+                                "type": "string",
+                                "pattern": "^[A-Za-z0-9_-]{1,32}$"
+                              },
+                              "tool": {
+                                "type": "string",
+                                "enum": [
+                                  "retrieve_memory",
+                                  "search_knowledge",
+                                  "read_chapter",
+                                  "get_entity",
+                                  "find_related_chapters",
+                                  "get_author_notes",
+                                  "get_timeline",
+                                  "get_plot_threads",
+                                  "list_creative_assets",
+                                  "get_creative_asset",
+                                  "list_creative_proposals",
+                                  "list_open_questions",
+                                  "get_writing_context",
+                                  "compare_plan_with_manuscript",
+                                  "get_discussion_source"
+                                ]
+                              },
+                              "purpose": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 240
+                              },
+                              "status": {
+                                "type": "string",
+                                "enum": [
+                                  "pending",
+                                  "running",
+                                  "completed",
+                                  "failed"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "stepId",
+                              "tool",
+                              "purpose",
+                              "status"
+                            ],
+                            "additionalProperties": false
+                          }
+                        }
+                      },
+                      "required": [
+                        "goal",
+                        "completionCriteria",
+                        "steps"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "completion": {
+                      "type": "object",
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "complete",
+                            "needs_input"
+                          ]
+                        },
+                        "summary": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 1000
+                        },
+                        "completedStepIds": {
+                          "maxItems": 8,
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "pattern": "^[A-Za-z0-9_-]{1,32}$"
+                          }
+                        },
+                        "remainingSteps": {
+                          "maxItems": 8,
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "stepId": {
+                                "type": "string",
+                                "pattern": "^[A-Za-z0-9_-]{1,32}$"
+                              },
+                              "reason": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 500
+                              }
+                            },
+                            "required": [
+                              "stepId",
+                              "reason"
+                            ],
+                            "additionalProperties": false
+                          }
+                        }
+                      },
+                      "required": [
+                        "status",
+                        "summary",
+                        "completedStepIds",
+                        "remainingSteps"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "errorCode": {
+                      "type": "string",
+                      "maxLength": 80
+                    }
+                  },
+                  "required": [
+                    "completionCriteria",
+                    "approveReadOnlyTools",
+                    "maxSteps",
+                    "status"
+                  ],
+                  "additionalProperties": false
                 }
               },
               "required": [
@@ -4115,6 +5180,9 @@
                       "AUTHORIZATION_REQUIRED",
                       "MODEL_CONFIGURATION_ERROR",
                       "BUDGET_EXCEEDED",
+                      "AUTONOMY_INCOMPLETE",
+                      "AUTONOMY_LIMIT_EXCEEDED",
+                      "AUTONOMY_PLAN_REJECTED",
                       "INTERNAL_ERROR"
                     ]
                   },

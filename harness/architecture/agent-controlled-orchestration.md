@@ -1,6 +1,6 @@
 # ADR：受控角色编排与规划
 
-日期：2026-11-07。状态：只读试点与同预算工程对照已接入，默认关闭，尚未部署。
+日期：2026-11-07。状态：同预算只读多角色试点、配对工程评测与单消息有界只读自主执行已接入，均默认关闭，尚未部署。
 
 试点为 Creative 研究与计划检查。复用 Go AgentTask 的任务权威与 Pi Worker，不增加另一条领取队列。Planner、Researcher、Analyst、Critic、Coordinator 是登记逻辑角色，默认保留单 Agent；作者可在作品级设置中显式开启只读五角色模式。
 
@@ -57,3 +57,15 @@ Agent 治理/编排定向测试覆盖角色集合、预算总和、越权 planId
 真实跨进程样本读取任务API代理的重叠窗口：Researcher、Analyst、Critic的started请求最大并发为3，随后与Planner、Coordinator共同形成五个唯一准入。Go持久化的五个child预算为父预留等分后的整数额度，Coordinator接收余数，合计精确等于与单角色相同的父预留。混入的扩大预算、重复序号、外来parent或未登记角色均在写入前拒绝；合法并行请求不因到达顺序改变callIndex或预算。
 
 Agent统一从父`ExecutionContext`派生子上下文，强制同任务、trace、授权版本与executor epoch，executionId独立，scope、deadline和三类预算只能收窄。同预算对照每组仍执行1次单角色和5次五角色模型调用，所有模型请求、工具和业务写入均保持只读。该证据覆盖固定只读试点中的并发预算竞争和权限传播，不证明允许模型动态创建角色。真实模型的并发质量收益、角色冲突裁决和代表性成本仍未测量。
+
+## 有界只读自主执行
+
+Phase 6 第一版接在现有Thinking Session和Pi Durable内，不创建新队列、Agent进程、计划服务或第三套任务状态。作者逐消息填写目标、完成条件和最多步骤，并显式批准只读工具；计划、每步状态与完成记录保存在原消息checkpoint。Go继续持有作者身份、scope、模型、费用预留、期限和当前授权，Pi只执行受治理的计划内只读工具。
+
+模型必须先提交与原目标、完成条件一致的计划，之后每个证据调用必须引用计划中的唯一步骤。计划不得改变工具集合、scope、预算、期限或创建子任务。正文/故事写入、组织请求和Canon能力在该模式中根本不可用。最后必须提交`complete`或`needs_input`；缺少完成记录的回答失败，不把省略当作成功。
+
+单消息步骤上限同时受固定8步、模型工具额度和模型轮次约束，为`min(8, maxToolCalls, maxTurnsPerRequest - 3)`。后三次轮次分别保留给计划、完成记录和最终回答；工具额度只由计划内证据调用消耗。额度到达上限后仅保留完成工具，允许模型安全收口。
+
+取消、期限、授权撤销、Provider/工具失败和重启沿用原Thinking语义。SIGKILL不会自动产生新付费attempt；显式Resume恢复同一计划、授权版本和上限。完成工具的证据与原checkpoint一同保留，Resume复用已成功读取的结果，不重复业务工具；已完成或进入`needs_input`的计划会被封印，不能再继续读取。Resume及其同一幂等键重放只承接原消息，不进入Creative intake，也不会创建自动整理任务。
+
+本地工程回归覆盖11项Agent自主行为测试、Go admission/intake幂等/legacy projection测试和真实Go/Pi进程。真实流程验证计划先于读取、当前授权调用、只读payload、完成投影、重启中断与显式Resume、零业务写入；完整Agent188/188、Web294加Worker25项及Go全量race通过。模型均由localhost合成Provider提供，真实模型规划质量、错误计划率、长期成本和大量Book上下文表现仍未测，因此该能力保持默认关闭。

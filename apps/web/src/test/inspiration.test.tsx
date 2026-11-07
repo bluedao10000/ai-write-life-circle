@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CreativeAsset, StoryChangeReceipt, StoryContext, ThinkingMessage, ThinkingModelOption, ThinkingRun, ThinkingSession } from '@writer-agent/contracts'
 import InspirationWorkspace from '../features/creative/InspirationWorkspace'
 import { ModelPicker, hostNote } from '../features/inspiration/Composer'
-import { AiMsg, Failure, Pending, Rich, readable } from '../features/inspiration/Messages'
+import { AiMsg, AutonomyStatus, Failure, Pending, Rich, readable } from '../features/inspiration/Messages'
 import { ReviewDrawer } from '../features/inspiration/Organize'
 import { useKeyboard } from '../features/inspiration/media'
 import { creativeApi } from '../services/api/creativeApi'
@@ -59,6 +59,23 @@ describe('reply typography', () => {
     expect(onNote).toHaveBeenCalledWith('好人品在于选择')
     expect(await screen.findByRole('button', { name: '已加入创作笔记' })).toBeDisabled()
     expect(screen.getByText('DeepSeek')).toBeVisible()
+  })
+  it('renders the persisted bounded plan without tool payloads', () => {
+    render(<AutonomyStatus state={{
+      completionCriteria:'核对两条章节证据',
+      approveReadOnlyTools:true,
+      maxSteps:2,
+      status:'completed',
+      plan:{goal:'检查连续性',completionCriteria:'核对两条章节证据',steps:[
+        {stepId:'s1',tool:'read_chapter',purpose:'核对第一章',status:'completed'},
+        {stepId:'s2',tool:'search_knowledge',purpose:'核对既有设定',status:'completed'},
+      ]},
+      completion:{status:'complete',summary:'两处证据一致。',completedStepIds:['s1','s2'],remainingSteps:[]},
+    }} />)
+    expect(screen.getByText('计划已完成')).toBeVisible()
+    expect(screen.getByText('核对第一章')).toBeVisible()
+    expect(screen.getByText('两处证据一致。')).toBeVisible()
+    expect(screen.queryByText(/arguments|capability|secret/i)).toBeNull()
   })
 })
 
@@ -220,6 +237,30 @@ describe('灵感 workspace', () => {
     expect(within(bubble).getByRole('status')).toHaveTextContent('正在发送…')
     // The draft stays in state for failure recovery, but is not shown twice.
     expect(screen.getByRole('textbox', { name: '说说你正在思考的问题' })).toHaveValue('')
+  })
+  it('sends a per-message read-only autonomy approval with completion criteria and no token form', async () => {
+    setWide(true)
+    const s = studio({
+      draft:'核对林舟是否已经离开旧城',
+      scopes:['knowledge'],
+      model:{
+        provider:'deepseek',
+        model:'deepseek-chat',
+        endpoint:'https://deepseek.test',
+        protocol:'thinking-v1',
+        toolCalling:true,
+        limits:{maxTurnsPerRequest:5,maxToolCalls:1,maxInputTokens:32000,maxOutputTokens:1024,maxSessionTokens:200000,maxConcurrentSessions:2,maxDurationMs:8000,maxToolResultBytes:24000},
+      },
+    })
+    render(<InspirationWorkspace studio={s} />)
+    await userEvent.click(screen.getByRole('button', { name: '开启只读自主执行' }))
+    await userEvent.type(screen.getByRole('textbox', { name: '完成条件' }), '给出结论并列出依据')
+    expect(screen.queryByText(/token budget|Token 预算/i)).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: '发送' }))
+    expect(s.thinking.send).toHaveBeenCalledWith({
+      text:'核对林舟是否已经离开旧城',
+      autonomy:{completionCriteria:'给出结论并列出依据',approveReadOnlyTools:true,maxSteps:1},
+    })
   })
   it('restores a conversation, keeps the real model label and locks sending while it replies', async () => {
     setWide(false)

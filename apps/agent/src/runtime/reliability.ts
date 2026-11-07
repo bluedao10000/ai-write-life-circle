@@ -3,7 +3,7 @@ import type { ThinkingFailure, ThinkingRun } from "@writer-agent/contracts";
 // Stable public classification; provider bodies and SDK stacks never cross this boundary.
 export function failureFor(code: string, mayHaveIncurredCost: boolean): ThinkingFailure {
   let category: ThinkingFailure["code"] = "INTERNAL_ERROR";
-  if (code === "STORY_CONTEXT_UNAVAILABLE") category = "STORY_CONTEXT_UNAVAILABLE";
+  if (["STORY_CONTEXT_UNAVAILABLE","AUTONOMY_INCOMPLETE","AUTONOMY_LIMIT_EXCEEDED","AUTONOMY_PLAN_REJECTED"].includes(code)) category = code as ThinkingFailure["code"];
   else if (/TIMEOUT|DURATION_EXCEEDED/.test(code)) category = code.startsWith("TOOL") ? "TOOL_TIMEOUT" : "PROVIDER_TIMEOUT";
   else if (/RATE_LIMITED/.test(code)) category = "RATE_LIMITED";
   else if (/CONTEXT_OVERFLOW|INPUT_BUDGET_EXCEEDED|CONTEXT_SUMMARY_FAILED/.test(code)) category = "CONTEXT_OVERFLOW";
@@ -14,7 +14,7 @@ export function failureFor(code: string, mayHaveIncurredCost: boolean): Thinking
   else if (/RESTARTED|INTERRUPTED|CANCELLED/.test(code)) category = "SESSION_INTERRUPTED";
   else if (/MODEL_UNAVAILABLE|MODEL_REAUTHORIZATION_REQUIRED|MODEL_CONFIGURATION_ERROR/.test(code)) category = "MODEL_CONFIGURATION_ERROR";
   else if (/PROVIDER_UNAVAILABLE|MODEL_REQUEST_FAILED|MODEL_EMPTY_RESPONSE|MODEL_OUTPUT_INCOMPLETE/.test(code)) category = "PROVIDER_UNAVAILABLE";
-  const action: ThinkingFailure["userAction"] = category === "CONTEXT_OVERFLOW" ? "continue" : category === "AUTHORIZATION_REQUIRED" || category === "MODEL_CONFIGURATION_ERROR" ? "reauthorize" : category === "BUDGET_EXCEEDED" || category === "SESSION_EXPIRED" ? "new_session" : category === "INTERNAL_ERROR" ? "contact_support" : category === "SESSION_INTERRUPTED" ? "continue" : "retry";
+  const action: ThinkingFailure["userAction"] = category === "CONTEXT_OVERFLOW" || category === "AUTONOMY_INCOMPLETE" ? "continue" : category === "AUTHORIZATION_REQUIRED" || category === "MODEL_CONFIGURATION_ERROR" ? "reauthorize" : ["BUDGET_EXCEEDED","SESSION_EXPIRED","AUTONOMY_LIMIT_EXCEEDED","AUTONOMY_PLAN_REJECTED"].includes(category) ? "new_session" : category === "INTERNAL_ERROR" ? "contact_support" : category === "SESSION_INTERRUPTED" ? "continue" : "retry";
   const messages: Record<ThinkingFailure["code"], string> = {
     PROVIDER_TIMEOUT: "模型回复超时，已收到的内容已保留。",
     PROVIDER_UNAVAILABLE: "模型暂时无法完成回复，对话已保留。",
@@ -28,6 +28,9 @@ export function failureFor(code: string, mayHaveIncurredCost: boolean): Thinking
     AUTHORIZATION_REQUIRED: "资料授权已变化，请确认 AI 资料范围后继续。",
     MODEL_CONFIGURATION_ERROR: "原模型配置已变化，请重新确认模型；不会自动切换。",
     BUDGET_EXCEEDED: "本轮或会话预算已达上限，请缩小问题范围或新开话题。",
+    AUTONOMY_INCOMPLETE: "自主执行没有提交完成记录，本轮没有被标记为成功。",
+    AUTONOMY_LIMIT_EXCEEDED: "自主执行的步骤或期限超过当前模型上限，请缩小完成目标或新开话题。",
+    AUTONOMY_PLAN_REJECTED: "自主计划与已完成步骤不一致，本轮已停止且没有继续检索。",
     INTERNAL_ERROR: "这轮执行未完成，请保留追踪编号以便排查。",
   };
   return {code:category, retryable:["retry", "continue", "provide_context"].includes(action), autoRecoverable:false, userAction:action, contextRetained:true, mayHaveIncurredCost, retryMayIncurCost:true, message:messages[category]};

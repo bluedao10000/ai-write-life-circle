@@ -1,6 +1,6 @@
 # ADR：统一 Runtime Governance
 
-日期：2026-11-05。状态：Phase 1 本地实现并验收；受控只读试点已接入，尚未部署。
+日期：2026-11-07。状态：Phase 1 本地实现并验收；受控多角色与有界只读自主执行均已接入并默认关闭，尚未部署。
 
 ## 合同与权威
 
@@ -127,3 +127,19 @@ Creative只读计划额外按固定五角色返回Admissions、Results、complet
 `GET /internal/v1/runtime/metrics`在同一Go私有loopback监听器输出Prometheus文本。它将原运行health、Worker心跳、Thinking readiness、Thinking诊断中的持久Run聚合和任务回执投影合并为每次抓取时重新计算的固定指标；不维护抓取链路、不会把旧心跳的待办数当成当前值，也不在Go进程内保存指标历史。Thinking指标包括固定生命周期状态、恢复次数、模型调用总数、终态Run耗时P50/P95、已结算Usage对应的输入/输出Token，以及Usage未知请求的数量和预留上限。未知预留只表示保守上界，不当作实际Token或费用。端点要求原服务Token，只允许GET；无样本计时省略，Thinking诊断暂不可用时省略其历史指标，来源失败返回无正文503。
 
 标签只允许五种任务类型、Creative只读计划五角色、Thinking Run固定生命周期状态及固定Usage状态。这样既能接入外部监控，又避免把任务ID、作品、消息、正文、凭证或任意错误变成高基数或敏感标签。指标只从原权威状态派生；回滚时移除路由即可，已有状态文件无需迁移。Thinking历史窗口随原会话保留策略变化，删除会话后其Run不再计入；本地合成Provider样本不代表生产SLO。
+
+## 有界只读自主执行
+
+Thinking消息可显式附带一次自主执行请求：作者消息本身是目标，另填写完成条件、只读工具批准、最多8步和可选更短期限。请求默认关闭，普通消息不增加模型调用或持久字段。Go在预留点数或调用Pi前验证模型工具能力、scope、步骤和期限；Memory Extraction以及selection、compaction、recovery引入自主模式均拒绝。旧客户端响应不宣告新协议时，Go从公开Session投影中剥离新增字段。
+
+Pi registry新增`thinking.autonomy`角色，prompt和tool schema分别版本化。计划、步骤状态和完成记录保存在原Thinking消息的Durable checkpoint，并以消息ID索引保存在同一`Saved`文档的私有元数据中；读取快照时才把状态投影到原作者消息。普通消息投影保持旧严格合同，旧版Agent因此仍能读取回滚后的会话。没有新增计划数据库、任务队列或预算账本。有效步骤上限统一为`min(8, maxToolCalls, maxTurnsPerRequest - 3)`：证据工具使用原有工具额度，三次模型轮次分别为计划、完成记录和最终回答保留。工具额度用尽后，运行时只保留`complete_autonomy`，避免在最后一个证据步骤后夺走显式完成机会。
+
+`adopt_autonomy_plan`必须先于任何证据读取。计划只能使用当前scope允许的固定只读工具集合，步骤ID唯一且不能超过请求上限；重复计划、未知或未计划工具、扩大scope、步数或期限均拒绝。`complete`必须覆盖全部计划步骤；`needs_input`必须列出全部未完成步骤和原因。缺少完成记录的回答以`AUTONOMY_INCOMPLETE`失败，不发布成功终态。
+
+写正文、故事记录、组织请求、Canon、任务创建和外部副作用工具在该模式中不注册。每个已计划读取仍经过统一Tool Gateway、当前Go授权和原Tool RPC；执行前写入步骤状态，完成后才标记步骤成功。每条模型请求继续使用原费用预留、usage结算、deadline、取消和恢复栅栏。
+
+进程重启把未完成自主运行标为`AGENT_RESTARTED`且不自动重放。显式Resume重新验证原作者、作品、模型、scope、授权版本和持久计划，只允许按原步骤上限继续。成功的只读工具结果与原checkpoint一起保留，Resume复用这些结果而不重复业务调用；已经写入的完成记录直接恢复终态并进入无工具最终回答。完成或`needs_input`后计划不能再执行证据工具。`/resume`及其幂等重放不进入Creative intake；只有原始`/messages`受理可以启动该outbox，因此恢复不会创建自动整理任务。
+
+本地工程回归包含11项Agent自主模式测试和真实Go/Pi进程：覆盖精确单工具/四轮下限、合法完成、`needs_input`、非法计划、未注册写工具、工具与Provider失败、授权撤销、取消、期限、普通消息兼容、SIGKILL后零自动重放、显式Resume、API/UI投影以及作品版本不变。完整Agent回归188/188、Web 294加Worker 25项、Go全量race和`pnpm test:thinking`通过；模型响应均来自localhost合成Provider。
+
+该结果证明执行合同和故障边界，不证明真实模型的计划质量、步骤选择、提示注入抵抗率或生产SLO。自主模式保持逐消息显式开启，不创建动态子Agent，也不扩展Phase 6到无限或无人值守执行。回滚先停止发送自主请求并取消在途运行，再部署不含该入口的Go、Pi和Web构建；既有完成计划只作为惰性可选元数据保留。

@@ -1,0 +1,238 @@
+schema: comet.native.v4
+name: agent-phase4-window-metrics
+language: en
+phase: archive
+status: done
+state_version: 8
+brief: brief.md
+shape_confirmation_hash: 1bf5b6a0bad2afac5fab2178933c87a0a7159f66585753f365eed7a4c9107cc3
+spec_changes:
+  - capability: worker-history-metrics
+    operation: create
+    source: specs/worker-history-metrics/spec.md
+workspace:
+  isolation: current
+  change_branch: codex/agent-phase4-budget-race
+  target_branch: codex/agent-phase4-budget-race
+  finish: null
+loop:
+  stage: done
+  goal_cycle: 1
+  iteration: 1
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: brief.md
+    text: "A1: A metrics response always contains `24h` and `7d` windows. For every
+      registered Worker task kind, it reports claimed, started, completed,
+      failed, interrupted, and unknown event counts from persisted audit
+      records, along with claim-to-started and started-to-terminal sample counts
+      and P50/P95 values. Empty percentile samples are omitted."
+    result: passed
+    reason:
+      text: Both fixed windows are built for all five registered task kinds. Counts
+        and transition samples use the specified audit timestamps; nearest-rank
+        P50/P95 values are omitted when empty. Runtime’s Go race check passed.
+      truncated: false
+  - id: A2
+    source: brief.md
+    text: "A2: Each window reports the five registered read-only Creative roles.
+      Admissions use each persisted model-step admission time. Results, status,
+      usage, and duration use the parent task's terminal event time. The
+      projection distinguishes known usage from missing usage, sums known tokens
+      and admitted token limits separately, and never treats unknown usage as
+      zero consumption."
+    result: passed
+    reason:
+      text: The five registered Creative roles use admission timestamps for admissions
+        and the parent terminal timestamp for results, status, usage, and
+        duration. Missing usage increments unknown usage and its reserved-token
+        bound; known usage and reservations are reported separately.
+      truncated: false
+  - id: A3
+    source: brief.md
+    text: "A3: Windows use the interval `[sampledAt - duration, sampledAt]` from one
+      `sampledAt` captured per projection. Missing, malformed, or future event
+      timestamps do not enter a window. Existing lifetime metrics retain their
+      current values. Reopening the same task registry and projecting at the
+      same `sampledAt` returns the same windows; no task IDs, book IDs, session
+      IDs, or source text appear."
+    result: passed
+    reason:
+      text: The projection captures one sampledAt, uses inclusive fixed-window bounds,
+        and excludes missing, malformed, and future timestamps. Tests cover
+        boundaries and stable results after reopening the registry. Lifetime
+        aggregation behavior is preserved, and the projection/export uses no
+        task identifiers or source text.
+      truncated: false
+  - id: A4
+    source: brief.md
+    text: "A4: Go race tests for `agenttasks` and `agentruntime`, plus `pnpm
+      test:runtime`, pass. Runtime tests use local synthetic services and make
+      no external model request. No persisted state schema or Go business-points
+      authority changes."
+    result: passed
+    reason:
+      text: "Runtime recorded both required checks as passed: the Go race tests and
+        pnpm test:runtime. The integration script verifies zero model calls
+        using its local synthetic setup. The candidate diff adds no persisted
+        state fields or business-points changes."
+      truncated: false
+builder_handoff:
+  candidate_id: 5cfeb4b6-a2f3-4bc9-8286-13891df44e73
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:81f51757-6eb1-473d-a79d-05ac4378571b
+  iteration: 1
+  summary:
+    text: Implemented fixed 24-hour and 7-day Worker history windows in the existing
+      Go task metrics projection and private Prometheus exporter. Each
+      projection samples one time and derives counts and percentiles from
+      persisted task audit and Creative model-step receipts, preserving current
+      lifetime metrics and state schema. Missing, malformed, and future event
+      timestamps are excluded; role admissions use admission time while terminal
+      results and usage use the parent terminal time. Unknown usage remains
+      distinct from known token totals, labels are fixed, and the maturity
+      report records the registry retention limit.
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+    - A3
+    - A4
+  checks:
+    - name:
+        text: go test ./internal/agenttasks ./internal/agentruntime
+        truncated: false
+      result: passed
+      note:
+        text: Both Go packages passed.
+        truncated: false
+    - name:
+        text: go test -race ./internal/agenttasks ./internal/agentruntime
+        truncated: false
+      result: passed
+      note:
+        text: Both Go packages passed with the race detector.
+        truncated: false
+    - name:
+        text: pnpm test:creative
+        truncated: false
+      result: passed
+      note:
+        text: The local synthetic provider integration verified populated 24h and 7d
+          task and role windows.
+        truncated: false
+    - name:
+        text: pnpm test:runtime
+        truncated: false
+      result: passed
+      note:
+        text: The local Go/Pi runtime integration verified fixed empty-window metrics
+          and zero external model calls.
+        truncated: false
+    - name:
+        text: git diff --check
+        truncated: false
+      result: passed
+      note:
+        text: No whitespace errors.
+        truncated: false
+  checks_truncated: false
+  known_limits:
+    - text: Windows cover only records retained in the existing Go task registry.
+      truncated: false
+    - text: Synthetic-provider checks do not establish production SLOs, real-model
+        latency, or model quality.
+      truncated: false
+  known_limits_truncated: false
+  review:
+    status: passed
+    summary:
+      text: Independent read-only review found no issues in the candidate diff and
+        confirmed that its event boundaries, unknown-usage handling, and
+        fixed-label export match the brief.
+      truncated: false
+    reviewer_execution_ref: /root/phase4_metrics_review
+  submitted_at: 2026-11-07T07:10:16.617Z
+blockers: []
+verification:
+  candidate_id: 5cfeb4b6-a2f3-4bc9-8286-13891df44e73
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:53a8cfed-82c1-42b5-94df-c91f790ef52b
+  iteration: 1
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks:
+    - id: go-race-agenttasks-agentruntime
+      name:
+        text: Go race tests for AgentTasks and Runtime metrics
+        truncated: false
+      argv_display:
+        - text: test
+          truncated: false
+        - text: -race
+          truncated: false
+        - text: ./internal/agenttasks
+          truncated: false
+        - text: ./internal/agentruntime
+          truncated: false
+      argv_truncated: false
+      cwd_ref: apps/api-go
+      status: passed
+      exit_code: 0
+      duration_ms: 413
+    - id: pnpm-test-runtime
+      name:
+        text: Go/Pi Runtime integration with synthetic services
+        truncated: false
+      argv_display:
+        - text: test:runtime
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 9306
+  summary:
+    text: All four acceptance items pass. The implementation and retained-history
+      limits match the brief and spec.
+    truncated: false
+  risks:
+    - text: Windowed results cover only receipts retained in the existing task
+        registry; synthetic-provider checks do not establish production SLOs or
+        real-provider latency.
+      truncated: false
+  risks_truncated: false
+  completed_at: 2026-11-07T07:13:03.002Z
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: All four acceptance items pass. The implementation and retained-history
+        limits match the brief and spec.
+      truncated: false
+    completed_at: 2026-11-07T07:13:03.002Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-11-07T06:38:33.352Z
