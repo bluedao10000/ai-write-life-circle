@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type {
   PublicationManagement,
   PublicationMetadata,
@@ -91,6 +91,8 @@ export default function Publish() {
     [success, setSuccess] = useState<PublicationVersion | null>(null)
   const [note, setNote] = useState('')
   const [notice, setNotice] = useState('')
+  const [query, setQuery] = useState('')
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const [ack, setAck] = useState({ rights: false, scope: false }),
     [key, setKey] = useState(() => crypto.randomUUID())
   const mounted = useRef(true)
@@ -128,6 +130,47 @@ export default function Publish() {
   }, [project, epoch])
   const base = loaded?.management.publication?.currentVersionId ?? null,
     current = loaded?.management.publication?.versions.at(-1)
+  const drafts = loaded?.drafts ?? []
+  const groups = useMemo(() => {
+    const map = new Map<
+      string,
+      { id: string; title: string; drafts: typeof drafts }
+    >()
+    for (const draft of loaded?.drafts ?? []) {
+      const id = draft.volumeId || ''
+      const group = map.get(id) ?? {
+        id,
+        title: draft.volumeTitle?.trim() || draft.volumeId || '未分卷',
+        drafts: [],
+      }
+      group.drafts.push(draft)
+      map.set(id, group)
+    }
+    return [...map.values()]
+  }, [loaded])
+  const needle = query.trim().toLowerCase()
+  const matches = (draft: (typeof drafts)[number]) =>
+    !needle || draft.title.toLowerCase().includes(needle)
+  const selectable = drafts.filter((draft) => !draft.isEmpty)
+  const matched = drafts.filter(matches)
+  const visible = selectable.filter(matches)
+  const selectedSet = new Set(selected)
+  const selectedDrafts = drafts.filter((draft) => selectedSet.has(draft.chapterId))
+  const selectedWords = selectedDrafts.reduce((sum, draft) => sum + draft.words, 0)
+  const visibleSelected =
+    visible.length > 0 && visible.every((draft) => selectedSet.has(draft.chapterId))
+  const publishedSet = new Set(
+    current?.chapters.map((chapter) => chapter.chapterId) ?? [],
+  )
+  const choose = (ids: string[], on: boolean) => {
+    setSelected((current) =>
+      on
+        ? [...new Set([...current, ...ids])]
+        : current.filter((id) => !ids.includes(id)),
+    )
+    setPreview(null)
+    setAck({ rights: false, scope: false })
+  }
   const open = (ids: string[]) => {
     setSelected(ids)
     setStep(0)
@@ -137,6 +180,8 @@ export default function Publish() {
     setWizard(true)
     setError('')
     setSuccess(null)
+    setQuery('')
+    setCollapsed({})
   }
   const changeMeta = (patch: Partial<PublicationMetadata>) => {
     setMeta((m) => ({ ...m, ...patch }))
@@ -677,31 +722,145 @@ export default function Publish() {
               <p className="mt-2 text-ui text-ink-2">
                 仅发布已保存修订的固定快照。之后修改草稿不会改变读者看到的内容。
               </p>
-              <div className="mt-6 divide-y divide-line-soft">
-                {loaded.drafts.map((d) => (
-                  <Choice
-                    key={d.chapterId}
-                    checked={selected.includes(d.chapterId)}
-                    onChange={(yes) => {
-                      if (!d.isEmpty)
-                        setSelected((ids) =>
-                          yes
-                            ? [...ids, d.chapterId]
-                            : ids.filter((id) => id !== d.chapterId),
-                        )
-                      setPreview(null)
-                      setAck({ rights: false, scope: false })
-                    }}
-                    className={`py-3 ${!d.isEmpty ? '' : 'opacity-50'}`}
+              <div className="sticky top-0 z-10 mt-6 -mx-2 border-b border-line-soft bg-page/95 px-2 py-3 backdrop-blur">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p
+                    role="status"
+                    aria-label="已选章节统计"
+                    className="text-ui-sm text-ink-2"
                   >
-                    <span className="block font-prose text-ui">{d.title}</span>
-                    <span className="block break-all text-micro text-ink-3">
-                      {(d.volumeTitle ?? d.volumeId) || '未分卷'} · {d.words}字
-                      · {d.revisionId}
-                    </span>
-                  </Choice>
-                ))}
+                    已选{' '}
+                    <span className="font-mono-num text-ink">
+                      {selectedDrafts.length}
+                    </span>{' '}
+                    / {selectable.length} 章 ·{' '}
+                    {selectedWords.toLocaleString('zh-CN')} 字
+                  </p>
+                  <div className="ml-auto flex flex-wrap items-center gap-1.5">
+                    <input
+                      type="search"
+                      aria-label="查找章节"
+                      placeholder={`在 ${selectable.length} 章中查找`}
+                      value={query}
+                      onChange={(event) => setQuery(event.target.value)}
+                      className="w-36 rounded border border-line bg-page px-2 py-1 text-ui-sm"
+                    />
+                    <Btn
+                      size="sm"
+                      variant="outline"
+                      disabled={visible.length === 0}
+                      onClick={() =>
+                        choose(
+                          visible.map((draft) => draft.chapterId),
+                          !visibleSelected,
+                        )
+                      }
+                    >
+                      {visibleSelected ? '取消全选' : needle ? '全选结果' : '全选'}
+                    </Btn>
+                    <Btn
+                      size="sm"
+                      variant="outline"
+                      disabled={selectedDrafts.length === 0}
+                      onClick={() => choose(selected, false)}
+                    >
+                      清空选择
+                    </Btn>
+                  </div>
+                </div>
+                {needle && (
+                  <p className="mt-2 text-micro text-ink-3">
+                    找到 {matched.length} 章；全选只作用于当前结果。
+                  </p>
+                )}
               </div>
+              {matched.length === 0 ? (
+                <p className="py-8 text-ui text-ink-3">
+                  {drafts.length === 0
+                    ? '还没有章节，请先保存正文。'
+                    : '没有匹配的章节。'}
+                </p>
+              ) : (
+                groups.map((group) => {
+                  const rows = group.drafts.filter(matches)
+                  const ids = rows
+                    .filter((draft) => !draft.isEmpty)
+                    .map((draft) => draft.chapterId)
+                  if (needle && rows.length === 0) return null
+                  const isCollapsed = !needle && !!collapsed[group.id]
+                  const all =
+                    ids.length > 0 &&
+                    ids.every((id) => selectedSet.has(id))
+                  return (
+                    <section key={group.id} className="mt-4">
+                      <div className="flex items-center gap-2 py-2">
+                        <button
+                          type="button"
+                          aria-expanded={!isCollapsed}
+                          aria-label={`${isCollapsed ? '展开' : '收起'}${group.title}`}
+                          className="px-1 text-ui-sm text-ink-2"
+                          onClick={() =>
+                            setCollapsed((value) => ({
+                              ...value,
+                              [group.id]: !isCollapsed,
+                            }))
+                          }
+                        >
+                          {isCollapsed ? '▸' : '▾'}
+                        </button>
+                        <h3 className="font-prose text-ui">{group.title}</h3>
+                        <span className="text-micro text-ink-3">
+                          {
+                            group.drafts.filter((draft) => !draft.isEmpty)
+                              .length
+                          }{' '}
+                          章
+                        </span>
+                        {ids.length > 0 && (
+                          <Btn
+                            size="sm"
+                            variant="outline"
+                            className="ml-auto"
+                            onClick={() => choose(ids, !all)}
+                          >
+                            {all ? '取消本卷' : '选择本卷'}
+                          </Btn>
+                        )}
+                      </div>
+                      {!isCollapsed && (
+                        <div className="divide-y divide-line-soft">
+                          {rows.map((d) => (
+                            <Choice
+                              key={d.chapterId}
+                              checked={selectedSet.has(d.chapterId)}
+                              onChange={(yes) => {
+                                if (!d.isEmpty) choose([d.chapterId], yes)
+                              }}
+                              className={`py-3 ${d.isEmpty ? 'opacity-50' : ''}`}
+                            >
+                              <span className="flex flex-wrap items-baseline gap-2">
+                                <span className="font-prose text-ui">
+                                  {d.title}
+                                </span>
+                                {publishedSet.has(d.chapterId) && (
+                                  <span className="text-micro text-ok">
+                                    已公开
+                                  </span>
+                                )}
+                              </span>
+                              <span className="block text-micro text-ink-3">
+                                {d.isEmpty
+                                  ? '空章节 · 保存正文后才能公开'
+                                  : `${d.words.toLocaleString('zh-CN')} 字`}
+                              </span>
+                            </Choice>
+                          ))}
+                        </div>
+                      )}
+                    </section>
+                  )
+                })
+              )}
             </section>
           )}
           {step === 2 && preview && (
