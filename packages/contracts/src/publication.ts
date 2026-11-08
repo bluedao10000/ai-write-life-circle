@@ -98,6 +98,7 @@ const publication = z.strictObject({
   chapterSlugs: z.record(z.string(), slug),
 })
 export const publicationManagementSchema = z.strictObject({
+  bookTitle: z.string(),
   publication: publication
     .extend({
       versions: z
@@ -186,6 +187,16 @@ export const publicationProblemSchema = z.strictObject({
   requestId: z.string().optional(),
 })
 
+export const publicationSuggestionSchema = z.strictObject({
+  title: z.string().max(160),
+  penName: z.string().max(100),
+  tagline: z.string().max(250),
+  description: z.string().max(10000),
+  authorBio: z.string().max(2000),
+  category: z.string().max(80),
+})
+export type PublicationSuggestion = z.infer<typeof publicationSuggestionSchema>
+
 export type PublicationMetadata = z.infer<typeof publicationMetadataSchema>
 export type PublicationSelection = z.infer<typeof publicationSelectionSchema>
 export type PublicationPreviewInput = z.infer<
@@ -205,6 +216,7 @@ export type PublicAuthor = z.infer<typeof publicAuthorSchema>
 
 export const publicationSchemas = {
   PublicationMetadata: publicationMetadataSchema,
+  PublicationSuggestion: publicationSuggestionSchema,
   PublicationSelection: publicationSelectionSchema,
   PublicationPreviewInput: publicationPreviewInputSchema,
   PublicationCommitInput: publicationCommitInputSchema,

@@ -112,6 +112,7 @@ type DraftSummary struct {
 	IsEmpty     bool    `json:"isEmpty"`
 }
 type Management struct {
+	BookTitle         string              `json:"bookTitle"`
 	Publication       *PublicationSummary `json:"publication"`
 	ChangedChapterIDs []string            `json:"changedChapterIds"`
 	Drafts            []DraftSummary      `json:"drafts"`

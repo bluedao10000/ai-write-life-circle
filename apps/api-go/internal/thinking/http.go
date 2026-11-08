@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-var route = regexp.MustCompile(`^/v1/studio/books/([A-Za-z0-9_-]+)/thinking/(capabilities|models|preferences|sessions)(?:/(th-[a-f0-9-]{36}))?(?:/(messages|events|history|cancel|resume|memory-candidate))?$`)
+var route = regexp.MustCompile(`^/v1/studio/books/([A-Za-z0-9_-]+)/thinking/(capabilities|models|preferences|sessions|publication-suggest)(?:/(th-[a-f0-9-]{36}))?(?:/(messages|events|history|cancel|resume|memory-candidate))?$`)
 
 func IsPublicPath(path string) bool { return strings.Contains(path, "/thinking/") }
 func reply(w http.ResponseWriter, v any, e error, status int) {
@@ -85,6 +85,10 @@ func decode(w http.ResponseWriter, r *http.Request, v any) error {
 	return nil
 }
 func (s *Service) agent(ctx context.Context, method, path string, v any) (json.RawMessage, error) {
+	return s.agentTimeout(ctx, method, path, v, 15*time.Second)
+}
+
+func (s *Service) agentTimeout(ctx context.Context, method, path string, v any, timeout time.Duration) (json.RawMessage, error) {
 	if s.Origin == "" || s.ServiceToken == "" {
 		return nil, fail(503, "THINKING_UNAVAILABLE")
 	}
@@ -101,7 +105,7 @@ func (s *Service) agent(ctx context.Context, method, path string, v any) (json.R
 	req.Header.Set("Content-Type", "application/json")
 	client := s.Client
 	if client == nil {
-		client = &http.Client{Timeout: 15 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+		client = &http.Client{Timeout: timeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	}
 	res, e := client.Do(req)
 	if e != nil {
@@ -187,7 +191,8 @@ func summary(r Record) map[string]any {
 }
 func (s *Service) PublicHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		base := r.Context()
+		ctx, cancel := context.WithTimeout(base, 30*time.Second)
 		defer cancel()
 		r = r.WithContext(ctx)
 		m := route.FindStringSubmatch(r.URL.EscapedPath())
@@ -206,6 +211,17 @@ func (s *Service) PublicHandler() http.Handler {
 		book, op, id, action := m[1], m[2], m[3], m[4]
 		if _, e := s.Management.Resolve(*a, book); e != nil {
 			reply(w, nil, e, 0)
+			return
+		}
+		if op == "publication-suggest" {
+			if r.Method != "POST" || id != "" {
+				reply(w, nil, fail(405, "METHOD_NOT_ALLOWED"), 0)
+				return
+			}
+			suggestCtx, cancelSuggest := context.WithTimeout(base, 120*time.Second)
+			defer cancelSuggest()
+			v, e := s.SuggestPublication(suggestCtx, *a, book)
+			reply(w, v, e, 200)
 			return
 		}
 		if op == "models" {

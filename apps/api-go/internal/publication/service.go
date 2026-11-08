@@ -324,6 +324,11 @@ func (s *Service) Manage(ctx context.Context, a application.Actor, id string) (M
 	if err != nil {
 		return out, err
 	}
+	if b.App.ProjectTitle != nil {
+		if out.BookTitle, err = b.App.ProjectTitle(); err != nil {
+			return out, err
+		}
+	}
 	err = s.transaction(ctx, func(st *state) (bool, error) {
 		if _, err := s.authorize(a, id); err != nil {
 			return false, err

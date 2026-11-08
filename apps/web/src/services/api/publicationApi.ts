@@ -4,15 +4,24 @@ import {
   publicationPreviewInputSchema,
   publicationPreviewSchema,
   publicationCommitInputSchema,
+  publicationSuggestionSchema,
   publicationVersionSchema,
   type PublicationPreviewInput,
   type PublicationCommitInput,
 } from '@writer-agent/contracts'
-import { getJson, requestApi } from './client'
+import { getJson, postJson, requestApi } from './client'
 const base = (bookId: string) =>
   `/v1/studio/books/${encodeURIComponent(bookId)}/publication`
 export const getPublication = async (bookId: string) =>
   publicationManagementSchema.parse(await getJson(base(bookId)))
+export const suggestPublication = async (bookId: string) =>
+  publicationSuggestionSchema.parse(
+    await postJson(
+      `/v1/studio/books/${encodeURIComponent(bookId)}/thinking/publication-suggest`,
+      {},
+      crypto.randomUUID(),
+    ),
+  )
 export const previewPublication = async (
   bookId: string,
   input: PublicationPreviewInput,

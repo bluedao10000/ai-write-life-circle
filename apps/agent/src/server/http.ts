@@ -69,6 +69,18 @@ export function server(host: PiHost) {
           });
           return;
         }
+        if (req.method === "POST" && url.pathname === "/internal/v1/generate") {
+          const input = z
+            .object({
+              system: z.string().min(1).max(8000),
+              input: z.string().min(1).max(48 * 1024),
+              maxOutputTokens: z.number().int().min(256).max(2048),
+            })
+            .strict()
+            .parse(await body(req));
+          json(res, 200, await host.generate(input));
+          return;
+        }
         if (req.method === "POST" && url.pathname === "/internal/v1/sessions") {
           json(
             res,
