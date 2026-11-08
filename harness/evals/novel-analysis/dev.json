@@ -1,0 +1,70 @@
+{
+  "version": "novel-analysis-dev-v1",
+  "split": "dev",
+  "synthetic": true,
+  "cases": [
+    {
+      "caseId": "dev-character-grounding",
+      "phase": "chapters",
+      "chapters": [
+        { "chapterId": "CH-000001", "title": "雨夜", "markdown": "林舟是医师。他在雨夜回到临安。" },
+        { "chapterId": "CH-000002", "title": "旧宅", "markdown": "老宅的门锁着。林舟在门外站了很久。" }
+      ],
+      "output": {
+        "findings": [
+          {
+            "kind": "character",
+            "title": "林舟身份",
+            "statement": "林舟是医师。",
+            "confidence": 0.9,
+            "entityNames": ["林舟"],
+            "evidence": [{ "chapterId": "CH-000001", "quote": "林舟是医师。" }]
+          },
+          {
+            "kind": "event",
+            "title": "雨夜归城",
+            "statement": "林舟在雨夜回到临安。",
+            "confidence": 0.7,
+            "evidence": [{ "chapterId": "CH-000001", "quote": "他在雨夜回到临安。" }]
+          }
+        ],
+        "entities": [
+          { "kind": "character", "name": "林舟" },
+          { "kind": "place", "name": "临安" }
+        ]
+      },
+      "expected": {
+        "mustGroundQuotes": ["林舟是医师。", "他在雨夜回到临安。"],
+        "maxFindings": 5,
+        "conflictKinds": []
+      }
+    },
+    {
+      "caseId": "dev-timeline-conflict",
+      "phase": "synthesis",
+      "chapters": [
+        { "chapterId": "CH-000010", "title": "旧信", "markdown": "信上写着三年前。林舟说那是五年前的事。" }
+      ],
+      "output": {
+        "findings": [
+          {
+            "kind": "conflict",
+            "title": "时间不一致",
+            "statement": "同一事件被写成三年前和五年前。",
+            "confidence": 0.8,
+            "evidence": [
+              { "chapterId": "CH-000010", "quote": "信上写着三年前。" },
+              { "chapterId": "CH-000010", "quote": "林舟说那是五年前的事。" }
+            ]
+          }
+        ],
+        "entities": []
+      },
+      "expected": {
+        "mustGroundQuotes": ["信上写着三年前。"],
+        "maxFindings": 5,
+        "conflictKinds": ["conflict"]
+      }
+    }
+  ]
+}

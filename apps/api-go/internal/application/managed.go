@@ -389,7 +389,11 @@ func (m *Management) Resolve(a Actor, id string) (*Service, error) {
 					continue
 				}
 				order++
-				items = append(items, map[string]any{"chapterId": c.ID, "title": c.Title, "order": order})
+				item := map[string]any{"chapterId": c.ID, "title": c.Title, "order": order}
+				if words, ok := m.draftWords(id, c.ID); ok {
+					item["wordCount"] = words
+				}
+				items = append(items, item)
 			}
 			group := map[string]any{"title": v.Title, "chapters": items}
 			if v.ID != "" {
@@ -402,6 +406,19 @@ func (m *Management) Resolve(a Actor, id string) (*Service, error) {
 	s.ProjectionProvider = func() (harness.Projection, error) { return m.projection(id) }
 	return s, nil
 }
+// draftWords reads the current head's stored count for the directory. The
+// directory is a read path: a missing or unreadable draft omits the count
+// instead of failing the whole book.
+func (m *Management) draftWords(bookID, chapterID string) (int, bool) {
+	var state *DraftState
+	path := filepath.Join(m.Legacy.State, "chapter-drafts", compat.Key(bookID), compat.Key(chapterID)+".json")
+	found, err := storage.Read(path, &state)
+	if err != nil || !found || state == nil || len(state.Revisions) == 0 {
+		return 0, false
+	}
+	return state.Revisions[len(state.Revisions)-1].Words, true
+}
+
 func (m *Management) projection(id string) (harness.Projection, error) {
 	st, e := m.load()
 	if e != nil {

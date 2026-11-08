@@ -682,7 +682,8 @@
                       "knowledge.extract",
                       "creative.organize",
                       "creative.plan_check",
-                      "memory.consolidate"
+                      "memory.consolidate",
+                      "novel.analyze"
                     ]
                   },
                   "bookId": {
@@ -769,7 +770,9 @@
                       "creative-organize-candidates-v1",
                       "creative-plan_check-candidates-v1",
                       "creative-plan-check-candidates-v2",
-                      "memory-candidate-v1"
+                      "memory-candidate-v1",
+                      "novel-analysis-candidates-v1",
+                      "novel-synthesis-candidates-v1"
                     ]
                   },
                   "reservedTokens": {
@@ -873,7 +876,7 @@
           },
           "kinds": {
             "minItems": 1,
-            "maxItems": 4,
+            "maxItems": 5,
             "type": "array",
             "items": {
               "type": "string",
@@ -881,7 +884,8 @@
                 "review",
                 "knowledge",
                 "creative",
-                "memory"
+                "memory",
+                "analysis"
               ]
             }
           },
@@ -1079,7 +1083,8 @@
               "knowledge.extract",
               "creative.organize",
               "creative.plan_check",
-              "memory.consolidate"
+              "memory.consolidate",
+              "novel.analyze"
             ]
           },
           "strategyVersion": {
@@ -1093,7 +1098,9 @@
               "creative-organize-candidates-v1",
               "creative-plan_check-candidates-v1",
               "creative-plan-check-candidates-v2",
-              "memory-candidate-v1"
+              "memory-candidate-v1",
+              "novel-analysis-candidates-v1",
+              "novel-synthesis-candidates-v1"
             ]
           },
           "executorEpoch": {
@@ -1222,7 +1229,8 @@
               "knowledge.extract",
               "creative.organize",
               "creative.plan_check",
-              "memory.consolidate"
+              "memory.consolidate",
+              "novel.analyze"
             ]
           },
           "inputHash": {
@@ -1422,7 +1430,8 @@
               "knowledge.extract",
               "creative.organize",
               "creative.plan_check",
-              "memory.consolidate"
+              "memory.consolidate",
+              "novel.analyze"
             ]
           },
           "bookId": {
@@ -1509,7 +1518,9 @@
               "creative-organize-candidates-v1",
               "creative-plan_check-candidates-v1",
               "creative-plan-check-candidates-v2",
-              "memory-candidate-v1"
+              "memory-candidate-v1",
+              "novel-analysis-candidates-v1",
+              "novel-synthesis-candidates-v1"
             ]
           },
           "reservedTokens": {
@@ -1607,7 +1618,7 @@
           },
           "kinds": {
             "minItems": 1,
-            "maxItems": 4,
+            "maxItems": 5,
             "type": "array",
             "items": {
               "type": "string",
@@ -1615,7 +1626,8 @@
                 "review",
                 "knowledge",
                 "creative",
-                "memory"
+                "memory",
+                "analysis"
               ]
             }
           },

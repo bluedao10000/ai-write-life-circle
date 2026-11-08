@@ -47,8 +47,7 @@ type RuntimeHealth struct {
 func workerHealth(status UnifiedStatus) WorkerHealth {
 	out := WorkerHealth{Status: "disabled"}
 	pending, ready := 0, true
-	for _, kind := range []string{"review", "knowledge", "creative", "memory"} {
-		current := status.Executors[kind]
+	for _, current := range status.Executors {
 		if current.ExecutorOwner == "disabled" {
 			continue
 		}

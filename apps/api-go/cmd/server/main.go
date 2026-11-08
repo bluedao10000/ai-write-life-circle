@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/agentruntime"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/agenttasks"
+	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/analysis"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/application"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/billing"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/config"
@@ -100,6 +101,9 @@ func run() error {
 		k := knowledge.New(app, modelConfig, nil)
 		k.QueueOnly = true
 		return k
+	}
+	analysisFor := func(app *application.Service) *analysis.Service {
+		return analysis.New(app, modelConfig)
 	}
 	memory := knowledgeFor(s)
 	reviews.MemoryChapters = memory.RelatedChapters
@@ -204,7 +208,7 @@ func run() error {
 	}
 	h := transport.Handler(transport.Options{ProceduralFor: func(app *application.Service) *procedural.Service {
 		return &procedural.Service{App: app, Tasks: tasks, ValidateExtraction: validateExtraction}
-	}, CreativeFor: creativeFor, SessionOwned: thought.Owned, WorkerStatus: func() any { return agentruntime.ReadUnifiedStatus(c.State, modelConfig) }, KnowledgeFor: func(app *application.Service) *knowledge.Service { return knowledgeFor(app) }, Imports: imports, Management: management, ReviewFor: reviewFor, Account: func(ctx context.Context, a application.Actor) (any, error) {
+	}, CreativeFor: creativeFor, SessionOwned: thought.Owned, WorkerStatus: func() any { return agentruntime.ReadUnifiedStatus(c.State, modelConfig) }, KnowledgeFor: func(app *application.Service) *knowledge.Service { return knowledgeFor(app) }, AnalysisFor: analysisFor, Imports: imports, Management: management, ReviewFor: reviewFor, Account: func(ctx context.Context, a application.Actor) (any, error) {
 		return accountView(ctx, ledger, management, a)
 	}, Redeem: func(ctx context.Context, a application.Actor, code string) (any, error) {
 		return redeem(ctx, ledger, management, a, code)

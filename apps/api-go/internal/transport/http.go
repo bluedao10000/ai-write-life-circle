@@ -4,6 +4,7 @@ package transport
 import (
 	"context"
 	"encoding/json"
+	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/analysis"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/application"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/compat"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/creative"
@@ -28,6 +29,7 @@ type Options struct {
 	ProceduralFor func(*application.Service) *procedural.Service
 	WorkerStatus  func() any
 	KnowledgeFor  func(*application.Service) *knowledge.Service
+	AnalysisFor   func(*application.Service) *analysis.Service
 	CreativeFor   func(*application.Service) *creative.Service
 	// SessionOwned verifies a Thinking session belongs to the author and book.
 	SessionOwned func(application.Actor, string, string) error
@@ -192,6 +194,9 @@ func Handler(o Options) http.Handler {
 				return
 			}
 			write(w, 200, o.WorkerStatus(), "")
+			return
+		}
+		if handleAnalysis(o, w, r, path) {
 			return
 		}
 		if handleKnowledge(o, w, r, path) {

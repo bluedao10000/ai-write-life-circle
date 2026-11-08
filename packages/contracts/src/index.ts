@@ -192,3 +192,4 @@ export * from './resume.js'
 
 export * from './billing-review.js'
 export * from './procedural-memory.js'
+export * from './analysis.js'

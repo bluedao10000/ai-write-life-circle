@@ -497,6 +497,58 @@ func TestManagedDeleteFailureLeavesBookVisibleAndCleanupReplay(t *testing.T) {
 	}
 }
 
+func TestManagedDirectoryIncludesHeadWordCount(t *testing.T) {
+	ctx := context.Background()
+	m := managedFixture(t)
+	b := createWork(t, m, "directory-words")
+	app, err := m.Resolve(managedAuthor, b.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := app.Source(b.Chapters[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := app.Head(ctx, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := "directory-words-save"
+	if _, err = app.Save(ctx, managedAuthor, c.ID, "fixture", map[string]any{"baseRevisionId": h.ID, "markdown": "雨落在窗前。\n\n这是合成测试正文。"}, &key); err != nil {
+		t.Fatal(err)
+	}
+	directory, err := app.Chapters()
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Volumes []struct {
+			Chapters []struct {
+				ChapterID string `json:"chapterId"`
+				WordCount *int   `json:"wordCount"`
+			} `json:"chapters"`
+		} `json:"volumes"`
+	}
+	if err = json.Unmarshal(raw, &got); err != nil {
+		t.Fatal(err)
+	}
+	for _, volume := range got.Volumes {
+		for _, chapter := range volume.Chapters {
+			if chapter.ChapterID == c.ID {
+				if chapter.WordCount == nil || *chapter.WordCount == 0 {
+					t.Fatalf("directory omitted head word count: %s", raw)
+				}
+				return
+			}
+		}
+	}
+	t.Fatalf("chapter missing from directory: %s", raw)
+}
+
 func TestBrokenLegacyHarnessCannotBlockManagedAccess(t *testing.T) {
 	ctx := context.Background()
 	m := managedFixture(t)

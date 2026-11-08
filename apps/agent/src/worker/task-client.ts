@@ -3,10 +3,11 @@ import {executionFingerprint} from '../runtime/model-gateway.js';
 import {createHash} from 'node:crypto';
 import {strategy,outputSchemaVersion} from '../agents/review/prompt.js';
 import {strategy as knowledgeStrategy,outputSchemaVersion as knowledgeSchema} from '../agents/knowledge/prompt.js';
+import {executionContract as analysisContract} from '../agents/analysis/prompt.js';
 import {agentTaskClaimResultSchema,agentTaskAcknowledgementSchema,agentTaskEnvelopeSchema,agentWorkerHeartbeatSchema,type AgentTask,type AgentModelResponse,agentModelStepSchema} from '@writer-agent/contracts';
 import {boundedText} from '../tools/registry.js';
 import type {WorkerConfig} from './config.js';
-export const executionContracts={knowledge:'sha256:'+createHash('sha256').update(knowledgeStrategy+knowledgeSchema).digest('hex'),review:'sha256:'+createHash('sha256').update(strategy+outputSchemaVersion).digest('hex')};
+export const executionContracts={knowledge:'sha256:'+createHash('sha256').update(knowledgeStrategy+knowledgeSchema).digest('hex'),review:'sha256:'+createHash('sha256').update(strategy+outputSchemaVersion).digest('hex'),analysis:analysisContract};
 export class TaskClient {
  private contracts:Record<string,string>={...executionContracts};
  constructor(readonly config:WorkerConfig,readonly instance:string){}

@@ -138,7 +138,7 @@ const authorize = new Set(['AUTHORIZATION_REQUIRED', 'AUTHORIZATION_REVOKED', 'S
  * duplicate question) and is the author's explicit consent to another paid call;
  * otherwise the question returns to the composer as a new message.
  */
-export function Failure({ m, run, busy, recent, storySaved, onResume, onAsk, onScopes, onNewTopic }: {
+export function Failure({ m, run, busy, recent, storySaved, onResume, onAsk, onScopes, onNewTopic, onAnalyze }: {
   m: ThinkingMessage
   /** The session's current run when it belongs to this reply. */
   run?: ThinkingRun
@@ -150,6 +150,8 @@ export function Failure({ m, run, busy, recent, storySaved, onResume, onAsk, onS
   onAsk: () => void
   onScopes: () => void
   onNewTopic: () => void
+  /** Offer the background whole-book route when the turn itself was too large. */
+  onAnalyze?: () => void
 }) {
   const [more, setMore] = useState(false)
   const stopped = m.status === 'cancelled'
@@ -157,6 +159,7 @@ export function Failure({ m, run, busy, recent, storySaved, onResume, onAsk, onS
   const failure = run?.failure
   const resumable = !!run && !!failure?.retryable && run.resumable && ['failed', 'interrupted'].includes(run.status)
   const needsContext = failure?.code === 'CONTEXT_OVERFLOW'
+  const tooLarge = ['INPUT_BUDGET_EXCEEDED', 'TURN_BUDGET_EXCEEDED', 'TOOL_BUDGET_EXCEEDED', 'CONTEXT_OVERFLOW'].includes(code)
   const title = storySaved ? '设定已经保存，但回答中断。' : stopped ? '已停止回复。' : m.text.trim() ? '这次回复没有完整生成，已收到的内容已保留。' : '这次回复未能完成，你的问题已保存。'
   // The code-specific explanation is the most precise; the run's category text covers unknown codes.
   const specific = thinkingError(code)
@@ -179,6 +182,12 @@ export function Failure({ m, run, busy, recent, storySaved, onResume, onAsk, onS
             重新提问
           </Btn>
         )}
+        {tooLarge && onAnalyze && (
+          <Btn size="sm" variant="outline" disabled={busy} onClick={onAnalyze} className="max-md:min-h-11">
+            <Icon name="layers" className="h-3 w-3" />
+            转为整书后台分析
+          </Btn>
+        )}
         {authorize.has(code) || failure?.code === 'AUTHORIZATION_REQUIRED' ? (
           <Btn size="sm" disabled={busy} onClick={onScopes} className="max-md:min-h-11">
             检查 AI 资料范围
@@ -195,6 +204,11 @@ export function Failure({ m, run, busy, recent, storySaved, onResume, onAsk, onS
           </Btn>
         )}
       </div>
+      {tooLarge && onAnalyze && (
+        <p className="mt-2 text-micro text-ink-3">
+          整书分析会按章节分批读取已保存正文，不会一次发送整本书；进度和候选发现可在「整书分析」里查看，只有你确认后才会成为设定。
+        </p>
+      )}
       {resumable && <p className="mt-2 text-micro text-ink-3">重新尝试会再次请求原模型，按实际用量计入 AI 点数{failure?.mayHaveIncurredCost ? '；上次请求可能已计入' : ''}。</p>}
       {run && !run.resumable && !stopped && run.status !== 'completed' && <p className="mt-2 text-micro text-ink-3">这一轮已经做过的步骤不能自动重来，请先看看已有内容，再重新提问。</p>}
       {more && (

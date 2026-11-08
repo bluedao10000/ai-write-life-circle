@@ -10,6 +10,7 @@ import { flushSync } from 'react-dom'
 import type { CreativeProposal, CreativeTurn, StoryChangeReceipt, StoryContext, ThinkingMessage, ThinkingSource } from '@writer-agent/contracts'
 import { Btn, Dialog, Heading, Icon, IconBtn, Row, Seg, type IconName } from '../../components/vnext/ui'
 import { creativeApi } from '../../services/api/creativeApi'
+import { analysisApi } from '../../services/api/analysisApi'
 import BookMenu from '../management/BookMenu'
 import { useManagement } from '../management/ManagedStudio'
 import type { useStudioController } from '../vnext/useStudioController'
@@ -353,6 +354,21 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
     const d = document as Document & { startViewTransition?: (cb: () => void) => unknown }
     if (landing && d.startViewTransition && !reducedMotion()) d.startViewTransition(() => flushSync(go))
     else go()
+  }
+  const [analysisStarting, setAnalysisStarting] = useState(false)
+  const startAnalysis = async () => {
+    if (analysisStarting) return
+    setAnalysisStarting(true)
+    setLocalError('')
+    try {
+      await analysisApi.create(book)
+      studio.setBookNav({ section: 'analysis', source: 'manuscript' })
+      studio.setView('book')
+    } catch (e) {
+      setLocalError(e instanceof Error && e.message ? e.message : '整书分析没能开始，请稍后再试。')
+    } finally {
+      setAnalysisStarting(false)
+    }
   }
   const newChat = () => {
     if (t.busy) return
@@ -716,7 +732,7 @@ export default function InspirationWorkspace({ studio }: { studio: Studio }) {
           retried ? (
             <p className="mt-4 border-l-2 border-line pl-4 text-ui-sm text-ink-3">这次尝试没有完整生成，已在下方重新回复。</p>
           ) : failed ? (
-            <Failure m={m} run={run} storySaved={saved} busy={t.busy || running} recent={recent} onResume={t.resume} onAsk={() => ask(m)} onScopes={() => setAccess(true)} onNewTopic={newChat} />
+            <Failure m={m} run={run} storySaved={saved} busy={t.busy || running || analysisStarting} recent={recent} onResume={t.resume} onAsk={() => ask(m)} onScopes={() => setAccess(true)} onNewTopic={newChat} onAnalyze={analysisStarting ? undefined : () => void startAnalysis()} />
           ) : undefined
         }
         organize={

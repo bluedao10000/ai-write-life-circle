@@ -66,7 +66,7 @@ type UnifiedStatus struct {
 }
 
 func ReadUnifiedStatus(state string, c llm.Config) UnifiedStatus {
-	kinds := []string{"review", "knowledge", "creative", "memory"}
+	kinds := []string{"review", "knowledge", "creative", "memory", "analysis"}
 	executors := make(map[string]ExecutionStatus, len(kinds))
 	base := Status{Protocol: executorpolicy.Protocol}
 	for _, kind := range kinds {

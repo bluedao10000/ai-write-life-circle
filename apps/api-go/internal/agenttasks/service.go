@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/analysis"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/application"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/compat"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/creative"
@@ -43,21 +44,22 @@ type Task struct {
 	Request      llm.Request   `json:"request"`
 }
 type Record struct {
-	PiRunID     string                 `json:"piRunId,omitempty"`
-	StepResults []llm.StepResult       `json:"stepResults,omitempty"`
-	ModelSteps  []ModelStepReceipt     `json:"modelSteps,omitempty"`
-	Audit       []ExecutionAudit       `json:"audit,omitempty"`
-	Outcome     string                 `json:"outcome,omitempty"`
-	CompletedAt string                 `json:"completedAt,omitempty"`
-	Task        Task                   `json:"task"`
-	Instance    string                 `json:"instance"`
-	Started     bool                   `json:"started"`
-	Finished    bool                   `json:"finished"`
-	ResultHash  string                 `json:"resultHash,omitempty"`
-	Knowledge   *knowledge.PreparedJob `json:"knowledge,omitempty"`
-	Review      *review.ClaimedRun     `json:"review,omitempty"`
-	Creative    *creative.PreparedJob  `json:"creative,omitempty"`
-	Memory      *PreparedMemory        `json:"memory,omitempty"`
+	PiRunID     string                  `json:"piRunId,omitempty"`
+	StepResults []llm.StepResult        `json:"stepResults,omitempty"`
+	ModelSteps  []ModelStepReceipt      `json:"modelSteps,omitempty"`
+	Audit       []ExecutionAudit        `json:"audit,omitempty"`
+	Outcome     string                  `json:"outcome,omitempty"`
+	CompletedAt string                  `json:"completedAt,omitempty"`
+	Task        Task                    `json:"task"`
+	Instance    string                  `json:"instance"`
+	Started     bool                    `json:"started"`
+	Finished    bool                    `json:"finished"`
+	ResultHash  string                  `json:"resultHash,omitempty"`
+	Knowledge   *knowledge.PreparedJob  `json:"knowledge,omitempty"`
+	Review      *review.ClaimedRun      `json:"review,omitempty"`
+	Creative    *creative.PreparedJob   `json:"creative,omitempty"`
+	Memory      *PreparedMemory         `json:"memory,omitempty"`
+	Analysis    *analysis.PreparedBatch `json:"analysis,omitempty"`
 }
 type Registry struct {
 	Schema int               `json:"schema"`
@@ -101,11 +103,11 @@ func (s *Service) load() (Registry, error) {
 		st = Registry{Schema: 1, Tasks: map[string]Record{}}
 	}
 	for id, r := range st.Tasks {
-		validKind := r.Task.Kind == "review.execute" || r.Task.Kind == "knowledge.extract" || r.Task.Kind == "creative.organize" || r.Task.Kind == "creative.plan_check" || r.Task.Kind == "memory.consolidate"
+		validKind := r.Task.Kind == "review.execute" || r.Task.Kind == "knowledge.extract" || r.Task.Kind == "creative.organize" || r.Task.Kind == "creative.plan_check" || r.Task.Kind == "memory.consolidate" || r.Task.Kind == "novel.analyze"
 		validPayload := (r.Task.Kind == "review.execute" && r.Review != nil && r.Knowledge == nil && r.Creative == nil && r.Memory == nil) ||
 			(r.Task.Kind == "knowledge.extract" && r.Review == nil && r.Knowledge != nil && r.Creative == nil && r.Memory == nil) ||
 			((r.Task.Kind == "creative.organize" || r.Task.Kind == "creative.plan_check") && r.Review == nil && r.Knowledge == nil && r.Creative != nil && r.Memory == nil) ||
-			(r.Task.Kind == "memory.consolidate" && r.Review == nil && r.Knowledge == nil && r.Creative == nil && r.Memory != nil)
+			(r.Task.Kind == "memory.consolidate" || r.Task.Kind == "novel.analyze" && r.Review == nil && r.Knowledge == nil && r.Creative == nil && r.Memory != nil)
 		if id != r.Task.ID || r.Task.Book == "" || !validKind || !validPayload {
 			return st, errors.New("invalid persisted task identity")
 		}
@@ -164,6 +166,14 @@ func (s *Service) Claim(ctx context.Context, instance, config string, kinds ...s
 		domains := []string{"review", "knowledge", "creative"}
 		if s.Memory != nil {
 			domains = append(domains, "memory")
+		}
+		// Older workers never claim novel.analyze: an empty kind list must not
+		// hand them a contract they cannot execute.
+		for _, kind := range kinds {
+			if kind == "analysis" {
+				domains = append(domains, "analysis")
+				break
+			}
 		}
 		total := len(books) * len(domains)
 		if total == 0 {
@@ -280,6 +290,39 @@ func (s *Service) Claim(ctx context.Context, instance, config string, kinds ...s
 				task.Consent = claim.Snapshot.Settings
 				task.Request = prepared.Request
 				rec.Knowledge = prepared
+			} else if kind == "analysis" {
+				a := analysis.New(app, s.Config)
+				a.ExecutorOwner = "pi"
+				claim, e := a.Claim(ctx)
+				if e != nil {
+					return e
+				}
+				if claim == nil {
+					continue
+				}
+				prepared, e := a.Prepare(ctx, claim)
+				if e != nil {
+					_ = a.Complete(ctx, prepared, llm.Response{}, false, e)
+					continue
+				}
+				b := claim.Batch
+				task.Kind = "novel.analyze"
+				task.OutputSchema = "novel-analysis-candidates-v1"
+				if b.Phase == "synthesis" {
+					task.OutputSchema = "novel-synthesis-candidates-v1"
+				}
+				task.Lease = b.Lease
+				task.Epoch = b.Epoch
+				task.Attempt = b.Attempts
+				task.Deadline = b.Deadline
+				task.Strategy = claim.Job.StrategyVersion
+				task.Revision = b.BatchID
+				task.ContentHash = claim.Job.Fingerprint
+				task.Reserved = claim.Reserved
+				task.BudgetDay = claim.Day
+				task.Consent = map[string]any{"wholeBookAnalysis": true}
+				task.Request = prepared.Request
+				rec.Analysis = prepared
 			} else if kind == "creative" {
 				c := s.creative(app)
 				claim, e := c.Claim(ctx)
@@ -543,6 +586,9 @@ func (s *Service) Action(ctx context.Context, id, action string, in Envelope) er
 			if t.Kind == "creative.organize" {
 				limit = 256 * 1024
 			}
+			if t.Kind == "novel.analyze" {
+				limit = 512 * 1024
+			}
 			if len(in.Response.Text) > limit {
 				return llm.Fail("LLM_RESPONSE_TOO_LARGE")
 			}
@@ -603,6 +649,8 @@ func (s *Service) Action(ctx context.Context, id, action string, in Envelope) er
 				e = s.knowledge(app).Complete(ctx, rec.Knowledge, in.Response, rec.Started, modelErr)
 			} else if rec.Creative != nil {
 				e = s.creative(app).Complete(ctx, rec.Creative, in.Response, rec.Started, modelErr)
+			} else if rec.Analysis != nil {
+				e = analysis.New(app, s.Config).Complete(ctx, rec.Analysis, in.Response, rec.Started, modelErr)
 			} else {
 				r := s.review(app)
 				e = r.Complete(rec.Review, in.Response, modelErr)
@@ -661,6 +709,9 @@ func taskKind(kind string) string {
 	if kind == "memory" {
 		return "memory.consolidate"
 	}
+	if kind == "analysis" {
+		return "novel.analyze"
+	}
 	return "knowledge.extract"
 }
 func domain(kind string) string {
@@ -672,6 +723,9 @@ func domain(kind string) string {
 	}
 	if kind == "memory.consolidate" {
 		return "memory"
+	}
+	if kind == "novel.analyze" {
+		return "analysis"
 	}
 	return "knowledge"
 }
@@ -697,6 +751,10 @@ func (r *Record) scrub() {
 	}
 	if r.Memory != nil {
 		r.Memory.Request = llm.Request{}
+	}
+	if r.Analysis != nil {
+		r.Analysis.Request = llm.Request{}
+		r.Analysis.Chapters = nil
 	}
 }
 func (s *Service) CleanupBook(ctx context.Context, book string) error {
@@ -738,6 +796,13 @@ func (s *Service) recordOutcome(r *Record, app *application.Service) {
 	} else if r.Creative != nil {
 		r.Outcome, r.CompletedAt = s.creative(app).Outcome(r.Creative)
 	} else if r.Memory != nil {
+		if r.Outcome == "" {
+			r.Outcome = "completed"
+		}
+		if r.CompletedAt == "" {
+			r.CompletedAt = time.Now().UTC().Format(time.RFC3339Nano)
+		}
+	} else if r.Analysis != nil {
 		if r.Outcome == "" {
 			r.Outcome = "completed"
 		}

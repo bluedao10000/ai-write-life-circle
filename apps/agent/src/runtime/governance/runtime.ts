@@ -16,6 +16,7 @@ export const definitions=Object.freeze({
  'creative.plan.coordinator':{version:1,capability:'creative',mode:'orchestration',retry:'explicit',output:'creative-plan-check-candidates-v2',tools:'none',modelCalls:1},
  'review.execute':{version:1,capability:'review',mode:'go-task',retry:'go',output:'review-candidates-v1',tools:'none',modelCalls:1},
  'knowledge.extract':{version:1,capability:'knowledge',mode:'go-task',retry:'go',output:'knowledge-candidates-v1',tools:'none',modelCalls:1},
+ 'novel.analyze':{version:1,capability:'analysis',mode:'go-task',retry:'go',output:'novel-analysis-candidates-v1',tools:'none',modelCalls:1},
  'creative.organize':{version:1,capability:'creative',mode:'go-task',retry:'go',output:'creative-organize-candidates-v1',tools:'none',modelCalls:1},
  'creative.plan_check':{version:1,capability:'creative',mode:'go-task',retry:'go',output:'creative-plan_check-candidates-v1',tools:'none',modelCalls:1},
 } as const);
