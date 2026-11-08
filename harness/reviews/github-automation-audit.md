@@ -22,7 +22,7 @@
 
 没有发现 schedule、workflow_run、repository_dispatch、自动 PR 创建/关闭/重建、自动提交或评论工作流，也没有发现脚本直接调用 GitHub REST/GraphQL 或 gh 轮询。不能据此推断外部 Agent 从未做过这些操作。
 
-.workbuddy/settings.json 仅配置本地 Write/Edit 的 Comet phase guard；Git hooks 仅有示例文件，未见生效的推送或 PR 钩子。未修改用户全局配置。
+.workbuddy/settings.json 未配置写入钩子；Git hooks 仅有示例文件，未见生效的推送或 PR 钩子。未修改用户全局配置。
 
 ## 触发场景对比
 

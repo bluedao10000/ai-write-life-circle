@@ -60,7 +60,6 @@ cd "$TEMP_DIR/project"
 rm -rf \
     .git \
     .claude \
-    .comet \
     .workbuddy \
     .github \
     node_modules \

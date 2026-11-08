@@ -43,8 +43,3 @@ apps/web/test-results-thinking/
 .workbuddy-ai/
 
 apps/web/test-results-author-experience/
-# >>> Comet managed project state >>>
-!/.comet/
-/.comet/*
-!/.comet/config.yaml
-# <<< Comet managed project state <<<
