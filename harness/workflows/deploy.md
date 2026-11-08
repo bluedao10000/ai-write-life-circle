@@ -34,4 +34,4 @@
 - 验收：三个 unit active；公网 `/healthz` 200；未认证的 `publication-suggest` 返回 401（路由存在）；Pi `POST /internal/v1/generate` 用真实模型返回 200 与 usage；线上 Publish 资源包含新按钮与接口调用。
 - 首次 Pi 发布发现生成路径使用了 models 文件之外的 fallback key，生产为空导致 500；`0c3ab3d` 改为选择首个启用条目，与对话执行一致。
 - 回滚：API 用安装器备份恢复，Pi 切回上一 release symlink，Web 重新部署上一版本。管理 GET 新增必填 `bookTitle`，新旧 Web 的严格 DTO 各有不接受窗口，本次窗口约 3 分钟；今后同类字段先发布可兼容的 Web。
-- 同日章节选择改版：Web Worker 版本 `d9269f96-bae1-4ffa-a42c-4878feaa1970`（分支 `codex/publish-chapter-selection`）；生产构建保留 Google AuthGate，线上 Publish 资源包含全选、搜索与分卷选择；API 与 Pi 未变更。
+- 同日章节选择改版：Web Worker 版本 `d9269f96-bae1-4ffa-a42c-4878feaa1970`（分支 `codex/publish-chapter-selection`，已合并到 main `9163fe9`）；生产构建保留 Google AuthGate，线上 Publish 资源包含全选、搜索与分卷选择；API 与 Pi 未变更。
