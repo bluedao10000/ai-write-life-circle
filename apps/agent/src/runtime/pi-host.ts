@@ -116,10 +116,12 @@ export class PiHost {
     return this.view(id,true);
   }
   async generate(input:{system:string;input:string;maxOutputTokens:number}) {
+    const entry = modelEntries(this.config).find(v => v.enabled);
+    if (!entry) throw new AgentError("MODEL_UNAVAILABLE", 409);
     const abort = new AbortController();
     const timer = setTimeout(() => abort.abort(), 90_000);
     try {
-      return await completeOnce(this.config.model, this.config.key, input, abort.signal);
+      return await completeOnce(entry.model, entry.key, input, abort.signal);
     } finally {
       clearTimeout(timer);
     }
