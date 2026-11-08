@@ -29,7 +29,8 @@
 
 2026-11-08 发布资料助手（分支 `codex/publication-metadata-assistant`，已合并到 main `e2e506e`）：
 
-- Go API `e969093`，安装器备份 `/var/backups/writer-agent/deploy-sjtEUMw2`；Pi release `0c3ab3d`；Web Worker 版本 `16053da3-643f-43d3-a740-aca0491d7182`。
+- Go API `e969093`，安装器备份 `/var/backups/writer-agent/deploy-sjtEUMw2`；Pi release `0c3ab3d`；Web Worker 版本 `d78768e5-fd05-448c-b7e0-c0cadf6ee201`。
+- 首次 Web 部署漏了 `deploy-web.yml` 的生产构建变量，线上直接进入演示模式；按 `VITE_STORY2U_PUBLIC_SITE=true`、`VITE_WRITER_AGENT_AUTH=google`、`VITE_WRITER_AGENT_MODE=api`、`VITE_WRITER_AGENT_PROJECT_ID=local` 重建后重新部署，登录已跳转 Google。手动部署 Web 必须使用同一组变量。
 - 验收：三个 unit active；公网 `/healthz` 200；未认证的 `publication-suggest` 返回 401（路由存在）；Pi `POST /internal/v1/generate` 用真实模型返回 200 与 usage；线上 Publish 资源包含新按钮与接口调用。
 - 首次 Pi 发布发现生成路径使用了 models 文件之外的 fallback key，生产为空导致 500；`0c3ab3d` 改为选择首个启用条目，与对话执行一致。
 - 回滚：API 用安装器备份恢复，Pi 切回上一 release symlink，Web 重新部署上一版本。管理 GET 新增必填 `bookTitle`，新旧 Web 的严格 DTO 各有不接受窗口，本次窗口约 3 分钟；今后同类字段先发布可兼容的 Web。
