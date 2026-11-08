@@ -30,6 +30,10 @@ type ManagementUI = {
   create: () => void
   openImport: () => void
   canImport: boolean
+  busy?: boolean
+  error?: string
+  refresh?: () => void
+  wordCounts?: Record<string, number>
 }
 export const ManagementContext = createContext<ManagementUI | null>(null)
 export function useManagement() {
@@ -98,7 +102,12 @@ export default function ManagedStudio({
       active = false
     }
   }, [adapter])
-  const open = async (next: ManagedBook, focus?: string, keepURL = false) => {
+  const open = async (
+    next: ManagedBook,
+    focus?: string,
+    keepURL = false,
+    revealDirectory = false,
+  ) => {
     if (!keepURL && next.bookId !== book?.bookId) {
       const url = new URL(window.location.href)
       url.searchParams.set('book', next.bookId)
@@ -120,23 +129,32 @@ export default function ManagedStudio({
     }
     const value = await adapter.loadWorkspace(next.bookId)
     const current = focus ?? (next.bookId === book?.bookId ? activeChapter.current : undefined)
+    // Import opens the directory once, keeping the author's width and side panels.
+    const layout = revealDirectory
+      ? {
+          rightOpen: false,
+          leftW: 280,
+          rightW: 360,
+          focus: false,
+          ...value.preferences?.layout,
+          ...preferences.current?.layout,
+          leftOpen: true,
+        }
+      : undefined
+    const nextPreferences: WorkspaceSnapshot['preferences'] = {
+      theme: value.preferences?.theme ?? 'light',
+      ...value.preferences,
+      ...(next.bookId === book?.bookId ? preferences.current : {}),
+      ...(layout ? { layout } : {}),
+    }
     setSnapshot({
       ...value,
       projectTitle: next.title,
-      preferences: {
-        theme: value.preferences?.theme ?? 'light',
-        ...value.preferences,
-        ...(next.bookId === book?.bookId ? preferences.current : {}),
-      },
+      preferences: nextPreferences,
       ...(current && value.chapters.some((c) => c.id === current)
         ? {
             currentChapterId: current,
-            preferences: {
-              theme: value.preferences?.theme ?? 'light',
-              ...value.preferences,
-              ...(next.bookId === book?.bookId ? preferences.current : {}),
-              lastChapterId: current,
-            },
+            preferences: { ...nextPreferences, lastChapterId: current },
           }
         : {}),
       chapters: value.chapters.map((c) => ({
@@ -345,7 +363,8 @@ export default function ManagedStudio({
           onComplete={(next) => {
             void run(async () => {
               setBooks((all) => [...all.filter((item) => item.bookId !== next.bookId), next])
-              await open(next, next.chapters[0]?.chapterId)
+              const first = next.chapters.find((chapter) => !chapter.archived) ?? next.chapters[0]
+              await open(next, first?.chapterId, false, true)
               setImporting(false)
             })
           }}
@@ -388,6 +407,14 @@ export default function ManagedStudio({
               switchBook: (next) => {
                 if (next.bookId !== book.bookId) void run(() => open(next))
               },
+              busy,
+              error,
+              refresh,
+              wordCounts: Object.fromEntries(
+                (snapshot?.chapters ?? []).flatMap((chapter) =>
+                  chapter.wordCount === undefined ? [] : [[chapter.id, chapter.wordCount]],
+                ),
+              ),
             }}
           >
             {render(snapshot, generation)}
