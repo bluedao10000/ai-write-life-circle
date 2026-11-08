@@ -1,6 +1,6 @@
 # 小说智能流水线成熟度报告
 
-- 状态：P0–P5 已实现并本地验证；P6 的失败转后台路径已实现；P7 的增量重跑与确定性评测已实现，judge/人工复核待真实模型批次执行。
+- 状态：P0–P7 已实现并部署到生产（2026-11-08）；P7 的 judge/人工复核待真实模型批次执行。
 - 设计边界：[novel-intelligence-pipeline.md](novel-intelligence-pipeline.md)
 - 分支：`codex/novel-intelligence-pipeline`（仅本地提交，未推送、未合并、未创建 PR）
 
@@ -106,7 +106,12 @@ Agent 任务协议扩展：kind `novel.analyze`、claim kind `analysis`、输出
 3. 回滚 Go 前删除/保留 `analysis/` 状态均可；旧二进制不会读取该目录。
 4. `tasks-v1.json` 中的 `novel.analyze` 记录不会被旧 worker 领取。
 
-未执行生产部署；需要用户明确授权后才推送/部署。
+2026-11-08 已按上述顺序部署，生产当前运行分支提交 `c96512f556e21755bc594ae6c4798e72ed7edb73`（尚未合并 main）：
+
+- Go API 与 Pi 发布为同一提交 `c96512f`；上一版为 `f69294f`，安装器在 `/var/backups/writer-agent/` 保留了部署前备份。
+- Web Worker 版本 `bbbfb587-f0ca-4673-9888-c3d7bfa55fdf`；部署后 6 个运行时 secret 均保持不变。
+- 验收：`/v1/public/home` 返回 200 且带 `per-user-v1`；未认证的 `/v1/studio/books/example/analysis` 返回 401；Worker healthcheck 通过，私有 runtime health 显示 5/5 executor online、readiness=true。
+- 部署中发现并修复了 Go Worker 心跳只接受 4 个 kind 的问题（`c96512f`）；没有该修复时新 Worker 会以 `VALIDATION_FAILED` 退出。
 
 ## 8. 使用说明
 
