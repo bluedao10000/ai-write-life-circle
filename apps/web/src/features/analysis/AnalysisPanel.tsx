@@ -87,6 +87,7 @@ export function AnalysisPanel({ bookId, bookTitle, chapters = [], onChapter, onS
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [tab, setTab] = useState<'findings' | 'world'>('findings')
+  const [notes, setNotes] = useState<Record<string, string>>({})
   const [refresh, setRefresh] = useState(0)
 
   useEffect(() => {
@@ -260,18 +261,36 @@ export function AnalysisPanel({ bookId, bookTitle, chapters = [], onChapter, onS
         <div className="ml-auto flex items-center gap-2">
           {finding.status === 'proposed' && (
             <>
+              <input
+                aria-label="审阅备注"
+                value={notes[finding.findingId] ?? ''}
+                onChange={(event) =>
+                  setNotes((current) => ({ ...current, [finding.findingId]: event.target.value }))
+                }
+                placeholder="备注（可选）"
+                maxLength={2000}
+                className="w-40 rounded border border-line-soft bg-paper px-2 py-1 text-ui-sm text-ink"
+              />
               <Btn
                 size="sm"
                 variant="primary"
                 disabled={busy}
-                onClick={() => void act(() => analysisApi.decide(bookId, finding.findingId, 'confirm'))}
+                onClick={() =>
+                  void act(() =>
+                    analysisApi.decide(bookId, finding.findingId, 'confirm', notes[finding.findingId]),
+                  )
+                }
               >
                 确认
               </Btn>
               <Btn
                 size="sm"
                 disabled={busy}
-                onClick={() => void act(() => analysisApi.decide(bookId, finding.findingId, 'reject'))}
+                onClick={() =>
+                  void act(() =>
+                    analysisApi.decide(bookId, finding.findingId, 'reject', notes[finding.findingId]),
+                  )
+                }
               >
                 忽略
               </Btn>

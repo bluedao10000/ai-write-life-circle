@@ -97,8 +97,11 @@ describe('whole-book analysis workbench', () => {
     expect(screen.getByText('待确认')).toBeVisible()
     fireEvent.click(screen.getByRole('button', { name: '查看原文' }))
     expect(onChapter).toHaveBeenCalledWith('CH-000001')
+    fireEvent.change(screen.getByLabelText('审阅备注'), { target: { value: '身份已核对' } })
     fireEvent.click(screen.getByRole('button', { name: '确认' }))
-    await waitFor(() => expect(decide).toHaveBeenCalledWith('book-a', findingId, 'confirm'))
+    await waitFor(() =>
+      expect(decide).toHaveBeenCalledWith('book-a', findingId, 'confirm', '身份已核对'),
+    )
     expect(await screen.findByText('已确认')).toBeVisible()
   })
 
