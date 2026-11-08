@@ -27,7 +27,7 @@
 
 ## 发布记录
 
-2026-11-08 发布资料助手（分支 `codex/publication-metadata-assistant`）：
+2026-11-08 发布资料助手（分支 `codex/publication-metadata-assistant`，已合并到 main `e2e506e`）：
 
 - Go API `e969093`，安装器备份 `/var/backups/writer-agent/deploy-sjtEUMw2`；Pi release `0c3ab3d`；Web Worker 版本 `16053da3-643f-43d3-a740-aca0491d7182`。
 - 验收：三个 unit active；公网 `/healthz` 200；未认证的 `publication-suggest` 返回 401（路由存在）；Pi `POST /internal/v1/generate` 用真实模型返回 200 与 usage；线上 Publish 资源包含新按钮与接口调用。
