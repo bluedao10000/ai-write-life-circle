@@ -446,7 +446,7 @@ func (s *Service) maybeQueueSynthesis(st *State, job *Job) {
 		return
 	}
 	job.Batches = append(job.Batches, Batch{
-		BatchID: newID("batch-"), Status: "pending", Phase: "synthesis",
+		BatchID: newID("batch-"), ChapterIDs: []string{}, Status: "pending", Phase: "synthesis",
 	})
 }
 

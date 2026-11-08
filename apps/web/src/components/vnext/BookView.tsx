@@ -18,7 +18,7 @@ export type KnowledgeSection =
  * V3 book sections (Figma Make BookView): five asset kinds, 待确认, notes and
  * history. 'chapter' remains a legacy entry into manuscript knowledge.
  */
-export type BookSection = KnowledgeSection | 'inbox' | 'experience'
+export type BookSection = KnowledgeSection | 'inbox' | 'experience' | 'analysis'
 export type AssetSection = 'people' | 'world' | 'timeline' | 'plot' | 'threads'
 export const isAssetSection = (s: BookSection): s is AssetSection => s === 'people' || s === 'world' || s === 'timeline' || s === 'plot' || s === 'threads'
 /** canon = author-owned creative assets; manuscript = AI observations from saved prose. Stored separately. */
@@ -34,6 +34,7 @@ export const BOOK_NAV: NavMeta[] = [
   { id: 'plot', label: '剧情结构', icon: 'layers', asset: true },
   { id: 'threads', label: '伏笔', icon: 'thread', asset: true },
   { id: 'inbox', label: '待确认', icon: 'review' },
+  { id: 'analysis', label: '整书分析', icon: 'review' },
   { id: 'experience', label: '操作经验', icon: 'note' },
   { id: 'notes', label: '创作笔记', icon: 'note' },
   { id: 'history', label: '变更历史', icon: 'history' },

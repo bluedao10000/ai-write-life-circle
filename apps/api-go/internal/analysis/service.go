@@ -345,6 +345,24 @@ func (s *Service) Decide(ctx context.Context, findingID, decision, note string) 
 
 func (s *Service) viewOf(st *State, job *Job) View {
 	manifest := st.Manifests[job.ManifestID]
+	public := *job
+	// Lease, meter and draft-stat fields are executor internals; the author view
+	// exposes only job progress and frozen chapter identities.
+	public.ManifestID, public.Fingerprint = "", ""
+	public.Batches = make([]Batch, len(job.Batches))
+	for i, batch := range job.Batches {
+		batch.Lease, batch.Epoch, batch.MeterOp = "", 0, ""
+		batch.Reserved, batch.BudgetDay, batch.Deadline, batch.Due = 0, "", "", ""
+		public.Batches[i] = batch
+	}
+	if manifest != nil {
+		copy := *manifest
+		copy.Chapters = append([]ChapterRef{}, manifest.Chapters...)
+		for i := range copy.Chapters {
+			copy.Chapters[i].Stamp, copy.Chapters[i].Size = 0, 0
+		}
+		manifest = &copy
+	}
 	findings := []Finding{}
 	for _, finding := range st.Findings {
 		if finding.AnalysisID == job.AnalysisID {
@@ -367,7 +385,7 @@ func (s *Service) viewOf(st *State, job *Job) View {
 		}
 		return entities[i].Name < entities[j].Name
 	})
-	return View{Job: job, Manifest: manifest, Findings: findings, Entities: entities}
+	return View{Job: &public, Manifest: manifest, Findings: findings, Entities: entities}
 }
 
 func (s *Service) markStale(st *State, job *Job) bool {
