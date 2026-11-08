@@ -16,6 +16,7 @@
 | Pi 后台 Review / Knowledge / Creative | [pi-worker](workflows/pi-worker.md) | [统一 Runtime ADR](architecture/pi-unified-agent-runtime.md)、[任务协议](contracts/agent-tasks-v1.md)、[迁移报告](reviews/archive/pi-worker-migration-report.md) |
 | Agent 性能基准 | [Worker 与 Memory 基准](workflows/agent-benchmarks.md) | scripts/benchmark-agent-worker.mjs、[成熟度报告](architecture/agent-maturity-report.md) |
 | EPUB 导入 | [epub-import](architecture/epub-import.md) | 导入 ADR、管理 API、相关 Go/Web 测试 |
+| 整书智能分析 | [novel-intelligence-pipeline](architecture/novel-intelligence-pipeline.md) | [成熟度报告](architecture/novel-intelligence-maturity-report.md)、apps/api-go/internal/analysis/、apps/agent/src/agents/analysis/、apps/web/src/features/analysis/ |
 | 表达研究 | [inspire](workflows/inspire.md) | references/、notes/ |
 | 接受提案 | [accept](workflows/accept.md) | proposals/、decisions/ |
 | 会话交接 | [handoff](workflows/handoff.md) | state/current.md |

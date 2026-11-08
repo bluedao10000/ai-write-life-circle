@@ -140,6 +140,13 @@ func (s *Service) Create(ctx context.Context, key string, chapterIDs []string) (
 				return true, nil
 			}
 		}
+		// A revision change reruns only the batches that contain changed
+		// chapters; unchanged findings and author decisions stay in place.
+		if previous := s.previousJob(st, refs); previous != nil && s.refreshJob(st, previous, refs, now) {
+			st.Requests[key] = receipt{Fingerprint: fingerprint, AnalysisID: previous.AnalysisID}
+			result = s.viewOf(st, previous)
+			return true, nil
+		}
 		id := newID("ana-")
 		manifest := &Manifest{
 			AnalysisID:      id,
@@ -388,14 +395,146 @@ func (s *Service) viewOf(st *State, job *Job) View {
 	return View{Job: &public, Manifest: manifest, Findings: findings, Entities: entities}
 }
 
+// previousJob finds the newest non-cancelled analysis that froze exactly the
+// same chapter set, so a later revision can rerun just the affected batches.
+func (s *Service) previousJob(st *State, refs []ChapterRef) *Job {
+	var previous *Job
+	for _, job := range st.Jobs {
+		if job.Status == "cancelled" {
+			continue
+		}
+		manifest := st.Manifests[job.ManifestID]
+		if manifest == nil || len(manifest.Chapters) != len(refs) {
+			continue
+		}
+		ids := map[string]bool{}
+		for _, chapter := range manifest.Chapters {
+			ids[chapter.ChapterID] = true
+		}
+		same := true
+		for _, ref := range refs {
+			if !ids[ref.ChapterID] {
+				same = false
+				break
+			}
+		}
+		if same && (previous == nil || job.UpdatedAt > previous.UpdatedAt) {
+			previous = job
+		}
+	}
+	return previous
+}
+
+func (s *Service) refreshJob(st *State, job *Job, refs []ChapterRef, now string) bool {
+	manifest := st.Manifests[job.ManifestID]
+	if manifest == nil {
+		return false
+	}
+	old := map[string]ChapterRef{}
+	for _, ref := range manifest.Chapters {
+		old[ref.ChapterID] = ref
+	}
+	changed := map[string]bool{}
+	for _, ref := range refs {
+		if previous, ok := old[ref.ChapterID]; !ok || previous.RevisionID != ref.RevisionID || previous.ContentHash != ref.ContentHash {
+			changed[ref.ChapterID] = true
+		}
+	}
+	if len(changed) == 0 {
+		return false
+	}
+	manifest.Chapters = refs
+	job.Fingerprint = manifestFingerprint(refs)
+	job.UpdatedAt = now
+	for _, finding := range st.Findings {
+		if finding.AnalysisID != job.AnalysisID || finding.Status == "author_confirmed" || finding.Status == "rejected" {
+			continue
+		}
+		if finding.Kind == "conflict" || finding.Kind == "continuity" {
+			finding.Status = "stale"
+			finding.UpdatedAt = now
+			continue
+		}
+		for _, evidence := range finding.Evidence {
+			if changed[evidence.ChapterID] {
+				finding.Status = "stale"
+				finding.UpdatedAt = now
+				break
+			}
+		}
+	}
+	for _, entity := range st.Entities {
+		if entity.State == "author_confirmed" || entity.State == "rejected" {
+			continue
+		}
+		for _, evidence := range entity.Evidence {
+			if changed[evidence.ChapterID] {
+				entity.State = "superseded"
+				entity.UpdatedAt = now
+				break
+			}
+		}
+	}
+	batches := make([]Batch, 0, len(job.Batches))
+	for _, batch := range job.Batches {
+		if batch.Phase == "synthesis" {
+			continue
+		}
+		for _, id := range batch.ChapterIDs {
+			if changed[id] {
+				batch.Status = "pending"
+				batch.Attempts = 0
+				batch.FailureCode = ""
+				batch.Deadline = ""
+				batch.Lease = ""
+				batch.Due = ""
+				break
+			}
+		}
+		batches = append(batches, batch)
+	}
+	job.Batches = batches
+	job.SynthesisStatus = "pending"
+	job.Progress = progressOf(job)
+	job.Status = deriveStatus(job)
+	return true
+}
+
 func (s *Service) markStale(st *State, job *Job) bool {
 	manifest := st.Manifests[job.ManifestID]
 	if manifest == nil {
 		return false
 	}
+	// Stat only chapters that can still change the outcome: unfinished batches
+	// and chapters cited by findings/entities the author has not decided.
+	watch := map[string]bool{}
+	for _, batch := range job.Batches {
+		if batch.Status == "completed" || batch.Status == "stale" {
+			continue
+		}
+		for _, id := range batch.ChapterIDs {
+			watch[id] = true
+		}
+	}
+	for _, finding := range st.Findings {
+		if finding.AnalysisID != job.AnalysisID || finding.Status == "author_confirmed" || finding.Status == "rejected" {
+			continue
+		}
+		for _, evidence := range finding.Evidence {
+			watch[evidence.ChapterID] = true
+		}
+	}
+	for _, entity := range st.Entities {
+		if entity.State == "author_confirmed" || entity.State == "rejected" {
+			continue
+		}
+		for _, evidence := range entity.Evidence {
+			watch[evidence.ChapterID] = true
+		}
+	}
 	stale := map[string]bool{}
 	for _, chapter := range manifest.Chapters {
-		if chapter.Stamp == 0 {
+		if chapter.Stamp == 0 || !watch[chapter.ChapterID] {
 			continue
 		}
 		stamp, size, err := s.draftStamp(chapter.ChapterID)

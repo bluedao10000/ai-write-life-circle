@@ -1,0 +1,73 @@
+{
+  "version": "novel-analysis-held-out-v1",
+  "split": "held-out",
+  "synthetic": true,
+  "cases": [
+    {
+      "caseId": "held-place-grounding",
+      "phase": "chapters",
+      "chapters": [
+        { "chapterId": "CH-000020", "title": "渡口", "markdown": "阿宁在渡口等船。她说自己从未离开北港。" },
+        { "chapterId": "CH-000021", "title": "夜谈", "markdown": "船夫认出阿宁，问她为何回来。" }
+      ],
+      "output": {
+        "findings": [
+          {
+            "kind": "character",
+            "title": "阿宁的去向",
+            "statement": "阿宁说自己从未离开北港。",
+            "confidence": 0.85,
+            "entityNames": ["阿宁"],
+            "evidence": [{ "chapterId": "CH-000020", "quote": "她说自己从未离开北港。" }]
+          },
+          {
+            "kind": "relationship",
+            "title": "船夫认出阿宁",
+            "statement": "船夫认识阿宁，并问她为何回来。",
+            "confidence": 0.6,
+            "alternativeExplanation": "船夫可能只是根据她的口音猜测。",
+            "entityNames": ["阿宁", "船夫"],
+            "evidence": [{ "chapterId": "CH-000021", "quote": "船夫认出阿宁，问她为何回来。" }]
+          }
+        ],
+        "entities": [
+          { "kind": "character", "name": "阿宁" },
+          { "kind": "character", "name": "船夫" },
+          { "kind": "place", "name": "北港" }
+        ]
+      },
+      "expected": {
+        "mustGroundQuotes": ["她说自己从未离开北港。", "船夫认出阿宁，问她为何回来。"],
+        "maxFindings": 5,
+        "conflictKinds": []
+      }
+    },
+    {
+      "caseId": "held-ledger-conflict",
+      "phase": "synthesis",
+      "chapters": [
+        { "chapterId": "CH-000030", "title": "账本", "markdown": "账本记着欠银十两。阿宁却说只欠五两。" }
+      ],
+      "output": {
+        "findings": [
+          {
+            "kind": "continuity",
+            "title": "欠银数目不一致",
+            "statement": "账本与阿宁的说法相差五两。",
+            "confidence": 0.75,
+            "evidence": [
+              { "chapterId": "CH-000030", "quote": "账本记着欠银十两。" },
+              { "chapterId": "CH-000030", "quote": "阿宁却说只欠五两。" }
+            ]
+          }
+        ],
+        "entities": []
+      },
+      "expected": {
+        "mustGroundQuotes": ["账本记着欠银十两。"],
+        "maxFindings": 5,
+        "conflictKinds": ["continuity"]
+      }
+    }
+  ]
+}

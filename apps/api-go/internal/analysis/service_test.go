@@ -256,6 +256,58 @@ func TestRevisionChangeMarksBatchesAndFindingsStale(t *testing.T) {
 	}
 }
 
+func TestRevisionChangeRerunsOnlyAffectedBatches(t *testing.T) {
+	f := newFixture(t, 6)
+	view, err := f.s.Create(f.ctx, "first-key", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	claim, err := f.s.Claim(f.ctx)
+	if err != nil || claim == nil {
+		t.Fatalf("claim: %+v %v", claim, err)
+	}
+	prepared, err := f.s.Prepare(f.ctx, claim)
+	if err != nil {
+		t.Fatal(err)
+	}
+	changedChapter := claim.Batch.ChapterIDs[0]
+	output := fmt.Sprintf(`{"findings":[{"kind":"character","title":"林舟身份","statement":"林舟是医师。","confidence":0.9,"evidence":[{"chapterId":"%s","quote":"林舟是医师。"}]}],"entities":[]}`, changedChapter)
+	if err := f.s.Complete(f.ctx, prepared, llm.Response{Text: output}, true, nil); err != nil {
+		t.Fatal(err)
+	}
+	f.resave(t, changedChapter, "林舟改行去了建康。")
+	refreshed, err := f.s.Create(f.ctx, "second-key", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if refreshed.Job.AnalysisID != view.Job.AnalysisID {
+		t.Fatalf("revision change created a new full analysis: %s -> %s", view.Job.AnalysisID, refreshed.Job.AnalysisID)
+	}
+	if len(refreshed.Findings) != 1 || refreshed.Findings[0].Status != "stale" {
+		t.Fatalf("old finding not marked stale: %+v", refreshed.Findings)
+	}
+	var affected *Batch
+	for i := range refreshed.Job.Batches {
+		if containsString(refreshed.Job.Batches[i].ChapterIDs, changedChapter) {
+			affected = &refreshed.Job.Batches[i]
+		}
+	}
+	if affected == nil || affected.Status != "pending" || affected.Attempts != 0 {
+		t.Fatalf("affected batch not reset: %+v", refreshed.Job.Batches)
+	}
+	next, err := f.s.Claim(f.ctx)
+	if err != nil || next == nil || next.Batch.BatchID != affected.BatchID {
+		t.Fatalf("unaffected batch claimed first: %+v %v", next, err)
+	}
+	reprepared, err := f.s.Prepare(f.ctx, next)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(reprepared.Request.Input, "林舟改行去了建康") {
+		t.Fatal("rerun did not read the new revision")
+	}
+}
+
 func TestPrepareRejectsChangedRevision(t *testing.T) {
 	f := newFixture(t, 2)
 	if _, err := f.s.Create(f.ctx, "analysis-key", nil); err != nil {

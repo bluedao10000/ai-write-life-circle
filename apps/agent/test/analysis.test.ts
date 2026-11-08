@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import type {AgentTask} from '@writer-agent/contracts';
 import {ModelGateway,GatewayError} from '../src/runtime/model-gateway.js';
-import {executeAnalysis,validateAnalysis} from '../src/agents/analysis/executor.js';
+import {executeAnalysis} from '../src/agents/analysis/executor.js';
 import {executionContract,strategy,synthesisOutputSchemaVersion,validateAnalysisPrompt} from '../src/agents/analysis/prompt.js';
 
 const task=(outputSchemaVersion:AgentTask['outputSchemaVersion']):AgentTask=>({kind:'novel.analyze',strategyVersion:strategy,outputSchemaVersion,request:{system:'Go prompt',schemaName:'novel_analysis'}} as AgentTask);

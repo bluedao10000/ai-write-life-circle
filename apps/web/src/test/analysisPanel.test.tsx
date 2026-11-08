@@ -1,7 +1,8 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { NovelAnalysisView } from '@writer-agent/contracts'
+import type { NovelAnalysisView, ThinkingMessage } from '@writer-agent/contracts'
 import { AnalysisPanel } from '../features/analysis/AnalysisPanel'
+import { Failure } from '../features/inspiration/Messages'
 import { analysisApi } from '../services/api/analysisApi'
 
 const analysisId = 'ana-' + 'a'.repeat(24)
@@ -121,6 +122,33 @@ describe('whole-book analysis workbench', () => {
     expect(screen.getByText('正文观察')).toBeVisible()
     fireEvent.click(screen.getByRole('button', { name: '第 1 章 · 开端' }))
     expect(onChapter).toHaveBeenCalledWith('CH-000001')
+  })
+
+  it('offers the background analysis route when a Thinking turn was too large', () => {
+    const onAnalyze = vi.fn()
+    const message = {
+      id: 'm1',
+      role: 'assistant',
+      status: 'failed',
+      text: '',
+      errorCode: 'INPUT_BUDGET_EXCEEDED',
+      sources: [],
+    } as unknown as ThinkingMessage
+    render(
+      <Failure
+        m={message}
+        busy={false}
+        recent=""
+        onResume={vi.fn()}
+        onAsk={vi.fn()}
+        onScopes={vi.fn()}
+        onNewTopic={vi.fn()}
+        onAnalyze={onAnalyze}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: '转为整书后台分析' }))
+    expect(onAnalyze).toHaveBeenCalledTimes(1)
+    expect(screen.getByText(/不会一次发送整本书/)).toBeVisible()
   })
 
   it('pauses, resumes and cancels through the job controls', async () => {

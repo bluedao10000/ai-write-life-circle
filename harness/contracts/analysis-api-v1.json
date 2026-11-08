@@ -1,0 +1,1355 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Writer Agent Novel Intelligence",
+    "version": "1.0.0",
+    "description": "Whole-book analysis jobs: revision-bound manifests, chapter batches, evidence-validated candidates and author-only decisions. Candidates never become canon automatically.",
+    "license": {
+      "name": "Private",
+      "url": "https://github.com/story2u/ai-write-life-circle"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:8787/v1"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Private novel analysis",
+      "description": "Author-reviewable whole-book candidates"
+    }
+  ],
+  "paths": {
+    "/studio/books/{bookId}/analysis": {
+      "get": {
+        "operationId": "getNovelAnalysis",
+        "summary": "getNovelAnalysis",
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "tags": [
+          "Private novel analysis"
+        ],
+        "parameters": [
+          {
+            "name": "bookId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Private no-store analysis view",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NovelAnalysisView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "403": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "404": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "405": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "409": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "413": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "422": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "429": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "500": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "503": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createNovelAnalysis",
+        "summary": "createNovelAnalysis",
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "tags": [
+          "Private novel analysis"
+        ],
+        "parameters": [
+          {
+            "name": "bookId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAnalysisInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Private no-store analysis view",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NovelAnalysisView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "403": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "404": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "405": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "409": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "413": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "422": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "429": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "500": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "503": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          }
+        }
+      }
+    },
+    "/studio/books/{bookId}/analysis/pause": {
+      "post": {
+        "operationId": "novelAnalysispause",
+        "summary": "novelAnalysispause",
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "tags": [
+          "Private novel analysis"
+        ],
+        "parameters": [
+          {
+            "name": "bookId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Private no-store analysis view",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NovelAnalysisView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "403": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "404": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "405": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "409": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "413": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "422": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "429": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "500": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "503": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          }
+        }
+      }
+    },
+    "/studio/books/{bookId}/analysis/resume": {
+      "post": {
+        "operationId": "novelAnalysisresume",
+        "summary": "novelAnalysisresume",
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "tags": [
+          "Private novel analysis"
+        ],
+        "parameters": [
+          {
+            "name": "bookId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Private no-store analysis view",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NovelAnalysisView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "403": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "404": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "405": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "409": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "413": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "422": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "429": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "500": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "503": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          }
+        }
+      }
+    },
+    "/studio/books/{bookId}/analysis/cancel": {
+      "post": {
+        "operationId": "novelAnalysiscancel",
+        "summary": "novelAnalysiscancel",
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "tags": [
+          "Private novel analysis"
+        ],
+        "parameters": [
+          {
+            "name": "bookId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Private no-store analysis view",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NovelAnalysisView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "403": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "404": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "405": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "409": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "413": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "422": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "429": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "500": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "503": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          }
+        }
+      }
+    },
+    "/studio/books/{bookId}/analysis/findings/{findingId}/decision": {
+      "post": {
+        "operationId": "decideNovelAnalysisFinding",
+        "summary": "decideNovelAnalysisFinding",
+        "security": [
+          {
+            "authorBearer": []
+          }
+        ],
+        "tags": [
+          "Private novel analysis"
+        ],
+        "parameters": [
+          {
+            "name": "bookId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "findingId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^find-[0-9a-f]{24}$"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnalysisDecisionInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Private no-store analysis view",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NovelAnalysisView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "403": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "404": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "405": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "409": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "413": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "422": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "429": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "500": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          },
+          "503": {
+            "description": "Author, ownership, revision, budget, validation or storage failure"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "authorBearer": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    },
+    "schemas": {
+      "NovelAnalysisView": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "job": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "analysisId": {
+                    "type": "string",
+                    "pattern": "^ana-[0-9a-f]{24}$"
+                  },
+                  "bookId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "queued",
+                      "running",
+                      "paused",
+                      "completed",
+                      "failed",
+                      "cancelled"
+                    ]
+                  },
+                  "strategyVersion": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "createdAt": {
+                    "type": "string"
+                  },
+                  "updatedAt": {
+                    "type": "string"
+                  },
+                  "progress": {
+                    "type": "object",
+                    "properties": {
+                      "total": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "pending": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "running": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "completed": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "failed": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "stale": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "required": [
+                      "total",
+                      "pending",
+                      "running",
+                      "completed",
+                      "failed",
+                      "stale"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "batches": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "batchId": {
+                          "type": "string",
+                          "pattern": "^batch-[0-9a-f]{24}$"
+                        },
+                        "chapterIds": {
+                          "maxItems": 5,
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "pattern": "^CH-\\d{1,6}$"
+                          }
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "pending",
+                            "running",
+                            "completed",
+                            "failed",
+                            "stale"
+                          ]
+                        },
+                        "phase": {
+                          "type": "string",
+                          "enum": [
+                            "chapters",
+                            "synthesis"
+                          ]
+                        },
+                        "attempts": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "failureCode": {
+                          "type": "string"
+                        },
+                        "taskId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "batchId",
+                        "chapterIds",
+                        "status",
+                        "phase",
+                        "attempts"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "synthesisStatus": {
+                    "type": "string",
+                    "enum": [
+                      "pending",
+                      "running",
+                      "completed",
+                      "failed"
+                    ]
+                  }
+                },
+                "required": [
+                  "analysisId",
+                  "bookId",
+                  "status",
+                  "strategyVersion",
+                  "createdAt",
+                  "updatedAt",
+                  "progress",
+                  "batches",
+                  "synthesisStatus"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "manifest": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "analysisId": {
+                    "type": "string",
+                    "pattern": "^ana-[0-9a-f]{24}$"
+                  },
+                  "bookId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "strategyVersion": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "createdAt": {
+                    "type": "string"
+                  },
+                  "chapters": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "chapterId": {
+                          "type": "string",
+                          "pattern": "^CH-\\d{1,6}$"
+                        },
+                        "revisionId": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "contentHash": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "wordCount": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "volumeId": {
+                          "type": "string"
+                        },
+                        "order": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": [
+                        "chapterId",
+                        "revisionId",
+                        "contentHash",
+                        "wordCount",
+                        "order"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "batches": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "batchId": {
+                          "type": "string",
+                          "pattern": "^batch-[0-9a-f]{24}$"
+                        },
+                        "chapterIds": {
+                          "maxItems": 5,
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "pattern": "^CH-\\d{1,6}$"
+                          }
+                        }
+                      },
+                      "required": [
+                        "batchId",
+                        "chapterIds"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "analysisId",
+                  "bookId",
+                  "strategyVersion",
+                  "createdAt",
+                  "chapters",
+                  "batches"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "findings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "findingId": {
+                  "type": "string",
+                  "pattern": "^find-[0-9a-f]{24}$"
+                },
+                "analysisId": {
+                  "type": "string",
+                  "pattern": "^ana-[0-9a-f]{24}$"
+                },
+                "batchId": {
+                  "type": "string",
+                  "pattern": "^batch-[0-9a-f]{24}$"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "character",
+                    "place",
+                    "event",
+                    "rule",
+                    "relationship",
+                    "thread",
+                    "timeline",
+                    "conflict",
+                    "continuity"
+                  ]
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "statement": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "alternativeExplanation": {
+                  "type": "string"
+                },
+                "confidence": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "proposed",
+                    "author_confirmed",
+                    "rejected",
+                    "superseded",
+                    "stale"
+                  ]
+                },
+                "entityIds": {
+                  "maxItems": 20,
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "evidence": {
+                  "minItems": 1,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "chapterId": {
+                        "type": "string",
+                        "pattern": "^CH-\\d{1,6}$"
+                      },
+                      "revisionId": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "contentHash": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "quote": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 4000
+                      },
+                      "startUTF16": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "endUTF16": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "required": [
+                      "chapterId",
+                      "revisionId",
+                      "contentHash",
+                      "quote",
+                      "startUTF16",
+                      "endUTF16"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "updatedAt": {
+                  "type": "string"
+                },
+                "authorNote": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "findingId",
+                "analysisId",
+                "batchId",
+                "kind",
+                "title",
+                "statement",
+                "confidence",
+                "status",
+                "entityIds",
+                "evidence",
+                "createdAt",
+                "updatedAt"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "entities": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "entityId": {
+                  "type": "string",
+                  "pattern": "^went-[0-9a-f]{24}$"
+                },
+                "bookId": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "character",
+                    "place",
+                    "faction",
+                    "item",
+                    "rule",
+                    "event",
+                    "thread"
+                  ]
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "aliases": {
+                  "maxItems": 20,
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "description": {
+                  "type": "string"
+                },
+                "attributes": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "state": {
+                  "type": "string",
+                  "enum": [
+                    "observed",
+                    "candidate",
+                    "author_confirmed",
+                    "rejected",
+                    "superseded"
+                  ]
+                },
+                "firstChapterId": {
+                  "type": "string"
+                },
+                "lastChapterId": {
+                  "type": "string"
+                },
+                "evidence": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "chapterId": {
+                        "type": "string",
+                        "pattern": "^CH-\\d{1,6}$"
+                      },
+                      "revisionId": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "contentHash": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "quote": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 4000
+                      },
+                      "startUTF16": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "endUTF16": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "required": [
+                      "chapterId",
+                      "revisionId",
+                      "contentHash",
+                      "quote",
+                      "startUTF16",
+                      "endUTF16"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "updatedAt": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "entityId",
+                "bookId",
+                "kind",
+                "name",
+                "aliases",
+                "description",
+                "attributes",
+                "state",
+                "evidence",
+                "createdAt",
+                "updatedAt"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "job",
+          "manifest",
+          "findings",
+          "entities"
+        ],
+        "additionalProperties": false
+      },
+      "CreateAnalysisInput": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "chapterIds": {
+            "minItems": 1,
+            "maxItems": 2000,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^CH-\\d{1,6}$"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "AnalysisDecisionInput": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": [
+              "confirm",
+              "reject"
+            ]
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "decision"
+        ],
+        "additionalProperties": false
+      },
+      "NovelAnalysisCandidates": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "findings": {
+            "maxItems": 80,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "character",
+                    "place",
+                    "event",
+                    "rule",
+                    "relationship",
+                    "thread",
+                    "timeline"
+                  ]
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "statement": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000
+                },
+                "alternativeExplanation": {
+                  "type": "string",
+                  "maxLength": 1000
+                },
+                "confidence": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "entityNames": {
+                  "maxItems": 20,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  }
+                },
+                "evidence": {
+                  "minItems": 1,
+                  "maxItems": 12,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "chapterId": {
+                        "type": "string",
+                        "pattern": "^CH-\\d{1,6}$"
+                      },
+                      "quote": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 4000
+                      }
+                    },
+                    "required": [
+                      "chapterId",
+                      "quote"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "kind",
+                "title",
+                "statement",
+                "confidence",
+                "evidence"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "entities": {
+            "maxItems": 80,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "character",
+                    "place",
+                    "faction",
+                    "item",
+                    "rule",
+                    "event",
+                    "thread"
+                  ]
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 120
+                },
+                "aliases": {
+                  "maxItems": 20,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  }
+                },
+                "description": {
+                  "type": "string",
+                  "maxLength": 2000
+                },
+                "attributes": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {
+                    "type": "string",
+                    "maxLength": 500
+                  }
+                }
+              },
+              "required": [
+                "kind",
+                "name"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "findings",
+          "entities"
+        ],
+        "additionalProperties": false
+      },
+      "NovelSynthesisCandidates": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "findings": {
+            "maxItems": 80,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "conflict",
+                    "continuity"
+                  ]
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "statement": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000
+                },
+                "confidence": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "entityNames": {
+                  "maxItems": 20,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  }
+                },
+                "evidence": {
+                  "minItems": 1,
+                  "maxItems": 12,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "chapterId": {
+                        "type": "string",
+                        "pattern": "^CH-\\d{1,6}$"
+                      },
+                      "quote": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 4000
+                      }
+                    },
+                    "required": [
+                      "chapterId",
+                      "quote"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "kind",
+                "title",
+                "statement",
+                "confidence",
+                "evidence"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "entities": {
+            "maxItems": 0,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {},
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "findings",
+          "entities"
+        ],
+        "additionalProperties": false
+      }
+    }
+  }
+}

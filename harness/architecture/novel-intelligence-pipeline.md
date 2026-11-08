@@ -161,6 +161,10 @@ POST /v1/studio/books/:book/analysis/:id/findings/:findingId/decision
 - 现有 `thinking-v1`、review、knowledge、creative、memory 路径不变。
 - 分析状态与 `tasks-v1.json` 分离；清理只删除终态任务记录，不删除 findings 历史。
 
+## 实现状态
+
+P0–P5 与 P7 的增量重跑、确定性评测已落地；P6 的 Thinking 容量失败转后台已落地。实现证据、性能数据、部署/回滚步骤与已知限制见[成熟度报告](novel-intelligence-maturity-report.md)。
+
 ## 阶段
 
 0. 本 ADR 与审计。

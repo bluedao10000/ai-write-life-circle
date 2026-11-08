@@ -398,6 +398,12 @@ export function AnalysisPanel({ bookId, bookTitle, chapters = [], onChapter, onS
           ) : (
             <div className="space-y-5">
               {progress}
+              {job.status === 'completed' && (
+                <p className="rounded-md bg-surface-2 px-3 py-2 text-ui-sm text-ink-2">
+                  整书分析完成：{findings.length} 条候选发现，{entities.length} 个世界条目
+                  {pending > 0 ? `，其中 ${pending} 条待你确认` : ''}。候选不会自动成为设定。
+                </p>
+              )}
               <div className="flex flex-wrap items-center gap-3">
                 <Seg
                   label="整书分析视图"
