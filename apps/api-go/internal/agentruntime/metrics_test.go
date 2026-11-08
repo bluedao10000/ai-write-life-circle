@@ -37,7 +37,7 @@ func TestRuntimeMetricsHandlerProjectsAuthoritiesAndRejectsUnauthorizedReads(t *
 	state := t.TempDir()
 	config := llm.Config{Model: "fixture"}
 	policy := executorpolicy.Controller{State: state}
-	for _, kind := range []string{"review", "knowledge", "creative", "memory"} {
+	for _, kind := range []string{"review", "knowledge", "creative", "memory", "analysis"} {
 		if err := policy.Drain(ctx, kind); err != nil {
 			t.Fatal(err)
 		}

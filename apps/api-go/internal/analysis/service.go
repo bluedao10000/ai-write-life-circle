@@ -204,6 +204,38 @@ func (s *Service) View(ctx context.Context) (View, error) {
 	return result, err
 }
 
+// Counts reports job-level progress for the Worker heartbeat without mutating state.
+type Counts struct {
+	Pending   int
+	Running   int
+	Completed int
+	Failed    int
+	Cancelled int
+}
+
+func (s *Service) Counts(ctx context.Context) (Counts, error) {
+	st, err := s.load()
+	if err != nil {
+		return Counts{}, err
+	}
+	var out Counts
+	for _, job := range st.Jobs {
+		switch job.Status {
+		case "queued", "paused":
+			out.Pending++
+		case "running":
+			out.Running++
+		case "completed":
+			out.Completed++
+		case "failed":
+			out.Failed++
+		case "cancelled":
+			out.Cancelled++
+		}
+	}
+	return out, nil
+}
+
 func (s *Service) Pause(ctx context.Context) (View, error) {
 	return s.setStatus(ctx, "paused")
 }
