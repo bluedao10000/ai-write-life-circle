@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
+	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/analysis"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/application"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/creative"
 	"github.com/story2u/ai-write-life-circle/apps/api-go/internal/executorpolicy"
@@ -187,7 +188,7 @@ func (s *Service) Listen() (*http.Server, error) {
 }
 
 func (s *Service) executionContracts() map[string]string {
-	out := map[string]string{"review": review.ExecutionContract(), "knowledge": knowledge.ExecutionContract(), "creative": creative.ExecutionContract()}
+	out := map[string]string{"review": review.ExecutionContract(), "knowledge": knowledge.ExecutionContract(), "creative": creative.ExecutionContract(), "analysis": analysis.ExecutionContract()}
 	if s.Memory != nil {
 		out["memory"] = s.Memory.Contract()
 	}

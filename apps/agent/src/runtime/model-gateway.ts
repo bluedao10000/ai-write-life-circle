@@ -87,7 +87,7 @@ function admissionFailure(error:unknown):GatewayError {
 export class ModelGateway {
   constructor(readonly config:ExecutionConfig,readonly key:string,readonly admission:(task:AgentTask,step?:ModelStep)=>Promise<void>=async()=>{throw Error('MODEL_RESERVATION_REQUIRED')}){}
   validate(task:AgentTask){
-    const output=task.kind==='creative.plan_check'&&task.strategyVersion==='creative-plan-check-readonly-v1'?'creative-plan-check-candidates-v2':definition(task.kind).output;
+    const output=task.kind==='novel.analyze'&&task.outputSchemaVersion==='novel-synthesis-candidates-v1'?'novel-synthesis-candidates-v1':task.kind==='creative.plan_check'&&task.strategyVersion==='creative-plan-check-readonly-v1'?'creative-plan-check-candidates-v2':definition(task.kind).output;
     if(output!==task.outputSchemaVersion)throw new GatewayError('AGENT_CONFIG_CHANGED');
     const limit=task.request.outputLimit;
     if(limit!==undefined && (task.kind!=='review.execute'||!Number.isInteger(limit)||limit<128||limit>32768))throw new GatewayError('AGENT_CONFIG_CHANGED');

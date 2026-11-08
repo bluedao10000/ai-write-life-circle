@@ -18,6 +18,9 @@ func managedHandler(o Options) http.Handler {
 		if (path == "/v1/studio/imports" || strings.HasPrefix(path, "/v1/studio/imports/")) && handleImports(o, w, r, path) {
 			return
 		}
+		if handleAnalysis(o, w, r, path) {
+			return
+		}
 		if handleKnowledge(o, w, r, path) {
 			return
 		}
