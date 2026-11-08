@@ -11,6 +11,7 @@ import {
   getPublication,
   previewPublication,
   commitPublication,
+  suggestPublication,
   transitionPublication,
 } from '../services/api/publicationApi'
 import { Cover } from './kit'
@@ -35,6 +36,30 @@ const initial: PublicationMetadata = {
   category: '',
   serialStatus: 'ongoing',
   coverUrl: '',
+}
+const fieldLabels: Record<string, string> = {
+  slug: '公开地址',
+  title: '书名',
+  penName: '笔名',
+  tagline: '一句话简介',
+  description: '作品简介',
+  category: '题材',
+  coverUrl: '封面地址',
+}
+const slugFor = (book: string) =>
+  /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(book) && book.length <= 80
+    ? book
+    : `book-${crypto.randomUUID().slice(0, 8)}`
+const missingFields = (meta: PublicationMetadata) => {
+  const parsed = publicationMetadataSchema.safeParse(meta)
+  if (parsed.success) return []
+  return [
+    ...new Set(
+      parsed.error.issues.map(
+        (issue) => fieldLabels[String(issue.path[0])] ?? String(issue.path[0]),
+      ),
+    ),
+  ]
 }
 function selectedStudioBook() {
   try {
@@ -62,8 +87,10 @@ export default function Publish() {
     [selected, setSelected] = useState<string[]>([]),
     [preview, setPreview] = useState<PublicationPreview | null>(null),
     [busy, setBusy] = useState(false),
+    [suggesting, setSuggesting] = useState(false),
     [success, setSuccess] = useState<PublicationVersion | null>(null)
   const [note, setNote] = useState('')
+  const [notice, setNotice] = useState('')
   const [ack, setAck] = useState({ rights: false, scope: false }),
     [key, setKey] = useState(() => crypto.randomUUID())
   const mounted = useRef(true)
@@ -83,7 +110,13 @@ export default function Publish() {
       if (!active) return
       setLoaded({ management, drafts })
       const version = management.publication?.versions.at(-1)
-      setMeta(version?.metadata ?? initial)
+      setMeta(
+        version?.metadata ?? {
+          ...initial,
+          title: management.bookTitle,
+          slug: slugFor(project),
+        },
+      )
       setSelected(version?.chapters.map((c) => c.chapterId) ?? [])
       setWizard(!version)
     })().catch((e) => {
@@ -107,12 +140,68 @@ export default function Publish() {
   }
   const changeMeta = (patch: Partial<PublicationMetadata>) => {
     setMeta((m) => ({ ...m, ...patch }))
+    setNotice('')
     setPreview(null)
     setAck({ rights: false, scope: false })
   }
+  const suggest = async () => {
+    const blank = (value: string) => !value.trim()
+    if (
+      !blank(meta.title) &&
+      !blank(meta.penName) &&
+      !blank(meta.tagline) &&
+      !blank(meta.description) &&
+      !blank(meta.authorBio) &&
+      !blank(meta.category)
+    ) {
+      setNotice('发布资料都已填写；清空需要重写的字段后再生成。')
+      return
+    }
+    setSuggesting(true)
+    setError('')
+    setNotice('')
+    try {
+      const value = await suggestPublication(project)
+      setMeta((m) => ({
+        ...m,
+        title: m.title.trim() ? m.title : value.title,
+        slug: m.slug.trim() ? m.slug : slugFor(project),
+        penName: m.penName.trim() ? m.penName : value.penName,
+        tagline: m.tagline.trim() ? m.tagline : value.tagline,
+        description: m.description.trim() ? m.description : value.description,
+        authorBio: m.authorBio.trim() ? m.authorBio : value.authorBio,
+        category: m.category.trim() ? m.category : value.category,
+        categories: m.categories?.length
+          ? m.categories
+          : value.category
+            ? [value.category]
+            : m.categories,
+      }))
+      setPreview(null)
+      setAck({ rights: false, scope: false })
+      setNotice('已填入空白字段，可继续修改。')
+    } catch (e) {
+      setError(message(e))
+    } finally {
+      setSuggesting(false)
+    }
+  }
   const next = async () => {
     setError('')
+    if (step === 0) {
+      const missing = missingFields(meta)
+      if (missing.length > 0) {
+        setError(`还需要填写：${missing.join('、')}。`)
+        return
+      }
+      setStep(1)
+      return
+    }
     if (step === 1) {
+      if (selected.length === 0 && !current) {
+        setError('请至少选择一个章节。')
+        return
+      }
       setBusy(true)
       try {
         const fresh = await getPublication(project)
@@ -446,7 +535,20 @@ export default function Publish() {
           {step === 0 && (
             <section className="mt-10 grid gap-10 md:grid-cols-[1fr_12rem]">
               <div className="space-y-6">
-                <Heading level={1}>读者会看到的资料</Heading>
+                <div className="flex flex-wrap items-center gap-3">
+                  <Heading level={1}>读者会看到的资料</Heading>
+                  <Btn
+                    className="ml-auto"
+                    disabled={suggesting || busy}
+                    onClick={() => void suggest()}
+                  >
+                    <Icon name="think" className="h-4 w-4" />
+                    {suggesting ? '正在生成…' : 'AI 帮我填'}
+                  </Btn>
+                </div>
+                <p className="-mt-3 text-ui-sm text-ink-3">
+                  写作助手会阅读章节目录与正文节选，生成空白字段；已填写的内容不会被覆盖，生成后仍可修改。
+                </p>
                 {(
                   [
                     ['title', '书名'],
@@ -713,6 +815,11 @@ export default function Publish() {
               </p>
             </section>
           )}
+          {notice && (
+            <p role="status" className="mt-6 text-ui text-ink-2">
+              {notice}
+            </p>
+          )}
           {error && (
             <p
               role="alert"
@@ -738,12 +845,7 @@ export default function Publish() {
             {step < 3 ? (
               <Btn
                 variant="primary"
-                disabled={
-                  busy ||
-                  (step === 0 &&
-                    !publicationMetadataSchema.safeParse(meta).success) ||
-                  (step === 1 && selected.length === 0 && !current)
-                }
+                disabled={busy || suggesting}
                 onClick={() => void next()}
               >
                 {busy ? '生成预览…' : '下一步'}

@@ -7,6 +7,7 @@ import {manageDiscussion, memoryInstruction, providerInput, inputTokenBound, inp
 import { failureFor, traceRun } from "./reliability.js";
 import { canonicalJSON, modelIdentity } from "./fingerprint.js";
 import {configuredModel,boundedModelFetch,completionUsage} from "./model-gateway.js";
+import {completeOnce} from "./oneshot.js";
 import { AssistantEntry, UserEntry, defineExtension, hook, ToolTask, type Conversation, type SubmissionId, type TaskId } from "@earendil-works/pi-durable";
 import { durableContext } from "./durable.js";
 import {
@@ -113,6 +114,17 @@ export class PiHost {
   }
   get(id: string) {
     return this.view(id,true);
+  }
+  async generate(input:{system:string;input:string;maxOutputTokens:number}) {
+    const entry = modelEntries(this.config).find(v => v.enabled);
+    if (!entry) throw new AgentError("MODEL_UNAVAILABLE", 409);
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), 90_000);
+    try {
+      return await completeOnce(entry.model, entry.key, input, abort.signal);
+    } finally {
+      clearTimeout(timer);
+    }
   }
   private healthSnapshot(){return {storage:this.store.health(),closing:this.closing,activeTasks:this.active.size,pendingAdmissions:this.admissions.size,enabledModels:modelEntries(this.config).filter(entry=>entry.enabled).length}}
   health(){return runtimeHealth(this.healthSnapshot())}
