@@ -12,7 +12,7 @@ test('Analysis prompt accepts both phases and rejects other strategies',()=>{
  assert.doesNotThrow(()=>validateAnalysisPrompt(task('novel-analysis-candidates-v1')));
  assert.doesNotThrow(()=>validateAnalysisPrompt(task(synthesisOutputSchemaVersion)));
  for(const change of [{kind:'knowledge.extract'},{strategyVersion:'next-strategy'},{outputSchemaVersion:'next-schema'}])assert.throws(()=>validateAnalysisPrompt({...task('novel-analysis-candidates-v1'),...change} as AgentTask),/AGENT_CONFIG_CHANGED/);
- assert.match(executionContract,/^sha256:[a-f0-9]{64}$/);
+ assert.equal(executionContract,'sha256:1ad616554eeeb4c2dfc8dd01139897ca372b2d88540967325a554b72261ac0a1','Go analysis.ExecutionContract must match');
 });
 
 test('Analysis executor accepts chapter candidates and rejects malformed output',async()=>{

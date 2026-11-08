@@ -91,6 +91,13 @@ func chapterJSON(t *testing.T, view View) []map[string]any {
 	return out.Findings
 }
 
+func TestExecutionContractMatchesWorker(t *testing.T) {
+	const want = "sha256:1ad616554eeeb4c2dfc8dd01139897ca372b2d88540967325a554b72261ac0a1"
+	if got := ExecutionContract(); got != want {
+		t.Fatalf("analysis execution contract drifted from the Node worker: %s", got)
+	}
+}
+
 func TestCreateBatchesIdempotencyAndControls(t *testing.T) {
 	f := newFixture(t, 6)
 	view, err := f.s.Create(f.ctx, "analysis-key", nil)
