@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useState, type MouseEventHandler, type ReactNode } from 'react'
 import { buttonClassName, IconBtn } from '../components/vnext/ui'
 import { latest, when, type PublicAuthor, type PublicBook } from './data'
 import { go, href, prefs } from './store'
@@ -11,6 +11,7 @@ export function A({
   className = '',
   label,
   growth,
+  onClick,
   variant,
 }: {
   to: string
@@ -19,10 +20,12 @@ export function A({
   label?: string
   variant?: 'primary' | 'outline' | 'quiet'
   growth?: 'next_chapter'
+  onClick?: MouseEventHandler<HTMLAnchorElement>
 }) {
   return (
     <a
       data-growth={growth}
+      onClick={onClick}
       href={href(to)}
       aria-label={label}
       className={`${variant ? buttonClassName(variant) : 'btn'} ${className}`}

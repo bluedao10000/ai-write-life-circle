@@ -436,15 +436,15 @@ export function useWorkspaceController({ adapter, initialWorkspace, toast, reque
   /** Freeze a confirmed saved revision for review; never substitute an older server body. */
   const prepareReview = useCallback(async (chapterId = current) => {
     if (adapter.mode !== 'api' || !loadedApiChaptersRef.current.has(chapterId)) throw new Error('请等待真实章节读取完成。')
-    if (recoveryDrafts[chapterId] || conflictedChaptersRef.current.has(chapterId)) throw new Error('先处理本地草稿恢复或版本冲突，再审查本章。')
+    if (recoveryDrafts[chapterId] || conflictedChaptersRef.current.has(chapterId)) throw new Error('先处理本地草稿恢复或版本冲突，再继续操作。')
     const editVersion = editVersionsRef.current.get(chapterId) ?? 0
-    if (!await flushSave(chapterId)) throw new Error('正文尚未安全保存，审查未开始。请先解决保存问题。')
-    if ((editVersionsRef.current.get(chapterId) ?? 0) !== editVersion || savedEditVersionsRef.current.get(chapterId) !== editVersion) throw new Error('正文在保存期间又有修改，请停笔保存后重新发起审查。')
+    if (!await flushSave(chapterId)) throw new Error('正文尚未安全保存。请先解决保存问题。')
+    if ((editVersionsRef.current.get(chapterId) ?? 0) !== editVersion || savedEditVersionsRef.current.get(chapterId) !== editVersion) throw new Error('正文在保存期间又有修改，请停笔保存后重试。')
     const version = apiVersionsRef.current[chapterId]
     const markdown = markdownByChapterRef.current[chapterId]
-    if (!version || markdown === undefined) throw new Error('缺少已保存的章节版本，审查未开始。')
+    if (!version || markdown === undefined) throw new Error('缺少已保存的章节版本。')
     const contentHash = await hashMarkdown(markdown)
-    if ((editVersionsRef.current.get(chapterId) ?? 0) !== editVersion || version.contentHash !== contentHash) throw new Error('当前正文与已保存版本不一致，审查未开始。')
+    if ((editVersionsRef.current.get(chapterId) ?? 0) !== editVersion || version.contentHash !== contentHash) throw new Error('当前正文与已保存版本不一致。')
     return { chapterId, revisionId: version.revisionId, contentHash, markdown }
   }, [adapter.mode, current, flushSave, recoveryDrafts])
 
@@ -453,7 +453,11 @@ export function useWorkspaceController({ adapter, initialWorkspace, toast, reque
     if (Object.keys(recoveryDrafts).length || conflictedChaptersRef.current.size) throw new Error('先处理本地草稿恢复或版本冲突，再调整作品目录。')
     const ids = new Set([...loadedApiChaptersRef.current, current].filter(Boolean))
     const versions = new Map(editVersionsRef.current)
-    for (const id of ids) await prepareReview(id)
+    try {
+      for (const id of ids) await prepareReview(id)
+    } catch (error) {
+      throw new Error(`目录未更新。${error instanceof Error ? error.message : '请先保存正文后重试。'}`)
+    }
     await workspacePatchQueueRef.current
     for (const id of ids) if (editVersionsRef.current.get(id) !== versions.get(id)) throw new Error('正文在保存期间又有修改，请停笔保存后重新操作。')
   }, [current, prepareReview, recoveryDrafts])

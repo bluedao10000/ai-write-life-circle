@@ -1,6 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react'
 import { Btn, Icon, IconBtn } from '../components/vnext/ui'
-import { allChapters } from './data'
+import { publicBookSchema, publicChapterSchema } from '@writer-agent/contracts'
+import { mapBook } from './mapper'
+import { allChapters, type PublicBook } from './data'
 import { useReadingProgress } from './readingProgress'
 import { Markdown } from './Markdown'
 import { A, EmptyState, useCatalog } from './kit'
@@ -12,8 +14,91 @@ const WIDTHS = ['32rem', '38rem', '44rem']
 
 /** Read-only novel reader. Not the author's editor: no selection tools, no AI, no drafts. */
 export default function Reader({ slug, no }: { slug: string; no: string }) {
-  const { books, authors } = useCatalog()
-  const book = books.find((b) => b.slug === slug)
+  const { books } = useCatalog()
+  const [loaded, setLoaded] = useState<{ no: string; book: PublicBook }>()
+  const [pending, setPending] = useState(false)
+  const [failed, setFailed] = useState<{ chapter: string; push: boolean }>()
+  const request = useRef<AbortController>(undefined)
+  const navigate = useCallback(async (chapter: string, push = true) => {
+    request.current?.abort()
+    const controller = new AbortController()
+    request.current = controller
+    setPending(true)
+    setFailed(undefined)
+    const path = `/books/${slug}/chapters/${chapter}`
+    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(15000)])
+    try {
+      const [bookResponse, chapterResponse] = await Promise.all([
+        fetch(`/v1/public/books/${slug}`, { signal, cache: 'no-store' }),
+        fetch(`/v1/public${path}`, { signal, cache: 'no-store' }),
+      ])
+      if (!bookResponse.ok || !chapterResponse.ok) throw new Error('CHAPTER_UNAVAILABLE')
+      const dto = publicBookSchema.parse(await bookResponse.json())
+      const body = publicChapterSchema.parse(await chapterResponse.json())
+      if (dto.slug !== slug || body.bookSlug !== slug || body.slug !== chapter ||
+        !dto.chapters.some(item => item.slug === chapter)) throw new Error('CHAPTER_UNAVAILABLE')
+      if (controller.signal.aborted) return
+      if (push) window.history.pushState(null, '', path)
+      setLoaded({ no: chapter, book: mapBook(dto, body) })
+    } catch {
+      if (!controller.signal.aborted) setFailed({ chapter, push })
+    } finally {
+      if (!controller.signal.aborted) setPending(false)
+    }
+  }, [slug])
+  const current = loaded?.no ?? no
+  useEffect(() => {
+    const prefix = `/books/${slug}/chapters/`
+    const onBack = () => {
+      const path = window.location.pathname
+      if (!path.startsWith(prefix)) return
+      const chapter = path.slice(prefix.length)
+      if (!/^[a-z0-9-]+$/.test(chapter)) return
+      if (chapter !== current) void navigate(chapter, false)
+      else {
+        request.current?.abort()
+        setPending(false)
+        setFailed(undefined)
+      }
+    }
+    window.addEventListener('popstate', onBack)
+    return () => window.removeEventListener('popstate', onBack)
+  }, [current, navigate, slug])
+  useEffect(() => {
+    const previous = window.history.scrollRestoration
+    window.history.scrollRestoration = 'manual'
+    return () => {
+      request.current?.abort()
+      window.history.scrollRestoration = previous
+    }
+  }, [])
+  useEffect(() => {
+    if (!loaded) return
+    const chapter = allChapters(loaded.book).find(item => item.slug === loaded.no)
+    if (chapter) document.title = `第 ${chapter.no} 章 ${chapter.title} · ${loaded.book.title} · story2u`
+  }, [loaded])
+  return <>
+    {pending && <p role="status" className="fixed inset-x-0 top-14 z-[60] bg-page p-2 text-center text-ui text-ink">正在加载章节…</p>}
+    {failed && <div role="alert" className="fixed inset-x-0 top-14 z-[60] bg-page p-3 text-center text-ui text-ink">
+      章节暂时无法加载，当前正文已保留。
+      <button type="button" className="ml-3 underline" onClick={() => void navigate(failed.chapter, failed.push)}>重试换章</button>
+      <button type="button" className="ml-3 underline" onClick={() => setFailed(undefined)}>关闭提示</button>
+    </div>}
+    <ReaderChapter key={current} slug={slug} no={current}
+      book={loaded?.book ?? books.find(book => book.slug === slug)} navigate={navigate} />
+  </>
+}
+
+function ReaderChapter({ slug, no, book, navigate }: {
+  slug: string; no: string; book?: PublicBook; navigate: (chapter: string) => Promise<void>
+}) {
+  const { authors } = useCatalog()
+  const follow = (event: MouseEvent<HTMLAnchorElement>, chapter: string) => {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+    event.preventDefault()
+    if (chapter === no) setPanel(null)
+    else void navigate(chapter)
+  }
   const s = readerSettings.use()
   const [bar, setBar] = useState(true)
   const [panel, setPanel] = useState<null | 'toc' | 'settings'>(null)
@@ -58,14 +143,14 @@ export default function Reader({ slug, no }: { slug: string; no: string }) {
       )
         return
       if (e.key === 'ArrowRight' && next)
-        go(`/books/${slug}/chapters/${next.slug}`)
+        void navigate(next.slug)
       if (e.key === 'ArrowLeft' && prev)
-        go(`/books/${slug}/chapters/${prev.slug}`)
+        void navigate(prev.slug)
       if (e.key === 'Escape') setPanel(null)
     }
     addEventListener('keydown', k)
     return () => removeEventListener('keydown', k)
-  }, [prev, next, slug])
+  }, [prev, next, navigate])
 
   useEffect(() => {
     if (!panel) return
@@ -205,6 +290,7 @@ export default function Reader({ slug, no }: { slug: string; no: string }) {
             <A
               growth="next_chapter"
               to={`/books/${slug}/chapters/${next.slug}`}
+              onClick={(event) => follow(event, next.slug)}
               className="r-card mt-10 block rounded-lg px-6 py-5 text-center"
             >
               <div className="r-ink-2 text-ui-sm">下一章</div>
@@ -231,6 +317,7 @@ export default function Reader({ slug, no }: { slug: string; no: string }) {
             {prev ? (
               <A
                 to={`/books/${slug}/chapters/${prev.slug}`}
+                onClick={(event) => follow(event, prev.slug)}
                 className="r-ink-2 hover:underline"
               >
                 ← 上一章
@@ -252,7 +339,7 @@ export default function Reader({ slug, no }: { slug: string; no: string }) {
         <Btn
           variant="quiet"
           disabled={!prev}
-          onClick={() => prev && go(`/books/${slug}/chapters/${prev.slug}`)}
+          onClick={() => prev && void navigate(prev.slug)}
         >
           上一章
         </Btn>
@@ -265,7 +352,7 @@ export default function Reader({ slug, no }: { slug: string; no: string }) {
         <Btn
           variant="quiet"
           disabled={!next}
-          onClick={() => next && go(`/books/${slug}/chapters/${next.slug}`)}
+          onClick={() => next && void navigate(next.slug)}
         >
           下一章
         </Btn>
@@ -318,6 +405,7 @@ export default function Reader({ slug, no }: { slug: string; no: string }) {
                       <A
                         key={c.no}
                         to={`/books/${slug}/chapters/${c.slug}`}
+                        onClick={(event) => follow(event, c.slug)}
                         className={`flex gap-3 rounded-md px-2 py-2.5 ${c.slug === no ? 'bg-surface-2 text-ink' : 'text-ink-2 hover:bg-surface-2'}`}
                       >
                         <span className="w-7 text-ui-sm tabular-nums text-ink-3">

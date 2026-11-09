@@ -1947,6 +1947,45 @@
         ],
         "additionalProperties": false
       },
+      "PublicationSuggestion": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 160
+          },
+          "penName": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "tagline": {
+            "type": "string",
+            "maxLength": 250
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 10000
+          },
+          "authorBio": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "category": {
+            "type": "string",
+            "maxLength": 80
+          }
+        },
+        "required": [
+          "title",
+          "penName",
+          "tagline",
+          "description",
+          "authorBio",
+          "category"
+        ],
+        "additionalProperties": false
+      },
       "PublicationSelection": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -2702,6 +2741,9 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
         "properties": {
+          "bookTitle": {
+            "type": "string"
+          },
           "publication": {
             "anyOf": [
               {
@@ -3054,6 +3096,7 @@
           }
         },
         "required": [
+          "bookTitle",
           "publication",
           "changedChapterIds",
           "drafts"

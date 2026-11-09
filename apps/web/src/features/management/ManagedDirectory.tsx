@@ -245,12 +245,6 @@ export default function ManagedDirectory({
           正在更新目录…
         </p>
       )}
-      {m.error && (
-        <div role="alert" className="mx-3 mb-2 flex gap-2 rounded border border-danger p-2 text-micro text-danger">
-          <span className="min-w-0 flex-1">{m.error}</span>
-          {m.refresh && <button onClick={() => m.refresh?.()}>重试</button>}
-        </div>
-      )}
       <div className="px-3 pb-2">
         <input
           type="search"

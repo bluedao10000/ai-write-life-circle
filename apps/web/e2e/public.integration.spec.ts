@@ -319,6 +319,32 @@ test('real Studio publish → anonymous SSR reading → draft isolation → upda
       ).json()
     ).next,
   ).toBe(third)
+  // Failed client-side chapter navigation keeps the current document and scroll.
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto(reader)
+  await expect(page.locator('html')).toHaveAttribute('data-site-hydrated', 'true')
+  await page.evaluate(() => window.scrollTo(0, 300))
+  const readingPosition = await page.evaluate(() => scrollY)
+  const context = page.context()
+  await context.setOffline(true)
+  try {
+    await page.getByRole('button', { name: '下一章', exact: true }).click()
+    await expect(page.getByRole('alert')).toContainText('当前正文已保留')
+    await expect(page).toHaveURL(new RegExp(reader + '$'))
+    await expect(page.locator('article')).toContainText('第1章第1段')
+    expect(await page.evaluate(() => scrollY)).toBe(readingPosition)
+  } finally {
+    await context.setOffline(false)
+  }
+  await page.getByRole('button', { name: '重试换章' }).click()
+  await expect(page).toHaveURL(new RegExp('/chapters/' + second + '$'))
+  await expect(page.locator('article')).toContainText('第2章第1段')
+  await page.goBack()
+  await expect(page.locator('article')).toContainText('第1章第1段')
+  await page.goForward()
+  await expect(page.locator('article')).toContainText('第2章第1段')
+  await page.reload()
+  await expect(page.locator('article')).toContainText('第2章第1段')
   // Four viewport captures from real published snapshots.
   for (const width of [1440, 1024, 768, 390]) {
     await page.setViewportSize({ width, height: 1000 })
@@ -422,10 +448,31 @@ test('real Studio publish → anonymous SSR reading → draft isolation → upda
   expect(await (await request.get('/sitemap.xml')).text()).not.toContain(
     'synthetic-letter',
   )
+  const emptyHome = await request.get('/')
+  const homeWithoutBook = await emptyHome.text()
+  await page.addInitScript(({ current, removed }) => {
+    localStorage.setItem('story2u.progress.v2', JSON.stringify({
+      'synthetic-letter': { chapter: current, ratio: 0.2, at: 2 },
+      'withdrawn-book': { chapter: removed, ratio: 0.5, at: 3 },
+    }))
+  }, { current: second, removed: slug })
+  await page.goto('/')
+  await expect(page.locator('html')).toHaveAttribute('data-site-hydrated', 'true')
+  await expect(page.getByRole('heading', { name: '继续阅读' })).toHaveCount(0)
   expect(errors).toEqual([])
   await request.post(studio + '/relist', {
     headers: { 'Idempotency-Key': 'relist' },
     data: { baseVersionId: unlisted.versionId },
   })
   expect((await request.get(book)).status()).toBe(200)
+  // Supply a homepage snapshot without the book while the independent public API still lists it.
+  await page.route('http://127.0.0.1:5177/', route =>
+    route.fulfill({ contentType: 'text/html; charset=utf-8', body: homeWithoutBook }),
+  )
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: '继续阅读' })).toBeVisible()
+  await expect(page.getByRole('link', { name: /合成来信.*读到/ }))
+    .toHaveAttribute('href', `${book}/chapters/${second}`)
+  await expect(page.locator('a[href*="withdrawn-book"]')).toHaveCount(0)
+  expect(errors).toEqual([])
 })

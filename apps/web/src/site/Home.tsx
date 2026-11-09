@@ -1,3 +1,6 @@
+import { useEffect, useState } from 'react'
+import { publicBookSchema } from '@writer-agent/contracts'
+import { mapBook } from './mapper'
 import { Btn } from '../components/vnext/ui'
 import { allChapters, latest, type PublicAuthor, type PublicBook } from './data'
 import {
@@ -22,11 +25,40 @@ export default function Home() {
   useTitle('story2u · 原创小说')
   const au = (b: PublicBook) => authors.find((a) => a.slug === b.authorSlug)
   const featured = mine ?? books[0]
-  const reading = Object.entries(prog)
-    .sort((a, b) => b[1].at - a[1].at)
-    .map(([slug, p]) => ({ b: books.find((x) => x.slug === slug), p }))
-    .filter((x) => x.b && allChapters(x.b).some((c) => c.slug === x.p.chapter))
-    .slice(0, 3)
+  const [reading, setReading] = useState<Array<{ b: PublicBook; p: (typeof prog)[string] }>>([])
+  useEffect(() => {
+    const controller = new AbortController()
+    const recent = Object.entries(prog).sort((a, b) => b[1].at - a[1].at)
+    const resolve = async ([slug, p]: (typeof recent)[number]) => {
+      if (!/^[a-z0-9-]+$/.test(slug)) return null
+      let b = books.find(book => book.slug === slug)
+      if (!b) {
+        try {
+          const response = await fetch(`/v1/public/books/${slug}`, {
+            signal: AbortSignal.any([controller.signal, AbortSignal.timeout(8000)]),
+            cache: 'no-store',
+          })
+          if (!response.ok) return null
+          const dto = publicBookSchema.parse(await response.json())
+          if (dto.slug !== slug) return null
+          b = mapBook(dto)
+        } catch {
+          return null
+        }
+      }
+      return allChapters(b).some(chapter => chapter.slug === p.chapter) ? { b, p } : null
+    }
+    async function load() {
+      const matches: typeof reading = []
+      for (let i = 0; i < recent.length && matches.length < 3 && !controller.signal.aborted; i += 3) {
+        const group = await Promise.all(recent.slice(i, i + 3).map(resolve))
+        for (const match of group) if (match) matches.push(match)
+      }
+      if (!controller.signal.aborted) setReading(matches.slice(0, 3))
+    }
+    void load()
+    return () => controller.abort()
+  }, [books, prog])
   const few = books.length > 0 && books.length <= 4
   const richCats = cats
     .map((c) => ({
@@ -64,26 +96,26 @@ export default function Home() {
             <div className="grid gap-x-10 sm:grid-cols-2 lg:grid-cols-3">
               {reading.map(({ b, p }) => (
                 <A
-                  key={b!.slug}
-                  to={`/books/${b!.slug}/chapters/${p.chapter}`}
+                  key={b.slug}
+                  to={`/books/${b.slug}/chapters/${p.chapter}`}
                   className="group flex items-center gap-4 py-2"
                 >
-                  <Cover book={b!} size="sm" />
+                  <Cover book={b} size="sm" />
                   <div className="min-w-0 flex-1">
                     <div className="truncate font-prose text-ui-lg text-ink group-hover:underline group-hover:underline-offset-4">
-                      {b!.title}
+                      {b.title}
                     </div>
                     <div className="text-ui-sm text-ink-3">
                       读到 第{' '}
-                      {allChapters(b!).find((c) => c.slug === p.chapter)?.no ??
+                      {allChapters(b).find((c) => c.slug === p.chapter)?.no ??
                         1}{' '}
-                      章 · 共 {allChapters(b!).length} 章
+                      章 · 共 {allChapters(b).length} 章
                     </div>
                     <div className="mt-2 h-0.5 rounded-full bg-line">
                       <div
                         className="h-full rounded-full bg-ink-2"
                         style={{
-                          width: `${Math.max(4, (((allChapters(b!).find((c) => c.slug === p.chapter)?.no ?? 1) - 1 + p.ratio) / allChapters(b!).length) * 100)}%`,
+                          width: `${Math.max(4, (((allChapters(b).find((c) => c.slug === p.chapter)?.no ?? 1) - 1 + p.ratio) / allChapters(b).length) * 100)}%`,
                         }}
                       />
                     </div>

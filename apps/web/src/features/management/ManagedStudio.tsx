@@ -347,7 +347,7 @@ export default function ManagedStudio({
           className="absolute inset-x-0 top-12 z-[70] flex gap-3 border bg-page p-3 text-danger"
         >
           {error}
-          <button onClick={refresh}>刷新目录</button>
+          {!error.startsWith('目录未更新。') && <button onClick={refresh}>刷新目录</button>}
           <button onClick={() => setError('')}>关闭提示</button>
         </div>
       )}

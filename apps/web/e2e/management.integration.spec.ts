@@ -75,7 +75,7 @@ test('create second chapter without losing the first draft', async ({ page, requ
   await addChapter(page)
   await expect(page.getByRole('heading', { name: '第2章', exact: true })).toBeVisible()
   await page.getByLabel('正文编辑器').fill('独立的第二章。')
-  await page.getByRole('button', { name: '第一章', exact: true }).click()
+  await page.getByRole('button', { name: /^\d+ 第一章(?: |$)/ }).click()
   await expect(page.getByLabel('正文编辑器')).toContainText('第一章合成正文')
 })
 test('create empty volumes, inline rename, move chapter and persist order', async ({
@@ -96,7 +96,7 @@ test('create empty volumes, inline rename, move chapter and persist order', asyn
   }
   await page.getByLabel('第一章菜单').click()
   await page.getByLabel('第一章移动到卷').selectOption({ label: '第二卷' })
-  await expect(page.locator('section').filter({ has: page.getByRole('heading', { name: '第二卷', exact: true }) }).getByRole('button', { name: '第一章', exact: true })).toBeVisible()
+  await expect(page.locator('section').filter({ has: page.getByRole('heading', { name: '第二卷', exact: true }) }).getByRole('button', { name: /^\d+ 第一章(?: |$)/ })).toBeVisible()
   // Archived entries must survive a later active-volume permutation.
   await page.getByLabel('新建章节或卷').click()
   await page.getByRole('button', { name: '新卷', exact: true }).click()
@@ -121,7 +121,7 @@ test('create empty volumes, inline rename, move chapter and persist order', asyn
       .filter({
         has: page.getByRole('heading', { name: '第二卷', exact: true }),
       })
-      .getByRole('button', { name: '第一章', exact: true }),
+      .getByRole('button', { name: /^\d+ 第一章(?: |$)/ }),
   ).toBeVisible()
 })
 test('create and switch books; independent draft, Review and Publication scope', async ({
@@ -234,8 +234,8 @@ test('two browser structure edits yield a visible 409; stale view can refresh sa
   await expect(a.getByRole('heading', { name: '第2章', exact: true })).toBeVisible()
   await addChapter(z)
   await expect(z.getByRole('alert')).toContainText('作品目录已在另一处更新')
-  await z.getByRole('button', { name: '刷新目录' }).click()
-  await expect(z.getByRole('button', { name: '第2章', exact: true })).toBeVisible()
+  await z.getByRole('alert').getByRole('button', { name: '刷新目录' }).click()
+  await expect(z.getByRole('button', { name: /^\d+ 第2章(?: |$)/ })).toBeVisible()
   await a.close()
   await z.close()
 })
@@ -283,7 +283,7 @@ test('upload EPUB, preview corrected names, atomically import and restore saved 
     await page.reload()
     await expect(page.getByLabel('正文编辑器')).toContainText('合成第一章正文')
     await directory(page)
-    await page.getByRole('complementary').getByRole('button', { name: '第二章', exact: true }).click()
+    await page.getByRole('complementary').getByRole('button', { name: /^\d+ 第二章(?: |$)/ }).click()
     await expect(page.getByLabel('正文编辑器')).toContainText('合成第二章正文')
   } finally {
     await rm(fixture.dir, { recursive: true, force: true })
@@ -311,7 +311,7 @@ test('failed save blocks structure changes and preserves editor text', async ({
   )
   await page.getByLabel('正文编辑器').fill('保存失败时不可丢失的内容。')
   await addChapter(page)
-  await expect(page.getByRole('alert').filter({ hasText: '正文尚未安全保存' })).toBeVisible()
+  await expect(page.getByRole('alert').filter({ hasText: '目录未更新。正文尚未安全保存' })).toBeVisible()
   await expect(page.getByLabel('正文编辑器')).toContainText('保存失败时不可丢失的内容')
   const current = await (await request.get(`/v1/studio/books/${b.bookId}`)).json()
   expect(current.chapters).toHaveLength(1)
