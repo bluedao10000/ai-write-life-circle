@@ -172,8 +172,8 @@ describe("private AI memory", () => {
     expect(screen.getByText(/部分来源已过期/)).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "打开林舟详情" }));
     fireEvent.click(
-      screen.getByRole("button", {
-        name: "CH-001 · 查看原文依据",
+      within(screen.getByLabelText("知识详情")).getByRole("button", {
+        name: "来源章节已不在目录中 · 查看原文依据",
       }),
     );
     expect(screen.getByLabelText("原文证据")).toHaveTextContent("旧版本证据");

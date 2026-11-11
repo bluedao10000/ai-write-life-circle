@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useEffect } from 'react'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -139,20 +139,19 @@ it('keeps a read-only directory free of structure actions', () => {
   expect(screen.queryByRole('button', { name: '重命名' })).toBeNull()
 })
 
-it('surfaces busy and error states and retries from the directory', async () => {
+it('blocks refresh while busy and exposes directory refresh after an error', async () => {
   const user = userEvent.setup()
   const refresh = vi.fn()
   renderDirectory(book, { busy: true, refresh })
   expect(screen.getByText('正在更新目录…')).toBeVisible()
+  expect(screen.getByRole('button', { name: '刷新目录' })).toBeDisabled()
   cleanup()
   renderDirectory(book, { error: '目录读取失败', refresh })
-  expect(screen.getByRole('alert')).toHaveTextContent('目录读取失败')
-  await user.click(screen.getByRole('button', { name: '重试' }))
+  await user.click(screen.getByRole('button', { name: '刷新目录' }))
   expect(refresh).toHaveBeenCalledTimes(1)
 })
 
-it('collapses large books to the current volume and searches across all volumes', async () => {
-  const user = userEvent.setup()
+it('collapses large books to the current volume and searches across all volumes', () => {
   const many: ManagedBook = {
     ...book,
     chapters: Array.from({ length: 600 }, (_, index) => ({
@@ -163,10 +162,10 @@ it('collapses large books to the current volume and searches across all volumes'
     })),
   }
   renderDirectory(many, { current: 'CH-500' })
-  expect(screen.getByRole('button', { name: '收起第二卷' })).toHaveAttribute('aria-expanded', 'true')
-  expect(screen.getByRole('button', { name: '展开第一卷' })).toHaveAttribute('aria-expanded', 'false')
-  expect(screen.queryByRole('button', { name: /^1 事件1/ })).toBeNull()
-  await user.type(screen.getByLabelText('查找章节'), '第1章')
+  expect(screen.getByLabelText('收起第二卷')).toHaveAttribute('aria-expanded', 'true')
+  expect(screen.getByLabelText('展开第一卷')).toHaveAttribute('aria-expanded', 'false')
+  expect(screen.queryByText('事件1', { exact: true })).toBeNull()
+  fireEvent.change(screen.getByLabelText('查找章节'), { target: { value: '第1章' } })
   expect(screen.getByRole('button', { name: /^1 事件1/ })).toBeVisible()
 })
 

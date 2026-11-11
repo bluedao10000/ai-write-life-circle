@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { publicBookSchema } from '@writer-agent/contracts'
 import { mapBook } from './mapper'
-import { Btn } from '../components/vnext/ui'
 import { allChapters, latest, type PublicAuthor, type PublicBook } from './data'
 import {
   A,
@@ -15,11 +14,10 @@ import {
   SectionHead,
   useCatalog,
 } from './kit'
-import { go, progress, useTitle } from './store'
+import { progress, useTitle } from './store'
 
 export default function Home() {
-  const { books, authors, cats, byUpdate, mine } = useCatalog()
-  const { total } = useCatalog()
+  const { books, authors, cats, byUpdate, mine, total } = useCatalog()
   const scale = total > 30 ? 'D' : 'B'
   const prog = progress.use()
   useTitle('story2u · 原创小说')
@@ -163,17 +161,12 @@ export default function Home() {
                         <span>更新至 第 {latest(b).no} 章</span>
                         <DemoMark book={b} />
                       </div>
-                      <Btn
-                        variant="link"
-                        className="mt-4"
-                        onClick={() =>
-                          go(
-                            `/books/${b.slug}/chapters/${allChapters(b)[0].slug}`,
-                          )
-                        }
+                      <A
+                        to={`/books/${b.slug}/chapters/${allChapters(b)[0].slug}`}
+                        className="mt-4 inline-block text-ui text-accent hover:underline hover:underline-offset-4"
                       >
                         从第一章读起 →
-                      </Btn>
+                      </A>
                     </div>
                   </article>
                 ))}
@@ -183,7 +176,7 @@ export default function Home() {
 
         {!few && books.length > 0 && (
           <>
-            <Container className="mt-28 grid gap-16 lg:grid-cols-[1fr_20rem]">
+            <Container className={`mt-28 grid gap-16 ${richCats.length >= 3 ? 'lg:grid-cols-[1fr_20rem]' : ''}`}>
               <section>
                 <SectionHead
                   title="最近更新"

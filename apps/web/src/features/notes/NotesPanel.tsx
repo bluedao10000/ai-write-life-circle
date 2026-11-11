@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import type { AuthorNote, Chapter, NoteCreate } from '@writer-agent/contracts'
-import { Btn, Dialog, Heading, Select, TextArea, ago } from '../../components/vnext/ui'
+import { Btn, Dialog, Heading, Select, TextArea, TextInput, ago } from '../../components/vnext/ui'
 import type { useNotes } from './useNotes'
 
 type Props = {
@@ -31,7 +31,9 @@ export function NotesPanel({
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [archived, setArchived] = useState(false)
-  const [pendingOpen, setPendingOpen] = useState<AuthorNote | 'new' | null>(null)
+  const [query, setQuery] = useState('')
+  const [chapterFilter, setChapterFilter] = useState('all')
+  const [pendingOpen, setPendingOpen] = useState<AuthorNote | 'new' | 'close' | null>(null)
   const retry = useRef<{ fingerprint: string; key: string } | null>(null)
   const dirty =
     content !== (editing?.content ?? '') ||
@@ -78,7 +80,9 @@ export function NotesPanel({
     else open(note)
   }
   const list = notes.items
-    .filter((note) => (note.status === 'archived') === archived)
+    .filter((note) => (note.status === 'archived') === archived &&
+      (chapterFilter === 'all' || (chapterFilter === 'none' ? !note.chapterId : note.chapterId === chapterFilter)) &&
+      (!query.trim() || note.content.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())))
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
   return (
     <section aria-label="创作笔记">
@@ -92,7 +96,9 @@ export function NotesPanel({
         </p>
       ) : (
         <>
-          <div className="mb-6 flex flex-wrap gap-2">
+          <div className="mb-6 flex flex-wrap items-center gap-2">
+            <TextInput label="查找笔记" placeholder="查找笔记内容" value={query} onChange={setQuery} className="w-full sm:w-52" />
+            <Select hideLabel label="按章节筛选笔记" value={chapterFilter} onChange={setChapterFilter} options={[{ value: 'all', label: '全部章节' }, { value: 'none', label: '未关联章节' }, ...chapters.map((chapter) => ({ value: chapter.id, label: chapter.title }))]} />
             <Btn
               size="sm"
               variant={archived ? 'quiet' : 'outline'}
@@ -194,7 +200,7 @@ export function NotesPanel({
                     这是一个设定变更…{!onPropose ? '（尚未接入）' : ''}
                   </Btn>
                 )}
-                <Btn onClick={onClose}>回到正文</Btn>
+                <Btn disabled={saving} onClick={() => dirty ? setPendingOpen('close') : onClose()}>回到正文</Btn>
               </div>
             </form>
           )}
@@ -221,7 +227,7 @@ export function NotesPanel({
             ))}
             {!notes.loading && !notes.error && list.length === 0 && (
               <li className="text-ui text-ink-3">
-                {archived ? '没有归档的笔记。' : '还没有笔记。写作时按 ⌘; 随手记下。'}
+                {query.trim() || chapterFilter !== 'all' ? '没有符合条件的笔记。' : archived ? '没有归档的笔记。' : '还没有笔记。写作时按 ⌘; 随手记下。'}
               </li>
             )}
           </ul>
@@ -238,7 +244,8 @@ export function NotesPanel({
               <Btn
                 variant="danger"
                 onClick={() => {
-                  open(pendingOpen)
+                  if (pendingOpen === 'close') onClose()
+                  else open(pendingOpen)
                   setPendingOpen(null)
                 }}
               >

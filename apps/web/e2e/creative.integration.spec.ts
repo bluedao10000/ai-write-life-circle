@@ -40,7 +40,9 @@ test('build settings before any prose, write in compose mode, and keep both', as
   await page.getByRole('textbox', { name: '设定名称' }).fill('林舟背叛守塔会')
   await page.getByRole('combobox', { name: '计划章节' }).selectOption(book.chapters[0].chapterId)
   await page.getByRole('button', { name: '保存', exact: true }).click()
-  await expect(page.getByText('计划不等于正文已发生')).toBeVisible()
+  const eventDetail = page.getByRole('article', { name: '设定：林舟背叛守塔会' })
+  await expect(eventDetail).toContainText('计划于 第一章')
+  await expect(eventDetail.getByText('这是规划，表示作者意图，不代表正文已经发生。', { exact: true })).toBeVisible()
 
   await page.getByRole('tab', { name: '阅读', exact: true }).click()
   const editor = page.getByLabel('正文编辑器')
@@ -63,7 +65,7 @@ test('build settings before any prose, write in compose mode, and keep both', as
   await expect(page.getByLabel('正文编辑器')).toContainText('他最终选择留下')
   // Back walks the space history: compose, then reading, then 书.
   await page.goBack()
-  await expect(page).toHaveURL(/view=read&compose=1/)
+  await expect(page).toHaveURL((url) => url.searchParams.get('view') === 'read' && url.searchParams.get('compose') === '1')
   await expect(page.getByLabel('正文编辑器')).toHaveAttribute('contenteditable', 'true')
   await page.goBack()
   await page.goBack()
@@ -73,5 +75,6 @@ test('build settings before any prose, write in compose mode, and keep both', as
   expect(assets.total).toBe(2)
   const plan = assets.items.find((a: { kind: string }) => a.kind === 'event')
   expect(plan.version).toBe(1)
+  expect(plan.plan.chapterId).toBe(book.chapters[0].chapterId)
   expect(errors).toEqual([])
 })

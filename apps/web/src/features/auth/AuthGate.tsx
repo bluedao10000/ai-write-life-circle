@@ -66,7 +66,7 @@ export default function AuthGate() {
   if (loading) return <div className="grid h-dvh place-items-center bg-page text-ink-2" role="status">正在检查登录状态…</div>
   if (!user) return (
     <main className="grid min-h-dvh place-items-center bg-page px-6 text-ink">
-      <section className="w-full max-w-sm space-y-6 rounded-2xl border border-line bg-panel p-8 shadow-sm" aria-labelledby="login-title">
+      <section className="w-full max-w-sm space-y-6 rounded-xl border border-line bg-surface p-8 shadow-soft" aria-labelledby="login-title">
         <div className="space-y-2"><p className="font-prose text-ink-2">Writer Agent</p><h1 id="login-title" className="text-2xl">回到你的写作工作台</h1><p className="text-sm text-ink-2">使用 Google 账号登录。每个账号拥有自己独立的作品。</p></div>
         {(message || new URLSearchParams(window.location.search).get('login') === 'failed') && <p role="alert" className="text-sm text-danger">{message || '登录未完成，请重试。'}</p>}
         <button type="button" disabled={busy} onClick={() => void signIn()} className="w-full rounded-lg border border-line px-4 py-3 text-sm disabled:opacity-50">{busy ? '正在前往 Google…' : '使用 Google 登录'}</button>

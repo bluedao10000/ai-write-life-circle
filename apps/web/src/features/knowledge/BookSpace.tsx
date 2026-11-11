@@ -79,6 +79,8 @@ export default function BookSpace({
                 bookId={workspace.projectId}
                 bookTitle={workspace.projectTitle}
                 chapters={chapters}
+                currentChapterId={current}
+                onBack={() => setView('read')}
                 onChapter={switchChapter}
                 onSection={(next) => setBookNav({ section: next, source: 'manuscript' })}
                 headerExtra={sw}

@@ -23,7 +23,7 @@ export function PublicSite({ data }: { data: SiteData }) {
   const parts = data.path.split('/').filter(Boolean)
   const page = data.error ? (
     <>
-      <Header />
+      <Header path={data.path} />
       <main>
         <Container>
           <EmptyState

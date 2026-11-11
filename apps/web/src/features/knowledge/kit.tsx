@@ -74,7 +74,7 @@ export function SourceCard({
     >
       <figcaption className="flex flex-wrap items-center gap-x-2 gap-y-1 text-micro text-ink-3">
         <Icon name="quote" className="h-3 w-3" />
-        <span>{chapterLabel ?? source.chapterId}</span>
+        <span>{chapterLabel ?? '保存版本原文'}</span>
         {source.validity === 'current' && (
           <span className="inline-flex items-center gap-1">
             <Dot tone="ok" />
@@ -103,7 +103,7 @@ export function SourceCard({
               variant="link"
               className="text-ui-sm"
               onClick={() => onRead(source)}
-              ariaLabel={`${source.chapterId} · 查看原文依据`}
+              ariaLabel={`${chapterLabel ?? '保存版本'} · 查看原文依据`}
             >
               查看原文依据
             </Btn>

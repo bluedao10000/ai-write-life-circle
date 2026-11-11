@@ -2,62 +2,63 @@
 @import 'tailwindcss';
 
 /*
- * Writer Studio V2 tokens.
+ * Story2U V3.2 tokens.
  * Names from V0.3 are kept (bg / surface / line / ink / accent / ai …) so engineering mappings stay valid.
- * V2 palette: warm paper canvas, cool graphite ink, muted slate-blue brand.
- * Semantic rule: --danger is reserved for data-safety states (save failure, 409, discard). Story conflicts use --conflict.
+ * Warm paper canvas, deep ink, one rust accent. Story conflicts use --conflict; --danger is reserved for data-safety states.
  */
 :root {
-  --bg: #f8f7f4;          /* canvas behind everything */
-  --paper: #fdfcfa;       /* the writing page / public site page */
-  --surface: #ffffff;     /* content panels, drawers, popovers */
-  --surface-2: #f1f0ec;   /* quiet fill: hover, selected, quotes */
-  --line: #e5e3de;
-  --line-soft: #eeece8;
-  --ink: #22252a;
-  --ink-2: #474b52;
-  --ink-3: #697078;       /* secondary text; meets 4.5:1 on --paper */
-  --ink-4: #b9bcc0;       /* decorative only (dots, rules) — never text */
-  --accent: #596b91;      /* brand / interaction */
-  --accent-soft: #eceff5;
-  --ai: #5a5fa6;          /* AI thinking & AI inference — soft indigo */
-  --ai-soft: #eeeef8;
-  --conflict: #b05a4e;    /* story continuity conflict — soft red */
-  --conflict-soft: #f7ebe8;
-  --warn: #946615;        /* pending author decision — amber */
-  --warn-soft: #f7efdc;
-  --danger: #a3362b;      /* data safety & destructive actions only */
-  --danger-soft: #f8e5e2;
-  --ok: #4a7a5c;          /* knowledge healthy — low-saturation green */
-  --ok-soft: #e8f0ea;
-  --scrim: rgba(28, 30, 34, 0.24);
-  --shadow: 0 1px 2px rgba(25, 28, 33, 0.04), 0 10px 32px rgba(25, 28, 33, 0.08);
-  --shadow-sm: 0 1px 2px rgba(25, 28, 33, 0.05);
+  --bg: #f7f5f0;
+  --paper: #fcfbf8;
+  --surface: #fefdfb;
+  --surface-2: #f0ede6;
+  --line: #e8e4dc;
+  --line-soft: #efece6;
+  --ink: #252522;
+  --ink-2: #4b4944;
+  --ink-3: #726f69;
+  --ink-4: #a7a198;
+  --accent: #a9573d;
+  --accent-soft: #f4e9e2;
+  --ai: #8a7150;
+  --ai-soft: #f2ece2;
+  --conflict: #9e4a58;
+  --conflict-soft: #f5e7e9;
+  --warn: #9a6512;
+  --warn-soft: #f6ecd8;
+  --danger: #a8342a;
+  --danger-soft: #f7e3df;
+  --ok: #57705d;
+  --ok-soft: #e7eee8;
+  --sand: #d7b987;
+  --scrim: rgba(37, 37, 34, 0.26);
+  --shadow: 0 1px 2px rgba(37, 33, 26, 0.04), 0 12px 32px rgba(37, 33, 26, 0.08);
+  --shadow-sm: 0 1px 2px rgba(37, 33, 26, 0.05);
 }
-/* Dark is tuned for long night sessions: low glare, no pure black, no pure white. */
+/* Dark is tuned for long night sessions: warm low glare, no pure black, no pure white. */
 .dark {
-  --bg: #141517;
-  --paper: #18191c;
-  --surface: #1c1d20;
-  --surface-2: #25272b;
-  --line: #303237;
-  --line-soft: #27292d;
-  --ink: #e4e1da;
-  --ink-2: #b9b7b1;
-  --ink-3: #8f939a;
-  --ink-4: #4d5056;
-  --accent: #9eadd0;
-  --accent-soft: #252b38;
-  --ai: #a9acec;
-  --ai-soft: #25263a;
-  --conflict: #e0998e;
-  --conflict-soft: #362320;
-  --warn: #d8b062;
-  --warn-soft: #302817;
+  --bg: #151412;
+  --paper: #1a1916;
+  --surface: #201e1b;
+  --surface-2: #2a2824;
+  --line: #36332e;
+  --line-soft: #2b2925;
+  --ink: #e8e3d9;
+  --ink-2: #bdb7ac;
+  --ink-3: #969086;
+  --ink-4: #57534c;
+  --accent: #d9957a;
+  --accent-soft: #3a2a22;
+  --ai: #ccb48f;
+  --ai-soft: #2f2920;
+  --conflict: #e09aa6;
+  --conflict-soft: #3a2328;
+  --warn: #e0b566;
+  --warn-soft: #33291a;
   --danger: #ef8d80;
   --danger-soft: #3b1f1b;
-  --ok: #8cc29f;
-  --ok-soft: #1d2a22;
+  --ok: #95b99d;
+  --ok-soft: #1f2a22;
+  --sand: #8f7a55;
   --scrim: rgba(0, 0, 0, 0.5);
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 12px 32px rgba(0, 0, 0, 0.4);
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
@@ -86,6 +87,7 @@
   --color-danger-soft: var(--danger-soft);
   --color-ok: var(--ok);
   --color-ok-soft: var(--ok-soft);
+  --color-sand: var(--sand);
   --color-scrim: var(--scrim);
   --shadow-soft: var(--shadow);
   --shadow-raise: var(--shadow-sm);
@@ -107,15 +109,19 @@
   --text-read--line-height: 30px;
   --text-title: 26px;
   --text-title--line-height: 38px;
+  --text-hero: 56px;
+  --text-hero--line-height: 68px;
   --text-display: 32px;
   --text-display--line-height: 44px;
   --text-headline: 52px;
   --text-headline--line-height: 1.25;
 
-  --font-ui: 'Inter', 'PingFang SC', 'Noto Sans SC', 'Microsoft YaHei', system-ui, sans-serif;
-  --font-prose: 'Noto Serif SC', 'Songti SC', 'STSong', 'SimSun', serif;
+  --font-ui: 'Inter', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  --font-prose: Georgia, 'Noto Serif SC', 'Songti SC', 'STSong', 'SimSun', serif;
 
   /* Widths */
+  --container-site: 76rem;
+  --container-read: 40rem;
   --container-page: 44rem;   /* minus 6rem padding ≈ 33 CJK chars at 18px */
   --container-drawer: 22.5rem;
   --container-nav: 17.5rem;
@@ -141,6 +147,7 @@ body {
 /* Manuscript: 18px / 1.95, first-line indent, no boxes. */
 .manuscript { caret-color: var(--accent); min-height: 40vh; color: var(--ink); }
 .manuscript p {
+  font-family: var(--font-prose);
   font-size: 18px;
   line-height: 1.95;
   letter-spacing: 0.02em;
@@ -219,7 +226,6 @@ body {
 
 .ghost:hover { background: var(--surface-2); }
 
-@theme { --container-site: 76rem; --container-read: 40rem; --text-hero: 56px; --text-hero--line-height: 68px; }
 /* ---------- story2u reader ---------- */
 .reader { --r-bg: var(--paper); --r-ink: var(--ink); --r-ink-2: var(--ink-3); background: var(--r-bg); color: var(--r-ink); transition: background 0.3s, color 0.3s; }
 .reader-soft { --r-bg: #f3ead8; --r-ink: #3b3226; --r-ink-2: #7a6c58; }

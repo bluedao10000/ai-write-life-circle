@@ -35,6 +35,21 @@ for (const width of [1440, 1024, 768, 390]) {
   }
 }
 
+for (const width of [1440, 1024, 390]) {
+  test(`${width}px work overview and chapter management retain responsive layout`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 })
+    for (const route of ['desk', 'chapters']) {
+      await page.goto(`/?view=read&page=${route}`)
+      await expect(page.getByRole('main').getByRole('heading', { level: 1 })).toBeVisible()
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+      await page.screenshot({ path: testInfo.outputPath(`${route}-${width}-light.png`) })
+      await page.getByRole('button', { name: '深色主题', exact: true }).click()
+      await page.screenshot({ path: testInfo.outputPath(`${route}-${width}-dark.png`) })
+      await page.getByRole('button', { name: '浅色主题', exact: true }).click()
+    }
+  })
+}
+
 test('old explicit layout restores, quick note persists and thinking uses one session', async ({ page }, testInfo) => {
   await page.addInitScript(() => localStorage.setItem('writer-agent.v2', JSON.stringify({ layout: { leftOpen: true, rightOpen: true, leftW: 300, rightW: 420, focus: false } })))
   await page.goto('/?view=read&compose=1')

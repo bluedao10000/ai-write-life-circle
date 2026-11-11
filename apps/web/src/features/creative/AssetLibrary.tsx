@@ -1,10 +1,10 @@
 // 「书」中的创作资产 — layout from Figma Make BookView (header, filter, cards,
 // detail drawer). Data comes from the creative API; pending CREATE proposals
 // appear as candidates beside confirmed assets, always labelled by status.
-import { Children, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Children, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { CreativeAssetDetail, CreativeAssetSummary, CreativeKind, CreativeProposal } from '@writer-agent/contracts'
 import { BOOK_NAV, type AssetSection, type BookSection } from '../../components/vnext/BookView'
-import { Btn, Heading, Icon, IconBtn, Row, Seg, Select, TextInput, ago } from '../../components/vnext/ui'
+import { Btn, Field, Heading, Icon, IconBtn, Row, Seg, Select, TextInput, ago } from '../../components/vnext/ui'
 import { creativeApi } from '../../services/api/creativeApi'
 import AssetEditor, { type EditorResult } from './AssetEditor'
 import ManuscriptMatches from './ManuscriptMatches'
@@ -22,7 +22,7 @@ const meta: Record<AssetSection | 'inbox', { label: string; desc: string; search
   threads: { label: '伏笔', desc: '计划埋设与回收的伏笔。是否回收、何时回收，由你决定。', search: '查找伏笔' },
   inbox: { label: '待确认', desc: 'AI 从灵感对话整理出的候选与修改草案。你确认之前，它们都不是作品设定。', search: '查找待确认的内容' },
 }
-const originLabels: Record<string, string> = { author_create: '你创建', author_edit: '你修改', proposal_accept: '确认灵感候选', proposal_edit_accept: '编辑后确认灵感候选', status_change: '状态变更' }
+const originLabels: Record<string, string> = { author_create: '你创建', author_edit: '你修改', proposal_accept: '确认灵感候选', proposal_edit_accept: '编辑后确认灵感候选', status_change: '状态变更', dialogue_decision: '对话中的决定', dialogue_undo: '撤销对话中的决定' }
 type Filter = 'all' | 'canon' | 'review'
 
 export default function AssetLibrary({
@@ -54,23 +54,41 @@ export default function AssetLibrary({
   const [items, setItems] = useState<CreativeAssetSummary[] | null>(null)
   const [candidates, setCandidates] = useState<CreativeProposal[]>([])
   const [selected, setSelected] = useState<string | null>(null)
+  const [trail, setTrail] = useState<string[]>([])
+  const openAsset = (id: string) => { setTrail([]); setCandidate(null); setSelected(id) }
   const [candidate, setCandidate] = useState<CreativeProposal | null>(null)
   const [adding, setAdding] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState('')
   const [error, setError] = useState('')
   const [tick, setTick] = useState(0)
   const [mobileNav, setMobileNav] = useState(false)
+  const [assetNext, setAssetNext] = useState<number | null>(null)
+  const [candidateNext, setCandidateNext] = useState<number | null>(null)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [moreError, setMoreError] = useState('')
+  const moreRequest = useRef<AbortController | null>(null)
   const { overview, refresh } = useCreativeOverview(bookId, true)
   const chapterTitle = useMemo(() => new Map(chapters.map((c) => [c.id, c.title])), [chapters])
   useEffect(() => {
     setQ('')
+    setItems(null)
+    setCandidates([])
+    setAssetNext(null)
+    setCandidateNext(null)
     setSelected(null)
     setCandidate(null)
+    setAdding(false)
+    setCreateError('')
   }, [section])
   useEffect(() => {
     const timer = window.setTimeout(() => setDq(q.trim()), 220)
     return () => window.clearTimeout(timer)
   }, [q])
   useEffect(() => {
+    moreRequest.current?.abort()
+    setLoadingMore(false)
+    setMoreError('')
     if (section === 'inbox') return
     const abort = new AbortController()
     setError('')
@@ -79,13 +97,17 @@ export default function AssetLibrary({
       creativeApi.proposals(bookId, { status: 'proposed', limit: 100 }, abort.signal),
     ])
       .then(([page, pending]) => {
+        if (abort.signal.aborted) return
         setItems(page.items.filter((a) => a.status !== 'archived' && a.status !== 'superseded'))
-        setCandidates(pending.items.filter((p) => p.operation === 'CREATE' && kinds.includes(p.kind) && (!dq || (p.result?.name ?? '').includes(dq))))
+        setCandidates(pending.items.filter((p) => p.operation === 'CREATE' && kinds.includes(p.kind) && matchesProposal(p, dq)))
+        setAssetNext(page.nextCursor)
+        setCandidateNext(pending.nextCursor)
+        setMoreError('')
       })
       .catch((e: unknown) => {
         if (!abort.signal.aborted) setError(creativeError(e))
       })
-    return () => abort.abort()
+    return () => { abort.abort(); moreRequest.current?.abort() }
     // kinds derive from section
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookId, section, dq, f, tick])
@@ -93,21 +115,47 @@ export default function AssetLibrary({
     setTick((n) => n + 1)
     refresh()
   }
+  const loadMore = async () => {
+    if (loadingMore) return
+    const abort = new AbortController()
+    moreRequest.current = abort
+    setLoadingMore(true)
+    setMoreError('')
+    try {
+      const [page, pending] = await Promise.all([
+        assetNext !== null ? creativeApi.assets(bookId, { kind: kinds.join(','), q: dq, status: f === 'canon' ? 'accepted' : '', cursor: assetNext, limit: 100 }, abort.signal) : null,
+        candidateNext !== null && f !== 'canon' ? creativeApi.proposals(bookId, { status: 'proposed', cursor: candidateNext, limit: 100 }, abort.signal) : null,
+      ])
+      if (abort.signal.aborted) return
+      if (page) {
+        setItems((all) => [...(all ?? []), ...page.items.filter((a) => a.status !== 'archived' && a.status !== 'superseded' && !all?.some((current) => current.assetId === a.assetId))])
+        setAssetNext(page.nextCursor)
+      }
+      if (pending) {
+        setCandidates((all) => [...all, ...pending.items.filter((p) => p.operation === 'CREATE' && kinds.includes(p.kind) && matchesProposal(p, dq) && !all.some((current) => current.proposalId === p.proposalId))])
+        setCandidateNext(pending.nextCursor)
+      }
+    } catch (cause) { if (!abort.signal.aborted) setMoreError(creativeError(cause)) } finally { if (!abort.signal.aborted) setLoadingMore(false) }
+  }
   const visible = (items ?? []).filter((a) => f !== 'review' || a.status === 'draft' || a.pendingProposals > 0)
   const shownCandidates = f === 'canon' ? [] : candidates
   // 人物 · 关系: asset→asset links between visible characters, read from asset details.
   const [peopleView, setPeopleView] = useState<'cards' | 'rels'>('cards')
   const [pairs, setPairs] = useState<{ key: string; a: CreativeAssetSummary; b: CreativeAssetSummary; label: string }[]>([])
+  const [pairPhase, setPairPhase] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
+  const [pairRetry, setPairRetry] = useState(0)
   const characterKey = section === 'people' ? visible.filter((a) => a.kind === 'character').map((a) => a.assetId + ':' + a.version).join(',') : ''
   useEffect(() => {
-    if (!characterKey) {
+    if (peopleView !== 'rels' || !characterKey) {
       setPairs([])
+      setPairPhase('idle')
       return
     }
     const abort = new AbortController()
-    const people = visible.filter((a) => a.kind === 'character').slice(0, 40)
+    setPairPhase('loading')
+    const people = visible.filter((a) => a.kind === 'character')
     const byId = new Map(people.map((a) => [a.assetId, a]))
-    Promise.all(people.map((a) => creativeApi.asset(bookId, a.assetId, abort.signal).catch(() => null)))
+    Promise.all(people.map((a) => creativeApi.asset(bookId, a.assetId, abort.signal)))
       .then((details) => {
         const seen = new Set<string>()
         const out: typeof pairs = []
@@ -116,18 +164,18 @@ export default function AssetLibrary({
             const a = byId.get(l.fromAssetId)
             const b = l.to.type === 'asset' ? byId.get(l.to.id) : undefined
             const key = l.linkId
-            if (!a || !b || seen.has(key)) continue
+            if (!a || !b || l.status !== 'active' || seen.has(key)) continue
             seen.add(key)
             out.push({ key, a, b, label: l.relation })
           }
         }
-        if (!abort.signal.aborted) setPairs(out)
+        if (!abort.signal.aborted) { setPairs(out); setPairPhase('ready') }
       })
-      .catch(() => undefined)
+      .catch(() => { if (!abort.signal.aborted) setPairPhase('error') })
     return () => abort.abort()
     // visible is derived from characterKey
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bookId, characterKey])
+  }, [bookId, characterKey, peopleView, pairRetry])
   const nonEmptyKinds = kinds.filter((k) => visible.some((a) => a.kind === k) || shownCandidates.some((p) => p.kind === k)).length
   const counts = overview?.counts
   const sectionCount = (s: BookSection) => (s === 'inbox' ? overview?.pendingProposals : s in designOf && counts ? kindsOf[designOf[s as AssetSection]].reduce((n, k) => n + (counts[k]?.accepted ?? 0) + (counts[k]?.draft ?? 0), 0) : undefined)
@@ -227,11 +275,34 @@ export default function AssetLibrary({
         </Btn>
       </EmptyState>
     )
+  } else if (section === 'timeline') {
+    const chapterOrder = new Map(chapters.map((chapter, index) => [chapter.id, index]))
+    const events = [...visible].sort((a, b) => (chapterOrder.get(a.plan?.chapterId ?? '') ?? Infinity) - (chapterOrder.get(b.plan?.chapterId ?? '') ?? Infinity))
+    body = <>
+      <p className="mb-5 text-micro text-ink-3">按计划章节排列，未锚定章节的事件列在后面。故事时间采用你填写的「时间」或「故事时间」属性。</p>
+      <ol>
+        {events.map((asset, index) => {
+          const time = asset.fields.find((field) => field.key === '时间' || field.key === '故事时间')?.value
+          return <li key={asset.assetId} className="relative pb-7 pl-7">
+            {index < events.length - 1 && <span aria-hidden className="absolute top-4 bottom-0 left-1 w-px bg-line" />}
+            <span aria-hidden className={`absolute top-1.5 left-0 h-2.5 w-2.5 rounded-full border-2 bg-paper ${time ? 'border-accent' : 'border-dashed border-ink-4'}`} />
+            <p className="text-ui-sm text-ink-3">{time ?? '时间尚未确定'}</p>
+            <Row active={selected === asset.assetId} onClick={() => { openAsset(asset.assetId) }} className="-mx-2 mt-0.5 flex flex-wrap items-center gap-2 px-2 py-1">
+              <span className="min-w-0 flex-1 font-prose text-ui-lg text-ink">{asset.name}</span><StatusTag status={assetStatus(asset)} />
+              {asset.pendingProposals > 0 && <span className="text-micro text-warn">有待确认的修改</span>}
+            </Row>
+            {asset.summary && <p className="mt-1 whitespace-pre-wrap text-ui text-ink-2">{asset.summary}</p>}
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1"><OriginTag origin={assetOrigin(asset)} />{asset.plan?.chapterId && <Btn variant="link" className="text-ui-sm" onClick={() => onChapter(asset.plan!.chapterId!)}>计划于 {chapterTitle.get(asset.plan.chapterId) ?? '已删除章节'}</Btn>}<Btn variant="link" className="text-ui-sm" onClick={() => { openAsset(asset.assetId) }}>查看详情与关联</Btn></div>
+          </li>
+        })}
+      </ol>
+      {shownCandidates.length > 0 && <Group title="候选事件" count={shownCandidates.length}>{shownCandidates.map((proposal) => <CandidateCard key={proposal.proposalId} proposal={proposal} active={candidate?.proposalId === proposal.proposalId} onOpen={() => { setSelected(null); setCandidate(proposal) }} />)}</Group>}
+    </>
   } else if (section === 'people' && peopleView === 'rels') {
     body = (
       <>
-        <div className="mb-4"><Seg size="sm" label="人物视图" value={peopleView} onChange={setPeopleView} options={[['cards', '档案'], ['rels', `关系 · ${pairs.length}`]]} /></div>
-        {pairs.length ? (
+        <div className="mb-4"><Seg size="sm" label="人物视图" value={peopleView} onChange={setPeopleView} options={[['cards', '档案'], ['rels', pairPhase === 'ready' ? `关系 · ${pairs.length}` : '关系']]} /></div>
+        {pairPhase === 'loading' ? <p aria-busy="true" className="py-8 text-ui text-ink-3">正在读取人物关联…</p> : pairPhase === 'error' ? <div role="alert" className="py-8 text-ui text-ink-3"><p>人物关联暂时无法读取。</p><Btn variant="outline" className="mt-3" onClick={() => setPairRetry((value) => value + 1)}>重试</Btn></div> : pairs.length ? (
           <ul className="divide-y divide-line-soft rounded-lg border border-line-soft">
             {pairs.map(({ key, a, b, label }) => (
               <li key={key} className="flex items-center gap-3 px-4 py-3">
@@ -252,7 +323,7 @@ export default function AssetLibrary({
   } else {
     body = (
       <>
-        {section === 'people' && <div className="mb-4"><Seg size="sm" label="人物视图" value={peopleView} onChange={setPeopleView} options={[['cards', '档案'], ['rels', `关系 · ${pairs.length}`]]} /></div>}
+        {section === 'people' && <div className="mb-4"><Seg size="sm" label="人物视图" value={peopleView} onChange={setPeopleView} options={[['cards', '档案'], ['rels', pairPhase === 'ready' ? `关系 · ${pairs.length}` : '关系']]} /></div>}
         {kinds.map((k) => {
           const list = visible.filter((a) => a.kind === k)
           const cands = shownCandidates.filter((p) => p.kind === k)
@@ -260,7 +331,8 @@ export default function AssetLibrary({
           return (
             <Group key={k} title={kindLabels[k]} count={list.length + cands.length} single={nonEmptyKinds <= 1}>
               {list.map((a) => (
-                <Row key={a.assetId} active={selected === a.assetId} onClick={() => { setCandidate(null); setSelected(a.assetId) }} className={`block w-full rounded-lg border px-4 py-3 text-left ${selected === a.assetId ? 'border-accent/40 bg-accent-soft/40' : 'border-line-soft'}`}>
+                <article key={a.assetId} className={`overflow-hidden rounded-lg border ${selected === a.assetId ? 'border-accent/40 bg-accent-soft/40' : 'border-line-soft'}`}>
+                <Row active={selected === a.assetId} onClick={() => { openAsset(a.assetId) }} className="px-4 py-3">
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                     <span className="font-prose text-ui-lg text-ink">{a.name}</span>
                     <StatusTag status={assetStatus(a)} />
@@ -274,26 +346,19 @@ export default function AssetLibrary({
                     <ul className="mt-2 space-y-0.5">
                       {a.fields.slice(0, 3).map((x) => (
                         <li key={x.key} className="line-clamp-1 text-ui-sm text-ink-3">
-                          <span className="text-ink-4">{x.key}</span>{'\u3000'}{x.value}
+                          <span className="text-ink-3">{x.key}</span>{'\u3000'}{x.value}
                         </li>
                       ))}
                     </ul>
                   )}
-                  {a.plan?.chapterId && <p className="mt-2 text-micro text-ink-3">计划于 {chapterTitle.get(a.plan.chapterId) ?? '已删除章节'} · 计划不等于正文已发生</p>}
+                  {a.kind === 'open_question' && <p className="mt-2 text-micro text-ink-3">{questionStatusLabels[a.questionStatus ?? 'pending']}</p>}
+                  {a.plan?.chapterId && <p className="mt-2 text-micro text-ink-3">计划于 {chapterTitle.get(a.plan.chapterId) ?? '已删除章节'}</p>}
+                  {a.plan?.payoffChapterId && <p className="mt-1 text-micro text-ink-3">计划回收于 {chapterTitle.get(a.plan.payoffChapterId) ?? '已删除章节'}</p>}
                 </Row>
+                {(section === 'plot' || section === 'threads') && <div className="flex flex-wrap items-center gap-2 px-4 pb-3"><Btn size="sm" onClick={() => onDiscuss(`关于「${a.name}」，我想继续讨论：`)}><Icon name="think" className="h-3 w-3" />继续讨论</Btn>{a.plan?.chapterId && <Btn size="sm" variant="link" className="ml-auto text-ui-sm" onClick={() => onChapter(a.plan!.chapterId!)}>打开计划章节</Btn>}</div>}
+                </article>
               ))}
-              {cands.map((p) => (
-                <Row key={p.proposalId} active={candidate?.proposalId === p.proposalId} onClick={() => { setSelected(null); setCandidate(p) }} className={`block w-full rounded-lg border px-4 py-3 text-left ${p.exploratory ? 'border-dashed border-line' : 'border-line-soft'}`}>
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <span className="font-prose text-ui-lg text-ink">{p.result?.name}</span>
-                    <StatusTag status={proposalStatus(p)} />
-                    <span className="ml-auto">
-                      <OriginTag origin="idea" />
-                    </span>
-                  </div>
-                  {p.result?.summary && <p className="mt-1 line-clamp-2 text-ui text-ink-2">{p.result.summary}</p>}
-                </Row>
-              ))}
+              {cands.map((proposal) => <CandidateCard key={proposal.proposalId} proposal={proposal} active={candidate?.proposalId === proposal.proposalId} onOpen={() => { setSelected(null); setCandidate(proposal) }} />)}
             </Group>
           )
         })}
@@ -305,14 +370,19 @@ export default function AssetLibrary({
     <div className="flex h-full min-h-0">
       <div className="scroll min-w-0 flex-1 overflow-auto">
         {header}
-        <div className="mx-auto max-w-page px-5 pt-6 pb-24 md:px-8">{body}</div>
+        <div className="mx-auto max-w-page px-5 pt-6 pb-24 md:px-8">
+          {section === 'threads' && items && visible.length > 0 && <p className="mb-5 border-l-2 border-sand pl-3 text-ui-sm text-ink-3">这里记录埋设与回收的创作计划，是否已在正文发生，由你判断。</p>}
+          {body}
+          {moreError && <p role="alert" className="mt-4 text-ui-sm text-warn">{moreError}</p>}
+          {section !== 'inbox' && !error && items && (assetNext !== null || (f !== 'canon' && candidateNext !== null)) && <div className="mt-6 text-center"><Btn variant="outline" size="sm" loading={loadingMore} onClick={() => void loadMore()}>继续载入设定与候选</Btn><p className="mt-2 text-micro text-ink-3">当前显示已载入且符合筛选的内容。</p></div>}
+        </div>
       </div>
       {(selected || candidate) && (
         <>
           <div className="fade fixed inset-0 z-40 bg-scrim xl:hidden" onClick={() => { setSelected(null); setCandidate(null) }} aria-hidden />
           <aside aria-label="设定详情" className="slide-r fixed inset-y-0 right-0 z-50 w-full border-l border-line-soft shadow-soft sm:max-w-drawer xl:static xl:z-auto xl:w-(--container-drawer) xl:shrink-0 xl:shadow-none">
             {selected ? (
-              <AssetDrawer key={selected} bookId={bookId} id={selected} chapters={chapters} chapterTitle={chapterTitle} onClose={() => setSelected(null)} onChanged={reload} onDiscuss={onDiscuss} onChapter={onChapter} onSession={onSession} />
+              <AssetDrawer key={selected} bookId={bookId} id={selected} chapters={chapters} chapterTitle={chapterTitle} onClose={() => { setSelected(null); setTrail([]) }} onAsset={(id) => { setTrail((all) => [...all, selected]); setSelected(id) }} onBack={trail.length ? () => { setSelected(trail[trail.length - 1]); setTrail((all) => all.slice(0, -1)) } : undefined} onChanged={reload} onDiscuss={onDiscuss} onChapter={onChapter} onSession={onSession} />
             ) : candidate ? (
               <div className="flex h-full min-h-0 flex-col bg-surface">
                 <div className="flex shrink-0 items-center gap-2 border-b border-line-soft px-5 py-3">
@@ -335,24 +405,43 @@ export default function AssetLibrary({
           kinds={kinds}
           showStatus
           chapters={chapters}
-          error={error}
+          error={createError}
+          busy={creating}
           note="作者创建的设定直接成为作品设定；也可以先存为草稿。"
           submitLabel="保存"
-          onClose={() => setAdding(false)}
+          onClose={() => { if (!creating) { setAdding(false); setCreateError('') } }}
           onSubmit={async (v: EditorResult) => {
+            if (creating) return
+            setCreating(true)
+            setCreateError('')
             try {
               const created = await creativeApi.createAsset(bookId, { kind: v.kind, content: v.content, status: v.status })
               setAdding(false)
-              setSelected(created.assetId)
+              openAsset(created.assetId)
               reload()
             } catch (e) {
-              setError(creativeError(e))
+              setCreateError(creativeError(e))
+            } finally {
+              setCreating(false)
             }
           }}
         />
       )}
     </div>
   )
+}
+
+function matchesProposal(proposal: CreativeProposal, query: string) {
+  const content = proposal.result ?? proposal.draft
+  return !query || [content?.name, content?.summary, ...(content?.aliases ?? []), ...(content?.fields.map((field) => `${field.key} ${field.value}`) ?? [])].some((value) => value?.toLocaleLowerCase().includes(query.toLocaleLowerCase()))
+}
+
+function CandidateCard({ proposal, active, onOpen }: { proposal: CreativeProposal; active: boolean; onOpen: () => void }) {
+  const content = proposal.result ?? proposal.draft
+  return <Row active={active} onClick={onOpen} className={`block w-full rounded-lg border px-4 py-3 text-left ${active ? 'border-accent/40 bg-accent-soft/40' : proposal.exploratory ? 'border-dashed border-line' : 'border-line-soft'}`}>
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1"><span className="font-prose text-ui-lg text-ink">{content?.name ?? '新的候选'}</span><StatusTag status={proposalStatus(proposal)} /><span className="ml-auto"><OriginTag origin="idea" /></span></div>
+    {content?.summary && <p className="mt-1 line-clamp-2 text-ui text-ink-2">{content.summary}</p>}
+  </Row>
 }
 
 function Group({ title, count, children, single }: { title: string; count: number; children: ReactNode; single?: boolean }) {
@@ -381,6 +470,8 @@ export function AssetDrawer({
   onDiscuss,
   onChapter,
   onSession,
+  onAsset,
+  onBack,
 }: {
   bookId: string
   id: string
@@ -391,6 +482,8 @@ export function AssetDrawer({
   onDiscuss: (seed: string) => void
   onChapter: (id: string) => void
   onSession: (sessionId: string, messageId: string) => void
+  onAsset?: (id: string) => void
+  onBack?: () => void
 }) {
   const [detail, setDetail] = useState<CreativeAssetDetail | null>(null)
   const [error, setError] = useState('')
@@ -402,8 +495,9 @@ export function AssetDrawer({
   const [relation, setRelation] = useState('')
   useEffect(() => {
     const abort = new AbortController()
-    creativeApi.asset(bookId, id, abort.signal).then(setDetail).catch((e: unknown) => !abort.signal.aborted && setError(creativeError(e)))
-    creativeApi.assets(bookId, { limit: 100 }, abort.signal).then((p) => setOthers(p.items.filter((a) => a.assetId !== id && a.status !== 'archived'))).catch(() => setOthers([]))
+    setError('')
+    creativeApi.asset(bookId, id, abort.signal).then((next) => { if (!abort.signal.aborted) setDetail(next) }).catch((e: unknown) => !abort.signal.aborted && setError(creativeError(e)))
+    creativeApi.assets(bookId, { limit: 100 }, abort.signal).then((p) => { if (!abort.signal.aborted) setOthers(p.items.filter((asset) => asset.assetId !== id && asset.status !== 'archived' && asset.status !== 'superseded')) }).catch(() => { if (!abort.signal.aborted) setOthers([]) })
     return () => abort.abort()
   }, [bookId, id, tick])
   useEffect(() => {
@@ -432,6 +526,7 @@ export function AssetDrawer({
   return (
     <div className="flex h-full min-h-0 flex-col bg-surface">
       <div className="flex shrink-0 items-center gap-2 border-b border-line-soft px-5 py-3">
+        {onBack && <IconBtn icon="back" label="返回上一条设定" onClick={onBack} />}
         <span className="min-w-0 truncate text-ui-sm text-ink-3">{a ? kindLabels[a.kind] : '设定'}</span>
         <IconBtn icon="x" label="关闭详情" onClick={onClose} className="ml-auto" />
       </div>
@@ -442,7 +537,7 @@ export function AssetDrawer({
           </p>
         )}
         {!a || !detail ? (
-          <p className="text-ui-sm text-ink-3">正在读取…</p>
+          error ? <Btn variant="outline" onClick={() => setTick((value) => value + 1)}>重新读取详情</Btn> : <div aria-busy="true" aria-label="正在读取设定详情" className="space-y-3"><div className="skeleton h-5 w-2/3" /><div className="skeleton h-3 w-full" /><div className="skeleton h-3 w-5/6" /></div>
         ) : (
           <article aria-label={`设定：${a.name}`}>
             <div className="flex flex-wrap items-center gap-2">
@@ -496,16 +591,18 @@ export function AssetDrawer({
                     <span className="w-24 shrink-0 text-ink-3">{l.relation}</span>
                     {l.to.type === 'chapter' ? (
                       <Btn variant="link" onClick={() => onChapter(l.to.id)}>{chapterTitle.get(l.to.id) ?? '章节'}</Btn>
+                    ) : onAsset && (l.to.type === 'asset' || l.fromAssetId !== a.assetId) ? (
+                      <Btn variant="link" className="min-w-0 truncate text-ui" onClick={() => onAsset(l.fromAssetId === a.assetId ? l.to.id : l.fromAssetId)}>{l.fromAssetId === a.assetId ? l.toName || '关联设定' : l.fromName || '关联设定'}</Btn>
                     ) : (
-                      <span className="min-w-0 flex-1 truncate text-ink">{l.fromAssetId === a.assetId ? l.toName || (l.to.type === 'knowledge_entity' ? '正文观察条目' : l.to.id) : l.fromName}</span>
+                      <span className="min-w-0 flex-1 truncate text-ink">{l.fromAssetId === a.assetId ? l.toName || (l.to.type === 'knowledge_entity' ? '正文观察条目' : '关联设定') : l.fromName || '关联设定'}</span>
                     )}
-                    <IconBtn size="sm" icon="x" label={`移除关联 ${l.relation}`} className="ml-auto" onClick={() => void run(() => creativeApi.removeLink(bookId, l.linkId))} />
+                    <IconBtn size="sm" icon="x" label={`移除关联 ${l.relation}`} className="ml-auto" disabled={busy} onClick={() => void run(() => creativeApi.removeLink(bookId, l.linkId))} />
                   </li>
                 ))}
               </ul>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <Select label="关联到" value={linkTarget} onChange={setLinkTarget} options={[{ value: '', label: '选择设定或章节' }, ...others.map((x) => ({ value: 'asset:' + x.assetId, label: `${kindLabels[x.kind]} · ${x.name}` })), ...chapters.map((c) => ({ value: 'chapter:' + c.id, label: `章节 · ${c.title}` }))]} />
-                <input aria-label="关系" placeholder="关系，如：师徒" maxLength={40} value={relation} onChange={(e) => setRelation(e.target.value)} className="w-32 rounded-md border border-line bg-paper px-2 py-1 text-ui" />
+                <Field label="关系" hideLabel placeholder="关系，如：师徒" maxLength={40} value={relation} onChange={setRelation} disabled={busy} className="w-36" />
                 <Btn
                   size="sm"
                   disabled={busy || !linkTarget || !relation.trim()}

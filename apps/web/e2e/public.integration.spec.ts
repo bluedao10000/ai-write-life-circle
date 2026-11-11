@@ -279,7 +279,7 @@ test('real Studio publish → anonymous SSR reading → draft isolation → upda
   await page.getByRole('button', { name: '下一步', exact: true }).click()
   await page.getByRole('checkbox').nth(0).check()
   await page.getByRole('checkbox').nth(1).check()
-  await page.getByRole('button', { name: '发布', exact: true }).click()
+  await page.getByRole('button', { name: '发布更新', exact: true }).click()
   await expect(page.getByRole('alert')).toContainText(/changed|变化|冲突/)
   expect(
     (await (await request.get(studio)).json()).publication.versions,
@@ -294,9 +294,12 @@ test('real Studio publish → anonymous SSR reading → draft isolation → upda
     page.getByText('CONCURRENT_DRAFT', { exact: false }).first(),
   ).toBeVisible()
   await page.getByRole('button', { name: '下一步', exact: true }).click()
+  await expect(page.getByRole('button', { name: '发布更新', exact: true })).toBeDisabled()
+  await expect(page.getByRole('checkbox').nth(0)).not.toBeChecked()
+  await expect(page.getByRole('checkbox').nth(1)).not.toBeChecked()
   await page.getByRole('checkbox').nth(0).check()
   await page.getByRole('checkbox').nth(1).check()
-  await page.getByRole('button', { name: '发布', exact: true }).click()
+  await page.getByRole('button', { name: '发布更新', exact: true }).click()
   await expect(
     page.getByRole('heading', { name: '《合成来信》已发布' }),
   ).toBeVisible()
@@ -402,47 +405,53 @@ test('real Studio publish → anonymous SSR reading → draft isolation → upda
       'true',
     )
   }
-  // Withdraw chapter using a new complete fixed-revision set.
-  const choices = version.chapters
-    .filter((c: { chapterId: string }) => c.chapterId !== 'CH-001')
-    .map(
-      (c: {
-        chapterId: string
-        revisionId: string
-        contentHash: string
-        volumeId: string
-        chapterOrder: number
-      }) => ({
-        chapterId: c.chapterId,
-        revisionId: c.revisionId,
-        contentHash: c.contentHash,
-        volumeId: c.volumeId,
-        chapterOrder: c.chapterOrder,
-      }),
-    )
-  const preview = await (
-    await request.post(studio + '/preview', {
-      data: {
-        baseVersionId: version.versionId,
-        metadata: version.metadata,
-        chapters: choices,
-      },
-    })
-  ).json()
-  const withdrawn = await (
-    await request.post(studio + '/versions', {
-      headers: { 'Idempotency-Key': 'withdraw' },
-      data: { baseVersionId: version.versionId, previewId: preview.previewId },
-    })
-  ).json()
+  // Withdrawing through the UI still requires a new fixed preview and both acknowledgements.
+  await page.goto('/studio/publish')
+  await page.getByRole('button', { name: '取消公开', exact: true }).first().click()
+  const withdrawDialog = page.getByRole('dialog', { name: '取消公开章节', exact: true })
+  await expect(withdrawDialog).toContainText('草稿不受影响')
+  await withdrawDialog.getByRole('button', { name: '返回', exact: true }).click()
+  await expect(withdrawDialog).toHaveCount(0)
+  expect((await (await request.get(studio)).json()).publication.versions).toHaveLength(2)
+  expect((await request.get(reader)).status()).toBe(200)
+  await page.getByRole('button', { name: '取消公开', exact: true }).first().click()
+  await withdrawDialog.getByRole('button', { name: '继续预览与确认', exact: true }).click()
+  await page.getByRole('button', { name: '下一步', exact: true }).click()
+  await expect(page.getByRole('checkbox').nth(0)).not.toBeChecked()
+  await expect(page.getByRole('checkbox').nth(1)).toBeChecked()
+  await expect(page.getByRole('checkbox').nth(2)).toBeChecked()
+  await page.getByRole('button', { name: '下一步', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '读者将看到', exact: true })).toBeVisible()
+  expect((await request.get(reader)).status()).toBe(200)
+  await page.getByRole('button', { name: '下一步', exact: true }).click()
+  await expect(page.getByRole('button', { name: '发布更新', exact: true })).toBeDisabled()
+  await page.getByRole('checkbox').nth(0).check()
+  await page.getByRole('checkbox').nth(1).check()
+  await page.getByRole('button', { name: '发布更新', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '《合成来信》已发布', exact: true })).toBeVisible()
+  management = await (await request.get(studio)).json()
+  const withdrawn = management.publication.versions.at(-1)
+  expect(withdrawn.versionNumber).toBe(3)
+  expect(withdrawn.chapters.map((chapter: { chapterId: string }) => chapter.chapterId)).toEqual(['CH-002', 'CH-003'])
+  expect(management.publication.versions[1].chapters).toHaveLength(3)
   expect((await request.get(reader)).status()).toBe(404)
   expect(await (await request.get('/sitemap.xml')).text()).not.toContain(slug)
-  const unlisted = await (
-    await request.post(studio + '/unlist', {
-      headers: { 'Idempotency-Key': 'unlist' },
-      data: { baseVersionId: withdrawn.versionId },
-    })
-  ).json()
+  expect((await (await request.get(`${project}/chapters/CH-001`)).json()).headRevision.markdown).toContain('CONCURRENT_DRAFT')
+
+  await page.getByRole('button', { name: '管理发布', exact: true }).click()
+  await page.getByRole('button', { name: '下架作品…', exact: true }).click()
+  const unlistDialog = page.getByRole('dialog', { name: '下架作品', exact: true })
+  await unlistDialog.getByRole('button', { name: '返回', exact: true }).click()
+  await expect(unlistDialog).toHaveCount(0)
+  expect((await (await request.get(studio)).json()).publication.versions).toHaveLength(3)
+  expect((await request.get(book)).status()).toBe(200)
+  await page.getByRole('button', { name: '下架作品…', exact: true }).click()
+  await unlistDialog.getByRole('button', { name: '下架作品', exact: true }).click()
+  await expect(page.getByText('已下架 · 读者不可见', { exact: true })).toBeVisible()
+  management = await (await request.get(studio)).json()
+  const unlisted = management.publication.versions.at(-1)
+  expect(unlisted.versionNumber).toBe(4)
+  expect(unlisted.state).toBe('unlisted')
   expect((await request.get(book)).status()).toBe(404)
   expect((await (await request.get('/v1/public/home')).json()).total).toBe(0)
   expect(await (await request.get('/sitemap.xml')).text()).not.toContain(
@@ -460,10 +469,21 @@ test('real Studio publish → anonymous SSR reading → draft isolation → upda
   await expect(page.locator('html')).toHaveAttribute('data-site-hydrated', 'true')
   await expect(page.getByRole('heading', { name: '继续阅读' })).toHaveCount(0)
   expect(errors).toEqual([])
-  await request.post(studio + '/relist', {
-    headers: { 'Idempotency-Key': 'relist' },
-    data: { baseVersionId: unlisted.versionId },
-  })
+  await page.goto('/studio/publish')
+  await page.getByRole('button', { name: '重新上架', exact: true }).click()
+  const relistDialog = page.getByRole('dialog', { name: '重新上架', exact: true })
+  await expect(relistDialog).toContainText('新草稿和之后的修改不会随之公开')
+  await relistDialog.getByRole('button', { name: '返回', exact: true }).click()
+  await expect(relistDialog).toHaveCount(0)
+  expect((await (await request.get(studio)).json()).publication.currentVersionId).toBe(unlisted.versionId)
+  expect((await request.get(book)).status()).toBe(404)
+  await page.getByRole('button', { name: '重新上架', exact: true }).click()
+  await relistDialog.getByRole('button', { name: '重新上架', exact: true }).click()
+  await expect(page.getByText('● 公开中', { exact: true })).toBeVisible()
+  management = await (await request.get(studio)).json()
+  expect(management.publication.versions.at(-1).versionNumber).toBe(5)
+  expect(management.publication.versions.at(-1).chapters.map((chapter: { chapterId: string }) => chapter.chapterId)).toEqual(['CH-002', 'CH-003'])
+  expect((await request.get(reader)).status()).toBe(404)
   expect((await request.get(book)).status()).toBe(200)
   // Supply a homepage snapshot without the book while the independent public API still lists it.
   await page.route('http://127.0.0.1:5177/', route =>

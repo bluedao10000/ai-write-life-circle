@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useManagement } from './ManagedStudio'
+import { useWorkNavigation } from './StudioPage'
 import type { ManagedChapter, ManagedBook } from '@writer-agent/contracts'
 
 function chapterNumber(title: string, fallback: number) {
@@ -55,6 +56,7 @@ export default function ManagedDirectory({
   onClose: () => void
 }) {
   const m = useManagement()!
+  const navigation = useWorkNavigation()
   const { editing, setEditing } = m
   const b = m.book
   const readOnly = b.readOnly
@@ -245,6 +247,7 @@ export default function ManagedDirectory({
           正在更新目录…
         </p>
       )}
+      {navigation && <button type="button" className="btn mx-3 mb-3 rounded-md border border-line px-3 py-2 text-left text-ui-sm text-ink-2 hover:bg-surface-2" onClick={() => navigation.open('chapters')}>管理章节 →</button>}
       <div className="px-3 pb-2">
         <input
           type="search"

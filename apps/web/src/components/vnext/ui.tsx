@@ -1,5 +1,5 @@
 // Writer Agent design-system primitives (VNext). Feature code composes these; it does not write raw controls.
-import { useEffect, type ReactNode, type Ref } from 'react'
+import { useEffect, useId, useRef, type KeyboardEvent, type ReactNode, type Ref } from 'react'
 
 type BtnVariant = 'primary' | 'quiet' | 'outline' | 'danger' | 'link' | 'accent' | 'danger-outline'
 type BtnSize = 'sm' | 'md' | 'lg'
@@ -36,6 +36,7 @@ export function Btn({
   type = 'button',
   ariaLabel,
   pressed,
+  loading,
 }: {
   children: ReactNode
   onClick?: (e: React.MouseEvent) => void
@@ -47,6 +48,8 @@ export function Btn({
   type?: 'button' | 'submit'
   ariaLabel?: string
   pressed?: boolean
+  /** Keeps the label visible and blocks repeat clicks while an action is pending. */
+  loading?: boolean
 }) {
   return (
     <button
@@ -54,10 +57,12 @@ export function Btn({
       title={title}
       aria-label={ariaLabel}
       aria-pressed={pressed}
-      disabled={disabled}
+      aria-busy={loading || undefined}
+      disabled={disabled || loading}
       onClick={onClick}
       className={`${buttonClassName(variant, size)} ${className}`}
     >
+      {loading && <Spinner />}
       {children}
     </button>
   )
@@ -72,6 +77,8 @@ export function IconBtn({
   className = '',
   shortcut,
   size = 'md',
+  expanded,
+  controls,
 }: {
   icon: IconName
   label: string
@@ -81,6 +88,8 @@ export function IconBtn({
   className?: string
   shortcut?: string
   size?: 'sm' | 'md'
+  expanded?: boolean
+  controls?: string
 }) {
   return (
     <button
@@ -88,6 +97,8 @@ export function IconBtn({
       aria-label={label}
       title={shortcut ? `${label}  ${shortcut}` : label}
       aria-pressed={active}
+      aria-expanded={expanded}
+      aria-controls={controls}
       disabled={disabled}
       onClick={onClick}
       className={`btn inline-flex ${size === 'sm' ? 'h-6 w-6' : 'h-8 w-8'} shrink-0 items-center justify-center rounded-md disabled:cursor-not-allowed disabled:opacity-40 ${active ? 'bg-surface-2 text-ink' : 'text-ink-3 hover:bg-surface-2 hover:text-ink'} ${className}`}
@@ -229,27 +240,62 @@ export function Field({
   onChange,
   placeholder,
   label,
+  hint,
+  error,
+  disabled,
+  prose,
+  autoFocus,
   maxLength,
   className = '',
+  onEnter,
+  hideLabel,
 }: {
   value: string
   onChange: (v: string) => void
   placeholder?: string
   label: string
+  hint?: ReactNode
+  error?: string
+  disabled?: boolean
+  prose?: boolean
+  autoFocus?: boolean
   maxLength?: number
   className?: string
+  onEnter?: () => void
+  hideLabel?: boolean
 }) {
+  const id = useId()
   return (
-    <input
-      aria-label={label}
-      value={value}
-      placeholder={placeholder}
-      maxLength={maxLength}
-      autoComplete="off"
-      spellCheck={false}
-      onChange={(e) => onChange(e.target.value)}
-      className={`h-8 min-w-0 rounded-md bg-surface-2 px-2.5 text-ui text-ink outline-none placeholder:text-ink-3 focus:ring-1 focus:ring-line ${className}`}
-    />
+    <div className={className}>
+      <label htmlFor={id} className={hideLabel ? 'sr-only' : 'mb-1.5 block text-ui-sm text-ink-2'}>
+        {label}
+      </label>
+      <input
+        id={id}
+        aria-describedby={hint || error ? `${id}-h` : undefined}
+        aria-invalid={!!error || undefined}
+        value={value}
+        placeholder={placeholder}
+        maxLength={maxLength}
+        disabled={disabled}
+        autoFocus={autoFocus}
+        autoComplete="off"
+        spellCheck={false}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && onEnter) {
+            e.preventDefault()
+            onEnter()
+          }
+        }}
+        className={`h-9 w-full rounded-md border bg-page px-3 text-ink outline-none transition-colors placeholder:text-ink-3 focus:border-ink-3 disabled:cursor-not-allowed disabled:bg-surface-2 disabled:text-ink-3 ${prose ? 'font-prose text-ui-lg' : 'text-ui'} ${error ? 'border-danger' : 'border-line hover:border-ink-4'}`}
+      />
+      {(hint || error) && (
+        <div id={`${id}-h`} className={`mt-1 text-micro ${error ? 'text-danger' : 'text-ink-3'}`}>
+          {error ?? hint}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -274,7 +320,18 @@ export function Seg<T extends string>({
           type="button"
           role="tab"
           aria-selected={value === v}
+          aria-current={value === v ? 'page' : undefined}
           onClick={() => onChange(v)}
+          onKeyDown={(event) => {
+            const index = options.findIndex(([option]) => option === v)
+            const next = event.key === 'ArrowRight' ? (index + 1) % options.length
+              : event.key === 'ArrowLeft' ? (index + options.length - 1) % options.length
+              : event.key === 'Home' ? 0 : event.key === 'End' ? options.length - 1 : -1
+            if (next < 0) return
+            event.preventDefault()
+            onChange(options[next][0])
+            event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus()
+          }}
           className={`btn whitespace-nowrap rounded-md ${size === 'sm' ? 'h-7 px-2.5 text-ui-sm' : 'h-8 px-2.5 text-ui sm:px-3'} ${value === v ? 'bg-surface-2 font-medium text-ink' : 'text-ink-3 hover:text-ink'}`}
         >
           {l}
@@ -354,6 +411,37 @@ export function Quote({
   )
 }
 
+function useModalFocus() {
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const modal = ref.current
+    if (modal && !modal.contains(document.activeElement)) {
+      const first = modal.querySelector<HTMLElement>('input:not([disabled]), textarea:not([disabled]), select:not([disabled]), button:not([disabled]), [href]')
+      ;(first ?? modal).focus()
+    }
+    return () => { if (previous?.isConnected) previous.focus() }
+  }, [])
+  return ref
+}
+
+function modalKey(event: KeyboardEvent<HTMLDivElement>, onClose: () => void) {
+  if (event.key === 'Escape') {
+    event.stopPropagation()
+    onClose()
+  }
+  if (event.key !== 'Tab') return
+  event.stopPropagation()
+  const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [href], [tabindex="0"]')).filter((node) => node.getClientRects().length > 0)
+  const first = controls[0], last = controls.at(-1)
+  if (!first) { event.preventDefault(); event.currentTarget.focus(); return }
+  if (event.shiftKey && (document.activeElement === first || document.activeElement === event.currentTarget)) {
+    event.preventDefault(); last?.focus()
+  } else if (!event.shiftKey && (document.activeElement === last || document.activeElement === event.currentTarget)) {
+    event.preventDefault(); first.focus()
+  }
+}
+
 export function Dialog({
   title,
   children,
@@ -373,24 +461,25 @@ export function Dialog({
   size?: 'md' | 'lg' | 'xl'
   footnote?: ReactNode
 }) {
-  useEffect(() => {
-    const k = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
-    window.addEventListener('keydown', k)
-    return () => window.removeEventListener('keydown', k)
-  }, [onClose])
+  const modal = useModalFocus()
+  const titleId = useId()
   return (
     <div
+      ref={modal}
+      tabIndex={-1}
+      onKeyDown={(event) => modalKey(event, onClose)}
       className="fade fixed inset-0 z-50 flex items-end justify-center bg-scrim p-0 sm:items-center sm:p-6"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
       aria-label={label}
+      aria-labelledby={label ? undefined : titleId}
     >
       <div
         onClick={(e) => e.stopPropagation()}
         className={`fade-up max-h-full w-full overflow-auto rounded-t-xl border border-line bg-surface p-6 shadow-soft sm:rounded-xl ${wide || size === 'xl' ? 'sm:max-w-3xl' : size === 'lg' ? 'sm:max-w-xl' : 'sm:max-w-md'}`}
       >
-        <div className="text-ui-lg font-medium text-ink">{title}</div>
+        <div id={titleId} className="text-ui-lg font-medium text-ink">{title}</div>
         <div className="mt-3 text-ui text-ink-2">{children}</div>
         {(actions || footnote) && (
           <div className="mt-6 flex flex-wrap items-center justify-end gap-2">
@@ -580,29 +669,195 @@ export function Select({
   onChange,
   disabled,
   options,
+  hideLabel,
+  className = '',
 }: {
   label: string
   value: string
   onChange: (value: string) => void
   disabled?: boolean
   options: { value: string; label: string }[]
+  hideLabel?: boolean
+  className?: string
+}) {
+  const id = useId()
+  return (
+    <div className={className}>
+      <label htmlFor={id} className={hideLabel ? 'sr-only' : 'mb-1.5 block text-ui-sm text-ink-2'}>
+        {label}
+      </label>
+      <div className="relative">
+        <select
+          id={id}
+          value={value}
+          disabled={disabled}
+          onChange={(event) => onChange(event.target.value)}
+          className="h-9 w-full appearance-none rounded-md border border-line bg-page pr-8 pl-3 text-ui text-ink outline-none hover:border-ink-4 focus:border-ink-3 disabled:cursor-not-allowed disabled:bg-surface-2 disabled:text-ink-3"
+        >
+          {options.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <Icon name="chevronDown" className="pointer-events-none absolute top-2.5 right-2.5 text-ink-3" />
+      </div>
+    </div>
+  )
+}
+
+export function Spinner({ className = '' }: { className?: string }) {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 16 16"
+      className={`h-3.5 w-3.5 shrink-0 animate-spin ${className}`}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+    >
+      <circle cx="8" cy="8" r="6" opacity=".25" />
+      <path d="M14 8a6 6 0 00-6-6" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+export function Switch({
+  checked,
+  onChange,
+  label,
+  disabled,
+  hint,
+}: {
+  checked: boolean
+  onChange: (v: boolean) => void
+  label: ReactNode
+  disabled?: boolean
+  hint?: ReactNode
+}) {
+  const labelId = useId()
+  return (
+    <label className={`flex items-start gap-3 ${disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}>
+      <button
+        type="button"
+        role="switch"
+        aria-labelledby={labelId}
+        aria-checked={checked}
+        disabled={disabled}
+        onClick={() => onChange(!checked)}
+        className={`btn relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition-colors ${checked ? 'bg-ink' : 'bg-line'}`}
+      >
+        <span className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-page shadow-raise transition-transform duration-200 ${checked ? 'translate-x-4' : ''}`} />
+      </button>
+      <span className="min-w-0">
+        <span id={labelId} className="block text-ui text-ink">{label}</span>
+        {hint && <span className="block text-ui-sm text-ink-3">{hint}</span>}
+      </span>
+    </label>
+  )
+}
+
+export type BadgeTone = 'quiet' | 'accent' | 'ok' | 'warn' | 'danger' | 'ai' | 'conflict' | 'proto'
+const badgeT: Record<BadgeTone, string> = {
+  quiet: 'bg-surface-2 text-ink-2',
+  accent: 'bg-accent-soft text-accent',
+  ok: 'bg-ok-soft text-ok',
+  warn: 'bg-warn-soft text-warn',
+  danger: 'bg-danger-soft text-danger',
+  ai: 'bg-ai-soft text-ai',
+  conflict: 'bg-conflict-soft text-conflict',
+  proto: 'border border-dashed border-line text-ink-3',
+}
+export function Badge({
+  tone = 'quiet',
+  children,
+  icon,
+}: {
+  tone?: BadgeTone
+  children: ReactNode
+  icon?: IconName
 }) {
   return (
-    <label className="flex flex-wrap items-center gap-3 text-ui-sm text-ink-3">
-      <span>{label}</span>
-      <select
-        aria-label={label}
-        value={value}
-        disabled={disabled}
-        onChange={(event) => onChange(event.target.value)}
-        className="min-w-0 max-w-full rounded-md bg-surface-2 px-2 py-1 text-ui text-ink"
+    <span className={`inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-px text-micro ${badgeT[tone]}`}>
+      {icon && <Icon name={icon} className="h-3 w-3" />}
+      {children}
+    </span>
+  )
+}
+
+/** Side drawer (right) that becomes a bottom sheet on mobile. */
+export function Drawer({
+  title,
+  onClose,
+  children,
+  footer,
+  side = 'right',
+}: {
+  title: ReactNode
+  onClose: () => void
+  children: ReactNode
+  footer?: ReactNode
+  side?: 'right' | 'left'
+}) {
+  const modal = useModalFocus()
+  const titleId = useId()
+  return (
+    <div ref={modal} tabIndex={-1} onKeyDown={(event) => modalKey(event, onClose)} className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-labelledby={titleId}>
+      <div className="fade absolute inset-0 bg-scrim" onClick={onClose} aria-hidden />
+      <aside
+        className={`absolute inset-x-0 bottom-0 flex max-h-[85vh] flex-col rounded-t-xl bg-surface shadow-soft sm:inset-y-0 sm:max-h-none sm:w-full sm:max-w-drawer sm:rounded-none ${side === 'right' ? 'slide-r sm:right-0 sm:left-auto' : 'slide-l sm:right-auto sm:left-0'}`}
       >
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </label>
+        <div className="flex items-center gap-2 px-5 pt-4 pb-3">
+          <div id={titleId} className="min-w-0 flex-1 text-ui-lg font-medium text-ink">{title}</div>
+          <IconBtn icon="x" label="关闭" onClick={onClose} />
+        </div>
+        <div className="scroll min-h-0 flex-1 overflow-auto px-5 pb-6">{children}</div>
+        {footer && <div className="flex flex-wrap justify-end gap-2 border-t border-line-soft px-5 py-3">{footer}</div>}
+      </aside>
+    </div>
+  )
+}
+
+/** One shape for empty / loading / error / offline / success, with the next author action. */
+export function StateBlock({
+  kind,
+  title,
+  children,
+  action,
+  compact,
+}: {
+  kind: 'empty' | 'loading' | 'error' | 'offline' | 'success'
+  title: string
+  children?: ReactNode
+  action?: ReactNode
+  compact?: boolean
+}) {
+  const icon: Record<typeof kind, IconName | null> = {
+    empty: 'file',
+    loading: null,
+    error: 'alert',
+    offline: 'offline',
+    success: 'check',
+  }
+  const tone = {
+    empty: 'text-ink-3',
+    loading: 'text-ink-3',
+    error: 'text-danger',
+    offline: 'text-warn',
+    success: 'text-ok',
+  }[kind]
+  return (
+    <div
+      role={kind === 'error' ? 'alert' : 'status'}
+      aria-busy={kind === 'loading' || undefined}
+      className={`border-y border-dashed border-line text-center ${compact ? 'py-8' : 'py-14'}`}
+    >
+      <div className={`mx-auto flex h-8 w-8 items-center justify-center ${tone}`}>
+        {kind === 'loading' ? <Spinner className="h-5 w-5" /> : <Icon name={icon[kind]!} className="h-5 w-5" />}
+      </div>
+      <div className="mt-2 font-prose text-h3 text-ink">{title}</div>
+      {children && <p className="mx-auto mt-1.5 max-w-md text-ui-sm text-ink-3">{children}</p>}
+      {action && <div className="mt-5 flex flex-wrap justify-center gap-2">{action}</div>}
+    </div>
   )
 }

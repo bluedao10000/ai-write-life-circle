@@ -8,7 +8,11 @@ import { useStudioController } from '../features/vnext/useStudioController'
 import ThinkingPage from '../features/vnext/ThinkingPage'
 import CanonCandidate from '../features/vnext/CanonCandidate'
 import SaveConflictDialog from '../features/workspace/SaveConflictDialog'
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
+import { WorkNavigation, readWorkPage, type WorkPage } from '../features/management/StudioPage'
+const WorkOverview = lazy(() => import('../features/management/WorkOverview'))
+const ChapterManager = lazy(() => import('../features/management/ChapterManager'))
+const RevisionHistory = lazy(() => import('../features/workspace/RevisionHistory'))
 import type { WorkspaceSnapshot } from '@writer-agent/contracts'
 import type { WriterAgentAdapter } from '../services/writerAgent'
 import { createWriterAgentAdapter } from '../services/adapterFactory'
@@ -109,6 +113,19 @@ function WriterStudio({
   initialWorkspace: WorkspaceSnapshot
 }) {
   const studio = useStudioController(adapter, initialWorkspace)
+  const [page, setPage] = useState(readWorkPage)
+  const openPage = useCallback((next: WorkPage | null) => {
+    const url = new URL(window.location.href)
+    if (next) url.searchParams.set('page', next)
+    else url.searchParams.delete('page')
+    if (url.search !== window.location.search) window.history.pushState(window.history.state, '', url)
+    setPage(next)
+  }, [])
+  useEffect(() => {
+    const sync = () => setPage(readWorkPage())
+    window.addEventListener('popstate', sync)
+    return () => window.removeEventListener('popstate', sync)
+  }, [])
   const management = useManagement()
   const { workspace: managedWorkspace } = studio
   useEffect(() => {
@@ -156,12 +173,19 @@ function WriterStudio({
       onPointerMove={() => setTyping(false)}
     >
       {/* h-app follows the visible viewport while the mobile keyboard is open in 灵感. */}
-      <div className="flex h-app flex-col overflow-hidden bg-page text-ink">
-        <StudioHeader studio={studio} demo={adapter.mode === 'demo'} />
-        <WritingSpace studio={studio} adapter={adapter} />
-        <BookSpace studio={studio} adapter={adapter} />
-        {view === 'inspire' && <ThinkingPage studio={studio} adapter={adapter} />}
-      </div>
+      <WorkNavigation.Provider value={{ page, open: openPage, historyAvailable: adapter.mode === 'api' }}>
+        <div className="flex h-app flex-col overflow-hidden bg-page text-ink">
+          <StudioHeader studio={studio} demo={adapter.mode === 'demo'} />
+          <div className={page ? 'hidden' : 'flex min-h-0 flex-1 flex-col'}>
+            <WritingSpace studio={studio} adapter={adapter} />
+            <BookSpace studio={studio} adapter={adapter} />
+            {view === 'inspire' && <ThinkingPage studio={studio} adapter={adapter} />}
+          </div>
+          {page && <Suspense fallback={<p role="status" className="p-8 text-ui text-ink-3">正在打开作品页面…</p>}>
+            {page === 'desk' ? <WorkOverview studio={studio} demo={adapter.mode === 'demo'} /> : page === 'chapters' ? <ChapterManager studio={studio} /> : adapter.mode === 'api' ? <RevisionHistory key={`${workspace.projectId}:${current}`} workspace={workspace} onClose={() => openPage('desk')} embedded /> : <WorkOverview studio={studio} demo />}
+          </Suspense>}
+        </div>
+      </WorkNavigation.Provider>
       {quick && (
         <QuickNote
           notes={notes}

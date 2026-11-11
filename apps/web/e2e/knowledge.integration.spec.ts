@@ -1,7 +1,11 @@
 import { test, expect, type Page } from "@playwright/test";
 // Figma V3: 书 opens on author settings; AI observations sit behind the source switch.
-const manuscript = (page: Page) =>
-  page.getByRole("tab", { name: "正文观察 · AI", exact: true }).click();
+async function manuscript(page: Page) {
+  const source = page.getByRole("tab", { name: "正文观察 · AI", exact: true });
+  if ((await source.getAttribute("aria-selected")) !== "true") await source.click();
+  await expect(source).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByLabel("自动作品知识")).toBeVisible();
+}
 async function book(page: Page) {
   await page.getByRole("tab", { name: "书", exact: true }).click();
   await manuscript(page);
@@ -105,7 +109,7 @@ test("saved prose automatically becomes private memory, links chapter two, revis
   const toggle = page.getByRole("button", { name: "目录与本章相关" });
   if ((await toggle.getAttribute("aria-pressed")) !== "true")
     await toggle.click();
-  await page.getByRole("button", { name: "第2章", exact: true }).click();
+  await page.getByRole("complementary").getByRole("button").filter({ has: page.getByText("第2章", { exact: true }) }).click();
   await editor.fill("林舟来到江宁。");
   await expect
     .poll(() => savedMarkdown(ch2), { timeout: 10000 })
@@ -126,7 +130,9 @@ test("saved prose automatically becomes private memory, links chapter two, revis
     page.getByRole("heading", { name: "林舟", exact: true }),
   ).toHaveCount(1);
   await page.getByRole("button", { name: "回到阅读" }).click();
-  await page.getByRole("button", { name: "第一章", exact: true }).click();
+  await page.getByRole("complementary").getByRole("button").filter({ has: page.getByText("第一章", { exact: true }) }).click();
+  await expect(editor).toHaveText("林舟十五岁离开北港。");
+  await expect(editor).toBeEditable();
   await editor.fill("林舟十六岁离开北港。");
   await expect
     .poll(() => savedMarkdown(ch1), { timeout: 10000 })

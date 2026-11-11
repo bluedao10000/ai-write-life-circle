@@ -8,6 +8,7 @@ import {
 import { createPortal } from 'react-dom'
 import type { ManagedBook } from '@writer-agent/contracts'
 import { useManagement } from './ManagedStudio'
+import { useWorkNavigation } from './StudioPage'
 import {
   Btn,
   buttonClassName,
@@ -76,6 +77,7 @@ type BookDialog =
 /** `wide`: always show the title (the 灵感 mobile drawer has room; the header does not). */
 export default function BookMenu({ wide = false }: { wide?: boolean } = {}) {
   const management = useManagement()
+  const navigation = useWorkNavigation()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [dialog, setDialog] = useState<BookDialog | null>(null)
@@ -269,6 +271,9 @@ export default function BookMenu({ wide = false }: { wide?: boolean } = {}) {
           )}
 
           <div className="scroll min-h-0 overflow-y-auto">
+            {!query.trim() && navigation && <div className="border-b border-line-soft pb-2">
+              {([['desk', '作品总览', 'book'], ['chapters', '章节管理', 'layers'], ['history', '历史版本', 'revision']] as const).filter(([page]) => page !== 'history' || navigation.historyAvailable).map(([page, label, icon]) => <button key={page} type="button" role="menuitem" className="btn flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-ui text-ink-2 hover:bg-surface-2 hover:text-ink" onClick={() => { closeMenu(); navigation.open(page) }}><Icon name={icon} />{label}</button>)}
+            </div>}
             <div className="px-2.5 pt-2 pb-1 text-micro text-ink-3">
               {query.trim() ? '搜索结果' : '最近编辑'}
             </div>

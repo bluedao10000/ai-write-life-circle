@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Children, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type {
   MemoryAssertion,
   MemoryCorrection,
@@ -16,11 +16,13 @@ import {
 } from "../../components/vnext/ConsentFacts";
 import {
   Btn,
+  Dialog,
   Dot,
   Heading,
   Icon,
   Row,
   Seg,
+  Select,
   TextInput,
   ago,
 } from "../../components/vnext/ui";
@@ -669,6 +671,7 @@ export function KnowledgePanel(props: Props) {
         chapters={chapters}
         selectedId={selectedId}
         onOpen={setSelectedId}
+        onRead={readSource}
       />
     );
   };
@@ -713,31 +716,13 @@ export function KnowledgePanel(props: Props) {
                 )}
               </div>
             </div>
-            <label className="mt-3 block md:hidden">
-              <span className="sr-only">知识分类</span>
-              <select
-                aria-label="知识分类"
-                value={section}
-                onChange={(event) =>
-                  onSection?.(event.target.value as BookSection)
-                }
-                className="w-full rounded-md border border-line bg-surface px-3 py-2 text-ui text-ink"
-              >
-                {(Object.keys(meta) as BookSection[]).map((id) => (
-                  <option key={id} value={id}>
-                    {meta[id].label}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {onSection && <div className="mt-3 md:hidden">
+              <Select label="知识分类" value={section} onChange={(value) => onSection(value as BookSection)} options={(Object.keys(meta) as BookSection[]).map((id) => ({ value: id, label: meta[id].label }))} />
+            </div>}
             <div className="mt-4 flex flex-wrap items-baseline gap-x-3 gap-y-1">
               <Heading level={1}>
                 {section === "chapter" && currentChapter
-                  ? `${chapterNo(currentChapter)}${
-                      currentChapter.title
-                        ? ` · ${currentChapter.title.replace(/^第\s*\d+\s*章\s*/, "")}`
-                        : ""
-                    }`
+                  ? currentChapter.title
                   : meta[section].label}
               </Heading>
               {phase === "refreshing" && (
@@ -754,30 +739,24 @@ export function KnowledgePanel(props: Props) {
               {section === "chapter" ? "本章相关 · " : ""}
               {meta[section].description}
             </p>
+            {meta[section].search && (
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <TextInput
+                  label={meta[section].search!}
+                  value={query}
+                  onChange={(value) => { setQuery(value); setEntityCursor(0); }}
+                  placeholder={meta[section].search}
+                  className="w-full sm:max-w-xs"
+                />
+                <span className="text-ui-sm text-ink-3" aria-live="polite">
+                  {query.trim() !== debouncedQuery ? "筛选中…" : debouncedQuery ? <>已筛选“{debouncedQuery}” <Btn variant="link" className="text-ui-sm" onClick={() => { setQuery(""); setEntityCursor(0); }}>清除</Btn></> : ""}
+                </span>
+              </div>
+            )}
           </div>
         </header>
         <div className="mx-auto max-w-page px-5 pt-6 pb-24 md:px-8">
-          {meta[section].search && (
-            <div className="mb-5 flex flex-wrap items-center gap-3">
-              <TextInput
-                label={meta[section].search!}
-                value={query}
-                onChange={(value) => {
-                  setQuery(value);
-                  setEntityCursor(0);
-                }}
-                placeholder={meta[section].search}
-                className="w-full sm:max-w-xs"
-              />
-              <span className="text-ui-sm text-ink-3" aria-live="polite">
-                {query.trim() !== debouncedQuery
-                  ? "筛选中…"
-                  : debouncedQuery
-                    ? `已筛选“${debouncedQuery}”`
-                    : ""}
-              </span>
-            </div>
-          )}
+          {error && phase === "ready" && <p role="alert" className="mb-5 flex flex-wrap items-center gap-2 rounded-md bg-warn-soft px-3 py-2 text-ui-sm text-ink-2"><Icon name="alert" className="h-3.5 w-3.5 text-warn" />{error}</p>}
           <div>
             {phase === "loading" ? (
               <ListSkeleton rows={section === "timeline" ? 5 : 4} />
@@ -853,6 +832,7 @@ export function KnowledgePanel(props: Props) {
             <SettingsPanel
               page={current}
               busy={busy}
+              error={error}
               onClose={() => setShowSettings(false)}
               onEnable={() =>
                 void mutate("enable", {
@@ -891,6 +871,7 @@ export function KnowledgePanel(props: Props) {
               busy={busy}
               loadingFacts={detailFactPhase === "loading"}
               factsError={detailFactPhase === "error"}
+              suspended={!!source || showSettings}
               onRetryFacts={() => setDetailRetry((value) => value + 1)}
               onClose={() => setSelectedId(null)}
               onEntity={setSelectedId}
@@ -903,56 +884,16 @@ export function KnowledgePanel(props: Props) {
         </>
       )}
 
-      {source && (
-        <div
-          className="fixed inset-0 z-[60] flex items-end justify-center bg-scrim p-0 sm:items-center sm:p-6"
-          role="dialog"
-          aria-modal="true"
-          aria-label="原文证据"
-          onClick={() => setSource(null)}
-        >
-          <div
-            className="fade-up max-h-full w-full overflow-auto rounded-t-xl border border-line bg-surface p-6 shadow-soft sm:max-w-2xl sm:rounded-xl"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <Heading level={2} className="text-ui-lg text-ink">
-              {chapterName(source.value.chapterId, chapters)} · 保存版本原文
-            </Heading>
-            <p className="my-2 text-ui-sm text-ink-3">{source.message}</p>
-            {source.value.validity === "stale" && (
-              <p className="mb-3 rounded-md bg-warn-soft px-3 py-2 text-ui-sm text-ink-2">
-                原文已修改。以下仍是当时保存的引文，不会被强行映射到当前正文。
-              </p>
-            )}
-            <pre className="scroll my-4 max-h-80 overflow-auto whitespace-pre-wrap font-prose text-ui-lg text-ink">
-              {source.markdown ? (
-                <>
-                  {source.markdown.slice(0, source.value.startUTF16)}
-                  <mark>{source.value.quote}</mark>
-                  {source.markdown.slice(source.value.endUTF16)}
-                </>
-              ) : (
-                source.value.quote
-              )}
-            </pre>
-            <div className="flex flex-wrap gap-3">
-              <Btn
-                onClick={() => {
-                  const target = source.value.chapterId;
-                  setSource(null);
-                  setSelectedId(null);
-                  onChapter(target);
-                }}
-              >
-                打开章节
-              </Btn>
-              <Btn variant="quiet" onClick={() => setSource(null)}>
-                收起依据
-              </Btn>
-            </div>
-          </div>
-        </div>
-      )}
+      {source && <div className="relative z-[60]">
+        <Dialog label="原文证据" size="xl" title={`${chapterName(source.value.chapterId, chapters)} · 保存版本原文`} onClose={() => { ++sourceEpoch.current; setSource(null); }} actions={<>
+          <Btn onClick={() => { const target = source.value.chapterId; ++sourceEpoch.current; setSource(null); setSelectedId(null); onChapter(target); }}>打开章节</Btn>
+          <Btn variant="quiet" onClick={() => { ++sourceEpoch.current; setSource(null); }}>收起依据</Btn>
+        </>}>
+          <p className="text-ui-sm text-ink-3">{source.message}</p>
+          {source.value.validity === "stale" && <p className="mt-3 rounded-md bg-warn-soft px-3 py-2 text-ui-sm text-ink-2">原文已修改。这里保留的是当时保存的引文。</p>}
+          <pre className="scroll my-4 max-h-80 overflow-auto whitespace-pre-wrap font-prose text-ui-lg text-ink">{source.markdown ? <>{source.markdown.slice(0, source.value.startUTF16)}<mark>{source.value.quote}</mark>{source.markdown.slice(source.value.endUTF16)}</> : source.value.quote}</pre>
+        </Dialog>
+      </div>}
     </section>
   );
 }
@@ -1053,6 +994,7 @@ function EmptyKnowledgeState(
 function SettingsPanel({
   page,
   busy,
+  error,
   onClose,
   onEnable,
   onPause,
@@ -1060,6 +1002,7 @@ function SettingsPanel({
 }: {
   page: MemoryPage;
   busy: boolean;
+  error: string;
   onClose: () => void;
   onEnable: () => void;
   onPause: () => void;
@@ -1069,14 +1012,11 @@ function SettingsPanel({
     JSON.stringify(page.settings.model) === JSON.stringify(page.model) &&
     !page.needsModelConsent;
   return (
-    <div
-      className="fade-up mt-6 space-y-3 rounded-xl border border-line bg-surface p-5"
-      aria-label="知识维护授权"
-    >
-      <h2 className="text-ui-lg font-medium text-ink">
-        <ConsentTitle>让 AI 自动记住这部作品</ConsentTitle>
-      </h2>
+    <div className="relative z-[60]">
+    <Dialog label="知识维护授权" size="lg" title={<ConsentTitle>让 AI 自动记住这部作品</ConsentTitle>} onClose={() => { if (!busy) onClose(); }}>
+      <div className="space-y-4">
       <p className="text-ui-sm text-ink-2">{page.disclosure}</p>
+      {error && <p role="alert" className="rounded-md bg-warn-soft px-3 py-2 text-ui-sm text-ink-2">{error}</p>}
       <ConsentFacts
         rows={[
           ["服务", page.model.provider],
@@ -1121,6 +1061,8 @@ function SettingsPanel({
           </div>
         </>
       )}
+      </div>
+    </Dialog>
     </div>
   );
 }
@@ -1156,6 +1098,7 @@ function ChapterSection({
           title={title}
           count={list.length}
           defaultOpen={index < 2}
+          previewLimit={5}
         >
           {list.map((entity) => {
             const own = assertions.filter(
@@ -1199,6 +1142,7 @@ function EntitySection({
   chapters,
   selectedId,
   onOpen,
+  onRead,
 }: {
   section: BookSection;
   entities: MemoryEntity[];
@@ -1206,6 +1150,7 @@ function EntitySection({
   chapters: { id: string; title: string }[];
   selectedId: string | null;
   onOpen: (id: string) => void;
+  onRead: (source: MemorySource) => void;
 }) {
   const [shown, setShown] = useState(12);
   const groups =
@@ -1249,7 +1194,7 @@ function EntitySection({
                     latest={latest?.text}
                     active={selectedId === entity.entityId}
                     onOpen={() => onOpen(entity.entityId)}
-                    onRead={() => undefined}
+                    onRead={onRead}
                     footer={
                       <div className="flex flex-wrap gap-x-3 text-micro text-ink-3">
                         <span
@@ -1328,6 +1273,7 @@ function TimelineSection({
   onChapter: (id: string) => void;
 }) {
   const [expanded, setExpanded] = useState<string | null>(null);
+  const chapterOrder = new Map(chapters.map((chapter, index) => [chapter.id, index]));
   const list = entities
     .map((entity) => {
       const own = assertions.filter(
@@ -1342,11 +1288,8 @@ function TimelineSection({
     })
     .filter((item) => known === "all" || !!item.time)
     .sort((a, b) =>
-      (a.sources[0]?.chapterId ?? "").localeCompare(
-        b.sources[0]?.chapterId ?? "",
-        undefined,
-        { numeric: true },
-      ),
+      Math.min(...a.sources.map((source) => chapterOrder.get(source.chapterId) ?? Infinity)) -
+      Math.min(...b.sources.map((source) => chapterOrder.get(source.chapterId) ?? Infinity)),
     );
   return (
     <>
@@ -1358,13 +1301,14 @@ function TimelineSection({
           onChange={setKnown}
           options={[
             ["all", "全部事件"],
-            ["known", "只看时间明确的"],
+            ["known", "有时间记录"],
           ]}
         />
         <span className="text-micro text-ink-3">
           按章节顺序排列；时间不明确时不会补造日期。
         </span>
       </div>
+      {!list.length && <EmptyState icon="clock" title="没有带时间记录的事件" body="切换到「全部事件」查看尚未注明时间的内容。"><Btn variant="outline" onClick={() => setKnown("all")}>全部事件</Btn></EmptyState>}
       <ol>
         {list.map(({ entity, own, time, sources }, index) => {
           const open = expanded === entity.entityId;
@@ -1646,30 +1590,29 @@ function Group({
   count,
   children,
   defaultOpen = true,
+  previewLimit,
 }: {
   title: string;
   count: number;
   children: ReactNode;
   defaultOpen?: boolean;
+  previewLimit?: number;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  const [expanded, setExpanded] = useState(false);
   if (!count) return null;
+  const items = Children.toArray(children);
   return (
     <section className="mb-6">
-      <Row
-        onClick={() => setOpen((value) => !value)}
-        className="-mx-2 flex items-center gap-2 px-2 py-1.5"
-      >
-        <Icon
-          name="chevron"
-          className={`h-3 w-3 text-ink-3 transition-transform ${
-            open ? "rotate-90" : ""
-          }`}
-        />
-        <Heading level={3}>{title}</Heading>
-        <span className="text-micro tabular-nums text-ink-3">{count}</span>
-      </Row>
-      {open && <div className="mt-2 space-y-2">{children}</div>}
+      <Btn variant="quiet" size="sm" pressed={open} onClick={() => setOpen((value) => !value)} className="-ml-2 mb-2">
+        <Icon name="chevron" className={`h-3 w-3 text-ink-3 transition-transform ${open ? "rotate-90" : ""}`} />
+        <span className="font-medium text-ink-2">{title}</span>
+        <span className="tabular-nums text-ink-3">{count}</span>
+      </Btn>
+      {open && <div className="space-y-2">
+        {previewLimit && !expanded ? items.slice(0, previewLimit) : children}
+        {previewLimit && items.length > previewLimit && <Btn variant="link" className="text-ui-sm" onClick={() => setExpanded((value) => !value)}>{expanded ? "收起" : `展开其余 ${items.length - previewLimit} 条`}</Btn>}
+      </div>}
     </section>
   );
 }
@@ -1732,23 +1675,13 @@ function EntityCard({
           「{source.quote}」
         </p>
       )}
-      {footer ? (
-        <div className="mt-2">{footer}</div>
-      ) : (
-        <div className="mt-2 flex flex-wrap gap-x-3 text-micro text-ink-3">
-          {assertions.length > 0 && <span>{assertions.length} 条知识</span>}
-          {source && (
-            <Btn
-              variant="link"
-              className="text-micro"
-              ariaLabel={`${source.chapterId} · 查看原文依据`}
-              onClick={() => onRead(source)}
-            >
-              查看原文依据
-            </Btn>
-          )}
-        </div>
-      )}
+      {footer && <div className="mt-2">{footer}</div>}
+      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-micro text-ink-3">
+        {!footer && assertions.length > 0 && <span>{assertions.length} 条知识</span>}
+        {assertions[0] && <NatureTag nature={assertions[0].epistemic} />}
+        <Btn variant="link" className="text-micro" onClick={onOpen} ariaLabel={`查看${entity.name}的知识详情`}>查看详情</Btn>
+        {source && <Btn variant="link" className="text-micro" ariaLabel={`${entity.name} · 查看原文依据`} onClick={() => onRead(source)}>查看原文依据</Btn>}
+      </div>
     </article>
   );
 }
@@ -1805,12 +1738,7 @@ function chapterName(
   id: string,
   chapters: { id: string; title: string }[],
 ) {
-  return chapters.find((chapter) => chapter.id === id)?.title || id;
-}
-
-function chapterNo(chapter: { title: string }) {
-  const sequence = chapter.title.match(/^第\s*(\d+)\s*章/)?.[1];
-  return sequence ? `第${sequence}章` : chapter.title;
+  return chapters.find((chapter) => chapter.id === id)?.title || "来源章节已不在目录中";
 }
 
 function formatAt(value: string) {

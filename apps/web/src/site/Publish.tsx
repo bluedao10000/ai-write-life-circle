@@ -6,7 +6,7 @@ import type {
   PublicationVersion,
 } from '@writer-agent/contracts'
 import { publicationMetadataSchema } from '@writer-agent/contracts'
-import { Btn, Choice, Heading, Icon, TextArea } from '../components/vnext/ui'
+import { Btn, Choice, Dialog, Heading, Icon, TextArea } from '../components/vnext/ui'
 import {
   getPublication,
   previewPublication,
@@ -14,7 +14,7 @@ import {
   suggestPublication,
   transitionPublication,
 } from '../services/api/publicationApi'
-import { Cover } from './kit'
+import { A, Cover } from './kit'
 import { mapBook, volumeTitle } from './mapper'
 import { Markdown } from './Markdown'
 import { prefs } from './store'
@@ -90,6 +90,11 @@ export default function Publish() {
     [suggesting, setSuggesting] = useState(false),
     [success, setSuccess] = useState<PublicationVersion | null>(null)
   const [note, setNote] = useState('')
+  const [confirm, setConfirm] = useState<
+    | { kind: 'unlist' | 'relist' }
+    | { kind: 'withdraw'; chapterId: string; title: string }
+    | null
+  >(null)
   const [notice, setNotice] = useState('')
   const [query, setQuery] = useState('')
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
@@ -180,6 +185,7 @@ export default function Publish() {
     setWizard(true)
     setError('')
     setSuccess(null)
+    setConfirm(null)
     setQuery('')
     setCollapsed({})
   }
@@ -296,7 +302,10 @@ export default function Publish() {
         { baseVersionId: base, previewId: preview.previewId, note },
         key,
       )
-      if (mounted.current) setSuccess(value)
+      if (mounted.current) {
+        setSuccess(value)
+        setKey(crypto.randomUUID())
+      }
     } catch (e) {
       if (mounted.current)
         setError(
@@ -308,20 +317,13 @@ export default function Publish() {
     }
   }
   const transition = async (action: 'unlist' | 'relist') => {
-    if (
-      !base ||
-      !window.confirm(
-        action === 'unlist'
-          ? '下架整部作品？读者将无法访问，草稿不受影响。已被他人保存的副本无法收回。'
-          : '重新上架上一次确认的公开快照？不会自动发布新草稿。',
-      )
-    )
-      return
+    if (!base) return
     setBusy(true)
     setError('')
     try {
       await transitionPublication(project, action, base, key)
       if (mounted.current) {
+        setConfirm(null)
         setKey(crypto.randomUUID())
         setEpoch((v) => v + 1)
       }
@@ -357,8 +359,8 @@ export default function Publish() {
           <ul className="mt-2 space-y-1 text-ink-2">
             <li>你填写的公开资料与笔名</li>
             <li>
-              {preview?.chapters.length ?? selected.length}{' '}
-              个选中章节的已保存正文快照
+              {wizard ? preview?.chapters.length ?? selected.length : current?.chapters.length ?? 0}{' '}
+              个已确认章节的正文快照
             </li>
           </ul>
         </div>
@@ -376,14 +378,14 @@ export default function Publish() {
   )
   return (
     <div className="min-h-screen bg-page">
-      <header className="flex h-12 items-center gap-2 px-3">
-        <a href="/studio" className="text-ui text-ink-2">
-          ← 回到写作
-        </a>
+      <header className="flex min-h-12 flex-wrap items-center gap-2 px-3 py-2">
+        <A to="/studio" variant="quiet" className="h-7 px-2 text-ui-sm">
+          <Icon name="back" />回到写作
+        </A>
         <span className="text-ui-sm text-ink-3">Writer Studio · 发布</span>
-        <a href="/" className="ml-auto text-ui-sm text-ink-2">
+        <A to="/" className="ml-auto text-ui-sm text-ink-2 hover:text-ink">
           story2u 首页
-        </a>
+        </A>
       </header>
       {!loaded ? (
         <main className="p-10">
@@ -409,14 +411,18 @@ export default function Publish() {
           <p className="mt-3 text-ui text-ink-2">
             公开版本 v{success.versionNumber} · {success.chapters.length} 章。
           </p>
-          <div className="mt-8 flex justify-center gap-4">
-            <a href="/" className="text-accent">
-              在首页查看
-            </a>
-            <a href={success.publicUrl} className="text-accent">
-              作品页
-            </a>
+          <p className="mt-2 text-ui-sm text-ink-3">
+            {success.state === 'listed'
+              ? '读者现在可以在 story2u 阅读这个公开版本。之后修改草稿不会自动更新它。'
+              : '作品和章节已对读者隐藏，私人草稿与公开版本历史仍然保留。'}
+          </p>
+          <div className="mt-8 flex flex-wrap justify-center gap-2">
+            {success.state === 'listed' && <>
+              <A to="/" variant="primary">在首页查看</A>
+              <A to={success.publicUrl} variant="outline">作品页</A>
+            </>}
             <Btn
+              variant={success.state === 'listed' ? 'quiet' : 'primary'}
               onClick={() => {
                 setSuccess(null)
                 setWizard(false)
@@ -429,30 +435,34 @@ export default function Publish() {
         </main>
       ) : !wizard && current ? (
         <main className="mx-auto max-w-4xl px-6 pt-8 pb-24">
-          <div className="text-ui-sm text-ink-3">
-            {current.state === 'listed' ? '● 公开中' : '已下架 · 读者不可见'} ·
-            公开版本 v{current.versionNumber}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-ui-sm">
+            <span className={current.state === 'listed' ? 'text-ok' : 'text-warn'}>
+              {current.state === 'listed' ? '● 公开中' : '已下架 · 读者不可见'}
+            </span>
+            <span className="text-ink-3">
+              公开版本 v{current.versionNumber} · {new Date(current.createdAt).toLocaleString('zh-CN')}
+            </span>
           </div>
           <Heading level={1} className="mt-2">
             {current.metadata.title}
           </Heading>
+          <p className="mt-1 break-all text-ui-sm text-ink-3">
+            公开地址：{window.location.origin}/books/{current.metadata.slug}
+          </p>
           <div className="mt-6 flex flex-wrap gap-2">
-            <a
-              href={`/books/${current.metadata.slug}`}
-              className="rounded-md border border-line px-3 py-2 text-ui"
-            >
-              以读者身份查看
-            </a>
-            <Btn onClick={() => open(current.chapters.map((c) => c.chapterId))}>
+            {current.state === 'listed' && (
+              <A to={`/books/${current.metadata.slug}`} variant="outline">以读者身份查看</A>
+            )}
+            <Btn variant="quiet" onClick={() => open(current.chapters.map((c) => c.chapterId))}>
               修改公开资料与章节…
             </Btn>
             <Btn
               disabled={busy}
-              onClick={() =>
-                void transition(
-                  current.state === 'listed' ? 'unlist' : 'relist',
-                )
-              }
+              variant={current.state === 'listed' ? 'quiet' : 'primary'}
+              onClick={() => {
+                setError('')
+                setConfirm({ kind: current.state === 'listed' ? 'unlist' : 'relist' })
+              }}
             >
               {current.state === 'listed' ? '下架作品…' : '重新上架'}
             </Btn>
@@ -462,7 +472,10 @@ export default function Publish() {
             <p className="mt-2 text-ui-sm text-ink-3">
               自动保存永远不会改变公开快照。更新或撤回都需重新预览和确认。
             </p>
-            <div className="mt-5 divide-y divide-line-soft">
+            <div className="mt-5 hidden grid-cols-[minmax(0,1fr)_12rem_15rem] gap-3 pb-2 text-ui-sm text-ink-3 md:grid" aria-hidden>
+              <span>章节</span><span>状态</span><span className="text-right">操作</span>
+            </div>
+            <div className="divide-y divide-line-soft border-t border-line-soft">
               {loaded.drafts.map((d) => {
                 const published = current.chapters.find(
                     (c) => c.chapterId === d.chapterId,
@@ -473,17 +486,20 @@ export default function Publish() {
                 return (
                   <div
                     key={d.chapterId}
-                    className="flex flex-wrap items-center gap-3 py-3 text-ui"
+                    className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 py-3 text-ui md:grid-cols-[minmax(0,1fr)_12rem_15rem]"
                   >
-                    <span className="font-prose">{d.title}</span>
+                    <div className="min-w-0">
+                      <span className="block break-words font-prose text-ink">{d.title}</span>
+                      {d.volumeTitle && <span className="text-micro text-ink-3">{d.volumeTitle}</span>}
+                    </div>
                     <span
-                      className={
+                      className={`col-start-1 row-start-2 text-ui-sm md:col-auto md:row-auto ${
                         changed
                           ? 'text-warn'
                           : published
                             ? 'text-ok'
                             : 'text-ink-3'
-                      }
+                      }`}
                     >
                       {published
                         ? changed
@@ -493,7 +509,7 @@ export default function Publish() {
                           ? '草稿 · 未公开'
                           : '空章节'}
                     </span>
-                    <div className="ml-auto flex gap-2">
+                    <div className="col-start-2 row-span-2 row-start-1 flex flex-col items-end gap-1 md:col-auto md:row-span-1 md:row-auto md:flex-row md:justify-end">
                       {(!published || changed) && (
                         <Btn
                           size="sm"
@@ -514,17 +530,10 @@ export default function Publish() {
                       {published && (
                         <Btn
                           size="sm"
+                          variant="quiet"
                           onClick={() => {
-                            if (
-                              window.confirm(
-                                '取消公开此章？将进入重新预览与确认流程，草稿不受影响。',
-                              )
-                            )
-                              open(
-                                current.chapters
-                                  .filter((c) => c.chapterId !== d.chapterId)
-                                  .map((c) => c.chapterId),
-                              )
+                            setError('')
+                            setConfirm({ kind: 'withdraw', chapterId: d.chapterId, title: d.title })
                           }}
                         >
                           取消公开
@@ -543,20 +552,21 @@ export default function Publish() {
                 {[...loaded.management.publication!.versions]
                   .reverse()
                   .map((v) => (
-                    <li key={v.versionId} className="text-ui">
-                      v{v.versionNumber} · {v.chapters.length}章{' '}
-                      {v.note ? `· ${v.note}` : ''} ·{' '}
-                      {v.state === 'listed' ? '公开' : '下架'}
-                      <span className="block text-micro text-ink-3">
-                        {v.createdAt}
-                      </span>
+                    <li key={v.versionId} className="grid grid-cols-[3rem_1fr] gap-2 text-ui">
+                      <span className="text-ink-3">v{v.versionNumber}</span>
+                      <div className="min-w-0">
+                        <span className="break-words text-ink">{v.note || (v.state === 'listed' ? '发布作品' : '下架作品')}</span>
+                        <span className="mt-0.5 block text-micro text-ink-3">
+                          {new Date(v.createdAt).toLocaleString('zh-CN')} · {v.chapters.length} 章 · {v.state === 'listed' ? '公开' : '下架'}
+                        </span>
+                      </div>
                     </li>
                   ))}
               </ol>
             </div>
             {boundary}
           </section>
-          {error && (
+          {error && !confirm && (
             <p role="alert" className="mt-5 text-danger">
               {error}
             </p>
@@ -571,7 +581,8 @@ export default function Publish() {
             {['公开资料', '选择章节', '预览', '确认发布'].map((s, i) => (
               <li
                 key={s}
-                className={i === step ? 'font-medium text-ink' : 'text-ink-3'}
+                aria-current={i === step ? 'step' : undefined}
+                className={i === step ? 'font-medium text-ink' : i < step ? 'text-ink-2' : 'text-ink-3'}
               >
                 {i + 1}. {s}
               </li>
@@ -619,9 +630,13 @@ export default function Publish() {
                               : 1
                         }
                         value={meta[field]}
-                        onChange={(v) => changeMeta({ [field]: v })}
+                        maxLength={{ title: 160, slug: 80, penName: 100, tagline: 250, description: 10000, authorBio: 2000 }[field]}
+                        onChange={(value) => changeMeta({ [field]: field === 'description' || field === 'authorBio' ? value : value.replace(/\n/g, '') })}
                       />
                     </div>
+                    {field === 'slug' && <p className="mt-1 break-all text-micro text-ink-3">{window.location.origin}/books/{meta.slug || '…'}</p>}
+                    {field === 'penName' && <p className="mt-1 text-micro text-ink-3">读者看到的作者名，不会显示你的账户信息。</p>}
+                    {field === 'tagline' && <p className="mt-1 text-micro text-ink-3">{meta.tagline.length} 字 · 建议 40 字以内，出现在首页和分享卡片上。</p>}
                   </div>
                 ))}
                 <div>
@@ -656,31 +671,39 @@ export default function Publish() {
                     )}
                   </div>
                 </div>
-                <div className="flex gap-2">
-                  {(['ongoing', 'completed', 'paused'] as const).map(
-                    (status, i) => (
-                      <Btn
-                        key={status}
-                        variant={
-                          meta.serialStatus === status ? 'primary' : 'outline'
-                        }
-                        onClick={() => changeMeta({ serialStatus: status })}
-                      >
-                        {['连载中', '已完结', '暂停中'][i]}
-                      </Btn>
-                    ),
-                  )}
+                <div>
+                  <div className="mb-2 text-ui-sm text-ink-2">状态</div>
+                  <div role="group" aria-label="作品连载状态" className="flex flex-wrap gap-1">
+                    {(['ongoing', 'completed', 'paused'] as const).map(
+                      (status, i) => (
+                        <Btn
+                          key={status}
+                          size="sm"
+                          variant={meta.serialStatus === status ? 'primary' : 'outline'}
+                          pressed={meta.serialStatus === status}
+                          onClick={() => changeMeta({ serialStatus: status })}
+                        >
+                          {['连载中', '已完结', '暂停中'][i]}
+                        </Btn>
+                      ),
+                    )}
+                  </div>
                 </div>
               </div>
               <div>
                 <div className="mb-2 text-ui-sm text-ink-3">封面</div>
                 <Cover book={coverBook} />
-                <div className="mt-3 rounded-md bg-surface-2 p-2">
-                  <TextArea
-                    label="公开封面 HTTPS 地址（可选）"
-                    value={meta.coverUrl}
-                    onChange={(v) => changeMeta({ coverUrl: v })}
-                  />
+                <div className="mt-4">
+                  <div className="mb-1.5 text-ui-sm text-ink-2">封面图片地址（可选）</div>
+                  <div className="rounded-md bg-surface-2 px-3 py-2">
+                    <TextArea
+                      label="公开封面 HTTPS 地址（可选）"
+                      rows={2}
+                      value={meta.coverUrl}
+                      placeholder="https://…"
+                      onChange={(value) => changeMeta({ coverUrl: value.replace(/\n/g, '') })}
+                    />
+                  </div>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-1.5">
                   {[
@@ -697,7 +720,7 @@ export default function Publish() {
                       ariaLabel={palette ? `封面配色 ${i}` : '不设置封面'}
                       pressed={meta.cover?.bg === palette?.bg}
                       onClick={() => changeMeta({ cover: palette })}
-                      className="w-8 px-0"
+                      className={`w-8 px-0 ${meta.cover?.bg === palette?.bg ? 'border-ink' : ''}`}
                     >
                       {palette ? (
                         <span
@@ -867,6 +890,7 @@ export default function Publish() {
             <section className="mt-10">
               <Heading level={1}>读者将看到</Heading>
               <div className="mt-6 rounded-xl border border-line p-6 sm:p-10">
+                <div className="mb-6 text-micro text-ink-3">预览 · 作品页</div>
                 <div className="grid gap-8 sm:grid-cols-[9rem_1fr]">
                   <Cover book={coverBook} />
                   <div>
@@ -874,7 +898,7 @@ export default function Publish() {
                       {preview.metadata.title}
                     </h2>
                     <div className="mt-1 text-ui-sm text-ink-3">
-                      {preview.metadata.penName} · {preview.metadata.category}
+                      {preview.metadata.penName} · {(preview.metadata.categories ?? [preview.metadata.category]).join(' / ')} · {coverBook.status}
                     </div>
                     <p className="mt-4 font-prose text-ui-lg">
                       {preview.metadata.tagline}
@@ -882,7 +906,8 @@ export default function Publish() {
                     <p className="mt-2 text-ui text-ink-2">
                       {preview.metadata.description}
                     </p>
-                    <ol className="mt-6">
+                    <div className="mt-6 text-ui-sm text-ink-3">目录 · {preview.chapters.length} 章</div>
+                    <ol className="mt-1">
                       {preview.chapters.map((c) => (
                         <li
                           key={c.chapterId}
@@ -899,75 +924,96 @@ export default function Publish() {
                     </ol>
                   </div>
                 </div>
-                {preview.chapters.map((c) => (
-                  <div
-                    key={c.chapterId}
-                    className="mt-10 border-t border-line-soft pt-8"
-                  >
-                    {volumeTitle(c) && (
-                      <p className="mb-2 text-ui-sm text-ink-3">
-                        {volumeTitle(c)}
-                      </p>
-                    )}
-                    <h3 className="mb-4 font-prose text-title">{c.title}</h3>
-                    {current?.chapters.find(
-                      (old) =>
-                        old.chapterId === c.chapterId &&
-                        old.contentHash !== c.contentHash,
-                    ) && (
-                      <details className="mb-4">
-                        <summary className="text-ui text-ink-3">
-                          查看当前公开版本，与下方草稿快照对照
-                        </summary>
-                        <Markdown
-                          markdown={
-                            preview.previousChapters.find(
-                              (old) => old.chapterId === c.chapterId,
-                            )?.markdown ?? ''
-                          }
-                        />
-                      </details>
-                    )}
-                    <div className="reader-text mx-auto max-w-read font-prose text-read">
-                      <Markdown markdown={c.markdown} />
+                {preview.chapters[0] && (
+                  <div className="mt-10 border-t border-line-soft pt-8">
+                    <div className="mb-4 text-micro text-ink-3">预览 · 阅读页 · 第 1 章</div>
+                    <h3 className="mx-auto mb-6 max-w-read font-prose text-title text-ink">{preview.chapters[0].title}</h3>
+                    <div className="reader-text mx-auto max-w-read font-prose text-read text-ink">
+                      <Markdown markdown={preview.chapters[0].markdown.split(/\n\s*\n/).slice(0, 3).join('\n\n')} />
                     </div>
                   </div>
-                ))}
+                )}
               </div>
+              {preview.chapters.length > 0 && (
+                <section className="mt-10">
+                  <Heading level={2}>完整章节与更新对照</Heading>
+                  <p className="mt-1 text-ui-sm text-ink-3">展开查看本次已冻结的正文快照。内容发生变化的章节会并排显示当前公开版本。</p>
+                  <div className="mt-4 divide-y divide-line-soft">
+                    {preview.chapters.map((chapter) => {
+                      const previous = preview.previousChapters.find((old) => old.chapterId === chapter.chapterId)
+                      const changed = !!current?.chapters.some((old) => old.chapterId === chapter.chapterId && old.contentHash !== chapter.contentHash)
+                      return (
+                        <details key={chapter.chapterId} open={changed} className="py-4">
+                          <summary className="cursor-pointer font-prose text-ui-lg text-ink">
+                            {volumeTitle(chapter) && <span className="mr-2 font-ui text-ui-sm text-ink-3">{volumeTitle(chapter)}</span>}
+                            {chapter.title}
+                            {changed && <span className="ml-3 font-ui text-ui-sm text-warn">公开内容将更新</span>}
+                          </summary>
+                          <div className={`mt-4 grid gap-4 ${changed ? 'md:grid-cols-2' : ''}`}>
+                            {changed && (
+                              <div>
+                                <div className="mb-2 text-ui-sm text-ink-3">当前公开版本</div>
+                                <div className="reader-text scroll max-h-96 overflow-auto rounded-md bg-surface-2 p-4 font-prose text-read text-ink-2">
+                                  <Markdown markdown={previous?.markdown ?? ''} />
+                                </div>
+                              </div>
+                            )}
+                            <div>
+                              <div className="mb-2 text-ui-sm text-ink-3">{changed ? '草稿快照（将公开）' : '本次公开快照'}</div>
+                              <div className="reader-text scroll max-h-96 overflow-auto rounded-md bg-surface-2 p-4 font-prose text-read text-ink">
+                                <Markdown markdown={chapter.markdown} />
+                              </div>
+                            </div>
+                          </div>
+                        </details>
+                      )
+                    })}
+                  </div>
+                </section>
+              )}
               <div className="mt-10">{boundary}</div>
             </section>
           )}
           {step === 3 && (
             <section className="mt-10 max-w-xl">
-              <Heading level={1}>确认发布</Heading>
+              <Heading level={1}>{preview?.chapters.length === 0 ? '确认撤回全部章节' : '确认发布'}</Heading>
               <p className="mt-2 text-ui text-ink-2">
-                《{preview?.metadata.title}》· {preview?.chapters.length}章
+                《{preview?.metadata.title}》· {preview?.chapters.length} 章
               </p>
+              <p className="mt-1 break-all text-ui-sm text-ink-3">
+                公开地址：{window.location.origin}/books/{preview?.metadata.slug}
+              </p>
+              {preview?.chapters.length === 0 && <p className="mt-4 text-ui text-warn">确认后，作品页和全部章节将对读者隐藏。草稿与公开版本历史会保留。</p>}
               <div className="mt-8 space-y-4 text-ui">
                 <Choice
                   checked={ack.rights}
                   onChange={(rights) => setAck((a) => ({ ...a, rights }))}
                 >
-                  我拥有这些内容的发布权利。
+                  我拥有这些内容的发布权利，并同意 story2u 的版权与内容政策。
                 </Choice>
                 <Choice
                   checked={ack.scope}
                   onChange={(scope) => setAck((a) => ({ ...a, scope }))}
                 >
-                  我了解：发布后任何人都可以阅读和分享这些章节，搜索引擎可以收录。笔记、设定和未选草稿不会公开。
+                  {preview?.chapters.length === 0
+                    ? '我了解：确认后，作品与全部章节将无法公开访问；已被他人保存的副本无法收回。私人草稿不会删除。'
+                    : '我了解：发布后任何人都可以阅读和分享这些章节，搜索引擎可以收录。笔记、设定和未选草稿不会公开。'}
                 </Choice>
               </div>
-              <div className="mt-6 rounded-md bg-surface-2 p-3">
-                <TextArea
-                  label="发布说明（仅你可见）"
-                  value={note}
-                  maxLength={2000}
-                  disabled={busy}
-                  onChange={(value) => {
-                    setNote(value)
-                    setKey(crypto.randomUUID())
-                  }}
-                />
+              <div className="mt-6">
+                <div className="mb-1.5 text-ui-sm text-ink-2">这次发布的说明（仅你可见）</div>
+                <div className="rounded-md bg-surface-2 px-3 py-2">
+                  <TextArea
+                    label="发布说明（仅你可见）"
+                    value={note}
+                    maxLength={2000}
+                    disabled={busy}
+                    onChange={(value) => {
+                      setNote(value)
+                      setKey(crypto.randomUUID())
+                    }}
+                  />
+                </div>
               </div>
               <p className="mt-6 text-micro text-ink-3">
                 发布只由你手动完成。Agent 不会替你发布。
@@ -987,7 +1033,7 @@ export default function Publish() {
               {error}
             </p>
           )}
-          <div className="mt-12 flex items-center gap-2 border-t border-line-soft pt-6">
+          <div className="mt-12 flex flex-wrap items-center gap-2 border-t border-line-soft pt-6">
             <Btn
               disabled={busy}
               onClick={() => {
@@ -1000,7 +1046,9 @@ export default function Publish() {
             >
               {step ? '上一步' : '取消'}
             </Btn>
-            <span className="ml-auto" />
+            <span className="ml-auto text-ui-sm text-ink-3">
+              {step === 3 && (!ack.rights || !ack.scope) ? '请确认以上两项' : ''}
+            </span>
             {step < 3 ? (
               <Btn
                 variant="primary"
@@ -1015,11 +1063,42 @@ export default function Publish() {
                 disabled={busy || !ack.rights || !ack.scope || !preview}
                 onClick={() => void publish()}
               >
-                {busy ? '正在发布…' : error ? '重试发布' : '发布'}
+                {busy ? (preview?.chapters.length === 0 ? '正在撤回…' : '正在发布…') : error ? '重试提交' : preview?.chapters.length === 0 ? '确认撤回' : current ? '发布更新' : '发布'}
               </Btn>
             )}
           </div>
         </main>
+      )}
+      {confirm && current && (
+        <Dialog
+          label={confirm.kind === 'withdraw' ? '取消公开章节' : confirm.kind === 'unlist' ? '下架作品' : '重新上架'}
+          title={confirm.kind === 'withdraw' ? `取消公开《${confirm.title}》？` : confirm.kind === 'unlist' ? '下架整部作品？' : '重新上架这部作品？'}
+          onClose={() => { if (!busy) setConfirm(null) }}
+          actions={<>
+            <Btn variant="outline" disabled={busy} onClick={() => setConfirm(null)}>返回</Btn>
+            <Btn
+              variant={confirm.kind === 'relist' ? 'primary' : 'danger'}
+              loading={busy}
+              onClick={() => {
+                if (confirm.kind === 'withdraw') {
+                  const chapterId = confirm.chapterId
+                  open(current.chapters.filter((chapter) => chapter.chapterId !== chapterId).map((chapter) => chapter.chapterId))
+                } else void transition(confirm.kind)
+              }}
+            >
+              {confirm.kind === 'withdraw' ? '继续预览与确认' : confirm.kind === 'unlist' ? '下架作品' : '重新上架'}
+            </Btn>
+          </>}
+        >
+          <p>
+            {confirm.kind === 'withdraw'
+              ? '读者将无法再打开这一章，目录中也不再显示。接下来请预览新的公开范围并确认发布；你的草稿不受影响，之后可以重新发布。已被他人保存的副本无法收回。'
+              : confirm.kind === 'unlist'
+                ? '作品页、所有章节和作者页中的这部作品将对读者不可见，并从公开索引中移除。私人草稿与公开版本历史会保留，你可以重新上架。已被他人保存的副本无法收回。'
+                : '读者将重新看到上一次确认的公开快照。新草稿和之后的修改不会随之公开。'}
+          </p>
+          {error && <p role="alert" className="mt-4 rounded-md bg-danger-soft p-3 text-danger">{error}</p>}
+        </Dialog>
       )}
     </div>
   )

@@ -22,6 +22,9 @@ export const emptySite: SiteData = {
   status: 200,
 }
 export const SiteContext = createContext<SiteData>(emptySite)
+export function useSitePath() {
+  return useContext(SiteContext).path
+}
 export function useCatalog() {
   const data = useContext(SiteContext)
   return { ...data, byUpdate: data.books, mine: undefined }

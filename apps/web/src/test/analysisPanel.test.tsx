@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { NovelAnalysisView, ThinkingMessage } from '@writer-agent/contracts'
 import { AnalysisPanel } from '../features/analysis/AnalysisPanel'
@@ -80,8 +80,24 @@ describe('whole-book analysis workbench', () => {
     render(<AnalysisPanel bookId="book-a" chapters={chapters} onChapter={onChapter} />)
     fireEvent.click(await screen.findByRole('button', { name: '开始整书分析' }))
     await waitFor(() => expect(analysisApi.create).toHaveBeenCalledWith('book-a'))
-    expect(await screen.findByText('已完成 0 / 2 批')).toBeVisible()
+    expect(await screen.findByText(/已完成 0 \/ 2 批/)).toBeVisible()
     expect(screen.getByRole('progressbar', { name: '整书分析完成度' })).toBeVisible()
+  })
+
+  it.each([
+    ['单章', ['CH-000002']],
+    ['本卷', ['CH-000001', 'CH-000002']],
+  ] as const)('starts %s analysis with only the selected scope', async (scope, chapterIds) => {
+    vi.spyOn(analysisApi, 'view').mockResolvedValue(view({ job: null }))
+    const create = vi.spyOn(analysisApi, 'create').mockResolvedValue(view())
+    render(<AnalysisPanel bookId="book-a" currentChapterId="CH-000002" chapters={[
+      { id: 'CH-000001', title: '开端', volume: '上卷' },
+      { id: 'CH-000002', title: '相遇', volume: '上卷' },
+      { id: 'CH-000003', title: '离别', volume: '下卷' },
+    ]} onChapter={vi.fn()} />)
+    fireEvent.click(await screen.findByRole('tab', { name: scope }))
+    fireEvent.click(screen.getByRole('button', { name: '开始整书分析' }))
+    await waitFor(() => expect(create).toHaveBeenCalledWith('book-a', chapterIds))
   })
 
   it('reviews candidates, opens evidence and confirms without confirming canon automatically', async () => {
@@ -93,12 +109,14 @@ describe('whole-book analysis workbench', () => {
         view({ findings: [{ ...finding, status: 'author_confirmed' }], entities: [{ ...entity, state: 'author_confirmed' }] }),
       )
     render(<AnalysisPanel bookId="book-a" chapters={chapters} onChapter={onChapter} />)
-    expect(await screen.findByRole('heading', { name: '林舟身份' })).toBeVisible()
-    expect(screen.getByText('待确认')).toBeVisible()
-    fireEvent.click(screen.getByRole('button', { name: '查看原文' }))
+    const heading = await screen.findByRole('heading', { name: '林舟身份' })
+    expect(heading).toBeVisible()
+    const candidate = within(heading.closest('article')!)
+    expect(candidate.getByText('待确认')).toBeVisible()
+    fireEvent.click(candidate.getByRole('button', { name: '查看原文' }))
     expect(onChapter).toHaveBeenCalledWith('CH-000001')
-    fireEvent.change(screen.getByLabelText('审阅备注'), { target: { value: '身份已核对' } })
-    fireEvent.click(screen.getByRole('button', { name: '确认' }))
+    fireEvent.change(candidate.getByRole('textbox', { name: '「林舟身份」的审阅备注' }), { target: { value: '身份已核对' } })
+    fireEvent.click(candidate.getByRole('button', { name: '确认' }))
     await waitFor(() =>
       expect(decide).toHaveBeenCalledWith('book-a', findingId, 'confirm', '身份已核对'),
     )

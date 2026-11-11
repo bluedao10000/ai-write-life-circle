@@ -240,7 +240,7 @@ try {
     }),
   ).toBeVisible({ timeout: 20000 });
   // Evidence stays inspectable: verified source quotes behind a disclosure.
-  await talk.getByRole("button", { name: /已参考作品中的 \d+ 处原文/ }).first().click();
+  await talk.getByRole("button", { name: /本轮查阅 \d+ 处原文/ }).first().click();
   await expect(talk.getByText(/原文位置已核验/).first()).toBeVisible();
   // 查看原文 lands on the exact quoted paragraph in 阅读, not just the chapter.
   const firstQuote = (await talk.locator("blockquote").first().innerText()).trim();

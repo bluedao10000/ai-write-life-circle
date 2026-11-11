@@ -2,6 +2,7 @@ import { useState, type MouseEventHandler, type ReactNode } from 'react'
 import { buttonClassName, IconBtn } from '../components/vnext/ui'
 import { latest, when, type PublicAuthor, type PublicBook } from './data'
 import { go, href, prefs } from './store'
+import { useSitePath } from './context'
 
 export { useCatalog } from './context'
 
@@ -13,6 +14,7 @@ export function A({
   growth,
   onClick,
   variant,
+  current,
 }: {
   to: string
   children: ReactNode
@@ -21,6 +23,7 @@ export function A({
   variant?: 'primary' | 'outline' | 'quiet'
   growth?: 'next_chapter'
   onClick?: MouseEventHandler<HTMLAnchorElement>
+  current?: 'page'
 }) {
   return (
     <a
@@ -28,6 +31,7 @@ export function A({
       onClick={onClick}
       href={href(to)}
       aria-label={label}
+      aria-current={current}
       className={`${variant ? buttonClassName(variant) : 'btn'} ${className}`}
     >
       {children}
@@ -281,7 +285,7 @@ export function SectionHead({
   )
 }
 
-export function Header({ onSearch }: { onSearch?: () => void }) {
+export function Header({ onSearch, path }: { onSearch?: () => void; path?: string }) {
   const [open, setOpen] = useState(false)
   const p = prefs.use()
   const links: [string, string][] = [
@@ -289,6 +293,16 @@ export function Header({ onSearch }: { onSearch?: () => void }) {
     ['/discover/categories', '分类'],
     ['/discover/recent', '最近更新'],
   ]
+  const sitePath = useSitePath()
+  const current = path ?? sitePath
+  const isCurrent = (to: string) =>
+    to === '/discover/categories'
+      ? current.startsWith(to)
+      : to === '/discover/recent'
+        ? current.startsWith(to)
+        : to === '/discover'
+          ? current === to || current.startsWith('/discover/search')
+          : current === to
   return (
     <header className="sticky top-0 z-30 bg-page/90 backdrop-blur">
       <Container className="flex h-16 items-center gap-6">
@@ -296,12 +310,18 @@ export function Header({ onSearch }: { onSearch?: () => void }) {
           to="/"
           className="font-prose text-ui-lg font-medium tracking-wide text-ink"
           label="story2u 首页"
+          current={current === '/' ? 'page' : undefined}
         >
           story2u
         </A>
         <nav aria-label="主导航" className="hidden items-center gap-5 md:flex">
           {links.map(([to, l]) => (
-            <A key={to} to={to} className="text-ui text-ink-2 hover:text-ink">
+            <A
+              key={to}
+              to={to}
+              current={isCurrent(to) ? 'page' : undefined}
+              className={`text-ui text-ink-2 hover:text-ink ${isCurrent(to) ? 'font-medium text-ink' : ''}`}
+            >
               {l}
             </A>
           ))}
@@ -324,7 +344,7 @@ export function Header({ onSearch }: { onSearch?: () => void }) {
             创作者 · Writer Studio
           </A>
           <span className="ml-1 hidden md:inline-flex">
-            <A to="/studio" variant="outline" className="">
+            <A to="/studio" variant="outline">
               登录
             </A>
           </span>
@@ -332,6 +352,8 @@ export function Header({ onSearch }: { onSearch?: () => void }) {
             <IconBtn
               icon="menu"
               label="菜单"
+              expanded={open}
+              controls="story2u-mobile-nav"
               onClick={() => setOpen(!open)}
               active={open}
             />
@@ -340,6 +362,7 @@ export function Header({ onSearch }: { onSearch?: () => void }) {
       </Container>
       {open && (
         <nav
+          id="story2u-mobile-nav"
           aria-label="移动导航"
           className="fade-up border-t border-line-soft bg-page px-5 pt-2 pb-5 md:hidden"
         >
@@ -347,6 +370,7 @@ export function Header({ onSearch }: { onSearch?: () => void }) {
             <A
               key={to}
               to={to}
+              current={isCurrent(to) ? 'page' : undefined}
               className="block py-3 font-prose text-ui-lg text-ink"
             >
               {l}
@@ -359,7 +383,7 @@ export function Header({ onSearch }: { onSearch?: () => void }) {
             >
               进入 Writer Studio
             </A>
-            <A to="/studio" variant="outline" className="">
+            <A to="/studio" variant="outline">
               登录
             </A>
           </div>

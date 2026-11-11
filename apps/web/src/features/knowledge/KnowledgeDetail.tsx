@@ -41,7 +41,7 @@ const sections: { nature: Nature; title: string; hint: string }[] = [
 ]
 
 function chapterLabel(chapterId: string, chapters: { id: string; title: string }[]) {
-  return chapters.find((chapter) => chapter.id === chapterId)?.title || chapterId
+  return chapters.find((chapter) => chapter.id === chapterId)?.title || '来源章节已不在目录中'
 }
 
 function sourceFor(assertion: MemoryAssertion) {
@@ -64,6 +64,7 @@ export default function KnowledgeDetail({
   busy,
   loadingFacts = false,
   factsError = false,
+  suspended = false,
   onRetryFacts,
   onClose,
   onEntity,
@@ -80,6 +81,7 @@ export default function KnowledgeDetail({
   busy: boolean
   loadingFacts?: boolean
   factsError?: boolean
+  suspended?: boolean
   onRetryFacts?: () => void
   onClose: () => void
   onEntity: (id: string) => void
@@ -89,12 +91,13 @@ export default function KnowledgeDetail({
   onUndo: (correctionId: string) => void
 }) {
   useEffect(() => {
+    if (suspended) return
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+  }, [onClose, suspended])
 
   const sources = useMemo(
     () => {
@@ -106,11 +109,10 @@ export default function KnowledgeDetail({
           assertion.sources.map((source) => source.chapterId),
         ),
       )
-      return [...ids]
-        .sort()
-        .slice(0, 6)
+      const order = new Map(chapters.map((chapter, index) => [chapter.id, index]))
+      return [...ids].sort((a, b) => (order.get(a) ?? Infinity) - (order.get(b) ?? Infinity))
     },
-    [assertions, entity.entityId],
+    [assertions, chapters, entity.entityId],
   )
   const own = assertions.filter((assertion) => assertion.entityId === entity.entityId)
   const related = own
@@ -275,6 +277,19 @@ export default function KnowledgeDetail({
           </section>
         )}
 
+        {corrections.some((correction) => correction.entityId === entity.entityId || own.some((assertion) => assertion.assertionId === correction.assertionId)) && (
+          <Disclosure className="mt-8" label="这一条的纠正记录">
+            <ol className="space-y-3">
+              {corrections.filter((correction) => correction.entityId === entity.entityId || own.some((assertion) => assertion.assertionId === correction.assertionId)).map((correction) => (
+                <li key={correction.correctionId} className="border-l-2 border-line pl-3 text-ui-sm">
+                  <div className="flex flex-wrap items-center gap-2 text-micro text-ink-3"><time dateTime={correction.createdAt}>{new Date(correction.createdAt).toLocaleString('zh-CN')}</time><span>{correction.active ? '生效中' : '已撤销'}</span></div>
+                  <p className="mt-1 text-ink-2">{correction.reason}</p>
+                  {correction.active && <Btn variant="link" className="mt-1 text-ui-sm" disabled={busy} onClick={() => onUndo(correction.correctionId)}>撤销纠正</Btn>}
+                </li>
+              ))}
+            </ol>
+          </Disclosure>
+        )}
         <div className="mt-10 border-t border-line-soft pt-5">
           <p className="flex gap-2 text-ui-sm text-ink-3">
             <Icon name="info" className="mt-0.5" />

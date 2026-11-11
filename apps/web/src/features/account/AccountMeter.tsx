@@ -71,7 +71,7 @@ function Redeem({ onDone }: { onDone: (a: AccountUsage) => void }) {
   return (
     <form onSubmit={submit} className="space-y-2">
       <div className="flex gap-2">
-        <Field label="兑换码" value={code} onChange={setCode} placeholder="WA-XXXX-XXXX-XXXX-XXXX" maxLength={40} className="flex-1 font-mono tabular-nums" />
+        <Field hideLabel label="兑换码" value={code} onChange={setCode} placeholder="WA-XXXX-XXXX-XXXX-XXXX" maxLength={40} className="flex-1" />
         <Btn type="submit" variant="outline" disabled={busy || !code.trim()}>{busy ? '兑换中…' : '兑换'}</Btn>
       </div>
       {message && <p role={message.ok ? 'status' : 'alert'} className={message.ok ? 'text-ok' : 'text-danger'}>{message.text}</p>}

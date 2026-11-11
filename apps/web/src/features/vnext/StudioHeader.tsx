@@ -1,6 +1,7 @@
 import { lazy, Suspense, useState } from 'react'
 import BookMenu from '../management/BookMenu'
 import { useManagement } from '../management/ManagedStudio'
+import { useWorkNavigation } from '../management/StudioPage'
 import type { useStudioController } from '../vnext/useStudioController'
 import { Btn, Icon, IconBtn, Seg, Proto } from '../../components/vnext/ui'
 import KnowledgeChip from '../knowledge/KnowledgeChip'
@@ -15,11 +16,12 @@ const RevisionHistory = lazy(() => import('../workspace/RevisionHistory'))
  */
 export default function StudioHeader({ studio, demo }: { studio: ReturnType<typeof useStudioController>; demo: boolean }) {
   const management = useManagement()
+  const navigation = useWorkNavigation()
   // Real data only: the chip needs a managed book and the API mode. Demo never shows it.
   const knowledge = useKnowledgeSummary(management?.book.bookId, !demo && !!management)
   const [history, setHistory] = useState(false)
   const { view, setView, setBookNav, setSaveDialog, workspace, chapter, layout, setLayout, dark, setDark, saveState, downloadLocalDraft, pinned, readonly, status, compose, typewriter, toggleTypewriter } = studio
-  const focus = layout.focus && compose
+  const focus = layout.focus && compose && !navigation?.page
   const hide = focus ? 'opacity-0 hover:opacity-100 focus-within:opacity-100' : ''
   const publicSite = import.meta.env.VITE_STORY2U_PUBLIC_SITE === 'true'
   const loaded = workspace.chapterLoadState.status === 'loaded' && !!chapter.id
@@ -37,9 +39,9 @@ export default function StudioHeader({ studio, demo }: { studio: ReturnType<type
   return (
     <>
       {/* 「灵感」在移动端使用自己的 56px 顶栏（主导航放进历史抽屉），这里只在桌面显示（Figma Make App.tsx）。 */}
-      <header className={`relative z-40 h-12 shrink-0 items-center gap-1 px-2 sm:px-3 ${view === 'inspire' && !demo ? 'hidden md:flex' : 'flex'}`}>
+      <header className={`relative z-40 h-12 shrink-0 items-center gap-1 px-2 sm:px-3 ${view === 'inspire' && !demo && !navigation?.page ? 'hidden md:flex' : 'flex'}`}>
         <div className={`chrome flex min-w-0 items-center gap-1 ${hide}`}>
-          {view === 'read' && <IconBtn icon="menu" label="目录与本章相关" shortcut="⌘⇧E" active={layout.leftOpen} onClick={() => setLayout((l) => ({ ...l, leftOpen: !l.leftOpen }))} />}
+          {view === 'read' && !navigation?.page && <IconBtn icon="menu" label="目录与本章相关" shortcut="⌘⇧E" active={layout.leftOpen} onClick={() => setLayout((l) => ({ ...l, leftOpen: !l.leftOpen }))} />}
           {publicSite && (
             <>
               <Btn
@@ -62,7 +64,7 @@ export default function StudioHeader({ studio, demo }: { studio: ReturnType<type
           <div className="min-w-0 max-w-32 sm:max-w-60">{management ? <BookMenu /> : <span className="hidden truncate pl-1 font-prose text-ui text-ink-2 md:inline">{workspace.projectTitle}</span>}</div>
         </div>
         <div className={`chrome mx-auto md:absolute md:left-1/2 md:mx-0 md:-translate-x-1/2 ${hide}`}>
-          <Seg label="主导航" value={view} onChange={setView} options={[['inspire', '灵感'], ['read', '阅读'], ['book', '书']]} />
+          <Seg label="主导航" value={view} onChange={(next) => { setView(next); navigation?.open(null) }} options={[['inspire', '灵感'], ['read', '阅读'], ['book', '书']]} />
         </div>
         <div className="flex items-center gap-1 md:ml-auto">
           {(pinned || (view === 'read' && chapter.id)) && (
@@ -78,33 +80,34 @@ export default function StudioHeader({ studio, demo }: { studio: ReturnType<type
             </span>
           )}
           <div className={`chrome flex items-center gap-1 ${hide}`}>
-            {view === 'inspire' && loaded && <Btn size="sm" variant="primary" disabled={readonly} onClick={() => studio.enterCompose()}>开始写作</Btn>}
+            {view === 'inspire' && loaded && <Btn size="sm" variant="primary" disabled={readonly} onClick={() => { setView('read'); navigation?.open(null); studio.enterCompose() }}>开始写作</Btn>}
             {view === 'read' && loaded &&
-              (compose ? (
+              (compose && !navigation?.page ? (
                 <Btn size="sm" variant="quiet" title="回到阅读 ⌘E" onClick={() => studio.leaveCompose()}>
                   <Icon name="book" />
                   <span className="hidden sm:inline">阅读</span>
                 </Btn>
               ) : (
-                <Btn size="sm" variant="outline" title={readonly ? '此章节为只读保护格式' : '沉浸式写作 ⌘E'} disabled={readonly} onClick={() => studio.enterCompose()}>
+                <Btn size="sm" variant="outline" title={readonly ? '此章节为只读保护格式' : '沉浸式写作 ⌘E'} disabled={readonly} onClick={() => { setView('read'); navigation?.open(null); studio.enterCompose() }}>
                   <Icon name="pen" />
                   <span className="hidden sm:inline">写作</span>
                 </Btn>
               ))}
-            {view === 'read' && compose && (
+            {view === 'read' && compose && !navigation?.page && (
               <span className="hidden items-center gap-1 sm:flex">
                 <IconBtn icon="focus" label={layout.focus ? '退出专注' : '专注'} shortcut="⌘⇧F" active={layout.focus} onClick={() => setLayout((l) => ({ ...l, focus: !l.focus }))} />
                 <IconBtn icon="target" label={typewriter ? '关闭打字机模式' : '打字机模式'} active={typewriter} onClick={toggleTypewriter} />
 
               </span>
             )}
-            {!demo && loaded && <IconBtn icon="revision" label="历史版本" onClick={() => setHistory(true)} />}
+            {!demo && loaded && <IconBtn icon="revision" label="历史版本" onClick={() => navigation ? navigation.open('history') : setHistory(true)} />}
             {knowledge && (
               <KnowledgeChip
                 view={knowledge}
                 onOpen={() => {
                   setBookNav({ section: 'chapter', source: 'manuscript' })
                   setView('book')
+                  navigation?.open(null)
                 }}
               />
             )}
